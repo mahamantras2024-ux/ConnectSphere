@@ -1,1 +1,1 @@
-# Event-manager
+# ConnectSphere
