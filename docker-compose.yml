@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: connectsphere-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: connectsphere
+      POSTGRES_PASSWORD: connectsphere
+      POSTGRES_DB: connectsphere
+    ports:
+      - "5432:5432"
+    volumes:
+      - connectsphere_pgdata:/var/lib/postgresql/data
+
+  # Optional lightweight DB admin UI — comment out if you don't want it
+  adminer:
+    image: adminer:latest
+    container_name: connectsphere-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  connectsphere_pgdata:
