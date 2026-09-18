@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const authController = require('../controllers/authController');
-const { requireAuth } = require('../middleware/auth');
+const { login, register, me } = require('../controllers/authController');
+const { verifyToken } = require('../middleware/authMiddleware');
 
-router.post('/register', authController.register);
-router.post('/login', authController.login);
-router.get('/me', requireAuth, authController.me);
+// Route endpoints mapped to authController
+router.post('/login', login);
+router.post('/register', register);
+router.get('/me', verifyToken, me);
 
 module.exports = router;
