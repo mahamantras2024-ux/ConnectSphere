@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const dashboardRoutes = {
+  'Technical Support': '/tech-support/dashboard',
+  'Event Coordinator': '/coordinator/dashboard',
+  'Venue Staff': '/venue/dashboard'
+};
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,13 +23,9 @@ export default function Login() {
 
     try {
       const user = await login(email, password);
+      const targetRoute = dashboardRoutes[user?.role] || '/dashboard';
 
-      if (user?.role === 'Technical Support') {
-        navigate('/tech-support/dashboard', { replace: true });
-        return;
-      }
-
-      navigate('/dashboard', { replace: true });
+      navigate(targetRoute, { replace: true });
     } catch (err) {
       setError(err?.message || 'Invalid email or password. Please try again.');
     } finally {
