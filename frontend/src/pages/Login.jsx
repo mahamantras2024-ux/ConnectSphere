@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const dashboardRoutes = {
-  'Technical Support': '/tech-support/dashboard',
-  'Event Coordinator': '/coordinator/dashboard',
-  'Venue Staff': '/venue/dashboard'
+  'technical_support': '/tech-support/dashboard',
+  'event_coordinator': '/coordinator/dashboard',
+  'venue_staff': '/venue/dashboard'
 };
 
 export default function Login() {
@@ -38,7 +38,7 @@ export default function Login() {
       <form className="auth-form" onSubmit={handleSubmit}>
         <h1>ConnectSphere Login</h1>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div className="error-message" style={{ color: 'red', fontWeight: 'bold' }}>⚠️ {error}</div>}
 
         <label htmlFor="email">Email</label>
         <input
