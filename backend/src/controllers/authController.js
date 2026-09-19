@@ -57,6 +57,24 @@ async function login(req, res) {
   }
 }
 
-module.exports = {
-  login
-};
+async function me(req, res) {
+  try {
+    const user = await getUserByEmail(req.user.email);
+    if (!user) {
+      return res.status(401).json({ message: 'User no longer exists.' });
+    }
+    return res.status(200).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Fetch current user error:', error);
+    return res.status(500).json({ message: 'Unable to fetch current user.' });
+  }
+}
+
+module.exports = { login, me };
