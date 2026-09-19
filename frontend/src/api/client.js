@@ -1,21 +1,39 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-async function request(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
+async function request(endpoint, { method = 'GET', body, token } = {}) {
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
+    headers,
+    body: body ? JSON.stringify(body) : undefined
   });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.message || data.error || `Request failed with status ${res.status}`);
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message =
+      (data && data.message) ||
+      'Something went wrong. Please try again.';
+
+    throw new Error(message);
   }
+
   return data;
 }
 
 export const api = {
-  get: (path) => request(path, { method: 'GET' }),
-  post: (path, body) => request(path, { method: 'POST', body }),
-  patch: (path, body) => request(path, { method: 'PATCH', body }),
+  get: (endpoint, token) => request(endpoint, { method: 'GET', token }),
+  post: (endpoint, body, token) => request(endpoint, { method: 'POST', body, token }),
+  put: (endpoint, body, token) => request(endpoint, { method: 'PUT', body, token }),
+  del: (endpoint, token) => request(endpoint, { method: 'DELETE', token })
 };

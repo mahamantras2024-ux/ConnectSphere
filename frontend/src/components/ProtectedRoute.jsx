@@ -1,15 +1,26 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-// Wrap a route element: <ProtectedRoute roles={['event_coordinator']}><Page /></ProtectedRoute>
-// Omit `roles` to just require any authenticated user.
-export default function ProtectedRoute({ children, roles }) {
+export default function ProtectedRoute({ children, roles = [] }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
-  if (loading) return <p>Loading…</p>;
-  if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) {
-    return <p>You don't have access to this page with the "{user.role}" role.</p>;
+  if (loading) {
+    return <div className="loading-state">Loading...</div>;
   }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (roles.length > 0 && !roles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return children;
 }
+
+<Route
+  path="/tech-support/dashboard"
+  element={<ProtectedRoute roles={['Technical Support']}><TechSupportDashboard /></ProtectedRoute>}
+ />

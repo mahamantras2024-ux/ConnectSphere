@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return;
     }
+
     api
       .get('/auth/me', token)
       .then((data) => setUser(data.user))
@@ -25,17 +26,21 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const data = await api.post('/auth/login', { email, password });
+
     localStorage.setItem('cs_token', data.token);
     setToken(data.token);
     setUser(data.user);
+
     return data.user;
   }
 
   async function register(payload) {
     const data = await api.post('/auth/register', payload);
+
     localStorage.setItem('cs_token', data.token);
     setToken(data.token);
     setUser(data.user);
+
     return data.user;
   }
 

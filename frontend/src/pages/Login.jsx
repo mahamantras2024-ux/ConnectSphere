@@ -1,42 +1,67 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
-  const { login } = useAuth();
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError('');
+    setLoading(true);
+
     try {
-      await login(email, password);
-      navigate('/dashboard');
+      const user = await login(email, password);
+
+      if (user?.role === 'Technical Support') {
+        navigate('/tech-support/dashboard', { replace: true });
+        return;
+      }
+
+      navigate('/dashboard', { replace: true });
     } catch (err) {
-      setError(err.message);
+      setError(err?.message || 'Invalid email or password. Please try again.');
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="card">
-      <h1>Log in</h1>
-      <form onSubmit={handleSubmit}>
-        <label>Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </label>
-        <label>Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        {error && <p className="error-text">{error}</p>}
-        <button type="submit">Log in</button>
+    <div className="auth-page">
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <h1>ConnectSphere Login</h1>
+
+        {error && <div className="error-message">{error}</div>}
+
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          required
+        />
+
+        <label htmlFor="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Enter your password"
+          required
+        />
+
+        <button type="submit" disabled={loading}>
+          {loading ? 'Signing in...' : 'Login'}
+        </button>
       </form>
-      <p>No account? <Link to="/register">Register here</Link></p>
-      <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-        Seeded dev login: organiser@example.com / password123
-      </p>
     </div>
   );
 }

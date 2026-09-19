@@ -20,6 +20,7 @@ import EquipmentList from './pages/equipment/EquipmentList';
 import MyRegistrations from './pages/registrations/MyRegistrations';
 
 import Notifications from './pages/notifications/Notifications';
+import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 
 export default function App() {
   return (
@@ -32,6 +33,11 @@ export default function App() {
           <Route path="/register" element={<Register />} />
 
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+
+          <Route
+            path="/tech-support/dashboard"
+            element={<ProtectedRoute roles={['technical_support']}><TechSupportDashboard /></ProtectedRoute>}
+          />
 
           <Route path="/events" element={<ProtectedRoute><EventList /></ProtectedRoute>} />
           <Route
