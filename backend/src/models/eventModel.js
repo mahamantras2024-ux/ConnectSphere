@@ -1,4 +1,4 @@
-const { query } = require('../config/db');
+const pool = require('../config/db');
 
 // NOTE: this model intentionally keeps to simple CRUD + a couple of lookups.
 // Business rules (e.g. what fields may change post-confirmation, suitability
@@ -13,7 +13,7 @@ async function create(data) {
     registrationCapacity, isDraft,
   } = data;
 
-  const { rows } = await query(
+  const { rows } = await pool.query(
     `INSERT INTO events (
         organiser_id, name, purpose, description, event_type,
         proposed_date, proposed_start_time, proposed_end_time, expected_attendance,
@@ -33,12 +33,45 @@ async function create(data) {
 }
 
 async function findById(id) {
-  const { rows } = await query('SELECT * FROM events WHERE id = $1', [id]);
-  return rows[0];
+  const result = await pool.query(
+    `
+      SELECT
+        e.id,
+        e.organiser_id,
+        e.coordinator_id,
+        e.name,
+        e.purpose,
+        e.description,
+        e.event_type,
+        e.proposed_date,
+        e.proposed_start_time,
+        e.proposed_end_time,
+        e.expected_attendance,
+        e.programme_details,
+        e.room_layout_preference,
+        e.accessibility_requirements,
+        e.equipment_requests,
+        e.registration_required,
+        e.registration_capacity,
+        e.special_arrangements,
+        e.status,
+        e.created_at,
+        e.updated_at,
+        o.full_name AS organiser_name,
+        c.full_name AS coordinator_name
+      FROM events e
+      LEFT JOIN users o ON o.id = e.organiser_id
+      LEFT JOIN users c ON c.id = e.coordinator_id
+      WHERE e.id = $1
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
 }
 
 async function listForOrganiser(organiserId) {
-  const { rows } = await query(
+  const { rows } = await pool.query(
     'SELECT * FROM events WHERE organiser_id = $1 ORDER BY created_at DESC',
     [organiserId]
   );
@@ -46,7 +79,7 @@ async function listForOrganiser(organiserId) {
 }
 
 async function listForCoordinator(coordinatorId) {
-  const { rows } = await query(
+  const { rows } = await pool.query(
     'SELECT * FROM events WHERE coordinator_id = $1 ORDER BY created_at DESC',
     [coordinatorId]
   );
@@ -55,13 +88,13 @@ async function listForCoordinator(coordinatorId) {
 
 async function listAll({ status } = {}) {
   if (status) {
-    const { rows } = await query(
+    const { rows } = await pool.query(
       'SELECT * FROM events WHERE status = $1 ORDER BY created_at DESC',
       [status]
     );
     return rows;
   }
-  const { rows } = await query('SELECT * FROM events ORDER BY created_at DESC');
+  const { rows } = await pool.query('SELECT * FROM events ORDER BY created_at DESC');
   return rows;
 }
 
@@ -69,12 +102,12 @@ async function updateStatus(id, newStatus, changedBy, notes) {
   const current = await findById(id);
   if (!current) return null;
 
-  const { rows } = await query(
+  const { rows } = await pool.query(
     `UPDATE events SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
     [newStatus, id]
   );
 
-  await query(
+  await pool.query(
     `INSERT INTO event_status_history (event_id, old_status, new_status, changed_by, notes)
      VALUES ($1, $2, $3, $4, $5)`,
     [id, current.status, newStatus, changedBy || null, notes || null]
@@ -84,7 +117,7 @@ async function updateStatus(id, newStatus, changedBy, notes) {
 }
 
 async function assignCoordinator(id, coordinatorId) {
-  const { rows } = await query(
+  const { rows } = await pool.query(
     `UPDATE events SET coordinator_id = $1, updated_at = now() WHERE id = $2 RETURNING *`,
     [coordinatorId, id]
   );
@@ -100,7 +133,7 @@ async function update(id, fields) {
   const setClauses = keys.map((key, i) => `${key} = $${i + 2}`);
   const values = keys.map((key) => fields[key]);
 
-  const { rows } = await query(
+  const { rows } = await pool.query(
     `UPDATE events SET ${setClauses.join(', ')}, updated_at = now() WHERE id = $1 RETURNING *`,
     [id, ...values]
   );

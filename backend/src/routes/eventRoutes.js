@@ -8,7 +8,7 @@ router.use(requireAuth);
 
 router.post('/', requireRole('event_organiser'), eventController.createEvent);
 router.get('/', eventController.listEvents);
-router.get('/:id', eventController.getEvent);
+router.get('/:id', requireRole('event_coordinator'), eventController.getEvent);
 router.patch('/:id', eventController.updateEvent);
 router.post('/:id/submit', requireRole('event_organiser'), eventController.submitEvent);
 router.post('/:id/assign-coordinator', requireRole('event_coordinator'), eventController.assignCoordinator);

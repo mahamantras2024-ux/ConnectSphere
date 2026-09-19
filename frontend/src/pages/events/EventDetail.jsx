@@ -3,52 +3,136 @@ import { useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 
-// Covers: Event Information Management, Event Status Management (detail view),
-// and is the natural place to later surface venue bookings / equipment
-// reservations / registrations / change requests for a single event.
 export default function EventDetail() {
   const { id } = useParams();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const [event, setEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get(`/events/${id}`, token)
-      .then((data) => setEvent(data.event))
-      .catch((err) => setError(err.message));
+    let isMounted = true;
+
+    async function fetchEvent() {
+      try {
+        setLoading(true);
+        setError('');
+
+        const data = await api.get(`/events/${id}`, token);
+        if (isMounted) {
+          setEvent(data.event);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || 'Unable to load event details.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchEvent();
+
+    return () => {
+      isMounted = false;
+    };
   }, [id, token]);
 
+  if (loading) return <p>Loading event details…</p>;
   if (error) return <p className="error-text">{error}</p>;
-  if (!event) return <p>Loading…</p>;
+  if (!event) return <p>No event details available.</p>;
+
+  const fieldValue = (value) => value ?? 'Not specified';
 
   return (
-    <div>
+    <div className="page">
       <div className="card">
-        <h1>{event.name} <span className="badge">{event.status}</span></h1>
-        <p>{event.description || <em>No description yet.</em>}</p>
-        <p><strong>Purpose:</strong> {event.purpose || '—'}</p>
-        <p><strong>Proposed date:</strong> {event.proposed_date ? new Date(event.proposed_date).toLocaleDateString() : '—'}</p>
-        <p><strong>Expected attendance:</strong> {event.expected_attendance ?? '—'}</p>
-        <p><strong>Layout preference:</strong> {event.room_layout_preference || '—'}</p>
-        <p><strong>Registration required:</strong> {event.registration_required ? 'Yes' : 'No'}</p>
-      </div>
+        <h1>{fieldValue(event.name)}</h1>
+        <p className="muted">Status: {fieldValue(event.status)}</p>
 
-      {user.role === 'event_coordinator' && (
-        <div className="card">
-          <h3>Coordinator actions</h3>
-          <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-            Wire these buttons up to POST /api/events/:id/status,
-            /api/bookings/venue, and /api/bookings/equipment as those workflows
-            are built out.
-          </p>
-        </div>
-      )}
+        <dl className="detail-list">
+          <div>
+            <dt>Purpose</dt>
+            <dd>{fieldValue(event.purpose)}</dd>
+          </div>
 
-      <div className="todo-note">
-        TODO: this page should eventually show the event's venue booking status,
-        equipment reservations, registration count, change-request history, and
-        the event_status_history audit trail. All of those already have backend
-        endpoints/models — just not wired into this screen yet.
+          <div>
+            <dt>Event Type</dt>
+            <dd>{fieldValue(event.event_type)}</dd>
+          </div>
+
+          <div>
+            <dt>Date</dt>
+            <dd>{event.proposed_date ? new Date(event.proposed_date).toLocaleDateString() : 'Not specified'}</dd>
+          </div>
+
+          <div>
+            <dt>Start Time</dt>
+            <dd>{fieldValue(event.proposed_start_time)}</dd>
+          </div>
+
+          <div>
+            <dt>End Time</dt>
+            <dd>{fieldValue(event.proposed_end_time)}</dd>
+          </div>
+
+          <div>
+            <dt>Expected Attendance</dt>
+            <dd>{fieldValue(event.expected_attendance)}</dd>
+          </div>
+
+          <div>
+            <dt>Programme</dt>
+            <dd>{fieldValue(event.programme_details)}</dd>
+          </div>
+
+          <div>
+            <dt>Layout Requirements</dt>
+            <dd>{fieldValue(event.room_layout_preference)}</dd>
+          </div>
+
+          <div>
+            <dt>Accessibility Needs</dt>
+            <dd>{fieldValue(event.accessibility_requirements)}</dd>
+          </div>
+
+          <div>
+            <dt>Equipment Requests</dt>
+            <dd>{fieldValue(event.equipment_requests)}</dd>
+          </div>
+
+          <div>
+            <dt>Registration Required</dt>
+            <dd>{event.registration_required ? 'Yes' : 'No'}</dd>
+          </div>
+
+          <div>
+            <dt>Registration Capacity</dt>
+            <dd>{fieldValue(event.registration_capacity)}</dd>
+          </div>
+
+          <div>
+            <dt>Special Arrangements</dt>
+            <dd>{fieldValue(event.special_arrangements)}</dd>
+          </div>
+
+          <div>
+            <dt>Description</dt>
+            <dd>{fieldValue(event.description)}</dd>
+          </div>
+
+          <div>
+            <dt>Organiser</dt>
+            <dd>{fieldValue(event.organiser_name)}</dd>
+          </div>
+
+          <div>
+            <dt>Assigned Coordinator</dt>
+            <dd>{fieldValue(event.coordinator_name)}</dd>
+          </div>
+        </dl>
       </div>
     </div>
   );
