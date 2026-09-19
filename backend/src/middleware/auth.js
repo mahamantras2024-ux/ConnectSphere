@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 
-// Verifies the Bearer JWT and attaches { id, role, email } to req.user.
-// TODO: decide on refresh-token / session-expiry behaviour as a user story.
+const JWT_SECRET = process.env.JWT_SECRET || 'connectsphere-secret';
+
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -11,8 +11,8 @@ function requireAuth(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { id, role, email }
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload; // { sub, role, email }
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token.' });

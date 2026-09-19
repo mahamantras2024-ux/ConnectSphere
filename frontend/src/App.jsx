@@ -21,6 +21,7 @@ import MyRegistrations from './pages/registrations/MyRegistrations';
 
 import Notifications from './pages/notifications/Notifications';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
+import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 
 export default function App() {
   return (
@@ -40,6 +41,12 @@ export default function App() {
           />
 
           <Route path="/events" element={<ProtectedRoute><EventList /></ProtectedRoute>} />
+
+          <Route
+            path="/coordinator/dashboard"
+            element={<ProtectedRoute roles={['event_coordinator']}><CoordinatorDashboard /></ProtectedRoute>}
+          />
+
           <Route
             path="/events/new"
             element={<ProtectedRoute roles={['event_organiser']}><EventForm /></ProtectedRoute>}
