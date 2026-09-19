@@ -12,7 +12,7 @@ async function login(req, res) {
   }
 
   try {
-    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedEmail = String(email).trim();
 
     const user = await getUserByEmail(normalizedEmail);
 
