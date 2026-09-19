@@ -1,24 +1,26 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
-import Login from './pages/Login';
-import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
 import NotFound from './pages/NotFound';
+import Register from './pages/Register';
 
-import EventList from './pages/events/EventList';
-import EventForm from './pages/events/EventForm';
 import EventDetail from './pages/events/EventDetail';
+import EventForm from './pages/events/EventForm';
+import EventList from './pages/events/EventList';
 
-import VenueList from './pages/venues/VenueList';
-import VenueForm from './pages/venues/VenueForm';
-import VenueDetail from './pages/venues/VenueDetail';
 import VenueCalendar from './pages/venues/VenueCalendar';
+import VenueDetail from './pages/venues/VenueDetail';
+import VenueForm from './pages/venues/VenueForm';
+import VenueList from './pages/venues/VenueList';
 
 import EquipmentList from './pages/equipment/EquipmentList';
 
 import MyRegistrations from './pages/registrations/MyRegistrations';
 
+import AttendeeDashboard from './pages/attendee/AttendeeDashboard.jsx';
+import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
 import Notifications from './pages/notifications/Notifications';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 
@@ -37,6 +39,16 @@ export default function App() {
           <Route
             path="/tech-support/dashboard"
             element={<ProtectedRoute roles={['technical_support']}><TechSupportDashboard /></ProtectedRoute>}
+          />
+
+          <Route
+            path="/event-organizer/dashboard"
+            element={<ProtectedRoute roles={['event_organizer']}><OrganizerDashboard /></ProtectedRoute>} 
+          />
+
+          <Route
+            path="/attendee/dashboard"
+            element={<ProtectedRoute roles={['attendee']}><AttendeeDashboard /></ProtectedRoute>}
           />
 
           <Route path="/events" element={<ProtectedRoute><EventList /></ProtectedRoute>} />

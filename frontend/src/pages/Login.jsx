@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const dashboardRoutes = {
+  'attendee': '/attendee/dashboard',
   'technical_support': '/tech-support/dashboard',
   'event_coordinator': '/coordinator/dashboard',
-  'venue_staff': '/venue/dashboard'
+  'venue_staff': '/venue/dashboard',
+  'event_organizer': '/organizer/dashboard',
 };
 
 export default function Login() {
