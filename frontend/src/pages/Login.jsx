@@ -7,7 +7,7 @@ const dashboardRoutes = {
   'technical_support': '/tech-support/dashboard',
   'event_coordinator': '/coordinator/dashboard',
   'venue_staff': '/venue/dashboard',
-  'event_organizer': '/organizer/dashboard',
+  'event_organiser': '/organizer/dashboard',
 };
 
 export default function Login() {

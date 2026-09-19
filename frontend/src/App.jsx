@@ -42,8 +42,8 @@ export default function App() {
           />
 
           <Route
-            path="/event-organizer/dashboard"
-            element={<ProtectedRoute roles={['event_organizer']}><OrganizerDashboard /></ProtectedRoute>} 
+            path="/organizer/dashboard"
+            element={<ProtectedRoute roles={['event_organiser']}><OrganizerDashboard /></ProtectedRoute>}
           />
 
           <Route
