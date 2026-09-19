@@ -19,8 +19,3 @@ export default function ProtectedRoute({ children, roles = [] }) {
 
   return children;
 }
-
-<Route
-  path="/tech-support/dashboard"
-  element={<ProtectedRoute roles={['Technical Support']}><TechSupportDashboard /></ProtectedRoute>}
- />
