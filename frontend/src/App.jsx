@@ -6,7 +6,7 @@ import Dashboard from './pages/Dashboard';
 import NotFound from './pages/NotFound';
 
 import EventList from './pages/events/EventList';
-import EventDetail from './pages/events/EventDetail';
+import EventDetail from './pages/EventDetail';
 
 export default function App() {
   return (
