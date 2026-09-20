@@ -24,6 +24,7 @@ import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
 import Notifications from './pages/notifications/Notifications';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
+import VenueDashboard from './pages/venue/VenueDashboard';
 
 export default function App() {
   return (
@@ -47,6 +48,16 @@ export default function App() {
           <Route
             path="/attendee/dashboard"
             element={<ProtectedRoute roles={['attendee']}><AttendeeDashboard /></ProtectedRoute>}
+          />
+
+          <Route
+            path="/tech-support/dashboard"
+            element={<ProtectedRoute roles={['technical_support']}><TechSupportDashboard /></ProtectedRoute>}
+          />
+
+          <Route
+            path="/venue/dashboard"
+            element={<ProtectedRoute roles={['venue_staff']}><VenueDashboard /></ProtectedRoute>}
           />
 
           <Route path="/events" element={<ProtectedRoute><EventList /></ProtectedRoute>} />

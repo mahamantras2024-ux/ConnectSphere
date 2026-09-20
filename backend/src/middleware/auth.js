@@ -1,22 +1,23 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 
-async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
 const JWT_SECRET = process.env.JWT_SECRET || 'connectsphere-secret';
 
-function requireAuth(req, res, next) {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization || '';
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Unauthorized: Missing token.' });
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = authHeader.slice(7).trim();
+
+  if (!token) {
+    return res.status(401).json({ message: 'Unauthorized: Missing token.' });
+  }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'connectsphere-secret');
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     const result = await db.query(
       'SELECT id, email, role FROM users WHERE id = $1',
@@ -28,8 +29,6 @@ function requireAuth(req, res, next) {
     }
 
     req.user = result.rows[0];
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload; // { sub, role, email }
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Unauthorized: Invalid token.' });
@@ -54,5 +53,6 @@ function requireRole(...allowedRoles) {
 
 module.exports = {
   requireAuth,
-  requireRole
+  requireRole,
+  JWT_SECRET
 };
