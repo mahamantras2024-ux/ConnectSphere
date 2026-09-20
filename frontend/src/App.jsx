@@ -24,12 +24,12 @@ export default function App() {
 
           <Route
             path="/events"
-            element={<ProtectedRoute><EventList /></ProtectedRoute>}
+            element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><EventList /></ProtectedRoute>}
           />
 
           <Route
             path="/events/:id"
-            element={<ProtectedRoute><EventDetail /></ProtectedRoute>}
+            element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><EventDetail /></ProtectedRoute>}
           />
 
           <Route path="*" element={<NotFound />} />
