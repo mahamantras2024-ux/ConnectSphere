@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 async function request(endpoint, { method = 'GET', body, token } = {}) {
   const headers = {
@@ -20,12 +20,12 @@ async function request(endpoint, { method = 'GET', body, token } = {}) {
     ? await response.json()
     : await response.text();
 
-  if (!response.ok) {
-    const message =
-      (data && data.message) ||
-      'Something went wrong. Please try again.';
+  console.log('Request:', `${API_BASE_URL}${endpoint}`);
+  console.log('Status:', response.status);
+  console.log('Body:', data);
 
-    throw new Error(message);
+  if (!response.ok) {
+    throw new Error((data && data.message) || 'Something went wrong. Please try again.');
   }
 
   return data;
@@ -33,7 +33,5 @@ async function request(endpoint, { method = 'GET', body, token } = {}) {
 
 export const api = {
   get: (endpoint, token) => request(endpoint, { method: 'GET', token }),
-  post: (endpoint, body, token) => request(endpoint, { method: 'POST', body, token }),
-  put: (endpoint, body, token) => request(endpoint, { method: 'PUT', body, token }),
-  del: (endpoint, token) => request(endpoint, { method: 'DELETE', token })
+  post: (endpoint, body, token) => request(endpoint, { method: 'POST', body, token })
 };

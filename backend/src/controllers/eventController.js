@@ -1,19 +1,14 @@
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
-const userModel = require('../models/userModel');
 
 // GET /api/events/:id
 const getEvent = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  if (!id) {
-    return res.status(400).json({ error: 'Event ID is required.' });
-  }
-
   const event = await eventModel.findById(id);
 
   if (!event) {
-    return res.status(404).json({ error: 'Event not found.' });
+    return res.status(404).json({ message: 'Event not found.' });
   }
 
   return res.status(200).json({ event });
@@ -57,15 +52,17 @@ const createEvent = asyncHandler(async (req, res) => {
 const listEvents = asyncHandler(async (req, res) => {
   const { role, id } = req.user;
 
+  let events = [];
+
   if (role === 'event_organiser') {
-    return res.json({ events: await eventModel.listForOrganiser(id) });
+    events = await eventModel.listForOrganiser(id);
+  } else if (role === 'event_coordinator') {
+    events = await eventModel.listForCoordinator(id);
+  } else {
+    events = await eventModel.listAll();
   }
 
-  if (role === 'event_coordinator') {
-    return res.json({ events: await eventModel.listForCoordinator(id) });
-  }
-
-  return res.json({ events: await eventModel.listAll({ status: req.query.status }) });
+  return res.status(200).json({ events });
 });
 
 // PATCH /api/events/:id

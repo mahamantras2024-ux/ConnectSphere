@@ -61,6 +61,11 @@ export default function Register() {
         {error && <p className="error-text">{error}</p>}
         <button type="submit">Create account</button>
       </form>
+      <div>
+        <h2>Registration is disabled</h2>
+        <p>Internal accounts are pre-provisioned by ConnectSphere.</p>
+        <button onClick={() => navigate('/login')}>Back to login</button>
+      </div>
     </div>
   );
 }

@@ -33,14 +33,16 @@ export default function EventDetail() {
       }
     }
 
-    fetchEvent();
+    if (id) {
+      fetchEvent();
+    }
 
     return () => {
       isMounted = false;
     };
   }, [id, token]);
 
-  if (loading) return <p>Loading event details…</p>;
+  if (loading) return <p>Loading event details...</p>;
   if (error) return <p className="error-text">{error}</p>;
   if (!event) return <p>No event details available.</p>;
 
@@ -65,7 +67,11 @@ export default function EventDetail() {
 
           <div>
             <dt>Date</dt>
-            <dd>{event.proposed_date ? new Date(event.proposed_date).toLocaleDateString() : 'Not specified'}</dd>
+            <dd>
+              {event.proposed_date
+                ? new Date(event.proposed_date).toLocaleDateString()
+                : 'Not specified'}
+            </dd>
           </div>
 
           <div>

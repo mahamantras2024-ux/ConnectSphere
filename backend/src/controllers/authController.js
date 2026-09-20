@@ -1,33 +1,27 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const db = require('../config/db');
 const { getUserByEmail } = require('../models/userModel');
 
 async function login(req, res) {
   const { email, password } = req.body || {};
 
   if (!email || !password) {
-    return res.status(400).json({
-      message: 'Email and password are required.'
-    });
+    return res.status(400).json({ message: 'Email and password are required.' });
   }
 
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
-
     const user = await getUserByEmail(normalizedEmail);
 
     if (!user) {
-      return res.status(401).json({
-        message: 'Invalid email or password.'
-      });
+      return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
     const isMatch = await bcrypt.compare(String(password), user.password_hash);
 
     if (!isMatch) {
-      return res.status(401).json({
-        message: 'Invalid email or password.'
-      });
+      return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
     const token = jwt.sign(
@@ -51,12 +45,32 @@ async function login(req, res) {
     });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({
-      message: 'Unable to log in at this time.'
-    });
+    return res.status(500).json({ message: 'Unable to log in at this time.' });
+  }
+}
+
+async function getMe(req, res, next) {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized: No user ID found in token' });
+    }
+
+    const query = 'SELECT id, email, role, created_at FROM users WHERE id = $1';
+    const { rows } = await db.query(query, [userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    return res.json({ user: rows[0] });
+  } catch (err) {
+    next(err);
   }
 }
 
 module.exports = {
-  login
+  login,
+  getMe
 };
