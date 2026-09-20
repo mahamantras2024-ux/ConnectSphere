@@ -3,50 +3,65 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 
-// Covers: Event Review and Approval, Event Status Management (listing part).
 export default function EventList() {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const [events, setEvents] = useState([]);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/events', token)
-      .then((data) => setEvents(data.events))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    let isMounted = true;
+
+    async function fetchEvents() {
+      try {
+        setLoading(true);
+        setError('');
+
+        const data = await api.get('/events', token);
+        if (isMounted) {
+          setEvents(data.events || []);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || 'Unable to load events.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchEvents();
+
+    return () => {
+      isMounted = false;
+    };
   }, [token]);
 
+  if (loading) return <p>Loading events...</p>;
+  if (error) return <p className="error-text">{error}</p>;
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="page">
+      <div className="page-header">
         <h1>Events</h1>
-        {user.role === 'event_organiser' && <Link to="/events/new"><button>New event request</button></Link>}
       </div>
 
-      {loading && <p>Loading…</p>}
-      {error && <p className="error-text">{error}</p>}
-
-      {!loading && events.length === 0 && <p>No events yet.</p>}
-
-      {events.map((ev) => (
-        <div className="card" key={ev.id}>
-          <h3>
-            <Link to={`/events/${ev.id}`}>{ev.name}</Link>{' '}
-            <span className="badge">{ev.status}</span>
-          </h3>
-          <p>{ev.purpose}</p>
-          <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-            {ev.proposed_date ? new Date(ev.proposed_date).toLocaleDateString() : 'No date yet'}
-            {' · '}Expected attendance: {ev.expected_attendance ?? '—'}
-          </p>
+      {events.length === 0 ? (
+        <p>No events found.</p>
+      ) : (
+        <div className="list">
+          {events.map((event) => (
+            <div key={event.id} className="card">
+              <h3>{event.name || 'Untitled Event'}</h3>
+              <p>Status: {event.status || 'Draft'}</p>
+              <p>{event.purpose || 'No purpose provided'}</p>
+              <Link to={`/events/${event.id}`}>View details</Link>
+            </div>
+          ))}
         </div>
-      ))}
-
-      <div className="todo-note">
-        TODO: filtering/sorting, pagination, and role-specific views (e.g. "pending my
-        review" for coordinators) — see eventController.listEvents on the backend.
-      </div>
+      )}
     </div>
   );
 }

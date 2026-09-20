@@ -5,8 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth);
 
-router.get('/', notificationController.listMine);
-router.post('/:id/read', notificationController.markRead);
-router.post('/test-create', notificationController.createForTesting); // TODO: remove once real triggers exist
+router.get('/', notificationController.listNotifications);
+router.patch('/:id/read', notificationController.markAsRead);
 
 module.exports = router;

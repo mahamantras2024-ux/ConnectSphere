@@ -3,52 +3,265 @@ import { useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 
-// Covers: Event Information Management, Event Status Management (detail view),
-// and is the natural place to later surface venue bookings / equipment
-// reservations / registrations / change requests for a single event.
 export default function EventDetail() {
   const { id } = useParams();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const [event, setEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get(`/events/${id}`, token)
-      .then((data) => setEvent(data.event))
-      .catch((err) => setError(err.message));
+    let isMounted = true;
+
+    async function fetchEvent() {
+      try {
+        setLoading(true);
+        setError('');
+
+        const data = await api.get(`/events/${id}`, token);
+
+        if (isMounted) {
+          setEvent(data.event);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || 'Unable to load event details.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    if (id) {
+      fetchEvent();
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, [id, token]);
 
-  if (error) return <p className="error-text">{error}</p>;
-  if (!event) return <p>Loading…</p>;
+  const fieldValue = (value) => value ?? 'Not specified';
+
+  const formatStatus = (value) => {
+    if (!value) return 'Not specified';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
+  const formatText = (value) => {
+    if (!value) return 'Not specified';
+    return value
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+          <p className="text-base font-medium text-slate-600">Loading event details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700 shadow-sm">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!event) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
+          No event details available.
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <div className="card">
-        <h1>{event.name} <span className="badge">{event.status}</span></h1>
-        <p>{event.description || <em>No description yet.</em>}</p>
-        <p><strong>Purpose:</strong> {event.purpose || '—'}</p>
-        <p><strong>Proposed date:</strong> {event.proposed_date ? new Date(event.proposed_date).toLocaleDateString() : '—'}</p>
-        <p><strong>Expected attendance:</strong> {event.expected_attendance ?? '—'}</p>
-        <p><strong>Layout preference:</strong> {event.room_layout_preference || '—'}</p>
-        <p><strong>Registration required:</strong> {event.registration_required ? 'Yes' : 'No'}</p>
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-8">
+        <div className="mb-3 flex items-center gap-3">
+          <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+            Event Detail
+          </span>
+          <span className="text-sm text-slate-500">ID #{fieldValue(event.id)}</span>
+        </div>
+
+        <h1 className="text-4xl font-black tracking-tight text-slate-900">
+          {fieldValue(event.name)}
+        </h1>
+        
       </div>
 
-      {user.role === 'event_coordinator' && (
-        <div className="card">
-          <h3>Coordinator actions</h3>
-          <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-            Wire these buttons up to POST /api/events/:id/status,
-            /api/bookings/venue, and /api/bookings/equipment as those workflows
-            are built out.
-          </p>
-        </div>
-      )}
+      <div className="grid gap-6 md:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Event Overview</h2>
+          <dl className="space-y-4">
+            <div className="border-b border-slate-100 pb-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Purpose
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-900">
+                {fieldValue(event.purpose)}
+              </dd>
+            </div>
 
-      <div className="todo-note">
-        TODO: this page should eventually show the event's venue booking status,
-        equipment reservations, registration count, change-request history, and
-        the event_status_history audit trail. All of those already have backend
-        endpoints/models — just not wired into this screen yet.
+            <div className="border-b border-slate-100 pb-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Description
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-900">
+                {fieldValue(event.description)}
+              </dd>
+            </div>
+
+            <div className="border-b border-slate-100 pb-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Event Type
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-900">
+                {formatText(event.event_type)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Logistics & Schedule</h2>
+          <dl className="space-y-4">
+            <div className="border-b border-slate-100 pb-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Date
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-900">
+                {new Date(event.proposed_date).toLocaleDateString('en-GB', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
+              </dd>
+            </div>
+
+            <div className="border-b border-slate-100 pb-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Start Time
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-900">
+                {fieldValue(event.proposed_start_time)}
+              </dd>
+            </div>
+
+            <div className="border-b border-slate-100 pb-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                End Time
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-900">
+                {fieldValue(event.proposed_end_time)}
+              </dd>
+            </div>
+
+            <div className="border-b border-slate-100 pb-3">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Expected Attendance
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-900">
+                {fieldValue(event.expected_attendance)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Requirements</h2>
+          <dl className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Programme
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {fieldValue(event.programme_details)}
+              </dd>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Layout Requirements
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {fieldValue(event.room_layout_preference)}
+              </dd>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Accessibility Needs
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {fieldValue(event.accessibility_requirements)}
+              </dd>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Equipment Requests
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {fieldValue(event.equipment_requests)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Registration & Coordination</h2>
+          <dl className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Registration Required
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {event.registration_required ? 'Yes' : 'No'}
+              </dd>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Registration Capacity
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {fieldValue(event.registration_capacity)}
+              </dd>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Organiser
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {fieldValue(event.organiser_name)}
+              </dd>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Coordinator
+              </dt>
+              <dd className="mt-2 text-base font-medium text-slate-900">
+                {fieldValue(event.coordinator_name)}
+              </dd>
+            </div>
+          </dl>
+        </section>
       </div>
     </div>
   );

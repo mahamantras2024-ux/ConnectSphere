@@ -33,13 +33,10 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
 
           <Route
-            path="/tech-support/dashboard"
-            element={<ProtectedRoute roles={['technical_support']}><TechSupportDashboard /></ProtectedRoute>}
+            path="/dashboard"
+            element={<ProtectedRoute><Dashboard /></ProtectedRoute>}
           />
 
           <Route
@@ -60,27 +57,14 @@ export default function App() {
           />
 
           <Route
-            path="/events/new"
-            element={<ProtectedRoute roles={['event_organiser']}><EventForm /></ProtectedRoute>}
+            path="/events"
+            element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><EventList /></ProtectedRoute>}
           />
-          <Route path="/events/:id" element={<ProtectedRoute><EventDetail /></ProtectedRoute>} />
-
-          <Route path="/venues" element={<ProtectedRoute><VenueList /></ProtectedRoute>} />
-          <Route
-            path="/venues/new"
-            element={<ProtectedRoute roles={['venue_staff']}><VenueForm /></ProtectedRoute>}
-          />
-          <Route path="/venues/:id" element={<ProtectedRoute><VenueDetail /></ProtectedRoute>} />
-          <Route path="/venues/:id/calendar" element={<ProtectedRoute><VenueCalendar /></ProtectedRoute>} />
-
-          <Route path="/equipment" element={<ProtectedRoute><EquipmentList /></ProtectedRoute>} />
 
           <Route
-            path="/registrations"
-            element={<ProtectedRoute roles={['attendee']}><MyRegistrations /></ProtectedRoute>}
+            path="/events/:id"
+            element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><EventDetail /></ProtectedRoute>}
           />
-
-          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
