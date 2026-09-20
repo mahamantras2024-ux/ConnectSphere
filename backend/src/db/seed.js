@@ -32,12 +32,20 @@ async function seed() {
     const coordinator = await client.query(
       `SELECT id FROM users WHERE email = $1`,
       ['coordinator@example.com']
+    );
+
     await client.query(
       `INSERT INTO venues (name, location, capacity, facilities, supported_layouts, turnaround_minutes)
        VALUES
-        ('Marina Hall A', 'Level 3, Marina Building', 150, '{"projector","av_system"}', '{"theatre","classroom"}', 60),
-        ('Orchard Room 2', 'Level 1, Orchard Wing', 40, '{"whiteboard"}', '{"boardroom"}', 30)
-       ON CONFLICT DO NOTHING`
+        ('Marina Hall A', 'Level 3, Marina Building', 150, $1::jsonb, $2::jsonb, 60),
+        ('Orchard Room 2', 'Level 1, Orchard Wing', 40, $3::jsonb, $4::jsonb, 30)
+       ON CONFLICT DO NOTHING`,
+      [
+        JSON.stringify(['projector', 'av_system']),
+        JSON.stringify(['theatre', 'classroom']),
+        JSON.stringify(['whiteboard']),
+        JSON.stringify(['boardroom'])
+      ]
     );
 
     const organiserId = organiser.rows[0]?.id;
