@@ -1,5 +1,3 @@
-// Inserts a handful of sample users/venues/equipment for local development.
-// Safe to re-run: uses ON CONFLICT DO NOTHING on unique columns.
 const bcrypt = require('bcryptjs');
 const { pool } = require('../config/db');
 
@@ -34,6 +32,12 @@ async function seed() {
     const coordinator = await client.query(
       `SELECT id FROM users WHERE email = $1`,
       ['coordinator@example.com']
+    await client.query(
+      `INSERT INTO venues (name, location, capacity, facilities, supported_layouts, turnaround_minutes)
+       VALUES
+        ('Marina Hall A', 'Level 3, Marina Building', 150, '{"projector","av_system"}', '{"theatre","classroom"}', 60),
+        ('Orchard Room 2', 'Level 1, Orchard Wing', 40, '{"whiteboard"}', '{"boardroom"}', 30)
+       ON CONFLICT DO NOTHING`
     );
 
     const organiserId = organiser.rows[0]?.id;

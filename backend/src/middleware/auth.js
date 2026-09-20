@@ -3,6 +3,11 @@ const db = require('../config/db');
 
 async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
+const JWT_SECRET = process.env.JWT_SECRET || 'connectsphere-secret';
+
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Unauthorized: Missing token.' });
@@ -23,6 +28,8 @@ async function requireAuth(req, res, next) {
     }
 
     req.user = result.rows[0];
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload; // { sub, role, email }
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Unauthorized: Invalid token.' });
