@@ -19,6 +19,7 @@ export default function EventDetail() {
         setError('');
 
         const data = await api.get(`/events/${id}`, token);
+
         if (isMounted) {
           setEvent(data.event);
         }
@@ -42,103 +43,180 @@ export default function EventDetail() {
     };
   }, [id, token]);
 
-  if (loading) return <p>Loading event details...</p>;
-  if (error) return <p className="error-text">{error}</p>;
-  if (!event) return <p>No event details available.</p>;
-
   const fieldValue = (value) => value ?? 'Not specified';
 
+  const formatDate = (value) => {
+    if (!value) return 'Not specified';
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+          <p className="text-base font-medium text-slate-600">Loading event details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700 shadow-sm">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!event) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
+          No event details available.
+        </div>
+      </div>
+    );
+  }
+
+  const overview = [
+    { label: 'Title', value: fieldValue(event.name) },
+    { label: 'Status', value: fieldValue(event.status) },
+    { label: 'Purpose', value: fieldValue(event.purpose) },
+    { label: 'Description', value: fieldValue(event.description) },
+  ];
+
+  const logistics = [
+    { label: 'Date', value: formatDate(event.proposed_date) },
+    { label: 'Start Time', value: fieldValue(event.proposed_start_time) },
+    { label: 'End Time', value: fieldValue(event.proposed_end_time) },
+    { label: 'Expected Attendance', value: fieldValue(event.expected_attendance) },
+  ];
+
+  const requirements = [
+    { label: 'Programme', value: fieldValue(event.programme_details) },
+    { label: 'Layout Requirements', value: fieldValue(event.room_layout_preference) },
+    { label: 'Accessibility Needs', value: fieldValue(event.accessibility_requirements) },
+    { label: 'Equipment Requests', value: fieldValue(event.equipment_requests) },
+  ];
+
+  const registration = [
+    { label: 'Registration Required', value: event.registration_required ? 'Yes' : 'No' },
+    { label: 'Registration Capacity', value: fieldValue(event.registration_capacity) },
+    { label: 'Special Arrangements', value: fieldValue(event.special_arrangements) },
+    { label: 'Organiser', value: fieldValue(event.organiser_name) },
+    { label: 'Coordinator', value: fieldValue(event.coordinator_name) },
+  ];
+
   return (
-    <div className="page">
-      <div className="card">
-        <h1>{fieldValue(event.name)}</h1>
-        <p className="muted">Status: {fieldValue(event.status)}</p>
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-8">
+        <div className="mb-3 flex items-center gap-3">
+          <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+            Event Detail
+          </span>
+          <span className="text-sm text-slate-500">ID #{fieldValue(event.id)}</span>
+        </div>
 
-        <dl className="detail-list">
-          <div>
-            <dt>Purpose</dt>
-            <dd>{fieldValue(event.purpose)}</dd>
-          </div>
+        <h1 className="text-4xl font-black tracking-tight text-slate-900">
+          {fieldValue(event.name)}
+        </h1>
 
-          <div>
-            <dt>Event Type</dt>
-            <dd>{fieldValue(event.event_type)}</dd>
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
+            {fieldValue(event.status)}
+          </span>
+          <span className="text-sm text-slate-500">
+            {fieldValue(event.event_type)}
+          </span>
+        </div>
+      </div>
 
-          <div>
-            <dt>Date</dt>
-            <dd>
-              {event.proposed_date
-                ? new Date(event.proposed_date).toLocaleDateString()
-                : 'Not specified'}
-            </dd>
-          </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Event Overview</h2>
+          <dl className="space-y-4">
+            {overview.map((item) => (
+              <div
+                key={item.label}
+                className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0"
+              >
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {item.label}
+                </dt>
+                <dd className="mt-1 text-base font-medium text-slate-900">
+                  {item.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
 
-          <div>
-            <dt>Start Time</dt>
-            <dd>{fieldValue(event.proposed_start_time)}</dd>
-          </div>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Logistics & Schedule</h2>
+          <dl className="space-y-4">
+            {logistics.map((item) => (
+              <div
+                key={item.label}
+                className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0"
+              >
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {item.label}
+                </dt>
+                <dd className="mt-1 text-base font-medium text-slate-900">
+                  {item.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
 
-          <div>
-            <dt>End Time</dt>
-            <dd>{fieldValue(event.proposed_end_time)}</dd>
-          </div>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Requirements</h2>
+          <dl className="grid gap-4 md:grid-cols-2">
+            {requirements.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {item.label}
+                </dt>
+                <dd className="mt-2 text-base font-medium text-slate-900">
+                  {item.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
 
-          <div>
-            <dt>Expected Attendance</dt>
-            <dd>{fieldValue(event.expected_attendance)}</dd>
-          </div>
-
-          <div>
-            <dt>Programme</dt>
-            <dd>{fieldValue(event.programme_details)}</dd>
-          </div>
-
-          <div>
-            <dt>Layout Requirements</dt>
-            <dd>{fieldValue(event.room_layout_preference)}</dd>
-          </div>
-
-          <div>
-            <dt>Accessibility Needs</dt>
-            <dd>{fieldValue(event.accessibility_requirements)}</dd>
-          </div>
-
-          <div>
-            <dt>Equipment Requests</dt>
-            <dd>{fieldValue(event.equipment_requests)}</dd>
-          </div>
-
-          <div>
-            <dt>Registration Required</dt>
-            <dd>{event.registration_required ? 'Yes' : 'No'}</dd>
-          </div>
-
-          <div>
-            <dt>Registration Capacity</dt>
-            <dd>{fieldValue(event.registration_capacity)}</dd>
-          </div>
-
-          <div>
-            <dt>Special Arrangements</dt>
-            <dd>{fieldValue(event.special_arrangements)}</dd>
-          </div>
-
-          <div>
-            <dt>Description</dt>
-            <dd>{fieldValue(event.description)}</dd>
-          </div>
-
-          <div>
-            <dt>Organiser</dt>
-            <dd>{fieldValue(event.organiser_name)}</dd>
-          </div>
-
-          <div>
-            <dt>Assigned Coordinator</dt>
-            <dd>{fieldValue(event.coordinator_name)}</dd>
-          </div>
-        </dl>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Registration & Coordination</h2>
+          <dl className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {registration.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {item.label}
+                </dt>
+                <dd className="mt-2 text-base font-medium text-slate-900">
+                  {item.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       </div>
     </div>
   );
