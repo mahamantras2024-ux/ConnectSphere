@@ -19,6 +19,10 @@ async function login(req, res) {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
+    if (req.body.audience === 'external' && !['event_organiser', 'attendee'].includes(user.role)) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!isMatch) {
@@ -30,7 +34,8 @@ async function login(req, res) {
         sub: user.id,
         id: user.id,
         role: user.role,
-        email: user.email
+        email: user.email,
+        authVersion: user.auth_version || 0
       },
       process.env.JWT_SECRET || 'connectsphere-secret',
       { expiresIn: '8h' }

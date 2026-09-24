@@ -1,5 +1,11 @@
 # Venue Staff login
 
+**Current setup update:** the external-user feature now adds password-reset
+columns used by shared authentication. After the initial database startup below,
+run `npm run migrate:external-events` in another backend terminal before logging
+in. See [External events and email setup](external-events.md). Staff still use
+`/login` and internal provisioning; external users use `/external/login`.
+
 This feature uses the existing React authentication context, Express login and
 `/auth/me` endpoints, bcrypt password hashes, JWTs and PostgreSQL `users` table.
 It does not add a separate authentication system or alter database schemas.
@@ -80,9 +86,9 @@ single `venue_staff` role. New passwords must contain at least 8 non-padding
 characters and fit within bcrypt's 72-byte UTF-8 limit. Existing-account login
 password rules are unchanged. Duplicate email provisioning fails without changing
 the existing account, role or password. There is no public provisioning or
-self-registration endpoint. `/register` explains that accounts must be provisioned.
-External self-registration was already unwired in this checkout; this change does
-not implement that separate story.
+self-registration endpoint for staff. `/register` explains that staff accounts
+must be provisioned. External self-registration is now available separately at
+`/external/register`, limited to Event Organisers and Attendees.
 
 Start the frontend in another terminal:
 

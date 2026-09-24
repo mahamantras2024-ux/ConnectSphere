@@ -6,6 +6,8 @@ const { requireRole } = require('../middleware/role');
 
 router.use(requireAuth);
 
+router.post('/', requireRole('event_organiser'), eventController.createEvent);
+
 router.get(
   '/',
   requireRole('event_coordinator', 'event_organiser'),

@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import Register from './pages/Register';
+import ExternalRegister from './pages/external/ExternalRegister';
+import PasswordReset from './pages/external/PasswordReset';
 
 import EventDetail from './pages/events/EventDetail';
 import EventForm from './pages/events/EventForm';
@@ -33,6 +35,13 @@ export default function App() {
       <main className="content">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/external/login" element={<Login external />} />
+          <Route path="/external/register" element={<ExternalRegister />} />
+          <Route path="/external/forgot-password" element={<PasswordReset />} />
+          <Route path="/external/reset-password" element={<PasswordReset reset />} />
+          <Route path="/organizer/events" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventList /></ProtectedRoute>} />
+          <Route path="/organizer/events/new" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventForm /></ProtectedRoute>} />
+          <Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventDetail /></ProtectedRoute>} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
@@ -43,12 +52,12 @@ export default function App() {
 
           <Route
             path="/organizer/dashboard"
-            element={<ProtectedRoute roles={['event_organiser']}><OrganizerDashboard /></ProtectedRoute>}
+            element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><OrganizerDashboard /></ProtectedRoute>}
           />
 
           <Route
             path="/attendee/dashboard"
-            element={<ProtectedRoute roles={['attendee']}><AttendeeDashboard /></ProtectedRoute>}
+            element={<ProtectedRoute roles={['attendee']} loginPath="/external/login"><AttendeeDashboard /></ProtectedRoute>}
           />
 
           <Route

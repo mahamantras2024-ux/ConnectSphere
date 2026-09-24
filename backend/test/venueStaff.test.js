@@ -102,7 +102,7 @@ for (const password of ['12345678', 'a'.repeat(72)]) {
 test('staff self-registration is not exposed over HTTP', async () => {
   const query = mock.method(pool, 'query', async () => { throw new Error('Unexpected query'); });
   const res = await request('/api/auth/register', { method: 'POST', body: { email: user.email, password: 'password123', role: 'venue_staff' } });
-  assert.equal(res.status, 404); assert.equal(query.mock.callCount(), 0);
+  assert.equal(res.status, 403); assert.equal(query.mock.callCount(), 0);
 });
 for (const header of [undefined, 'Bearer ', 'Basic abc', 'Bearer invalid', `Bearer ${token({}, { expiresIn: -1 })}`, `Bearer ${jwt.sign({ sub: 1 }, 'wrong-secret')}`]) {
   test(`authentication rejects missing, malformed, expired or forged tokens: ${header?.slice(0, 25)}`, async () => {

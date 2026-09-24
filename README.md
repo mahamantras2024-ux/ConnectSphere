@@ -1,5 +1,10 @@
 # ConnectSphere — Event Planning & Venue Booking System
 
+For the current external registration, organiser event information and password
+reset implementation, follow [External events and email setup](docs/external-events.md).
+It includes the targeted migration required by the shared authentication backend;
+use it for an existing database instead of the older full migration/seed steps below.
+
 For the Venue Staff login implementation, internal account provisioning, access
 rules and automated tests, see [Venue Staff login](docs/venue-staff-login.md).
 That guide also documents the existing database setup differences relevant to
@@ -95,8 +100,9 @@ npm run dev                   # starts on http://localhost:5173
 
 - Business rules for conflict detection, suitability checking, notification triggers, etc.
   (controllers throw a `501 Not Implemented` placeholder with a `TODO` comment).
-- Real password reset / email flows.
+- Live Resend delivery requires a private API key and verified sender domain;
+  local password-reset email works through Mailpit (see the guide above).
 - Frontend styling beyond bare structure.
-- Tests (add as your team adopts a testing approach — folders are ready for `__tests__`).
+- Other unfinished stories remain outside the organiser and Venue Staff test suites.
 
 Treat every `TODO` as an invitation for a user story.

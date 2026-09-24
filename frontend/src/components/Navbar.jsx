@@ -1,15 +1,35 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoute } from '../auth/dashboardRoutes';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const external = ['event_organiser', 'attendee'].includes(user?.role) ||
+    (!user && /^\/(external|organizer|attendee)(\/|$)/.test(pathname));
 
   function handleLogout() {
     logout();
-    navigate('/login');
+    navigate(external ? '/external/login' : '/login');
   }
+
+  if (external) return (
+    <nav className="navbar" aria-label="External user navigation">
+      <div>
+        <span className="brand">Event Portal</span>
+        {user && <>
+          <Link to={getDashboardRoute(user.role)}>Dashboard</Link>
+          {user.role === 'event_organiser' && <Link to="/organizer/events">My Events</Link>}
+          {user.role === 'attendee' && <Link to="/registrations">My Registrations</Link>}
+        </>}
+      </div>
+      <div>{user ? <button onClick={handleLogout}>Log out</button> : <>
+        <Link to="/external/login">Sign in</Link>
+        <Link to="/external/register">Register</Link>
+      </>}</div>
+    </nav>
+  );
 
   return (
     <nav className="navbar">

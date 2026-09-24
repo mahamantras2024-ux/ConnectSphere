@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 
 export default function EventDetail() {
   const { id } = useParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const location = useLocation();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -17,6 +18,7 @@ export default function EventDetail() {
       try {
         setLoading(true);
         setError('');
+        setEvent(null);
 
         const data = await api.get(`/events/${id}`, token);
 
@@ -43,7 +45,17 @@ export default function EventDetail() {
     };
   }, [id, token]);
 
-  const fieldValue = (value) => value ?? 'Not specified';
+  const fieldValue = (value) => {
+    if (Array.isArray(value)) return value.filter((item) => typeof item === 'string' && item.trim()).join(', ') || 'Not specified';
+    if (value == null || (typeof value === 'string' && !value.trim())) return 'Not specified';
+    return typeof value === 'string' || typeof value === 'number' ? value : 'Not specified';
+  };
+  const formatDate = (value) => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}/.test(value)) return 'Not specified';
+    const date = value.slice(0, 10);
+    if (!Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) return 'Not specified';
+    return date.split('-').reverse().join('/');
+  };
 
   const formatStatus = (value) => {
     if (!value) return 'Not specified';
@@ -70,7 +82,7 @@ export default function EventDetail() {
   if (error) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700 shadow-sm">
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700 shadow-sm">
           {error}
         </div>
       </div>
@@ -89,12 +101,15 @@ export default function EventDetail() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
+      <Link to={user.role === 'event_organiser' ? '/organizer/events' : '/events'}>Back to {user.role === 'event_organiser' ? 'My Events' : 'Events'}</Link>
+      {location.state?.message && <p role="status">{location.state.message}</p>}
       <div className="mb-8">
         <div className="mb-3 flex items-center gap-3">
           <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
             Event Detail
           </span>
           <span className="text-sm text-slate-500">ID #{fieldValue(event.id)}</span>
+          <span>{formatStatus(event.status)}</span>
         </div>
 
         <h1 className="text-4xl font-black tracking-tight text-slate-900">
@@ -144,11 +159,7 @@ export default function EventDetail() {
                 Date
               </dt>
               <dd className="mt-1 text-base font-medium text-slate-900">
-                {new Date(event.proposed_date).toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                })}
+                {formatDate(event.proposed_date)}
               </dd>
             </div>
 
@@ -188,7 +199,7 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Programme
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
                 {fieldValue(event.programme_details)}
               </dd>
             </div>
@@ -197,7 +208,7 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Layout Requirements
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
                 {fieldValue(event.room_layout_preference)}
               </dd>
             </div>
@@ -206,7 +217,7 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Accessibility Needs
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
                 {fieldValue(event.accessibility_requirements)}
               </dd>
             </div>
@@ -215,11 +226,16 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Equipment Requests
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
-                {fieldValue(event.equipment_requests)}
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
+                {fieldValue(event.equipment_notes)}
               </dd>
             </div>
           </dl>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Special Arrangements</h2>
+          <p className="whitespace-pre-wrap">{fieldValue(event.special_arrangements)}</p>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
@@ -229,8 +245,8 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Registration Required
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
-                {event.registration_required ? 'Yes' : 'No'}
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
+                {event.registration_required == null ? 'Not specified' : event.registration_required ? 'Yes' : 'No'}
               </dd>
             </div>
 
@@ -238,7 +254,7 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Registration Capacity
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
                 {fieldValue(event.registration_capacity)}
               </dd>
             </div>
@@ -247,7 +263,7 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Organiser
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
                 {fieldValue(event.organiser_name)}
               </dd>
             </div>
@@ -256,7 +272,7 @@ export default function EventDetail() {
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Coordinator
               </dt>
-              <dd className="mt-2 text-base font-medium text-slate-900">
+              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
                 {fieldValue(event.coordinator_name)}
               </dd>
             </div>

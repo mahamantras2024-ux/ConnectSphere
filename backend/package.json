@@ -11,15 +11,19 @@
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
     "test": "node --test",
-    "provision:venue-staff": "node src/db/provisionVenueStaff.js"
+    "provision:venue-staff": "node src/db/provisionVenueStaff.js",
+    "migrate:external-events": "node src/db/migrateExternalEvents.js",
+    "test:integration": "RUN_DB_TESTS=1 node --test test/postgresEvents.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.0",
+    "nodemailer": "^10.0.10",
     "pg": "^8.23.0",
     "sequelize": "^6.37.8",
     "sqlite3": "^6.0.1"
