@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getDashboardRoute } from '../auth/dashboardRoutes';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -16,12 +17,14 @@ export default function Navbar() {
         <span className="brand">ConnectSphere</span>
         {user && (
           <>
-            <Link to="/dashboard" style={{ marginLeft: '1.5rem' }}>Dashboard</Link>
+            <Link to={getDashboardRoute(user.role)} style={{ marginLeft: '1.5rem' }}>Dashboard</Link>
+            {user.role !== 'venue_staff' && <>
             <Link to="/events">Events</Link>
             <Link to="/venues">Venues</Link>
             <Link to="/equipment">Equipment</Link>
             {user.role === 'attendee' && <Link to="/registrations">My Registrations</Link>}
             <Link to="/notifications">Notifications</Link>
+            </>}
           </>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import VenueDetail from './VenueDetail';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 
@@ -8,6 +8,7 @@ export default function VenueList() {
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedVenue, setSelectedVenue] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -17,7 +18,7 @@ export default function VenueList() {
         setLoading(true);
         setError('');
         const data = await api.get('/venues', token);
-        if (isMounted) setVenues(data.venues || []);
+        if (isMounted) setVenues(Array.isArray(data) ? data : data.venues || []);
       } catch (err) {
         if (isMounted) setError(err.message || 'Unable to load venues.');
       } finally {
@@ -47,11 +48,12 @@ export default function VenueList() {
             <div key={venue.id} className="card">
               <h3>{venue.name || 'Untitled Venue'}</h3>
               <p>{venue.location || 'No location provided'}</p>
-              <Link to={`/venues/${venue.id}`}>View details</Link>
+              <button onClick={() => setSelectedVenue(venue)}>View details</button>
             </div>
           ))}
         </div>
       )}
+      {selectedVenue && <VenueDetail venue={selectedVenue} onClose={() => setSelectedVenue(null)} />}
     </div>
   );
 }

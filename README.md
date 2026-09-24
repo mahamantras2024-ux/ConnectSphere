@@ -1,5 +1,10 @@
 # ConnectSphere — Event Planning & Venue Booking System
 
+For the Venue Staff login implementation, internal account provisioning, access
+rules and automated tests, see [Venue Staff login](docs/venue-staff-login.md).
+That guide also documents the existing database setup differences relevant to
+the current venue routes; review it before applying the older setup steps below.
+
 This is an **editable skeleton**, not a finished product. It exists so the team can start
 agreeing on user stories and wiring up screens/endpoints without re-doing plumbing later.
 Business logic inside controllers is deliberately left as `TODO` stubs — fill these in as

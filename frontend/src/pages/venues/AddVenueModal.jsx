@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { api } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 
 const AddVenueModal = ({ onClose, onAdd }) => {
+  const { token } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     price: '',
@@ -76,8 +78,7 @@ const AddVenueModal = ({ onClose, onAdd }) => {
     };
 
     try {
-      // Direct call without token requirement
-      const response = await api.post('/venues', venuePayload);
+      const response = await api.post('/venues', venuePayload, token);
 
       if (onAdd) {
         onAdd(response.venue || response);

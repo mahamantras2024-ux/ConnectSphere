@@ -1,19 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-const dashboardRoutes = {
-  'Technical Support': '/tech-support/dashboard',
-  'Event Coordinator': '/coordinator/dashboard',
-  'Venue Staff': '/venue/dashboard',
-  'Event Organiser': '/organizer/dashboard',
-  Attendee: '/attendee/dashboard',
-  attendee: '/attendee/dashboard',
-  technical_support: '/tech-support/dashboard',
-  event_coordinator: '/coordinator/dashboard',
-  venue_staff: '/venue/dashboard',
-  event_organiser: '/organizer/dashboard',
-};
+import { getDashboardRoute } from '../auth/dashboardRoutes';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -30,7 +18,7 @@ export default function Login() {
 
     try {
       const user = await login(email, password);
-      const targetRoute = dashboardRoutes[user?.role] || '/dashboard';
+      const targetRoute = getDashboardRoute(user?.role);
 
       navigate(targetRoute, { replace: true });
     } catch (err) {
@@ -45,12 +33,14 @@ export default function Login() {
       <form className="auth-form" onSubmit={handleSubmit}>
         <h1>ConnectSphere Login</h1>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div role="alert" className="error-message">{error}</div>}
+        <p>Staff accounts are provided by ConnectSphere. Contact your administrator for access.</p>
 
         <label htmlFor="email">Email</label>
         <input
           id="email"
           type="email"
+          autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
@@ -61,6 +51,7 @@ export default function Login() {
         <input
           id="password"
           type="password"
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Enter your password"

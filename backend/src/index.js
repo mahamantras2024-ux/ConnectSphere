@@ -31,8 +31,12 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
 
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`ConnectSphere API listening on http://localhost:${PORT}`);
+if (require.main === module) {
+  connectDB().then(() => {
+    app.listen(PORT, () => {
+      console.log(`ConnectSphere API listening on http://localhost:${PORT}`);
+    });
   });
-});
+}
+
+module.exports = app;

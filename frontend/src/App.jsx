@@ -34,6 +34,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
           <Route
             path="/dashboard"
@@ -60,7 +61,6 @@ export default function App() {
             element={<ProtectedRoute roles={['venue_staff']}><VenueDashboard /></ProtectedRoute>}
           />
 
-          <Route path="/events" element={<ProtectedRoute><EventList /></ProtectedRoute>} />
 
           <Route
             path="/coordinator/dashboard"

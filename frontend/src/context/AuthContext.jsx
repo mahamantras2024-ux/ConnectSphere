@@ -9,19 +9,25 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     if (!token) {
+      setUser(null);
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     api
       .get('/auth/me', token)
-      .then((data) => setUser(data.user))
+      .then((data) => { if (active) setUser(data.user); })
       .catch(() => {
+        if (!active) return;
+        setUser(null);
         setToken(null);
         localStorage.removeItem('cs_token');
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [token]);
 
   async function login(email, password) {
