@@ -1,4 +1,15 @@
 const { Pool } = require('pg');
+const fs = require('node:fs');
+
+// Hosted PostgreSQL uses TLS with certificate verification; Docker stays local.
+const ssl = process.env.DB_SSL === 'true'
+  ? {
+      rejectUnauthorized: true,
+      ...(process.env.DB_SSL_CA_PATH
+        ? { ca: fs.readFileSync(process.env.DB_SSL_CA_PATH, 'utf8') }
+        : {}),
+    }
+  : false;
 
 // Configure PostgreSQL Pool connection to match .env
 const pool = new Pool({
@@ -7,6 +18,7 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'connectsphere',
   password: process.env.DB_PASSWORD || 'connectsphere',
   port: process.env.DB_PORT || 5432,
+  ssl,
 });
 
 pool.on('connect', () => {

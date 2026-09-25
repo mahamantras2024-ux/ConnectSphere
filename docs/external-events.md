@@ -92,6 +92,25 @@ Only that organiser will see it. Existing external credentials still work.
 Venue Staff continue using `http://localhost:5173/login` with provisioned
 credentials; see the Venue Staff guide for provisioning.
 
+## Shared Supabase connection
+
+For a shared Supabase database after importing the local backup, replace only
+the database settings in each backend's private `.env` with the Session pooler
+host, port, database, user and password from Supabase's Connect panel. Set
+`DB_SSL=true` to enable TLS with certificate verification. Retain `JWT_SECRET`,
+the frontend origin and email settings. Restart the backend after changing `.env`.
+The existing `pg` driver connects directly; Supabase Auth and Data API are not
+used. Keep Data API disabled for this configuration.
+
+If the provider requires its root certificate, download it from Supabase's
+Database settings and set `DB_SSL_CA_PATH` to the absolute path of that file.
+Do not disable certificate verification to work around a certificate error.
+Local Docker connections continue using `DB_SSL=false` (the default).
+The backend does not read a `DATABASE_URL` setting; use the separate `DB_*` fields.
+Existing local Adminer still displays the local database unless separately
+connected to Supabase. This connection change does not migrate additional local
+data or automatically synchronize the two databases.
+
 ## Mailpit: local testing
 
 Mailpit is a local test inbox. The application sends email to its SMTP port 1025;
