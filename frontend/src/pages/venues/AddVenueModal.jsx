@@ -12,7 +12,11 @@ const AddVenueModal = ({ onClose, onAdd }) => {
     location: '',
     mrtInfo: '',
     facilities: '',
+    supportedLayouts: '', // Added state for room layouts
+    accessibilityFeatures: '',
     description: '',
+    openTime: '08:00',
+    closeTime: '22:00',
   });
 
   const [imagePreview, setImagePreview] = useState(null);
@@ -61,19 +65,42 @@ const AddVenueModal = ({ onClose, onAdd }) => {
 
     setLoading(true);
 
+    const formattedOperatingHours = formData.openTime && formData.closeTime
+      ? `${formData.openTime} - ${formData.closeTime}`
+      : '08:00 - 22:00';
+
+    const parsedLayouts = formData.supportedLayouts
+      ? formData.supportedLayouts.split(',').map((l) => l.trim()).filter(Boolean)
+      : ['General'];
+
+    const parsedAccessibility = formData.accessibilityFeatures
+      ? formData.accessibilityFeatures.split(',').map((f) => f.trim()).filter(Boolean)
+      : ['None'];
+
+    const parsedFacilities = formData.facilities
+      ? formData.facilities.split(',').map((f) => f.trim()).filter(Boolean)
+      : ['Standard'];
+
     const venuePayload = {
       name: formData.name,
       location: formData.location || 'Singapore',
-      capacity: parseInt(formData.capacity, 10) || 50,
+      capacity: formData.capacity ? parseInt(formData.capacity, 10) : 0,
       pricing: formData.price,
-      mrt: formData.mrtInfo || 'Nearest MRT',
-      image: imagePreview || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=800',
-      supportedLayouts: ['Banquet', 'Classroom'],
-      accessibilityFeatures: ['Wheelchair Access'],
-      facilities: formData.facilities
-        ? formData.facilities.split(',').map((f) => f.trim()).filter(Boolean)
-        : ['Wi-Fi'],
-      operatingHours: '08:00 - 22:00',
+      mrt: formData.mrtInfo || 'N/A',
+      image: imagePreview || '',
+      
+      // Supported Layouts (sent in both formats)
+      supported_layouts: parsedLayouts,
+      supportedLayouts: parsedLayouts,
+
+      // Accessibility features
+      accessibility_features: parsedAccessibility,
+      accessibilityFeatures: parsedAccessibility,
+
+      facilities: parsedFacilities,
+
+      operating_hours: formattedOperatingHours,
+      operatingHours: formattedOperatingHours,
       availabilityStatus: 'Available',
     };
 
@@ -190,6 +217,35 @@ const AddVenueModal = ({ onClose, onAdd }) => {
             style={{ padding: '8px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', fontSize: '12px' }}
           />
 
+          <div style={{ border: '1px solid #E5E7EB', borderRadius: '6px', padding: '8px 12px', backgroundColor: '#F9FAFB' }}>
+            <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#4B5563', display: 'block', marginBottom: '4px' }}>
+              Operating Hours
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '10px', color: '#6B7280', display: 'block' }}>Opening Time</label>
+                <input
+                  type="time"
+                  required
+                  value={formData.openTime}
+                  onChange={(e) => setFormData({ ...formData, openTime: e.target.value })}
+                  style={{ width: '100%', padding: '6px', border: '1px solid #D1D5DB', borderRadius: '4px', fontSize: '12px' }}
+                />
+              </div>
+              <span style={{ fontSize: '12px', color: '#6B7280', marginTop: '12px' }}>to</span>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '10px', color: '#6B7280', display: 'block' }}>Closing Time</label>
+                <input
+                  type="time"
+                  required
+                  value={formData.closeTime}
+                  onChange={(e) => setFormData({ ...formData, closeTime: e.target.value })}
+                  style={{ width: '100%', padding: '6px', border: '1px solid #D1D5DB', borderRadius: '4px', fontSize: '12px' }}
+                />
+              </div>
+            </div>
+          </div>
+
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -253,7 +309,6 @@ const AddVenueModal = ({ onClose, onAdd }) => {
               </div>
             ) : (
               <div style={{ pointerEvents: 'none' }}>
-                <p style={{ margin: '0 0 4px 0', fontSize: '18px' }}>🖼️</p>
                 <p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#374151' }}>
                   Drag & Drop venue image here
                 </p>
@@ -265,6 +320,19 @@ const AddVenueModal = ({ onClose, onAdd }) => {
           </div>
 
           <textarea
+            placeholder="Supported Room Layouts (e.g. Banquet, Classroom, Theatre)"
+            value={formData.supportedLayouts}
+            onChange={(e) => setFormData({ ...formData, supportedLayouts: e.target.value })}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #D1D5DB',
+              borderRadius: '6px',
+              fontSize: '12px',
+              height: '40px',
+            }}
+          />
+
+          <textarea
             placeholder="Facilities & Amenities (comma-separated)"
             value={formData.facilities}
             onChange={(e) => setFormData({ ...formData, facilities: e.target.value })}
@@ -273,7 +341,20 @@ const AddVenueModal = ({ onClose, onAdd }) => {
               border: '1px solid #D1D5DB',
               borderRadius: '6px',
               fontSize: '12px',
-              height: '50px',
+              height: '40px',
+            }}
+          />
+
+          <textarea
+            placeholder="Accessibility Features (e.g. Wheelchair Access, Ramps, Elevator)"
+            value={formData.accessibilityFeatures}
+            onChange={(e) => setFormData({ ...formData, accessibilityFeatures: e.target.value })}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #D1D5DB',
+              borderRadius: '6px',
+              fontSize: '12px',
+              height: '40px',
             }}
           />
 
