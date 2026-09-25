@@ -14,7 +14,6 @@ import EventList from './pages/events/EventList';
 
 import VenueCalendar from './pages/venues/VenueCalendar';
 import VenueDetail from './pages/venues/VenueDetail';
-import VenueForm from './pages/venues/VenueForm';
 import VenueList from './pages/venues/VenueList';
 
 import EquipmentList from './pages/equipment/EquipmentList';
