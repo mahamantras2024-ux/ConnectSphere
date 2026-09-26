@@ -69,12 +69,10 @@ class EventCoordinatorEventDetailTests(unittest.TestCase):
               json(payload) { this.body = payload; return this; }
             };
 
-            getEvent({ params: { id: 18 } }, res).then(() => {
+            getEvent({ params: { id: 18 } }, res, () => {});
+            setTimeout(() => {
               console.log(JSON.stringify({ status: res.code, body: res.body }));
-            }).catch((error) => {
-              console.error(error);
-              process.exit(1);
-            });
+            }, 0);
             """
         )
 
@@ -104,12 +102,10 @@ class EventCoordinatorEventDetailTests(unittest.TestCase):
               json(payload) { this.body = payload; return this; }
             };
 
-            getEvent({ params: { id: 999 } }, res).then(() => {
+            getEvent({ params: { id: 999 } }, res, () => {});
+            setTimeout(() => {
               console.log(JSON.stringify({ status: res.code, body: res.body }));
-            }).catch((error) => {
-              console.error(error);
-              process.exit(1);
-            });
+            }, 0);
             """
         )
 
