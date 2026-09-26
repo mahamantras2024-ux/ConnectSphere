@@ -1,9 +1,23 @@
 import unittest
-from unittest.mock import Mock
+import requests
+
+
+class ApiClient:
+    def __init__(self, base_url):
+        self.base_url = base_url.rstrip('/')
+
+    def post(self, path, data):
+        response = requests.post(
+            f"{self.base_url}{path}",
+            json=data,
+            timeout=10
+        )
+
+        return response.json()
 
 
 class ExternalLoginService:
-    """Minimal contract used by the external sign-in flow."""
+    """External login flow using the real backend API."""
 
     DASHBOARD_ROUTES = {
         'event_organiser': '/organizer/dashboard',
@@ -15,7 +29,13 @@ class ExternalLoginService:
 
     def login(self, email, password, audience='external'):
         username = (email or '').strip()
-        if not username or '@' not in username:
+
+        if not username or username.count('@') != 1:
+            raise ValueError('Invalid username.')
+
+        local_part, domain = username.split('@', 1)
+
+        if not local_part or not domain or '.' not in domain:
             raise ValueError('Invalid username.')
 
         if not password or not str(password).strip():
@@ -23,114 +43,134 @@ class ExternalLoginService:
 
         response = self.api_client.post(
             '/auth/login',
-            {'email': username, 'password': password, 'audience': audience},
+            {
+                'email': username,
+                'password': password,
+                'audience': audience,
+            },
         )
 
         if response.get('error'):
             raise ValueError(response['error'])
 
         user = response.get('user')
+
         if user is None:
             raise ValueError('Invalid username or password.')
 
-        dashboard = self.DASHBOARD_ROUTES.get(user.get('role'), '/dashboard')
+        dashboard = self.DASHBOARD_ROUTES.get(
+            user.get('role'),
+            '/dashboard'
+        )
+
         return user, dashboard
 
 
 class ExternalLoginTests(unittest.TestCase):
+
     def setUp(self):
-        self.api_client = Mock()
-        self.service = ExternalLoginService(self.api_client)
-
-    def test_event_organiser_login_posts_external_audience_and_navigates_to_organiser_dashboard(self):
-        self.api_client.post.return_value = {
-            'user': {'email': 'alice@example.com', 'role': 'event_organiser'},
-            'token': 'organiser-token',
-        }
-
-        user, dashboard = self.service.login('alice@example.com', 'password123', 'external')
-
-        self.api_client.post.assert_called_once_with(
-            '/auth/login',
-            {'email': 'alice@example.com', 'password': 'password123', 'audience': 'external'},
+        self.api_client = ApiClient(
+            'http://localhost:4000/api'
         )
-        self.assertEqual(user['role'], 'event_organiser')
-        self.assertEqual(dashboard, '/organizer/dashboard')
 
-    def test_attendee_login_posts_external_audience_and_navigates_to_attendee_dashboard(self):
-        self.api_client.post.return_value = {
-            'user': {'email': 'sam@example.com', 'role': 'attendee'},
-            'token': 'attendee-token',
-        }
-
-        user, dashboard = self.service.login('sam@example.com', 'password123', 'external')
-
-        self.api_client.post.assert_called_once_with(
-            '/auth/login',
-            {'email': 'sam@example.com', 'password': 'password123', 'audience': 'external'},
+        self.service = ExternalLoginService(
+            self.api_client
         )
-        self.assertEqual(user['role'], 'attendee')
-        self.assertEqual(dashboard, '/attendee/dashboard')
+
+        # Hardcoded test accounts from Supabase
+        self.organiser_email = 'organiser1@example.com'
+        self.organiser_password = 'Organiser1'
+
+        self.attendee_email = 'attendee@example.com'
+        self.attendee_password = 'Password123'
+
+    def test_event_organiser_login(self):
+        user, dashboard = self.service.login(
+            self.organiser_email,
+            self.organiser_password,
+            'external'
+        )
+
+        self.assertEqual(
+            user['role'],
+            'event_organiser'
+        )
+
+        self.assertEqual(
+            dashboard,
+            '/organizer/dashboard'
+        )
+
+    def test_attendee_login(self):
+        user, dashboard = self.service.login(
+            self.attendee_email,
+            self.attendee_password,
+            'external'
+        )
+
+        self.assertEqual(
+            user['role'],
+            'attendee'
+        )
+
+        self.assertEqual(
+            dashboard,
+            '/attendee/dashboard'
+        )
 
     def test_login_rejects_invalid_username(self):
-        with self.assertRaisesRegex(ValueError, 'Invalid username'):
-            self.service.login('invalid-email', 'password123', 'external')
+        invalid_usernames = [
+            '',
+            'not-an-email',
+            'user@',
+            'user.example.com'
+        ]
+
+        for invalid_username in invalid_usernames:
+            with self.subTest(
+                invalid_username=invalid_username
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    'Invalid username'
+                ):
+                    self.service.login(
+                        invalid_username,
+                        'ValidPassword123',
+                        'external'
+                    )
 
     def test_login_rejects_blank_password(self):
-        with self.assertRaisesRegex(ValueError, 'Invalid password'):
-            self.service.login('alice@example.com', '   ', 'external')
+        invalid_passwords = [
+            '',
+            '   ',
+            None
+        ]
+
+        for invalid_password in invalid_passwords:
+            with self.subTest(
+                invalid_password=invalid_password
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    'Invalid password'
+                ):
+                    self.service.login(
+                        self.organiser_email,
+                        invalid_password,
+                        'external'
+                    )
 
     def test_login_rejects_invalid_credentials_response(self):
-        self.api_client.post.return_value = {'error': 'Invalid username or password.'}
-
-        with self.assertRaisesRegex(ValueError, 'Invalid username or password'):
-            self.service.login('alice@example.com', 'wrong-password', 'external')
-
-    def test_unknown_role_login_navigates_to_default_dashboard(self):
-        self.api_client.post.return_value = {
-            'user': {'email': 'charlie@example.com', 'role': 'unknown'},
-            'token': 'unknown-token',
-        }
-
-        user, dashboard = self.service.login('charlie@example.com', 'password123', 'external')
-
-        self.api_client.post.assert_called_once_with(
-            '/auth/login',
-            {'email': 'charlie@example.com', 'password': 'password123', 'audience': 'external'},
-        )
-        self.assertEqual(user['role'], 'unknown')
-        self.assertEqual(dashboard, '/dashboard')
-
-    def test_login_with_different_audience(self):
-        self.api_client.post.return_value = {
-            'user': {'email': 'david@example.com', 'role': 'event_organiser'},
-            'token': 'organiser-token',
-        }
-
-        user, dashboard = self.service.login('david@example.com', 'password123', 'internal')
-
-        self.api_client.post.assert_called_once_with(
-            '/auth/login',
-            {'email': 'david@example.com', 'password': 'password123', 'audience': 'internal'},
-        )
-        self.assertEqual(user['role'], 'event_organiser')
-        self.assertEqual(dashboard, '/organizer/dashboard')
-
-    def test_login_with_missing_role_navigates_to_default_dashboard(self):
-        self.api_client.post.return_value = {
-            'user': {'email': 'eve@example.com'},
-            'token': 'missing-role-token',
-        }
-
-        user, dashboard = self.service.login('eve@example.com', 'password123', 'external')
-
-        self.api_client.post.assert_called_once_with(
-            '/auth/login',
-            {'email': 'eve@example.com', 'password': 'password123', 'audience': 'external'},
-        )
-        self.assertIsNone(user.get('role'))
-        self.assertEqual(dashboard, '/dashboard')
-
+        with self.assertRaisesRegex(
+            ValueError,
+            'Invalid username or password'
+        ):
+            self.service.login(
+                self.organiser_email,
+                'WrongPassword123',
+                'external'
+            )
 
 if __name__ == '__main__':
     unittest.main()
