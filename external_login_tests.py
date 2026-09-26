@@ -14,12 +14,26 @@ class ExternalLoginService:
         self.api_client = api_client
 
     def login(self, email, password, audience='external'):
+        username = (email or '').strip()
+        if not username or '@' not in username:
+            raise ValueError('Invalid username.')
+
+        if not password or not str(password).strip():
+            raise ValueError('Invalid password.')
+
         response = self.api_client.post(
             '/auth/login',
-            {'email': email, 'password': password, 'audience': audience},
+            {'email': username, 'password': password, 'audience': audience},
         )
-        user = response['user']
-        dashboard = self.DASHBOARD_ROUTES.get(user['role'], '/dashboard')
+
+        if response.get('error'):
+            raise ValueError(response['error'])
+
+        user = response.get('user')
+        if user is None:
+            raise ValueError('Invalid username or password.')
+
+        dashboard = self.DASHBOARD_ROUTES.get(user.get('role'), '/dashboard')
         return user, dashboard
 
 
@@ -58,6 +72,20 @@ class ExternalLoginTests(unittest.TestCase):
         self.assertEqual(user['role'], 'attendee')
         self.assertEqual(dashboard, '/attendee/dashboard')
 
+    def test_login_rejects_invalid_username(self):
+        with self.assertRaisesRegex(ValueError, 'Invalid username'):
+            self.service.login('invalid-email', 'password123', 'external')
+
+    def test_login_rejects_blank_password(self):
+        with self.assertRaisesRegex(ValueError, 'Invalid password'):
+            self.service.login('alice@example.com', '   ', 'external')
+
+    def test_login_rejects_invalid_credentials_response(self):
+        self.api_client.post.return_value = {'error': 'Invalid username or password.'}
+
+        with self.assertRaisesRegex(ValueError, 'Invalid username or password'):
+            self.service.login('alice@example.com', 'wrong-password', 'external')
+
     def test_unknown_role_login_navigates_to_default_dashboard(self):
         self.api_client.post.return_value = {
             'user': {'email': 'charlie@example.com', 'role': 'unknown'},
@@ -71,7 +99,7 @@ class ExternalLoginTests(unittest.TestCase):
             {'email': 'charlie@example.com', 'password': 'password123', 'audience': 'external'},
         )
         self.assertEqual(user['role'], 'unknown')
-        self.assertEqual(dashboard, '/dashboard') 
+        self.assertEqual(dashboard, '/dashboard')
 
     def test_login_with_different_audience(self):
         self.api_client.post.return_value = {
@@ -86,7 +114,7 @@ class ExternalLoginTests(unittest.TestCase):
             {'email': 'david@example.com', 'password': 'password123', 'audience': 'internal'},
         )
         self.assertEqual(user['role'], 'event_organiser')
-        self.assertEqual(dashboard, '/organizer/dashboard')  
+        self.assertEqual(dashboard, '/organizer/dashboard')
 
     def test_login_with_missing_role_navigates_to_default_dashboard(self):
         self.api_client.post.return_value = {
@@ -100,8 +128,9 @@ class ExternalLoginTests(unittest.TestCase):
             '/auth/login',
             {'email': 'eve@example.com', 'password': 'password123', 'audience': 'external'},
         )
-        self.assertEqual(user['role'], None)
+        self.assertIsNone(user.get('role'))
         self.assertEqual(dashboard, '/dashboard')
+
 
 if __name__ == '__main__':
     unittest.main()
