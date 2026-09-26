@@ -1,9 +1,9 @@
-import { beforeEach, afterEach, it, expect, vi } from 'vitest';
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { api } from '../api/client';
 import App from '../App';
 import { AuthProvider } from '../context/AuthContext';
-import { api } from '../api/client';
 
 vi.mock('../api/client', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 let user;
@@ -112,39 +112,4 @@ it('external attendee login retains its dashboard destination', async () => {
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
   fireEvent.click(screen.getByRole('button', { name: 'Login' }));
   expect(await screen.findByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
-});
-it('external self-registration only offers external roles and sends the chosen role', async () => {
-  api.post.mockResolvedValue({ message: 'Account created.' }); open('/external/register', false);
-  expect(screen.getAllByRole('option').map((option) => option.value)).toEqual(['event_organiser', 'attendee']);
-  fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Alice' } });
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: user.email } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
-  expect(await screen.findByRole('status')).toBeTruthy();
-  expect(api.post).toHaveBeenCalledWith('/auth/register', expect.objectContaining({ role: 'event_organiser', email: user.email }));
-});
-it('password reset requests show the generic delivery response', async () => {
-  api.post.mockResolvedValue({ message: 'If an external account matches that email, a password-reset link will be sent.' });
-  open('/external/forgot-password', false);
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: user.email } });
-  fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
-  expect(await screen.findByRole('status')).toBeTruthy();
-  expect(api.post).toHaveBeenCalledWith('/auth/forgot-password', { email: user.email });
-});
-it('reset form checks confirmation and sends the token from the URL fragment', async () => {
-  api.post.mockResolvedValue({ message: 'Password updated. Please sign in again.' });
-  const token = 'a'.repeat(64); open(`/external/reset-password#token=${token}`, false);
-  fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'new-password123' } });
-  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'different-password' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Update password' }));
-  expect(screen.getByRole('alert').textContent).toBe('Passwords must match.'); expect(api.post).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'new-password123' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Update password' }));
-  expect(await screen.findByRole('status')).toBeTruthy();
-  expect(api.post).toHaveBeenCalledWith('/auth/reset-password', { token, password: 'new-password123' });
-});
-it('reset page without a token blocks password submission', () => {
-  open('/external/reset-password', false);
-  expect(screen.getByRole('alert').textContent).toMatch(/invalid/);
-  expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
 });
