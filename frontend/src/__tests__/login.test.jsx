@@ -33,8 +33,14 @@ afterEach(() => {
 });
 
 describe('Login', () => {
-  it('submits credentials and navigates to the user dashboard', async () => {
-    login.mockResolvedValue({ role: 'event_coordinator' });
+  it.each([
+    ['event_organiser', '/organizer/dashboard'],
+    ['event_coordinator', '/coordinator/dashboard'],
+    ['attendee', '/attendee/dashboard'],
+    ['venue_staff', '/venue/dashboard'],
+    ['technical_support', '/tech-support/dashboard'],
+  ])('submits credentials and routes %s to the correct dashboard', async (role, route) => {
+    login.mockResolvedValue({ role });
     renderLogin();
 
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'staff@example.com' } });
@@ -42,7 +48,7 @@ describe('Login', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Login' }));
 
     await waitFor(() => expect(login).toHaveBeenCalledWith('staff@example.com', 'secret123', undefined));
-    expect(navigate).toHaveBeenCalledWith('/coordinator/dashboard', { replace: true });
+    expect(navigate).toHaveBeenCalledWith(route, { replace: true });
   });
 
   it('shows a loading state and disables submission while login is pending', async () => {

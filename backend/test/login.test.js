@@ -25,11 +25,19 @@ test('login API authenticates users and enforces external audience rules', {
     )`);
 
     const passwordHash = await bcrypt.hash('password123', 10);
-    await client.query(
-      'INSERT INTO users (email, password_hash, full_name, role) VALUES ($1, $2, $3, $4), ($5, $2, $6, $7)',
-      ['organiser@example.test', passwordHash, 'Test Organiser', 'event_organiser',
-        'staff@example.test', 'Test Staff', 'event_coordinator'],
-    );
+    const users = [
+      ['organiser@example.test', 'Test Organiser', 'event_organiser'],
+      ['coordinator@example.test', 'Test Coordinator', 'event_coordinator'],
+      ['attendee@example.test', 'Test Attendee', 'attendee'],
+      ['venue@example.test', 'Test Venue Staff', 'venue_staff'],
+      ['support@example.test', 'Test Technical Support', 'technical_support'],
+    ];
+    for (const [email, fullName, role] of users) {
+      await client.query(
+        'INSERT INTO users (email, password_hash, full_name, role) VALUES ($1, $2, $3, $4)',
+        [email, passwordHash, fullName, role],
+      );
+    }
 
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
     const app = require('../src/index');
@@ -48,22 +56,25 @@ test('login API authenticates users and enforces external audience rules', {
       return { status: response.status, body: await response.json() };
     }
 
-    await t.test('returns a token and user for valid external credentials', async () => {
-      const result = await request({
-        email: 'ORGANISER@example.test',
-        password: 'password123',
-        audience: 'external',
-      });
+    for (const [index, [email, fullName, role]] of users.entries()) {
+      await t.test(`returns a token for valid ${role} credentials`, async () => {
+        const isExternal = ['event_organiser', 'attendee'].includes(role);
+        const result = await request({
+          email: email.toUpperCase(),
+          password: 'password123',
+          ...(isExternal ? { audience: 'external' } : {}),
+        });
 
-      assert.equal(result.status, 200);
-      assert.ok(result.body.token);
-      assert.deepEqual(result.body.user, {
-        id: 1,
-        email: 'organiser@example.test',
-        full_name: 'Test Organiser',
-        role: 'event_organiser',
+        assert.equal(result.status, 200);
+        assert.ok(result.body.token);
+        assert.deepEqual(result.body.user, {
+          id: index + 1,
+          email,
+          full_name: fullName,
+          role,
+        });
       });
-    });
+    }
 
     await t.test('rejects invalid credentials without revealing the account state', async () => {
       const result = await request({ email: 'organiser@example.test', password: 'wrong-password' });
@@ -74,7 +85,7 @@ test('login API authenticates users and enforces external audience rules', {
 
     await t.test('rejects staff accounts for external audience login', async () => {
       const result = await request({
-        email: 'staff@example.test',
+        email: 'coordinator@example.test',
         password: 'password123',
         audience: 'external',
       });
