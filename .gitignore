@@ -24,3 +24,6 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+# path to certificate file
+backend/src/config/prod-ca-2021.crt
