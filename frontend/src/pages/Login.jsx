@@ -1,21 +1,9 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getDashboardRoute } from '../auth/dashboardRoutes';
 
-const dashboardRoutes = {
-  'Technical Support': '/tech-support/dashboard',
-  'Event Coordinator': '/coordinator/dashboard',
-  'Venue Staff': '/venue/dashboard',
-  'Event Organiser': '/organizer/dashboard',
-  Attendee: '/attendee/dashboard',
-  attendee: '/attendee/dashboard',
-  technical_support: '/tech-support/dashboard',
-  event_coordinator: '/coordinator/dashboard',
-  venue_staff: '/venue/dashboard',
-  event_organiser: '/organizer/dashboard',
-};
-
-export default function Login() {
+export default function Login({ external = false }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -29,8 +17,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const user = await login(email, password);
-      const targetRoute = dashboardRoutes[user?.role] || '/dashboard';
+      const user = await login(email, password, external ? 'external' : undefined);
+      const targetRoute = getDashboardRoute(user?.role);
 
       navigate(targetRoute, { replace: true });
     } catch (err) {
@@ -43,14 +31,16 @@ export default function Login() {
   return (
     <div className="auth-page">
       <form className="auth-form" onSubmit={handleSubmit}>
-        <h1>ConnectSphere Login</h1>
+        <h1>{external ? 'Sign in' : 'ConnectSphere Login'}</h1>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div role="alert" className="error-message">{error}</div>}
+        {external ? <p>Sign in to organise events or manage your registrations.</p> : <p>Staff accounts are provided by ConnectSphere. Contact your administrator for access.</p>}
 
         <label htmlFor="email">Email</label>
         <input
           id="email"
           type="email"
+          autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
@@ -61,6 +51,7 @@ export default function Login() {
         <input
           id="password"
           type="password"
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Enter your password"
@@ -70,6 +61,7 @@ export default function Login() {
         <button type="submit" disabled={loading}>
           {loading ? 'Signing in...' : 'Login'}
         </button>
+        {external && <p><Link to="/external/register">Create an account</Link> · <Link to="/external/forgot-password">Forgot password?</Link></p>}
       </form>
     </div>
   );

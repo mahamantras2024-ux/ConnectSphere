@@ -20,12 +20,16 @@ async function requireAuth(req, res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     const result = await db.query(
-      'SELECT id, email, role FROM users WHERE id = $1',
+      'SELECT id, email, role, auth_version FROM users WHERE id = $1',
       [decoded.sub]
     );
 
     if (result.rows.length === 0) {
       return res.status(401).json({ message: 'Unauthorized: User not found.' });
+    }
+
+    if ((decoded.authVersion || 0) !== (result.rows[0].auth_version || 0)) {
+      return res.status(401).json({ message: 'Session expired. Please log in again.' });
     }
 
     req.user = result.rows[0];

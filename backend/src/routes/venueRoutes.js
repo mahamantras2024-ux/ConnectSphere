@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/db');
+const { requireAuth } = require('../middleware/auth');
+const { requireRole } = require('../middleware/role');
 
-// POST /api/venues (Public route, no auth middleware required)
-router.post('/', async (req, res) => {
+// Catalogue creation is an internal Venue Staff operation.
+router.post('/', requireAuth, requireRole('venue_staff'), async (req, res) => {
   try {
     const {
       name,

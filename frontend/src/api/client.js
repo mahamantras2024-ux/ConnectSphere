@@ -20,10 +20,6 @@ async function request(endpoint, { method = 'GET', body, token } = {}) {
     ? await response.json()
     : await response.text();
 
-  console.log('Request:', `${API_BASE_URL}${endpoint}`);
-  console.log('Status:', response.status);
-  console.log('Body:', data);
-
   if (!response.ok) {
     throw new Error((data && data.message) || 'Something went wrong. Please try again.');
   }

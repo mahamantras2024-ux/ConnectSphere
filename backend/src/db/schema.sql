@@ -194,3 +194,10 @@ CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id)
 -- fields are filled, so incomplete venues can be saved as drafts but
 -- excluded from Event Coordinator search/catalogue until complete.
 ALTER TABLE venues ADD COLUMN IF NOT EXISTS is_complete BOOLEAN NOT NULL DEFAULT false;
+
+-- External event viewing and single-use external password reset.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS programme_details TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS special_arrangements TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_hash TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0;

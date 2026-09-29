@@ -1,5 +1,15 @@
 const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
+const fs = require('node:fs');
+
+// Hosted PostgreSQL uses TLS with certificate verification; Docker stays local.
+const ssl = process.env.DB_SSL === 'true'
+  ? {
+      rejectUnauthorized: true,
+      ...(process.env.DB_SSL_CA_PATH
+        ? { ca: fs.readFileSync(process.env.DB_SSL_CA_PATH, 'utf8') }
+        : {}),
+    }
+  : false;
 
 // Configure PostgreSQL Pool connection to match .env
 const pool = new Pool({
@@ -8,6 +18,7 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'connectsphere',
   password: process.env.DB_PASSWORD || 'connectsphere',
   port: process.env.DB_PORT || 5432,
+  ssl,
 });
 
 pool.on('connect', () => {
@@ -55,26 +66,10 @@ const initializeTables = async () => {
   await pool.query(createVenuesTable);
 };
 
-// Seed default Venue Staff user matching the new column names
-const seedStaffUser = async () => {
-  const staffEmail = 'staff@connectsphere.com';
-  const existingStaff = await pool.query('SELECT * FROM users WHERE email = $1', [staffEmail]);
-
-  if (existingStaff.rows.length === 0) {
-    const hashedPassword = await bcrypt.hash('password123', 10);
-    await pool.query(
-      `INSERT INTO users (email, password_hash, full_name, role) VALUES ($1, $2, $3, $4)`,
-      [staffEmail, hashedPassword, 'Venue Staff', 'venue_staff']
-    );
-    console.log('Default Venue Staff seeded: staff@connectsphere.com / password123');
-  }
-};
-
 const connectDB = async () => {
   try {
     await pool.query('SELECT NOW()');
     await initializeTables();
-    await seedStaffUser();
     console.log('PostgreSQL Database connected and initialized successfully.');
   } catch (error) {
     console.error('Database initialization error:', error);

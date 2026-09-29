@@ -11,8 +11,10 @@ export default function EventForm() {
     name: '', purpose: '', description: '', eventType: '', proposedDate: '',
     proposedStartTime: '', proposedEndTime: '', expectedAttendance: '',
     roomLayoutPreference: '', registrationRequired: false, registrationCapacity: '',
+    programmeDetails: '', specialArrangements: '', equipmentNotes: '', accessibilityText: '',
   });
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -20,24 +22,27 @@ export default function EventForm() {
 
   async function submit(isDraft) {
     setError('');
+    if (busy) return;
+    setBusy(true);
     try {
       const payload = {
         ...form,
+        accessibilityRequirements: form.accessibilityText.split('\n').map((item) => item.trim()).filter(Boolean),
         expectedAttendance: form.expectedAttendance ? Number(form.expectedAttendance) : null,
         registrationCapacity: form.registrationCapacity ? Number(form.registrationCapacity) : null,
         isDraft,
       };
       const data = await api.post('/events', payload, token);
-      navigate(`/events/${data.event.id}`);
+      navigate(`/organizer/events/${data.event.id}`, { state: { message: data.message } });
     } catch (err) {
       setError(err.message);
-    }
+    } finally { setBusy(false); }
   }
 
   return (
     <div className="card">
       <h1>New event request</h1>
-      <form onSubmit={(e) => e.preventDefault()}>
+      <form onSubmit={(e) => { e.preventDefault(); submit(e.nativeEvent.submitter?.value === 'draft'); }}>
         <label>Event name
           <input value={form.name} onChange={(e) => update('name', e.target.value)} required />
         </label>
@@ -65,6 +70,10 @@ export default function EventForm() {
         <label>Room layout preference
           <input value={form.roomLayoutPreference} onChange={(e) => update('roomLayoutPreference', e.target.value)} placeholder="theatre, classroom, banquet…" />
         </label>
+        <label>Programme<textarea maxLength={10000} value={form.programmeDetails} onChange={(e) => update('programmeDetails', e.target.value)} rows={4} /></label>
+        <label>Accessibility needs (one per line)<textarea maxLength={10000} value={form.accessibilityText} onChange={(e) => update('accessibilityText', e.target.value)} rows={3} /></label>
+        <label>Equipment requirements<textarea maxLength={10000} value={form.equipmentNotes} onChange={(e) => update('equipmentNotes', e.target.value)} rows={3} /></label>
+        <label>Special arrangements<textarea maxLength={10000} value={form.specialArrangements} onChange={(e) => update('specialArrangements', e.target.value)} rows={3} /></label>
         <label>
           <input type="checkbox" checked={form.registrationRequired} onChange={(e) => update('registrationRequired', e.target.checked)} style={{ width: 'auto', marginRight: '0.5rem' }} />
           Requires attendee registration
@@ -75,19 +84,15 @@ export default function EventForm() {
           </label>
         )}
 
-        {error && <p className="error-text">{error}</p>}
+        {error && <p role="alert" className="error-text">{error}</p>}
 
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button type="button" onClick={() => submit(true)}>Save as draft</button>
-          <button type="button" onClick={() => submit(false)}>Submit</button>
+          <button type="submit" value="draft" disabled={busy}>Save as draft</button>
+          <button type="submit" value="submitted" disabled={busy}>{busy ? 'Saving...' : 'Submit'}</button>
         </div>
       </form>
 
-      <div className="todo-note">
-        TODO: accessibility requirements and equipment requirements are in the DB
-        schema/API but not yet wired into this form — add fields as those stories
-        are refined (they'll likely need richer widgets than a text input).
-      </div>
+
     </div>
   );
 }
