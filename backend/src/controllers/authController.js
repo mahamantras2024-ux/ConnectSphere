@@ -71,7 +71,7 @@ async function getMe(req, res, next) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    return res.json({ user: rows[0] });
+    return res.status(200).json({ user: rows[0] });
   } catch (err) {
     next(err);
   }
@@ -97,4 +97,4 @@ async function me(req, res) {
   }
 }
 
-module.exports = { login, me };
+module.exports = { login, getMe, me };
