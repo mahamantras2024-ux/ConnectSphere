@@ -1,4 +1,6 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+// File: Defines active frontend routes, shared navigation, role-protected dashboards, and the missing-page fallback.
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import Modal from './components/Modal';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
@@ -12,27 +14,26 @@ import EventDetail from './pages/events/EventDetail';
 import EventForm from './pages/events/EventForm';
 import EventList from './pages/events/EventList';
 
-import VenueCalendar from './pages/venues/VenueCalendar';
-import VenueDetail from './pages/venues/VenueDetail';
-import VenueList from './pages/venues/VenueList';
-
-import EquipmentList from './pages/equipment/EquipmentList';
-
-import MyRegistrations from './pages/registrations/MyRegistrations';
-
 import AttendeeDashboard from './pages/attendee/AttendeeDashboard.jsx';
 import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
-import Notifications from './pages/notifications/Notifications';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import VenueDashboard from './pages/venue/VenueDashboard';
+import MyRegistrations from './pages/registrations/MyRegistrations';
+import StaffWorkspace from './pages/StaffWorkspace';
 
+// Renders shared navigation and the registered public, role-protected, and fallback routes.
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const background = location.state?.backgroundLocation;
+  // Returns to the list that opened the record, preserving its history and scroll position.
+  function closeDetails() { navigate(-1); }
   return (
-    <div className="app-shell">
+    <div className="app-shell" aria-hidden={background ? true : undefined} inert={background ? '' : undefined}>
       <Navbar />
-      <main className="content">
-        <Routes>
+      <main className="content" id="main-content">
+        <Routes location={background || location}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/external/login" element={<Login external />} />
           <Route path="/external/register" element={<ExternalRegister />} />
@@ -43,6 +44,9 @@ export default function App() {
           <Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventDetail /></ProtectedRoute>} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/registrations" element={<ProtectedRoute roles={['attendee']}><MyRegistrations /></ProtectedRoute>} />
+          <Route path="/coordinator-lead/dashboard" element={<ProtectedRoute roles={['event_coordinator_lead']}><StaffWorkspace role="event_coordinator_lead" /></ProtectedRoute>} />
+          <Route path="/safety/dashboard" element={<ProtectedRoute roles={['safety_officer']}><StaffWorkspace role="safety_officer" /></ProtectedRoute>} />
 
           <Route
             path="/dashboard"
@@ -87,6 +91,7 @@ export default function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        {background && <Routes><Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><Modal drawer title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /><Route path="/events/:id" element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><Modal drawer title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /></Routes>}
       </main>
     </div>
   );

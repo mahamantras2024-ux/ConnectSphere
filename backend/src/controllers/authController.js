@@ -1,8 +1,17 @@
+// File: Handles shared password login and current-user responses using bcrypt, JWTs, and PostgreSQL users.
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../config/db');
 const { getUserByEmail } = require('../models/userModel');
+const { audienceRoles, accountRoles } = require('../auth/roles');
 
+// Issues a session scoped to one provisioned active role without changing account permissions.
+function session(user, role) {
+  return { token: jwt.sign({ sub: user.id, id: user.id, email: user.email, role,
+    activeRole: role, authVersion: user.auth_version || 0 }, process.env.JWT_SECRET, { expiresIn: '8h' }),
+  user: { id: user.id, email: user.email, full_name: user.full_name, role, roles: accountRoles(user) } };
+}
+
+// Validates account credentials and returns a role-bearing JWT and public user identity.
 async function login(req, res) {
   const { email, password } = req.body || {};
 
@@ -10,6 +19,7 @@ async function login(req, res) {
       typeof password !== 'string' || !password.trim()) {
     return res.status(400).json({ message: 'Email and password are required.' });
   }
+  if (req.body.audience != null && !['external', 'internal'].includes(req.body.audience)) return res.status(400).json({ message: 'Choose a valid login audience.' });
 
   try {
     const normalizedEmail = email.trim().toLowerCase();
@@ -19,7 +29,8 @@ async function login(req, res) {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    if (req.body.audience === 'external' && !['event_organiser', 'attendee'].includes(user.role)) {
+    const roles = audienceRoles(user, req.body.audience);
+    if (!roles.length) {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
@@ -29,54 +40,14 @@ async function login(req, res) {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    const token = jwt.sign(
-      {
-        sub: user.id,
-        id: user.id,
-        role: user.role,
-        email: user.email,
-        authVersion: user.auth_version || 0
-      },
-      process.env.JWT_SECRET || 'connectsphere-secret',
-      { expiresIn: '8h' }
-    );
-
-    return res.status(200).json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name,
-        role: user.role
-      }
-    });
+    return res.status(200).json(session(user, roles.includes(user.role) ? user.role : roles[0]));
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ message: 'Unable to log in at this time.' });
   }
 }
 
-async function getMe(req, res, next) {
-  try {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized: No user ID found in token' });
-    }
-
-    const query = 'SELECT id, email, role, created_at FROM users WHERE id = $1';
-    const { rows } = await db.query(query, [userId]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    return res.status(200).json({ user: rows[0] });
-  } catch (err) {
-    next(err);
-  }
-}
-
+// Returns public details for the authenticated user using their stored email.
 async function me(req, res) {
   try {
     const user = await getUserByEmail(req.user.email);
@@ -88,7 +59,8 @@ async function me(req, res) {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: user.role,
+        role: req.user.role,
+        roles: accountRoles(user),
       },
     });
   } catch (error) {
@@ -97,4 +69,12 @@ async function me(req, res) {
   }
 }
 
-module.exports = { login, getMe, me };
+// Switches the session only to a role currently provisioned in the secure database.
+async function switchRole(req, res) {
+  try {
+    const user = await getUserByEmail(req.user.email);
+    if (!user || !accountRoles(user).includes(req.body?.role)) return res.status(403).json({ message: 'This role is not assigned to your account.' });
+    return res.json(session(user, req.body.role));
+  } catch { return res.status(503).json({ message: 'Unable to switch roles. Please try again.' }); }
+}
+module.exports = { login, me, switchRole };

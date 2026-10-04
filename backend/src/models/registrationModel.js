@@ -1,43 +1,13 @@
+// File: Reads personal registration summaries for the authenticated attendee.
 const { query } = require('../config/db');
 
-async function register(eventId, attendeeId) {
-  // TODO: check registration_required, capacity vs current registered count,
-  // and waitlist behaviour once that user story is written.
-  const { rows } = await query(
-    `INSERT INTO registrations (event_id, attendee_id, status)
-     VALUES ($1, $2, 'registered')
-     ON CONFLICT (event_id, attendee_id) DO NOTHING
-     RETURNING *`,
-    [eventId, attendeeId]
-  );
-  return rows[0];
-}
-
-async function withdraw(eventId, attendeeId) {
-  const { rows } = await query(
-    `UPDATE registrations SET status = 'withdrawn', withdrawn_at = now()
-     WHERE event_id = $1 AND attendee_id = $2 RETURNING *`,
-    [eventId, attendeeId]
-  );
-  return rows[0];
-}
-
-async function listForEvent(eventId) {
-  const { rows } = await query('SELECT * FROM registrations WHERE event_id = $1', [eventId]);
-  return rows;
-}
-
+// Returns registrations belonging to the supplied attendee.
 async function listForAttendee(attendeeId) {
-  const { rows } = await query('SELECT * FROM registrations WHERE attendee_id = $1', [attendeeId]);
+  const { rows } = await query(`SELECT r.id, r.event_id, r.status, e.name AS event_name,
+    e.proposed_date::text AS proposed_date, e.proposed_start_time, e.proposed_end_time
+    FROM registrations r JOIN events e ON e.id = r.event_id
+    WHERE r.attendee_id = $1 ORDER BY e.proposed_date DESC NULLS LAST, r.id DESC`, [attendeeId]);
   return rows;
 }
 
-async function countRegistered(eventId) {
-  const { rows } = await query(
-    `SELECT COUNT(*) FROM registrations WHERE event_id = $1 AND status = 'registered'`,
-    [eventId]
-  );
-  return Number(rows[0].count);
-}
-
-module.exports = { register, withdraw, listForEvent, listForAttendee, countRegistered };
+module.exports = { listForAttendee };

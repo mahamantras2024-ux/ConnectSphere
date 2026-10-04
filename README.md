@@ -1,108 +1,24 @@
-# ConnectSphere — Event Planning & Venue Booking System
+# ConnectSphere
 
-For the current external registration, organiser event information and password
-reset implementation, follow [External events and email setup](docs/external-events.md).
-It includes the targeted migration required by the shared authentication backend;
-use it for an existing database instead of the older full migration/seed steps below.
+React/Vite renders role dashboards and right-side detail panels. Express validates credentials, active roles, ownership and coordinator assignments before querying Supabase-hosted PostgreSQL through `pg`. Accounts use bcrypt/JWT, rather than Supabase Auth. Gmail SMTP sends reset links. Leaflet/OpenStreetMap and Photon provide the embedded map; nearest MRT is calculated on the server.
 
-For the Venue Staff login implementation, internal account provisioning, access
-rules and automated tests, see [Venue Staff login](docs/venue-staff-login.md).
-That guide also documents the existing database setup differences relevant to
-the current venue routes; review it before applying the older setup steps below.
+See [current functionality](docs/current-functionality.md), [database files](docs/database-files.md), [testing instructions](tests/README.md) and [Sprint 1 acceptance evidence](tests/sprint-one-acceptance.md).
 
-This is an **editable skeleton**, not a finished product. It exists so the team can start
-agreeing on user stories and wiring up screens/endpoints without re-doing plumbing later.
-Business logic inside controllers is deliberately left as `TODO` stubs — fill these in as
-your product backlog and sprint stories are defined.
+## Start
 
-## Tech stack
+From the root, install with `npm ci --prefix backend` and `npm ci --prefix frontend`. Retain the private configuration files. Run `npm run dev --prefix backend` and `npm run dev --prefix frontend` in separate terminals. Default addresses: http://localhost:4000 and http://localhost:5173. See [email configuration](docs/email-setup.md).
 
-- **Backend:** Node.js + Express (REST API)
-- **Database:** PostgreSQL (real relational DB, set up from day one via `docker-compose`)
-- **Frontend:** React (Vite) + React Router
-- **Auth:** JWT-based, role-aware middleware (5 roles from the customer briefing)
+Existing shared databases do not need seeding. Deliberate upgrades for an existing compatible database are the backend commands `migrate:external-events`, `setup:sprint-one`, and `setup:venue-management`, in that order. These additive upgrades are not a verified empty-database bootstrap. Internal accounts use `npm run provision:account --prefix backend`.
 
-## Folder structure
+## Folders
 
-```
-connectsphere/
-├── docker-compose.yml        # spins up Postgres locally
-├── backend/
-│   ├── src/
-│   │   ├── config/db.js      # pg Pool connection
-│   │   ├── db/schema.sql     # full relational schema (draft — expect changes)
-│   │   ├── db/migrate.js     # runs schema.sql against the DB
-│   │   ├── db/seed.js        # inserts a few sample users/venues for dev
-│   │   ├── middleware/       # auth.js (JWT), role.js (RBAC), errorHandler.js
-│   │   ├── models/           # thin DB-access layer, one file per entity
-│   │   ├── controllers/      # route handlers — mostly TODO stubs to build out
-│   │   └── routes/           # Express routers, one per functionality area
-│   └── package.json
-└── frontend/
-    ├── src/
-    │   ├── api/client.js     # fetch wrapper that attaches JWT
-    │   ├── context/AuthContext.jsx
-    │   ├── components/       # Navbar, ProtectedRoute
-    │   └── pages/            # one folder per functionality area, placeholder screens
-    └── package.json
-```
+| Folder | Purpose |
+| --- | --- |
+| backend/src | Active API, authentication, validation, data access, email and database upgrades. |
+| backend/certs | Certificate material for the secure database connection. |
+| frontend/src | Screens, reusable components, session handling, routing and styles. |
+| frontend/public | Required static images served to the browser. |
+| tests | Centralised tests, shared runner and acceptance reference. |
+| docs | Current feature, setup, database and story documentation. |
 
-## Why these entities?
-
-The schema in `backend/src/db/schema.sql` is derived directly from the Week 1 customer
-briefing and the Week 4 "First Release — Core Functionality" list (20 features): users,
-events, event status history, venues, venue bookings, equipment, equipment reservations,
-registrations, event change requests, notifications, and an audit log. Expect to rename,
-split, merge, or drop tables/columns as your user stories get refined — that's the point
-of a skeleton.
-
-## Getting started
-
-### 1. Database
-
-```bash
-docker compose up -d          # starts postgres on localhost:5432
-cd backend
-cp .env.example .env          # adjust if you changed docker-compose credentials
-npm install
-npm run migrate               # creates all tables from schema.sql
-npm run seed                  # optional: adds sample users/venues for local dev
-```
-
-### 2. Backend API
-
-```bash
-cd backend
-npm install
-npm run dev                   # starts on http://localhost:4000 with nodemon
-```
-
-### 3. Frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev                   # starts on http://localhost:5173
-```
-
-## Roles (from the customer briefing)
-
-| Role | Internal/External | Summary |
-|---|---|---|
-| `event_organiser` | External | Requests and manages their own events |
-| `event_coordinator` | Internal | Owns planning/coordination of assigned events |
-| `venue_staff` | Internal | Owns venue info, availability, booking decisions |
-| `technical_support` | Internal | Owns equipment info, availability, reservations |
-| `attendee` | External | Registers for events |
-
-## What's deliberately NOT done yet
-
-- Business rules for conflict detection, suitability checking, notification triggers, etc.
-  (controllers throw a `501 Not Implemented` placeholder with a `TODO` comment).
-- Live Resend delivery requires a private API key and verified sender domain;
-  local password-reset email works through Mailpit (see the guide above).
-- Frontend styling beyond bare structure.
-- Other unfinished stories remain outside the organiser and Venue Staff test suites.
-
-Treat every `TODO` as an invitation for a user story.
+Dependencies are generated by installation; coverage reports and frontend/dist are regenerated by coverage checks and production builds. Generated reports/builds were removed after verification.

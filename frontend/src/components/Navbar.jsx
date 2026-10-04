@@ -1,66 +1,33 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { getDashboardRoute } from '../auth/dashboardRoutes';
+// File: Shows working role-specific links and secure switching between provisioned roles.
+import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-
+import { getDashboardRoute, roleLabels } from '../auth/dashboardRoutes';
+// Renders role navigation, account identity, and session controls.
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, switchRole } = useAuth();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const external = ['event_organiser', 'attendee'].includes(user?.role) ||
-    (!user && /^\/(external|organizer|attendee)(\/|$)/.test(pathname));
-
-  function handleLogout() {
-    logout();
-    navigate(external ? '/external/login' : '/login');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const external = ['event_organiser', 'attendee'].includes(user?.role);
+  const workspaceLabel = {event_organiser:'My Events',event_coordinator:'Assigned Events',attendee:'My Registrations'}[user?.role] || 'Dashboard';
+  // Changes role through the server and navigates to the resulting workspace.
+  async function changeRole(event) {
+    setBusy(true); setError('');
+    try { const next = await switchRole(event.target.value); navigate(getDashboardRoute(next.role)); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   }
-
-  if (external) return (
-    <nav className="navbar" aria-label="External user navigation">
-      <div>
-        <span className="brand">Event Portal</span>
-        {user && <>
-          <Link to={getDashboardRoute(user.role)}>Dashboard</Link>
-          {user.role === 'event_organiser' && <Link to="/organizer/events">My Events</Link>}
-          {user.role === 'attendee' && <Link to="/registrations">My Registrations</Link>}
-        </>}
-      </div>
-      <div>{user ? <button onClick={handleLogout}>Log out</button> : <>
-        <Link to="/external/login">Sign in</Link>
-        <Link to="/external/register">Register</Link>
-      </>}</div>
-    </nav>
-  );
-
-  return (
-    <nav className="navbar">
-      <div>
-        <span className="brand">ConnectSphere</span>
-        {user && (
-          <>
-            <Link to={getDashboardRoute(user.role)} style={{ marginLeft: '1.5rem' }}>Dashboard</Link>
-            {user.role !== 'venue_staff' && <>
-            <Link to="/events">Events</Link>
-            <Link to="/venues">Venues</Link>
-            <Link to="/equipment">Equipment</Link>
-            {user.role === 'attendee' && <Link to="/registrations">My Registrations</Link>}
-            <Link to="/notifications">Notifications</Link>
-            </>}
-          </>
-        )}
-      </div>
-      <div>
-        {user ? (
-          <>
-            <span className="badge" style={{ marginRight: '0.75rem' }}>{user.role.replace('_', ' ')}</span>
-            <button onClick={handleLogout}>Log out</button>
-          </>
-        ) : (
-          <>
-            <Link to="/login">Log in</Link>
-            <Link to="/register">Register</Link>
-          </>
-        )}
-      </div>
-    </nav>
-  );
+  // Ends the current session and returns to the appropriate login page.
+  function handleLogout() { logout(); navigate(external ? '/external/login' : '/login'); }
+  return <><a className="skip-link" href="#main-content">Skip to content</a><nav className="navbar" aria-label="Main navigation">
+    <Link className="brand" to={user ? getDashboardRoute(user.role) : '/external/login'}><span className="brand-mark" aria-hidden="true">C<span>·</span></span><span>ConnectSphere<small>Events, thoughtfully connected.</small></span></Link>
+    <div className="nav-links">{user ? <>
+      <NavLink to={getDashboardRoute(user.role)}>{workspaceLabel}</NavLink>
+      {user.roles?.length > 1 && <label className="role-switch">Workspace<select aria-label="Active role" value={user.role} disabled={busy} onChange={changeRole}>{user.roles.map(role =>
+      // Converts each record into its displayed or submitted representation.
+      <option key={role} value={role}>{roleLabels[role] || role}</option>)}</select></label>}
+      <span className="account-name">{user.full_name}<small>{roleLabels[user.role] || user.role}</small></span><button className="button-secondary" onClick={handleLogout}>Log out</button>
+    </> : <><NavLink to="/external/login">External sign in</NavLink><NavLink to="/login">Staff sign in</NavLink></>}</div>
+  </nav>{error && <p role="alert" className="error-message nav-error">{error}</p>}</>;
 }

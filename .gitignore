@@ -1,3 +1,4 @@
+# File: Excludes installed dependencies, private environment settings, build output, logs, and editor artifacts.
 # Dependencies
 node_modules/
 
@@ -16,7 +17,7 @@ frontend/dist/
 *.log
 npm-debug.log*
 
-# Coverage/test artifacts (if you add testing later)
+# Regenerated test coverage reports
 coverage/
 
 # OS/editor cruft
@@ -25,5 +26,11 @@ Thumbs.db
 .vscode/
 .idea/
 
-# path to certificate file
+# Database TLS certificate path used by team configuration
 backend/src/config/prod-ca-2021.crt
+__pycache__/
+*.pyc
+.coverage
+
+# Local review scratch files and logs
+tmp/

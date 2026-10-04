@@ -1,27 +1,24 @@
+// File: Builds password-reset URLs and sends reset messages through encrypted Gmail SMTP.
 const nodemailer = require('nodemailer');
 
+// Validates Gmail app-password settings and builds an encrypted transport using the authenticated sender.
 function emailConfig() {
-  const provider = process.env.MAIL_PROVIDER || 'mailpit';
-  if (provider === 'resend') {
-    if (!process.env.RESEND_API_KEY || !process.env.MAIL_FROM || !process.env.PUBLIC_APP_URL) {
-      throw new Error('Resend requires RESEND_API_KEY, MAIL_FROM and PUBLIC_APP_URL.');
-    }
-    return { from: process.env.MAIL_FROM, transport: {
-      host: 'smtp.resend.com', port: 465, secure: true,
-      auth: { user: 'resend', pass: process.env.RESEND_API_KEY },
-      connectionTimeout: 10000, socketTimeout: 10000,
-    } };
+  const user = process.env.GMAIL_USER?.trim();
+  const password = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, '');
+  if (!user || !password || !process.env.PUBLIC_APP_URL?.trim()) {
+    throw new Error('Gmail requires GMAIL_USER, GMAIL_APP_PASSWORD and PUBLIC_APP_URL.');
   }
-  if (provider !== 'mailpit' || process.env.NODE_ENV === 'production') {
-    throw new Error('Configure Resend for production email delivery.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user) || !/^[a-zA-Z0-9]{16}$/.test(password)) {
+    throw new Error('Gmail requires a valid sender email and a 16-character Google app password.');
   }
-  return { from: 'Event Portal <notifications@example.test>', transport: {
-    host: process.env.MAILPIT_HOST || '127.0.0.1',
-    port: Number(process.env.MAILPIT_PORT || 1025), secure: false,
-    connectionTimeout: 5000, socketTimeout: 5000,
+  return { from: `Event Portal <${user}>`, transport: {
+    host: 'smtp.gmail.com', port: 465, secure: true,
+    auth: { user, pass: password },
+    connectionTimeout: 10000, socketTimeout: 10000,
   } };
 }
 
+// Builds a password-reset URL with the token in its fragment and enforces production HTTPS.
 function resetUrl(token) {
   const url = new URL('/external/reset-password', process.env.PUBLIC_APP_URL || 'http://localhost:5173');
   if (!['http:', 'https:'].includes(url.protocol) ||
@@ -33,6 +30,7 @@ function resetUrl(token) {
   return url.toString();
 }
 
+// Sends a one-time reset link through the configured SMTP transport and closes it.
 async function sendPasswordReset(to, token) {
   const config = emailConfig();
   const transport = nodemailer.createTransport(config.transport);

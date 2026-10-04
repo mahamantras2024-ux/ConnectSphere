@@ -1,8 +1,4 @@
-export default function CoordinatorDashboard() {
-  return (
-    <div className="page">
-      <h1>Event Coordinator Dashboard</h1>
-      <p>Welcome.</p>
-    </div>
-  );
-}
+// File: Displays the coordinator's assigned events using the assignment-scoped API.
+import EventList from '../events/EventList';
+// Renders assigned summaries and links to the full submitted event details.
+export default function CoordinatorDashboard() { return <EventList dashboard />; }

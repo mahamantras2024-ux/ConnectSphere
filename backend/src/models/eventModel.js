@@ -1,15 +1,7 @@
+// File: Stores organiser event requests and reads event lists/details with owner or coordinator scoping.
 const pool = require('../config/db');
 
-async function listAll() {
-  const result = await pool.query(`
-    SELECT id, name, purpose, status, organiser_id, coordinator_id, created_at, updated_at
-    FROM events
-    ORDER BY created_at DESC
-  `);
-
-  return result.rows;
-}
-
+// Lists events owned by the supplied organiser, newest first.
 async function listForOrganiser(organiserId) {
   const result = await pool.query(`
     SELECT id, name, purpose, status, organiser_id, coordinator_id, created_at, updated_at
@@ -21,6 +13,7 @@ async function listForOrganiser(organiserId) {
   return result.rows;
 }
 
+// Lists events assigned to the supplied coordinator, newest first.
 async function listForCoordinator(coordinatorId) {
   const result = await pool.query(`
     SELECT id, name, purpose, status, organiser_id, coordinator_id, created_at, updated_at
@@ -32,16 +25,7 @@ async function listForCoordinator(coordinatorId) {
   return result.rows;
 }
 
-async function findById(id) {
-  const result = await pool.query(`
-    SELECT *
-    FROM events
-    WHERE id = $1
-  `, [id]);
-
-  return result.rows[0] || null;
-}
-
+// Reads event details and names only when the user owns or coordinates the requested event.
 async function findAccessibleById(id, user) {
   const ownerColumn = user.role === 'event_organiser' ? 'organiser_id'
     : user.role === 'event_coordinator' ? 'coordinator_id' : null;
@@ -62,6 +46,7 @@ async function findAccessibleById(id, user) {
   return result.rows[0] || null;
 }
 
+// Inserts an organiser-owned event with validated request fields and draft/submitted status.
 async function create(data) {
   const result = await pool.query(`
     INSERT INTO events (organiser_id, name, purpose, description, event_type,
@@ -82,8 +67,6 @@ async function create(data) {
 module.exports = {
   create,
   findAccessibleById,
-  listAll,
   listForOrganiser,
-  listForCoordinator,
-  findById
+  listForCoordinator
 };

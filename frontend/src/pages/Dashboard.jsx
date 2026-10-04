@@ -1,10 +1,9 @@
+// File: Redirects recognised roles to their dashboard and provides a generic fallback landing screen.
 import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { getDashboardRoute } from '../auth/dashboardRoutes';
 
-// Placeholder role-aware landing page. TODO: replace with real summaries
-// (e.g. "events awaiting my review", "pending venue bookings") once those
-// user stories are written.
+// Redirects known roles to their dedicated dashboard or renders the generic fallback.
 export default function Dashboard() {
   const { user } = useAuth();
   const dashboard = getDashboardRoute(user.role);
@@ -14,12 +13,7 @@ export default function Dashboard() {
     <div className="card">
       <h1>Welcome, {user.full_name}</h1>
       <p>Logged in as <span className="badge">{user.role.replace('_', ' ')}</span></p>
-      <div className="todo-note">
-        TODO: This dashboard is a placeholder. Once user stories are prioritised,
-        replace this with role-specific widgets — e.g. an Event Organiser might see
-        their draft/submitted events, a Venue Staff member might see pending booking
-        requests, etc.
-      </div>
+      <p role="alert">Your active role has no available dashboard. Ask ConnectSphere to correct your account access, or select another provisioned workspace.</p>
     </div>
   );
 }

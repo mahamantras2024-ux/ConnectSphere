@@ -1,0 +1,24 @@
+<!-- File: Illustrates an event space using ConnectSphere's cream, orange, green and pink palette. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1000" fill="none">
+  <rect width="900" height="1000" fill="#EF6B2E"/>
+  <path d="M0 0h900v670H0z" fill="#F7B18B"/>
+  <path d="M0 0h230v670H0z" fill="#DB5F29"/>
+  <path d="M670 0h230v670H670z" fill="#E88449"/>
+  <path d="M270 0h360v630H270z" fill="#FFFAD9"/>
+  <path d="M310 0h280v590H310z" fill="#FFFDF0"/>
+  <path d="M0 670h900L650 1000H240z" fill="#EC8B57"/>
+  <path d="M0 715h900M0 775h900M0 865h900M140 1000l160-330M770 1000L600 670" stroke="#D46A35" stroke-width="3"/>
+  <path d="M170 80h560v70H170z" fill="#424F19"/>
+  <text x="450" y="126" text-anchor="middle" fill="#FFFAD9" font-family="Arial,sans-serif" font-size="30" font-weight="700" letter-spacing="6">GOOD THINGS, TOGETHER.</text>
+  <circle cx="450" cy="327" r="106" fill="#FAF36B"/>
+  <ellipse cx="450" cy="327" rx="72" ry="35" transform="rotate(-35 450 327)" stroke="#EF6B2E" stroke-width="10"/>
+  <ellipse cx="450" cy="327" rx="72" ry="35" transform="rotate(35 450 327)" stroke="#EF6B2E" stroke-width="10"/>
+  <circle cx="450" cy="327" r="13" fill="#424F19"/>
+  <rect x="330" y="510" width="240" height="90" rx="8" fill="#424F19"/>
+  <path d="M285 600h330l50 65H230z" fill="#303C14"/>
+  <g fill="#C7D45B"><rect x="60" y="710" width="130" height="125" rx="45"/><rect x="230" y="710" width="130" height="125" rx="45"/><rect x="540" y="710" width="130" height="125" rx="45"/><rect x="710" y="710" width="130" height="125" rx="45"/></g>
+  <g fill="#424F19"><rect x="60" y="798" width="130" height="25" rx="10"/><rect x="230" y="798" width="130" height="25" rx="10"/><rect x="540" y="798" width="130" height="25" rx="10"/><rect x="710" y="798" width="130" height="25" rx="10"/></g>
+  <g fill="#EFB6AA"><rect x="25" y="875" width="170" height="155" rx="55"/><rect x="240" y="875" width="170" height="155" rx="55"/><rect x="490" y="875" width="170" height="155" rx="55"/><rect x="705" y="875" width="170" height="155" rx="55"/></g>
+  <g fill="#424F19"><path d="M100 610c-110-160-60-250 0-160 75-160 135-110 0 160Z"/><path d="M800 610c-110-160-60-250 0-160 75-160 135-110 0 160Z"/></g>
+  <g fill="#FFFAD9"><path d="M60 600h80l-10 70H70z"/><path d="M760 600h80l-10 70h-60z"/></g>
+</svg>

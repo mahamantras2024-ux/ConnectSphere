@@ -1,8 +1,11 @@
+// File: Verifies JWTs against current database identity and session version for protected requests.
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
+const { accountRoles } = require('../auth/roles');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'connectsphere-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
 
+// Verifies the bearer JWT and reloads current user role/session version before allowing the request.
 async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization || '';
 
@@ -20,7 +23,7 @@ async function requireAuth(req, res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     const result = await db.query(
-      'SELECT id, email, role, auth_version FROM users WHERE id = $1',
+      "SELECT id, email, role, auth_version, COALESCE(to_jsonb(users)->'roles', '[]'::jsonb) AS roles FROM users WHERE id = $1",
       [decoded.sub]
     );
 
@@ -32,31 +35,18 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ message: 'Session expired. Please log in again.' });
     }
 
-    req.user = result.rows[0];
+    const current = result.rows[0];
+    const roles = accountRoles(current);
+    const activeRole = decoded.activeRole || current.role;
+    if (!roles.includes(activeRole)) return res.status(401).json({ message: 'Role access changed. Please log in again.' });
+    req.user = { ...current, roles, role: activeRole };
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Unauthorized: Invalid token.' });
   }
 }
 
-function requireRole(...allowedRoles) {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Unauthorized.' });
-    }
-
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        message: 'Forbidden: You do not have permission to access this resource.'
-      });
-    }
-
-    next();
-  };
-}
-
 module.exports = {
   requireAuth,
-  requireRole,
   JWT_SECRET
 };

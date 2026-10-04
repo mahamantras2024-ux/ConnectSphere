@@ -1,5 +1,6 @@
+// File: Registers shared login/session and rate-limited external registration/password-reset endpoints.
 const express = require('express');
-const { login, me } = require('../controllers/authController');
+const { login, me, switchRole } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
 const externalAuth = require('../controllers/externalAuthController');
 const { rateLimit } = require('express-rate-limit');
@@ -16,5 +17,6 @@ router.post('/reset-password', resetLimit, externalAuth.resetPassword);
 
 router.post('/login', login);
 router.get('/me', requireAuth, me);
+router.post('/switch-role', requireAuth, switchRole);
 
 module.exports = router;

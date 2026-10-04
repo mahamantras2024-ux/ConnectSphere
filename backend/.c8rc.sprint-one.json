@@ -1,0 +1,17 @@
+{
+  "all": true,
+  "include": [
+    "src/index.js", "src/auth/roles.js", "src/config/db.js",
+    "src/controllers/authController.js", "src/controllers/externalAuthController.js",
+    "src/controllers/eventReadController.js", "src/controllers/registrationReadController.js",
+    "src/middleware/*.js", "src/models/userModel.js", "src/models/eventModel.js", "src/models/registrationModel.js",
+    "src/routes/authRoutes.js", "src/routes/eventRoutes.js", "src/routes/registrationRoutes.js", "src/routes/venueRoutes.js",
+    "src/services/venueValidation.js", "src/services/venueLocation.js", "src/utils/asyncHandler.js"
+  ],
+  "exclude": [],
+  "reporter": ["text", "html", "json", "json-summary"],
+  "reports-dir": "../coverage/sprint-one-backend",
+  "check-coverage": true,
+  "lines": 100, "statements": 100, "functions": 100, "branches": 100,
+  "per-file": true
+}

@@ -1,3 +1,4 @@
+-- File: Adds event detail and password-reset/session-version fields while preserving existing users and venues.
 -- Additive migration: preserve existing users, events and venue schemas.
 BEGIN;
 CREATE TABLE IF NOT EXISTS events (

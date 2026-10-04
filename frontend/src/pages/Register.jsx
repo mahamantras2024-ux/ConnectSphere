@@ -1,5 +1,7 @@
+// File: Displays internal staff provisioning guidance; external registration uses a separate page.
 import { Link } from 'react-router-dom';
 
+// Renders the staff account provisioning guidance and login link.
 export default function Register() {
   return (
     <div className="card">

@@ -1,3 +1,4 @@
+// File: Mounts React with the authentication provider, browser router, application component, and global styles.
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

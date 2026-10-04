@@ -1,44 +1,55 @@
+// File: Registers external accounts and manages emailed, single-use password resets.
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const userModel = require('../models/userModel');
 const emailService = require('../services/emailService');
 const asyncHandler = require('../utils/asyncHandler');
+const { accountRoles } = require('../auth/roles');
 
 const externalRoles = ['event_organiser', 'attendee'];
-const validEmail = (value) => typeof value === 'string' && value.trim().length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-const validPassword = (value) => typeof value === 'string' && value.trim().length >= 8 && Buffer.byteLength(value, 'utf8') <= 72;
-const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+const validEmail = (value) => // Checks that the email is bounded text with a basic email-address shape.
+
+      // Runs valid email for this module.
+      typeof value === 'string' && value.trim().length <= 255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+const validPassword = (value) => // Checks minimum non-padding password length and bcrypt's 72-byte UTF-8 limit.
+
+      // Runs valid password for this module.
+      typeof value === 'string' && value.trim().length >= 8 && Buffer.byteLength(value, 'utf8') <= 72;
+const hashToken = (token) => // Hashes a raw password-reset token with SHA-256 for database storage.
+
+      // Runs hash token for this module.
+      crypto.createHash('sha256').update(token).digest('hex');
 const resetMessage = 'If an external account matches that email, a password-reset link will be sent.';
 
+// Creates an external account, accepting no staff roles or extra role grants from public input.
 const register = asyncHandler(async (req, res) => {
-  const { email, password, fullName, role, organisationName } = req.body || {};
-  if (!externalRoles.includes(role)) return res.status(403).json({ message: 'Only Event Organisers and Attendees can self-register.' });
-  if (!validEmail(email) || !validPassword(password) || typeof fullName !== 'string' ||
-      !fullName.trim() || fullName.trim().length > 255 ||
-      (organisationName != null && (typeof organisationName !== 'string' || organisationName.length > 255))) {
-    return res.status(400).json({ message: 'Enter a valid email, name, and a password of at least 8 characters (at most 72 UTF-8 bytes).' });
-  }
+  const { email, password, confirmation, fullName, role, organisationName } = req.body || {};
+  if (!externalRoles.includes(role)) return res.status(400).json({ message: 'Choose Event Organiser or Attendee. Staff accounts are provisioned internally.' });
+  if (!validEmail(email) || typeof fullName !== 'string' || !fullName.trim() || fullName.length > 255) return res.status(400).json({ message: 'Enter a valid name and email address.' });
+  if (!validPassword(password)) return res.status(400).json({ message: 'Use at least 8 characters and at most 72 UTF-8 bytes for your password.' });
+  if (typeof confirmation !== 'string' || confirmation !== password) return res.status(400).json({ message: 'Passwords do not match. Enter matching password confirmation.' });
+  if (organisationName != null && (typeof organisationName !== 'string' || organisationName.length > 255)) return res.status(400).json({ message: 'Enter a valid organisation name.' });
   try {
-    const user = await userModel.createUser({
-      email: email.trim().toLowerCase(), full_name: fullName.trim(), role,
-      password_hash: await bcrypt.hash(password, 10),
-      organisation_name: role === 'event_organiser' ? organisationName?.trim() || null : null,
-    });
-    return res.status(201).json({ user, message: 'Account created. You can now sign in.' });
+    const user = await userModel.createUser({ email: email.trim().toLowerCase(), full_name: fullName.trim(), password_hash: await bcrypt.hash(password, 10), role, organisation_name: role === 'event_organiser' ? organisationName?.trim() || null : null });
+    return res.status(201).json({ user, message: 'Account created. Please sign in.' });
   } catch (error) {
-    if (error.code === '23505') return res.status(409).json({ message: 'An account with that email already exists. Please sign in or reset your password.' });
+    if (error.code === '23505') return res.status(409).json({ message: 'An account with that email already exists. Sign in or reset your password.' });
     throw error;
   }
 });
 
 const forgotPassword = asyncHandler(async (req, res) => {
+  // Stores a short-lived external reset-token hash and attempts email delivery with a generic response.
+
   const { email } = req.body || {};
   if (!validEmail(email)) return res.status(400).json({ message: 'Enter a valid email address.' });
   // Configuration failures are independent of whether the account exists.
   try { emailService.emailConfig(); emailService.resetUrl('validation'); }
   catch { return res.status(503).json({ message: 'Password-reset email is not configured. Please contact support.' }); }
   const user = await userModel.getUserByEmail(email.trim().toLowerCase());
-  if (user && externalRoles.includes(user.role)) {
+  if (user && accountRoles(user).some(role =>
+      // Handles this operation using the surrounding screen or request state.
+      externalRoles.includes(role))) {
     const token = crypto.randomBytes(32).toString('hex');
     const hash = hashToken(token);
     if (await userModel.setPasswordReset(user.id, hash)) {
@@ -54,6 +65,8 @@ const forgotPassword = asyncHandler(async (req, res) => {
 });
 
 const resetPassword = asyncHandler(async (req, res) => {
+  // Validates and atomically consumes a reset token while hashing the new password and revoking old sessions.
+
   const { token, password } = req.body || {};
   if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) {
     return res.status(400).json({ message: 'This reset link is invalid or expired. Request a new link.' });

@@ -1,0 +1,7 @@
+{
+  "all": true,
+  "include": ["src/**/*.js"],
+  "exclude": ["src/db/**"],
+  "reporter": ["text", "html", "json", "json-summary"],
+  "reports-dir": "../coverage/backend"
+}

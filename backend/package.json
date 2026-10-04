@@ -2,18 +2,20 @@
   "name": "connectsphere-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "ConnectSphere Event Planning & Venue Booking System \u2014 API skeleton",
+  "description": "ConnectSphere authenticated event and venue management API",
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "migrate": "node src/db/migrate.js",
-    "seed": "node src/db/seed.js",
-    "test": "node --test",
-    "provision:venue-staff": "node src/db/provisionVenueStaff.js",
+    "test": "node ../tests/run.cjs backend",
+    "test:coverage": "node ../tests/run.cjs backend coverage",
+    "test:coverage:sprint-one": "node ../tests/run.cjs backend coverage sprint-one",
     "migrate:external-events": "node src/db/migrateExternalEvents.js",
-    "test:integration": "RUN_DB_TESTS=1 node --test test/postgresEvents.test.js"
+    "setup:sprint-one": "node src/db/setupSprintOne.js",
+    "setup:venue-management": "node src/db/setupVenueManagement.js",
+    "provision:account": "node src/db/provisionAccount.js",
+    "test:integration": "node ../tests/run.cjs integration"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -24,11 +26,10 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.0",
     "nodemailer": "^10.0.10",
-    "pg": "^8.23.0",
-    "sequelize": "^6.37.8",
-    "sqlite3": "^6.0.1"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "c8": "10.1.3",
     "nodemon": "^3.1.4"
   }
 }

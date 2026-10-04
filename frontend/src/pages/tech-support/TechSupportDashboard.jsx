@@ -1,8 +1,4 @@
-export default function TechSupportDashboard() {
-  return (
-    <div className="page">
-      <h1>Technical Support Dashboard</h1>
-      <p>Welcome to the Technical Support area.</p>
-    </div>
-  );
-}
+// File: Displays the provisioned Technical Support workspace without unassigned client data.
+import StaffWorkspace from '../StaffWorkspace';
+// Renders the Technical Support Sprint 1 landing page.
+export default function TechSupportDashboard() { return <StaffWorkspace role="technical_support" />; }

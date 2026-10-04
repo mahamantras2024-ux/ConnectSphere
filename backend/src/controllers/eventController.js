@@ -1,24 +1,13 @@
+// File: Validates and stores organiser event requests and re-exports completed role-scoped reads.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
-
-// GET /api/events/:id
-const getEvent = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) > 2147483647) {
-    return res.status(400).json({ message: 'Invalid event ID.' });
-  }
-  const event = await eventModel.findAccessibleById(id, req.user);
-
-  if (!event) {
-    return res.status(404).json({ message: 'Event not found.' });
-  }
-
-  return res.status(200).json({ event });
-});
+// Reuses the completed owner/assignment-scoped event read handlers.
+const { getEvent, listEvents } = require('./eventReadController');
 
 // POST /api/events  (Event Organiser creates/saves a draft or submits)
 const createEvent = asyncHandler(async (req, res) => {
+  // Validates event fields and saves a draft or submission owned by the authenticated organiser.
+
   const input = req.body || {};
   const data = { organiserId: req.user.id };
   const textFields = { name: 255, purpose: 10000, description: 10000, eventType: 100,
@@ -63,100 +52,18 @@ const createEvent = asyncHandler(async (req, res) => {
   }
   const accessibility = input.accessibilityRequirements ?? [];
   if (!Array.isArray(accessibility) || accessibility.length > 50 ||
-      accessibility.some((item) => typeof item !== 'string' || !item.trim() || item.length > 500)) {
+      accessibility.some((item) => // Detects an invalid text entry in the submitted accessibility requirements.
+
+      // Handles this operation using the surrounding screen or request state.
+      typeof item !== 'string' || !item.trim() || item.length > 500)) {
     return res.status(400).json({ message: 'Accessibility requirements must be a list of non-empty text entries.' });
   }
-  data.accessibilityRequirements = accessibility.map((item) => item.trim());
+  data.accessibilityRequirements = accessibility.map((item) => // Trims each text entry before building the submitted field list.
+
+      // Converts each record into its displayed or submitted representation.
+      item.trim());
   const event = await eventModel.create(data);
   return res.status(201).json({ event, message: data.isDraft ? 'Draft saved.' : 'Event request submitted.' });
 });
 
-// GET /api/events  (role-aware listing)
-const listEvents = asyncHandler(async (req, res) => {
-  const { role, id } = req.user;
-
-  let events = [];
-
-  if (role === 'event_organiser') {
-    events = await eventModel.listForOrganiser(id);
-  } else if (role === 'event_coordinator') {
-    events = await eventModel.listForCoordinator(id);
-  } else {
-    events = await eventModel.listAll();
-  }
-
-  return res.status(200).json({ events });
-});
-
-// PATCH /api/events/:id
-const updateEvent = asyncHandler(async (req, res) => {
-  const event = await eventModel.findById(req.params.id);
-
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found.' });
-  }
-
-  const updated = await eventModel.update(req.params.id, req.body);
-  return res.json({ event: updated });
-});
-
-// POST /api/events/:id/submit
-const submitEvent = asyncHandler(async (req, res) => {
-  const event = await eventModel.updateStatus(req.params.id, 'submitted', req.user.id, 'Submitted by organiser');
-
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found.' });
-  }
-
-  return res.json({ event });
-});
-
-// POST /api/events/:id/assign-coordinator
-const assignCoordinator = asyncHandler(async (req, res) => {
-  const { coordinatorId } = req.body;
-
-  if (!coordinatorId) {
-    return res.status(400).json({ error: 'coordinatorId is required.' });
-  }
-
-  const coordinator = await userModel.findById(coordinatorId);
-
-  if (!coordinator || coordinator.role !== 'event_coordinator') {
-    return res.status(400).json({ error: 'coordinatorId must belong to an event_coordinator user.' });
-  }
-
-  const event = await eventModel.assignCoordinator(req.params.id, coordinatorId);
-
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found.' });
-  }
-
-  return res.json({ event });
-});
-
-// POST /api/events/:id/status
-const changeStatus = asyncHandler(async (req, res) => {
-  const { status, notes } = req.body;
-
-  if (!status) {
-    return res.status(400).json({ error: 'status is required.' });
-  }
-
-  const event = await eventModel.updateStatus(req.params.id, status, req.user.id, notes);
-
-  if (!event) {
-    return res.status(404).json({ error: 'Event not found.' });
-  }
-
-  return res.json({ event });
-});
-
-module.exports = {
-  createEvent,
-  listEvents,
-  getEvent,
-  updateEvent,
-  submitEvent,
-  assignCoordinator,
-  changeStatus,
-};
+module.exports = { createEvent, listEvents, getEvent };

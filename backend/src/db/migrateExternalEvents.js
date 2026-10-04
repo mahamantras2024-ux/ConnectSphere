@@ -1,8 +1,10 @@
+// File: Runs the additive event/password-reset SQL migration on one PostgreSQL connection.
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
 
+// Applies the additive migration on one connection, rolls back errors, and releases the connection.
 async function migrate() {
   const client = await pool.connect();
   try {
@@ -14,6 +16,11 @@ async function migrate() {
   } finally { client.release(); }
 }
 if (require.main === module) {
-  migrate().catch((error) => { console.error(error.message); process.exitCode = 1; }).finally(() => pool.end());
+  migrate().catch((error) => {
+    // Reports an operation failure and sets a failing exit status when appropriate.
+     console.error(error.message); process.exitCode = 1; }).finally(() => // Closes the PostgreSQL pool after the CLI operation settles.
+
+      // Clears the pending state when the operation finishes.
+      pool.end());
 }
 module.exports = { migrate };
