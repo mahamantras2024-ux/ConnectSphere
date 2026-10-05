@@ -1,6 +1,6 @@
 // File: Tests reset-link requests, matching passwords, fragment tokens, expired links, and session logout.
 // Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -93,4 +93,11 @@ it('blocks password submission when the reset token is missing', () => {
   expect(screen.getByRole('heading', { name: 'Reset link invalid' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Update password' })).toBeNull();
   expect(screen.getByRole('link', { name: 'Request new link' }).getAttribute('href')).toBe('/external/forgot-password');
+});
+
+// Test case: Submits recovery twice before the API resolves and checks one request; the resolved generic message is handled by the existing recovery test.
+it('Password recovery AC1 - pending reset-link requests cannot submit twice',async()=>{
+  let finish;api.post.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));renderPage('/external/forgot-password');
+  fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'alice@example.test'}});const form=screen.getByRole('button',{name:'Send reset link'}).closest('form');
+  fireEvent.submit(form);fireEvent.submit(form);expect(api.post).toHaveBeenCalledOnce();await act(async()=>finish({message:'Check email'}));
 });

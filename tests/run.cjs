@@ -7,12 +7,12 @@ const options = process.argv.slice(2);
 // Maps Sprint 1 stories and Sprint 2 venue management stories to their regression suites.
 const stories = {
   // Sprint 1:
-  'create-venue': ['createVenue-backend','venueValidation','createVenue','venueStaff','venueInteractions'],
-  'view-venue': ['viewVenue-backend','view-venueDetail','venueInteractions','hourlyRate'],
-  'internal-login': ['login','pulledInternalLogin','sprintOneAccess','workspaceProfiles','workspaceNavigation','sprintOne','sprintOneEdges'],
-  'external-auth': ['login','externalRegistration','ExternalRegister','sprintOneAccess','workspaceNavigation','sprintOne','registrationAndEventForm'],
-  'organiser-events': ['organiserEvents','registrationModels','dashboardDrawers','workspaceNavigation','sprintOneEdges'],
-  'coordinator-events': ['pulledEventCoordinator','sprintOneAccess','dashboardDrawers','workspaceNavigation','sprintOneEdges'],
+  'create-venue': ['createVenue-backend','venueValidation','createVenue','venueInteractions'],
+  'view-venue': ['viewVenue-backend','venueInteractions','hourlyRate'],
+  'internal-login': ['login','sharedApiRegressions','sharedUiRegressions'],
+  'external-auth': ['login','externalRegistration','ExternalRegister','PasswordReset','externalPasswordReset','sharedApiRegressions','sharedUiRegressions'],
+  'organiser-events': ['organiserEvents','registrationModels','sharedUiRegressions'],
+  'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
   'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
   'delete-venue': ['venueManagement','venueInteractions']
@@ -41,8 +41,8 @@ function run(label, args, directory, env = {}) {
 }
 if (backend) {
   const files = readdirSync(path.join(__dirname, 'backend')).filter(name => name.endsWith('.test.js')).sort()
-    .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'sprintOneAcceptancePostgres.test.js'))
-    .filter(name => !integration || coverage || ['login.test.js','postgresEvents.test.js','sprintOnePostgres.test.js','venueManagementPostgres.test.js','sprintOneAcceptancePostgres.test.js'].includes(name))
+    .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'databaseAcceptance.test.js'))
+    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js'].includes(name))
     .map(name => path.join(__dirname, 'backend', name));
   const args = ['--test', ...(storyPattern ? [`--test-name-pattern=${storyPattern}`] : []), ...files];
   run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', NODE_ENV: 'test' });

@@ -171,13 +171,11 @@ test('attendees cannot create organiser requests', async () => {
       { rows: [user] }));
   assert.equal((await request('/api/events', { user, method: 'POST', body: submission })).status, 403);
 });
-// Test case: Attempts staff login through the external audience and checks no session is returned.
-test('external login rejects staff without returning a session', async () => {
 
-  mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 
-      // Handles this operation using the surrounding screen or request state.
-      { rows: [{ ...organiser, role: 'venue_staff' }] }));
-  const result = await request('/api/auth/login', { user: null, method: 'POST', body: { audience: 'external', email: organiser.email, password: 'password123' } });
-  assert.equal(result.status, 401); assert.equal(result.body.token, undefined);
+// Test case: Returns no assigned record for a coordinator lookup and checks a scoped query plus a 404 with no event data.
+test('Coordinator AC3 - missing or unassigned event details are unavailable',async()=>{
+  const user={...organiser,id:30,role:'event_coordinator'};
+  mock.method(pool,'query',async(sql,values)=>{if(sql.includes('FROM users WHERE'))return {rows:[user]};assert.match(sql,/AND e\.coordinator_id = \$2/);assert.deepEqual(values,['999',30]);return {rows:[]};});
+  assert.deepEqual(await request('/api/events/999',{user}),{status:404,body:{message:'Event not found.'}});
 });

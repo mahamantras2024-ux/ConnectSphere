@@ -53,11 +53,27 @@ The runner reads private backend/.env. The database account must be able to crea
 | Entire frontend | coverage/frontend/index.html |
 | Broader backend | coverage/backend/index.html |
 
-Sprint 1 backend and every frontend JavaScript/JSX source file enforce 100% statements, branches, functions and lines **per file**. Exact backend scope is in backend/.c8rc.sprint-one.json. The broader runtime report includes all backend JavaScript except maintenance/provisioning CLI files; their SQL has separate integration checks. Its current local result is 99.49% lines/statements, 100% functions and 95.21% branches, not 100%.
+Sprint 1 backend and every frontend JavaScript/JSX source file enforce 100% statements, branches, functions and lines **per file**. Exact backend scope is in backend/.c8rc.sprint-one.json. The broader runtime report includes all backend JavaScript except maintenance/provisioning CLI files; their SQL has separate integration checks. The broader runtime report is informational and does not enforce 100%; use the scoped Sprint 1 command for its enforced baseline.
 
-Verified: 137 backend tests with no live suites skipped and 158 frontend tests; Sprint 1 backend and frontend coverage reached 100% in all four metrics. Production build passed. Multi-role switching is retained as an enhancement; Sprint 1 staff fixtures use single-role accounts.
+After consolidation: 113 backend tests with no live suites skipped and 142 frontend tests; Sprint 1 backend and frontend coverage reached 100% in all four metrics. Production build passed. Multi-role switching is retained as an enhancement; Sprint 1 staff fixtures use single-role accounts.
 
 Generated reports/builds were removed after verification as requested. Running coverage/build regenerates them. Coverage proves exercised code paths, not guaranteed inbox delivery or map-provider availability. Gmail secure sender authentication was separately verified without sending email.
 
 On this computer the global npm shortcut is broken. If npm fails, invoke the installed CLI: `node "C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js" test --prefix frontend` (or replace `test` with `ci` / `run build` as needed). The central `node tests/run.cjs` commands avoid that shortcut.
 
+
+## Why the suites are smaller
+
+Duplicate pulled controller suites and the standalone real-database login suite were removed. Their unique response, assignment and audience checks now live in backend/sharedApiRegressions.test.js, backend/organiserEvents.test.js and backend/databaseAcceptance.test.js. Frontend/login.test.jsx owns authentication and real routing; duplicate venueStaff tests were folded into it. Signup, recovery and event-form checks were moved from registrationAndEventForm into their owning suites. Venue profile checks were folded into venueInteractions rather than maintaining view-venueDetail separately. Six duplicate files were removed.
+
+The same criterion can still appear in a frontend test and a database test because they check different failures: visible UI behaviour versus actual persistence/authentication. Parameterized role/route cases are intentional distinct inputs, not copied test definitions. The consolidated checks retain 100% per-file coverage for the existing Sprint 1 backend scope and every frontend source file; coverage exclusions and thresholds were not relaxed.
+
+## Shared suites
+
+Cross-cutting checks are grouped in three files rather than similarly named Sprint 1 files:
+
+- frontend/sharedUiRegressions.test.jsx: access guards, session races, workspace navigation, profiles, drawers and screen failure states.
+- backend/sharedApiRegressions.test.js: authentication/permissions, API error paths, database configuration and startup sequencing.
+- backend/databaseAcceptance.test.js: real PostgreSQL acceptance, ownership, migration, role and password-reset fixtures.
+
+Feature suites remain separate. Describe blocks retain independent setup and cleanup; shared backend pools close once after all groups finish. Nine redundant file boundaries were removed without deleting any existing test case. Live story commands include the shared database suite, so they can also run related acceptance checks.

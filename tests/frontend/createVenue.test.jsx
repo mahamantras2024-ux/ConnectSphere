@@ -157,6 +157,7 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
       // Handles this operation using the surrounding screen or request state.
       expect(api.post).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('heading', { name: 'SMU Connexion' })).toBeTruthy();
+    expect(api.post.mock.lastCall[2]).toBe('provisioned-token');
   });
 
   // RETURN BRANCH 5: API Error / Catch Exit
