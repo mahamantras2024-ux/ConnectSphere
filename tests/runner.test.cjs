@@ -46,7 +46,7 @@ for (const [story,ac,other] of [['update-venue','SCRUM-35','SCRUM-36'],['delete-
 test('Sprint 1 runner AC3 - preserves existing story selection and shared live acceptance checks',()=>{
   const calls=commands(['story','create-venue','all']);
   assert.ok(calls[0].args.some(arg=>arg.endsWith('createVenue-backend.test.js')));
-  assert.ok(calls[0].args.some(arg=>arg.endsWith('sprintOneAcceptancePostgres.test.js')));
+  assert.ok(calls[0].args.some(arg=>arg.endsWith('databaseAcceptance.test.js')));
   assert.ok(!calls[0].args.some(arg=>arg.startsWith('--test-name-pattern')));
   assert.ok(calls[1].args.some(arg=>arg.endsWith('createVenue.test.jsx')));
 });
@@ -54,7 +54,7 @@ test('Sprint 1 runner AC3 - preserves existing story selection and shared live a
 // Test case: Ensures consolidated stories select the retained suites and never refer to removed duplicate files.
 test('Internal AC2-5 / External AC5 / Coordinator AC2 - runner selects consolidated authentication and event suites',()=>{
   const internal=commands(['story','internal-login']);
-  assert.ok(internal[0].args.some(arg=>arg.endsWith('sprintOneAccess.test.js')));
+  assert.ok(internal[0].args.some(arg=>arg.endsWith('sharedApiRegressions.test.js')));
   assert.ok(internal[1].args.some(arg=>arg.endsWith('login.test.jsx')));
   const external=commands(['story','external-auth']);
   assert.ok(external[1].args.some(arg=>arg.endsWith('PasswordReset.test.jsx')));
@@ -64,4 +64,15 @@ test('Internal AC2-5 / External AC5 / Coordinator AC2 - runner selects consolida
   for(const call of [...internal,...external,...coordinator,...all]) {
     assert.ok(!call.args.some(arg=>/pulledInternalLogin|pulledEventCoordinator|venueStaff\.test|registrationAndEventForm|backend[\\/]login\.test/.test(arg)));
   }
+});
+
+// Test case: Checks shared suite consolidation retains live selection and removes every superseded shared-suite filename.
+test('Shared regression consolidation AC1 - story and integration commands use the three retained shared suites',()=>{
+ const internal=commands(['story','internal-login']);
+ assert.ok(internal[1].args.some(arg=>arg.endsWith('sharedUiRegressions.test.jsx')));
+ const integration=commands(['integration']);
+ assert.ok(integration[0].args.some(arg=>arg.endsWith('databaseAcceptance.test.js')));
+ for(const call of [...internal,...integration,...commands(['all'])]) {
+  assert.ok(!call.args.some(arg=>/sprintOne(?:Access|FailurePaths|AcceptancePostgres|Postgres|Edges)?\.test|workspace(?:Profiles|Navigation)\.test|dashboardDrawers\.test|postgresEvents\.test|(?:startup|databaseConfig)\.test/.test(arg)));
+ }
 });
