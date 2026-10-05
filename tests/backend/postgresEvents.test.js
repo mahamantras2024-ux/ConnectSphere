@@ -1,4 +1,5 @@
 // File: Runs opt-in real PostgreSQL event/migration/reset integration checks inside an isolated temporary schema.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 // Opt-in integration test: all records live in a random temporary schema.
 require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
@@ -10,8 +11,8 @@ const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 const { provisionAccount } = require('../../backend/src/db/provisionAccount');
 
+// Test case: Exercises organiser ownership, repeatable migrations and password reset using an isolated real PostgreSQL schema.
 test('PostgreSQL event ownership, additive migration and password reset', { skip: process.env.RUN_DB_TESTS !== '1' }, async (t) => {
-  // Verifies: PostgreSQL event ownership, additive migration and password reset.
 
   const schema = `cs_event_test_${crypto.randomBytes(8).toString('hex')}`;
   const client = await pool.connect();
@@ -44,6 +45,7 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       // Runs credentials for this module.
       { email: `${name}@example.test`, password: 'password123', fullName: name, role: 'event_organiser', organisationName: 'Same organisation label' });
     let aliceToken, bobToken, eventId;
+    // Test case: Provisions two organisers with actual password hashes and checks successful external login.
     await t.test('provision and log in two external organisers in the real database', async () => {
       // Verifies private onboarding and login of real isolated PostgreSQL accounts.
 
@@ -55,8 +57,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       bobToken = (await request('/api/auth/login', { method: 'POST', body: { ...credentials('bob'), audience: 'external' } })).body.token;
       assert.ok(aliceToken); assert.ok(bobToken);
     });
+    // Test case: Saves and reads every submitted field and checks forged owner input cannot replace the session owner.
     await t.test('save and read all submitted fields without changing owner from request input', async () => {
-      // Verifies: save and read all submitted fields without changing owner from request input.
 
       const created = await request('/api/events', { method: 'POST', token: aliceToken, body: { name: 'SQL round trip',
         purpose: 'Verify persistence', proposedDate: '2026-10-15', proposedStartTime: '09:00', proposedEndTime: '12:00',
@@ -70,16 +72,16 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       assert.deepEqual(viewed.body.event.accessibility_requirements, ['Hearing loop']); assert.equal(viewed.body.event.organiser_name, 'alice');
       assert.equal(viewed.body.event.registration_required, false); assert.equal(viewed.body.event.expected_attendance, 0);
     });
+    // Test case: Gives organisers the same organisation name and checks this does not grant cross-account event access.
     await t.test('same organisation name does not grant access to another organiser', async () => {
-      // Verifies: same organisation name does not grant access to another organiser.
 
       assert.equal((await request(`/api/events/${eventId}`, { token: bobToken })).status, 404);
       assert.deepEqual((await request('/api/events?organiser_id=1', { token: bobToken })).body.events, []);
       assert.equal((await request(`/api/events/${eventId}`)).status, 401);
       assert.equal((await request('/api/events/999999', { token: aliceToken })).status, 404);
     });
+    // Test case: Runs the migration again after saving an event and checks stored content survives.
     await t.test('migration is repeatable and preserves saved event content', async () => {
-      // Verifies: migration is repeatable and preserves saved event content.
 
       await client.query(migration);
       assert.equal((await request(`/api/events/${eventId}`, { token: aliceToken })).body.event.special_arrangements, 'Vegetarian lunch');
@@ -92,16 +94,16 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
     mock.method(emailService, 'sendPasswordReset', async (_to, token) => {
       // Supplies controlled sendPasswordReset behavior for this regression case, including its expected result or failure.
        rawToken = token; });
+    // Test case: Creates an expired reset token in PostgreSQL and checks password change is denied.
     await t.test('expired reset links fail in PostgreSQL', async () => {
-      // Verifies: expired reset links fail in PostgreSQL.
 
       await request('/api/auth/forgot-password', { method: 'POST', body: { email: 'alice@example.test' } });
       assert.ok(rawToken);
       await client.query("UPDATE users SET password_reset_expires_at = now() - interval '1 second' WHERE id = 1");
       assert.equal((await request('/api/auth/reset-password', { method: 'POST', body: { token: rawToken, password: 'changed-password123' } })).status, 400);
     });
+    // Test case: Sends simultaneous resets with one token and checks single-use consumption and invalidation of old sessions.
     await t.test('reset token is single-use under simultaneous requests and invalidates old sessions', async () => {
-      // Verifies: reset token is single-use under simultaneous requests and invalidates old sessions.
 
       await request('/api/auth/forgot-password', { method: 'POST', body: { email: 'alice@example.test' } });
       const results = await Promise.all([1, 2].map(() => // Starts each reset request to check simultaneous token consumption.

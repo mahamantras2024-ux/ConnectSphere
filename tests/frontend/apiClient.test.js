@@ -1,14 +1,18 @@
 // File: Tests actual HTTP serialization, bearer authentication and error handling used by Sprint 1 screens.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { afterEach, expect, it, vi } from 'vitest';
 import { api, API_BASE_URL } from '../../frontend/src/api/client';
 afterEach(() => {vi.unstubAllGlobals();vi.unstubAllEnvs();});
+// Test case: Imports the HTTP client with an API URL override and checks it uses that value.
 it('uses an explicitly configured API URL',async()=>{
  vi.stubEnv('VITE_API_URL','https://api.example.test/api');vi.resetModules();
  const configured=await import('../../frontend/src/api/client');expect(configured.API_BASE_URL).toBe('https://api.example.test/api');
 });
+// Test case: Imports the client with an empty setting and checks the local backend URL fallback.
 it('uses the local API default when no URL is configured',async()=>{
  vi.stubEnv('VITE_API_URL','');vi.resetModules();const configured=await import('../../frontend/src/api/client');expect(configured.API_BASE_URL).toBe('http://localhost:4000/api');
 });
+// Test case: Calls GET/POST/PUT/DELETE through simulated fetch and checks method, bearer token, base URL and serialized payloads.
 it('sends GET, POST, PUT and DELETE with the correct method, payload and session', async () => {
   const fetcher = vi.fn().mockResolvedValue({ ok: true, headers: new Headers({ 'content-type':'application/json' }), json: async () => ({ saved: true }) });
   vi.stubGlobal('fetch', fetcher);
@@ -21,12 +25,14 @@ it('sends GET, POST, PUT and DELETE with the correct method, payload and session
   expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ role:'attendee' });
   expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({ capacity:90 });
 });
+// Test case: Returns successful plain text without content-type and checks text handling without invented JSON or absent credentials/body.
 it('handles successful text and missing content-type responses without inventing JSON', async () => {
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ ok:true, headers:new Headers(), text:async () => 'healthy' }));
   expect(await api.get('/health')).toBe('healthy');
   expect(fetch.mock.lastCall[1].headers.Authorization).toBeUndefined();
   expect(fetch.mock.lastCall[1].body).toBeUndefined();
 });
+// Test case: Returns JSON/null/text errors and checks preserved status/details and safe missing-message fallback.
 it('preserves server status, message and booking details and handles empty/text errors safely', async () => {
   for (const [data, message] of [[{message:'Record unavailable',code:'BOOKING_IMPACT'},'Record unavailable'],[null,'Something went wrong. Please try again.'],['Unavailable','Something went wrong. Please try again.']]) {
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ ok:false,status:503,headers:new Headers({'content-type':typeof data==='string'?'text/plain':'application/json'}),json:async () => data,text:async () => data }));

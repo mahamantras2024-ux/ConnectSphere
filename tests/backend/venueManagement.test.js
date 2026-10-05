@@ -1,3 +1,5 @@
+// Sprint 2: SCRUM-35 Update Venue Record and SCRUM-36 Delete Venue Record; AC tags select relevant cases independently.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 // File: Exercises venue update confirmation, permission checks, deactivation blocking and automatic MRT through HTTP.
 require('../../backend/node_modules/dotenv').config();
 const {test,before,after,beforeEach,afterEach,mock}=require('node:test');
@@ -32,36 +34,43 @@ beforeEach(()=> { // Resets venue, booking and transaction fixtures between case
 });
 afterEach(()=>mock.restoreAll()); // Restores pool methods after every test.
 after(async()=> {await new Promise(resolve=>server.close(resolve));await pool.end();}); // Stops the server and database pool.
-test('non-impacting edits save immediately and reject stale venue revisions',async()=> {
+// Test case: Changes a name without booking impact and checks immediate saving; an old revision must then be rejected without a write.
+test('[SCRUM-35 AC1] - non-impacting edits save immediately and reject stale venue revisions',async()=> {
  let response=await request('PUT',{...payload,name:'New name'});assert.equal(response.status,200);assert.equal(writes.length,1);
  writes=[];venue.revision=2;response=await request('PUT');assert.equal(response.body.code,'STALE_VENUE');assert.equal(writes.length,0);
 });
-test('capacity impact lists bookings before any write and requires a valid exact-change confirmation',async()=> {
+// Test case: Reduces capacity from 100 to 50 with a proxy booking for 80 guests; checks warning, no initial write, invalid altered confirmation and exact-change saving.
+test('[SCRUM-35 AC2] - capacity impact lists bookings before any write and requires a valid exact-change confirmation',async()=> {
  const change={...payload,capacity:50};const warning=await request('PUT',change);
  assert.equal(warning.status,409);assert.equal(warning.body.code,'BOOKING_IMPACT');assert.equal(writes.length,0);assert.match(warning.body.affectedBookings[0].reasons[0],/80 expected guests/);
  const tampered=await request('PUT',{...change,confirmationToken:warning.body.confirmationToken,capacity:40});assert.equal(tampered.status,409);assert.equal(writes.length,0);
  const confirmed=await request('PUT',{...change,confirmationToken:warning.body.confirmationToken});assert.equal(confirmed.status,200);assert.equal(writes.length,1);
 });
-test('a newly confirmed booking invalidates a previous impact acknowledgement',async()=> {
+// Test case: Adds a proxy confirmed booking after a warning and checks the old acknowledgement is rejected with an updated list.
+test('[SCRUM-35 AC2] - a newly confirmed booking invalidates a previous impact acknowledgement',async()=> {
  const change={...payload,facilities:['Wi-Fi']};const warning=await request('PUT',change);
  bookings.push({...bookings[0],booking_id:11});const response=await request('PUT',{...change,confirmationToken:warning.body.confirmationToken});
  assert.equal(response.status,409);assert.equal(response.body.affectedBookings.length,2);assert.equal(writes.length,0);
 });
-test('deactivation lists confirmed and pending blockers and performs no destructive delete',async()=> {
+// Test case: Uses proxy confirmed/pending bookings to block deactivation, then clears them and checks soft deactivation instead of physical deletion.
+test('[SCRUM-36 AC1/AC2/AC3] - deactivation lists confirmed and pending blockers and performs no destructive delete',async()=> {
  bookings.push({...bookings[0],booking_id:11,status:'pending'});let response=await request('DELETE');
  assert.equal(response.status,409);assert.equal(response.body.affectedBookings.length,2);assert.equal(writes.length,0);
  bookings=[];response=await request('DELETE');assert.equal(response.status,200);assert.match(writes[0].sql,/is_active=false/);assert.doesNotMatch(writes[0].sql,/DELETE FROM/);
 });
-test('venue management rejects missing authentication, other roles, malformed data and missing records',async()=> {
+// Test case: Tries absent credentials, forbidden roles, invalid data and missing records and checks access/validation errors.
+test('[SCRUM-35 AC1; SCRUM-36 AC1] - venue management rejects missing authentication, other roles, malformed data and missing records',async()=> {
  assert.equal((await request('PUT',payload,null)).status,401);role='event_coordinator';assert.equal((await request('DELETE')).status,403);
  role='venue_staff';assert.equal((await request('PUT',{...payload,capacity:0})).status,400);assert.equal((await request('PUT',{...payload,latitude:10})).status,400);
  venue=null;assert.equal((await request('DELETE')).status,404);assert.equal(writes.length,0);
 });
+// Test case: Calculates nearest MRT from coordinates and checks client-provided MRT text cannot override it.
 test('MRT calculations choose a nearby real station and ignore client supplied MRT text',async()=> {
  const station=nearestMrt(1.296978,103.850715);assert.match(station.name,/Bras Basah/);assert.ok(station.distanceM<200);
  const response=await request('PUT',{...payload,mrt:'Invented station'});assert.equal(response.status,200);assert.notEqual(writes[0].values[9],'Invented station');
 });
-test('catalogue streams receive database invalidations without booking or client details',async()=> {
+// Test case: Simulates a database notification and checks the catalogue stream sends invalidation without private client/booking details.
+test('[SCRUM-35 AC1; SCRUM-36 AC1] - catalogue streams receive database invalidations without booking or client details',async()=> {
  const client=new EventEmitter();client.query=async()=>({rows:[]});client.release=()=>{};
  mock.method(pool,'connect',async()=>client);
  const abort=new AbortController();const response=await fetch(base+'/api/venues/stream',{signal:abort.signal});assert.match(response.headers.get('content-type'),/text\/event-stream/);

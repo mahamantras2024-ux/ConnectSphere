@@ -1,3 +1,5 @@
+// Sprint 2: SCRUM-35 Update Venue Record and SCRUM-36 Delete Venue Record; AC tags select relevant cases independently.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 // File: Tests keyless map request boundaries, cache behavior, provider outages and exact booking-impact warnings.
 const {test,mock,afterEach,after}=require('node:test');
 const assert=require('node:assert/strict');
@@ -10,6 +12,7 @@ const app=require('../../backend/src/index');
 afterEach(()=>mock.restoreAll());after(()=>pool.end());
 // Supplies a provider GeoJSON response with both Singapore and outside-region coordinates.
 function providerResponse(){return {ok:true,json:async()=>({features:[{geometry:{coordinates:[103.85,1.296]},properties:{name:'Hall',housenumber:'80',street:'Stamford Road',postcode:'178902',city:'Singapore'}},{geometry:{coordinates:[103.84,1.3]},properties:{name:'Park',country:'Singapore'}},{geometry:{coordinates:[0,0]},properties:{name:'Outside region'}}]})};}
+// Test case: Feeds provider GeoJSON into search and checks address normalization, Singapore filtering, shared requests, cache hits and expiry.
 test('map service normalizes addresses, filters outside Singapore, shares duplicate requests and caches results',async()=>{
  let now=Date.now();mock.method(Date,'now',()=>now+=2000);const fetcher=mock.method(global,'fetch',async()=>providerResponse());
  const params={q:'cache-test'};const [first,second]=await Promise.all([geocode('api',params),geocode('api',params)]);
@@ -18,16 +21,19 @@ test('map service normalizes addresses, filters outside Singapore, shares duplic
  now+=86400001;await geocode('api',params);assert.equal(fetcher.mock.callCount(),2);
  assert.deepEqual(nearestMrt(null,null),{name:null,distanceM:null});
 });
+// Test case: Simulates provider failure then an empty successful result and checks later searches still work.
 test('provider failures do not poison queued requests and an empty provider response is a valid empty search',async()=>{
  mock.method(global,'setTimeout',callback=>{queueMicrotask(callback);return {};});
  mock.method(global,'fetch',async()=>({ok:false}));await assert.rejects(geocode('api',{q:'provider-failure'}),/temporarily unavailable/);
  global.fetch.mock.restore();mock.method(global,'fetch',async()=>({ok:true,json:async()=>({})}));assert.deepEqual(await geocode('reverse',{lat:1.3,lon:103.85}),[]);
 });
+// Test case: Fills the address cache beyond its limit and checks the oldest query is fetched again.
 test('provider cache remains bounded and old entries are evicted',async()=>{
  let now=Date.now();mock.method(Date,'now',()=>now+=2000);const fetcher=mock.method(global,'fetch',async()=>({ok:true,json:async()=>({features:[]})}));
  for(let i=0;i<501;i++)await geocode('api',{q:`bounded-cache-${i}`});
  const count=fetcher.mock.callCount();await geocode('api',{q:'bounded-cache-0'});assert.equal(fetcher.mock.callCount(),count+1);
 });
+// Test case: Calls location endpoints and checks input validation, reverse fallback, provider failures and request throttling.
 test('map endpoints validate queries, tolerate reverse outages and rate-limit excessive requests',async()=>{
  const realFetch=global.fetch;const user={id:8,email:'staff@example.test',role:'venue_staff',auth_version:0};
  mock.method(pool,'query',async()=>({rows:[user]}));mock.method(global,'fetch',async url=>{if(String(url).includes('/reverse?') && String(url).includes('lat=1.296'))throw new Error('Provider offline');return providerResponse();});
@@ -45,7 +51,8 @@ test('map endpoints validate queries, tolerate reverse outages and rate-limit ex
   for(let i=0;i<30;i++)await request('/search?q=x');assert.equal((await request('/search?q=x')).status,429);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
-test('impact warnings distinguish unaffected bookings and each relevant venue change',()=>{
+// Test case: Uses proxy bookings to check impact reasons for changed venue fields, unaffected bookings and exact-change confirmation tokens.
+test('[SCRUM-35 AC2] - impact warnings distinguish unaffected bookings and each relevant venue change',()=>{
  const before={id:7,revision:1,capacity:100,facilities:['Wi-Fi','Projector'],accessibility_features:['Ramp'],supported_layouts:['Theatre','Banquet'],location:'Address',latitude:1.3,longitude:103.85,operating_hours:'08:00 - 18:00',setup_minutes:0,turnaround_minutes:0,availability_status:'Available'};
  const next={capacity:100,facilities:['Wi-Fi','Projector'],accessibilityFeatures:['Ramp'],supportedLayouts:['Theatre','Banquet'],location:'Address',latitude:1.3,longitude:103.85,operatingHours:'08:00 - 18:00',setupMinutes:0,turnaroundMinutes:0,availabilityStatus:'Available'};
  const booking={booking_id:2,status:'approved',expected_attendance:60,room_layout_preference:'Theatre'};

@@ -1,7 +1,9 @@
 // File: Verifies the browser entry point mounts the routed application with authentication and StrictMode.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import {expect,it,vi} from 'vitest';
 const entry=vi.hoisted(()=>({render:vi.fn(),createRoot:vi.fn()}));
 vi.mock('react-dom/client',()=>({default:{createRoot:entry.createRoot}}));
+// Test case: Loads the entry point with a simulated React root and checks render is called with the authentication provider and browser router.
 it('mounts the application in the root element',async()=>{
  const root=document.createElement('div');root.id='root';document.body.append(root);entry.createRoot.mockReturnValue({render:entry.render});
  await import('../../frontend/src/main.jsx');expect(entry.createRoot).toHaveBeenCalledWith(root);expect(entry.render).toHaveBeenCalledOnce();

@@ -1,4 +1,5 @@
 // File: Tests role dashboards, protected navigation, session lifecycle, provisioning guidance, and venue access.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -59,16 +60,16 @@ const dashboards = [
 describe('shared login regression coverage', () => {
   // Groups regression cases for: shared login regression coverage.
 
+  // Test case: Logs in each provisioned role through real routing with simulated responses and checks its dashboard heading.
   it.each(dashboards)('logs in %s and redirects to the correct dashboard', async (role, title) => {
-    // Verifies: logs in %s and redirects to the correct dashboard.
 
     currentUser.role = role; open(); submitLogin();
     expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
     expect(api.post).toHaveBeenCalledWith('/auth/login', { email: 'venue@example.com', password: 'password123', audience: 'internal' });
     expect(localStorage.getItem('cs_token')).toBe('provisioned-token');
   });
+  // Test case: Rejects login and checks the invalid-credentials error without a dashboard.
   it('shows a clear invalid-credentials error without entering a dashboard', async () => {
-    // Verifies: shows a clear invalid-credentials error without entering a dashboard.
 
     api.post.mockRejectedValue(new Error('Invalid email or password.'));
     open(); submitLogin();
@@ -77,8 +78,8 @@ describe('shared login regression coverage', () => {
     expect(localStorage.getItem('cs_token')).toBeNull();
     expect(screen.getByRole('button', { name: 'Login' }).disabled).toBe(false);
   });
+  // Test case: Leaves login unresolved and checks repeated submits do not create extra requests.
   it('prevents duplicate submissions while login is pending', async () => {
-    // Verifies: prevents duplicate submissions while login is pending.
 
     let finish;
     api.post.mockImplementation(() => // Supplies controlled api.post behavior for this regression case, including its expected result or failure.
@@ -100,8 +101,8 @@ describe('shared login regression coverage', () => {
 describe('dashboard and event authorization', () => {
   // Groups regression cases for: dashboard and event authorization.
 
+  // Test case: Opens other dashboard URLs as Venue Staff and checks the permitted venue workspace remains active.
   it.each(['/coordinator/dashboard', '/tech-support/dashboard', '/organizer/dashboard', '/attendee/dashboard', '/events', '/events/1', '/events/999', '/dashboard', '/'])('keeps Venue Staff in their own dashboard when opening %s', async (path) => {
-    // Verifies: keeps Venue Staff in their own dashboard when opening %s.
 
     open(path, true);
     expect(await screen.findByRole('heading', { name: 'Venue Staff Dashboard' })).toBeTruthy();
@@ -113,8 +114,8 @@ describe('dashboard and event authorization', () => {
     expect(screen.queryByRole('link', { name: 'Equipment' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/venue/dashboard');
   });
+  // Test case: Opens Venue Staff URLs as other roles and checks venue dashboard content is denied.
   it.each(dashboards.slice(1))('does not let %s open the Venue Staff dashboard', async (role, title) => {
-    // Verifies: does not let %s open the Venue Staff dashboard.
 
     currentUser.role = role; open('/venue/dashboard', true);
     expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
@@ -124,30 +125,30 @@ describe('dashboard and event authorization', () => {
       // Handles this operation using the surrounding screen or request state.
       endpoint === '/venues')).toBe(false);
   });
+  // Test case: Visits a protected dashboard without a token and checks login redirection.
   it('redirects an unauthenticated direct dashboard visit to login', async () => {
-    // Verifies: redirects an unauthenticated direct dashboard visit to login.
 
     open('/venue/dashboard');
     expect(await screen.findByRole('heading', { name: 'ConnectSphere Login' })).toBeTruthy();
     expect(api.get).not.toHaveBeenCalled();
   });
+  // Test case: Reloads with a valid stored token and checks the provisioned dashboard is restored.
   it('restores a valid provisioned session after refresh', async () => {
-    // Verifies: restores a valid provisioned session after refresh.
 
     open('/venue/dashboard', true);
     expect(await screen.findByRole('heading', { name: 'Venue Staff Dashboard' })).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith('/auth/me', 'provisioned-token');
   });
+  // Test case: Rejects an expired/deleted-account session and checks user/token cleanup.
   it('clears an expired or deleted-account session', async () => {
-    // Verifies: clears an expired or deleted-account session.
 
     api.get.mockRejectedValue(new Error('Unauthorized: Invalid token.'));
     open('/venue/dashboard', true);
     expect(await screen.findByRole('heading', { name: 'ConnectSphere Login' })).toBeTruthy();
     expect(localStorage.getItem('cs_token')).toBeNull();
   });
+  // Test case: Fails identity validation immediately after login and checks authenticated user state is cleared.
   it('clears the user when session validation fails immediately after login', async () => {
-    // Verifies: clears the user when session validation fails immediately after login.
 
     api.get.mockRejectedValue(new Error('User no longer exists.'));
     open(); submitLogin();
@@ -162,8 +163,8 @@ describe('dashboard and event authorization', () => {
     expect(await screen.findByRole('heading', { name: 'ConnectSphere Login' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Venue Staff Dashboard' })).toBeNull();
   });
+  // Test case: Logs out and checks token removal and return to login.
   it('logout removes the token and returns to login', async () => {
-    // Verifies: logout removes the token and returns to login.
 
     open('/venue/dashboard', true);
     await screen.findByRole('heading', { name: 'Venue Staff Dashboard' });
@@ -171,8 +172,8 @@ describe('dashboard and event authorization', () => {
     expect(await screen.findByRole('heading', { name: 'ConnectSphere Login' })).toBeTruthy();
     expect(localStorage.getItem('cs_token')).toBeNull();
   });
+  // Test case: Logs out before identity retrieval resolves and checks late data cannot restore the old user.
   it('does not restore an old user when a pending session request finishes after logout', async () => {
-    // Verifies: does not restore an old user when a pending session request finishes after logout.
 
     let finish;
     api.get.mockImplementation(() => // Supplies controlled api.get behavior for this regression case, including its expected result or failure.
@@ -195,8 +196,8 @@ describe('dashboard and event authorization', () => {
       finish({ user: currentUser }));
     expect(screen.getByText('Signed out')).toBeTruthy(); expect(localStorage.getItem('cs_token')).toBeNull();
   });
+  // Test case: Passes inherited object-key role names to routing and checks they never become dashboard destinations.
   it('never treats inherited object keys as dashboard routes', () => {
-    // Verifies: never treats inherited object keys as dashboard routes.
 
     expect(getDashboardRoute('__proto__')).toBe('/dashboard');
     expect(getDashboardRoute('constructor')).toBe('/dashboard');
@@ -206,8 +207,8 @@ describe('dashboard and event authorization', () => {
 describe('provisioning and permitted venue functionality', () => {
   // Groups regression cases for: provisioning and permitted venue functionality.
 
+  // Test case: Opens staff login and checks there is no self-registration or role-selector control.
   it('offers no self-registration form or role selector', async () => {
-    // Verifies: offers no self-registration form or role selector.
 
     open('/register');
     expect(await screen.findByRole('heading', { name: 'Account access' })).toBeTruthy();
@@ -216,8 +217,8 @@ describe('provisioning and permitted venue functionality', () => {
     expect(screen.queryByRole('button', { name: /create account/i })).toBeNull();
     expect(api.post).not.toHaveBeenCalled();
   });
+  // Test case: Returns stored venues and opens a profile, checking catalogue data and the detail drawer.
   it('displays the existing catalogue and opens the existing venue detail modal', async () => {
-    // Verifies: displays the existing catalogue and opens the existing venue detail modal.
 
     api.get.mockImplementation(async (path) => // Supplies controlled api.get behavior for this regression case, including its expected result or failure.
 
@@ -229,8 +230,8 @@ describe('provisioning and permitted venue functionality', () => {
     expect(screen.getByText('Venue Details')).toBeTruthy();
     expect(screen.getAllByRole('heading', { name: 'Marina Hall' }).length).toBe(2);
   });
+  // Test case: Creates a venue while authenticated and checks the API request includes the current session token.
   it('sends the current token when creating a venue', async () => {
-    // Verifies: sends the current token when creating a venue.
 
     api.post.mockResolvedValue({ venue: { id: 2, name: 'New Hall' } });
     open('/venue/dashboard', true);

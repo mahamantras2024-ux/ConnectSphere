@@ -1,4 +1,5 @@
 // File: Tests the shared login form, role destinations, pending/error states, and external audience.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +51,7 @@ afterEach(() => {
 describe('Login', () => {
   // Groups regression cases for: Login.
 
+  // Test case: Submits valid credentials for each role and checks navigation to its dashboard route.
   it.each([
     ['event_organiser', '/organizer/dashboard'],
     ['event_coordinator', '/coordinator/dashboard'],
@@ -59,7 +61,6 @@ describe('Login', () => {
     ['event_coordinator_lead', '/coordinator-lead/dashboard'],
     ['safety_officer', '/safety/dashboard'],
   ])('submits credentials and routes %s to the correct dashboard', async (role, route) => {
-    // Verifies: submits credentials and routes %s to the correct dashboard.
 
     login.mockResolvedValue({ role });
     renderLogin();
@@ -75,8 +76,8 @@ describe('Login', () => {
     expect(navigate).toHaveBeenCalledWith(route, { replace: true });
   });
 
+  // Test case: Leaves login pending and checks loading feedback and disabled submission.
   it('shows a loading state and disables submission while login is pending', async () => {
-    // Verifies: shows a loading state and disables submission while login is pending.
 
     let resolveLogin;
     login.mockReturnValue(new Promise((resolve) => {
@@ -96,8 +97,8 @@ describe('Login', () => {
       expect(navigate).toHaveBeenCalledWith('/attendee/dashboard', { replace: true }));
   });
 
+  // Test case: Fails login with an error message and checks it is displayed and the form becomes usable.
   it('displays the login error and re-enables the form when login fails', async () => {
-    // Verifies: displays the login error and re-enables the form when login fails.
 
     login.mockRejectedValue(new Error('Account is locked.'));
     renderLogin();
@@ -111,8 +112,8 @@ describe('Login', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  // Test case: Fails login without a message and checks the readable fallback.
   it('uses the fallback message when the login error has no message', async () => {
-    // Verifies: uses the fallback message when the login error has no message.
 
     login.mockRejectedValue({});
     renderLogin();
@@ -124,8 +125,8 @@ describe('Login', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Invalid email or password. Please try again.');
   });
 
+  // Test case: Opens external sign-in and checks content and external-audience payload.
   it('renders external sign-in content and sends the external audience', async () => {
-    // Verifies: renders external sign-in content and sends the external audience.
 
     login.mockResolvedValue({ role: 'event_organiser' });
     renderLogin({ external: true });
@@ -144,8 +145,8 @@ describe('Login', () => {
       expect(login).toHaveBeenCalledWith('organiser@example.com', 'secret123', 'external'));
   });
 
+  // Test case: Omits email/password and checks incomplete credentials cannot submit.
   it('requires both email and password before submission', () => {
-    // Verifies: requires both email and password before submission.
 
     renderLogin();
 

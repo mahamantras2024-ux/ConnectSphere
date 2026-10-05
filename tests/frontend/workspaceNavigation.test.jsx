@@ -1,4 +1,5 @@
 // File: Tests that each role has one canonical workspace tab instead of duplicate dashboard/data links.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {afterEach, expect, it, vi} from 'vitest';
@@ -7,6 +8,7 @@ import {AuthProvider} from '../../frontend/src/context/AuthContext';
 import {api} from '../../frontend/src/api/client';
 vi.mock('../../frontend/src/api/client',()=>({api:{get:vi.fn(),post:vi.fn()}}));
 afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks();});
+// Test case: Checks organiser/coordinator/attendee each have one active named tab and clicking it returns to the correct dashboard.
 it.each([
   ['event_organiser','/organizer/dashboard','My Events','Event Organiser Dashboard'],
   ['event_coordinator','/coordinator/dashboard','Assigned Events','Event Coordinator Dashboard'],

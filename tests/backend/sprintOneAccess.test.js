@@ -1,4 +1,5 @@
 // File: Verifies Sprint 1 credential errors, provisioned role switching, revoked access, and personal registrations.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('../../backend/node_modules/bcryptjs');
@@ -29,6 +30,7 @@ async function request(path, body, token) {
 }
 // Signs a session using one provisioned active role and the current revocation version.
 function token(role = 'venue_staff', authVersion = 2) { return jwt.sign({ sub: 81, email: account.email, activeRole: role, authVersion }, process.env.JWT_SECRET); }
+// Test case: Logs in with different audiences/grants and checks the selected role belongs to the account and requested audience.
 test('login verifies credentials and selects a provisioned role in the requested audience', async () => {
   // Verifies staff/external separation for a multi-role account and avoids credential disclosure.
   mock.method(pool, 'query', async () => (
@@ -44,6 +46,7 @@ test('login verifies credentials and selects a provisioned role in the requested
   assert.equal((await request('/api/auth/login', { email: '', password: 'password123' })).status, 400);
   assert.equal((await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'admin' })).status, 400);
 });
+// Test case: Tries bad credentials, database failure and absent audience grants and checks clear error responses.
 test('invalid credentials, unavailable database, and accounts without audience roles produce clear errors', async () => {
   // Exercises missing-account, wrong-audience, and persistence failure responses.
   mock.method(pool, 'query', async () => (
@@ -61,6 +64,7 @@ test('invalid credentials, unavailable database, and accounts without audience r
        throw new Error('Unavailable'); });
   assert.equal((await request('/api/auth/login', { email: account.email, password: 'password123' })).status, 500);
 });
+// Test case: Tries an unassigned role switch then restores a valid switched session and checks its active role is retained.
 test('role switching cannot grant an unprovisioned role and session restoration retains the selected role', async () => {
   // Checks database-backed switching and confirms client claims cannot grant additional access.
   mock.method(pool, 'query', async () => (
@@ -74,6 +78,7 @@ test('role switching cannot grant an unprovisioned role and session restoration 
   assert.equal((await request('/api/auth/switch-role', { role: '__proto__' }, token())).status, 403);
   assert.equal((await request('/api/auth/switch-role', { role: 'attendee' })).status, 401);
 });
+// Test case: Presents revoked roles, deleted accounts, malformed JWTs and obsolete session versions and checks API access is denied.
 test('revoked roles, deleted accounts, malformed JWTs, and old session versions cannot access protected APIs', async () => {
   // Validates that authorisation uses current account state rather than stale JWT grants.
   mock.method(pool, 'query', async () => (
@@ -87,6 +92,7 @@ test('revoked roles, deleted accounts, malformed JWTs, and old session versions 
       { rows: [] }));
   assert.equal((await request('/api/events', null, token())).status, 401);
 });
+// Test case: Lists attendee registrations with forged identity input and checks owner scoping and unavailable write endpoints.
 test('attendee summaries query only the session owner and do not enable registration writes', async () => {
   // Ensures caller-supplied attendee IDs cannot expose another person's registrations.
   mock.method(pool, 'query', async (sql, values) => {

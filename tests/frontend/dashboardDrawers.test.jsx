@@ -1,4 +1,5 @@
 // File: Tests record drawers against the requested dashboard navigation and Sprint 1 privacy criteria.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -19,6 +20,7 @@ afterEach(cleanup);
 // Opens the complete application so history, protection and accessible dialogs stay real.
 function open(path) { render(<MemoryRouter initialEntries={[path]}><AuthProvider><App /></AuthProvider></MemoryRouter>); }
 
+// Test case: Opens organiser/coordinator event drawers and checks closing returns to the originating dashboard list.
 it.each([
   ['event_organiser', '/organizer/dashboard', 'Event Organiser Dashboard'],
   ['event_coordinator', '/coordinator/dashboard', 'Event Coordinator Dashboard'],
@@ -36,6 +38,7 @@ it.each([
   await waitFor(() => expect(document.activeElement).toBe(trigger));
   expect(document.body.style.overflow).not.toBe('hidden');
 });
+// Test case: Opens organiser details and checks Escape and Back dismiss the drawer without leaving its list.
 it('UI1 / Organiser AC1 - Escape and Back dismiss event details without leaving the event list', async () => {
   open('/organizer/events');
   fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
@@ -45,6 +48,7 @@ it('UI1 / Organiser AC1 - Escape and Back dismiss event details without leaving 
   fireEvent.click(await screen.findByRole('button', { name: 'Back to list' }));
   expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
 });
+// Test case: Fails detail retrieval and checks no private data appears and Close still works.
 it('UI1 / Organiser AC4 - failed details retain a working close control and reveal no record', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user };
@@ -58,6 +62,7 @@ it('UI1 / Organiser AC4 - failed details retain a working close control and reve
   fireEvent.click(within(drawer).getByRole('button', { name: 'Close dialog' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
+// Test case: Opens attendee details from a personal registration and checks no additional event request is made.
 it('UI1 / External AC7-8 - attendee details use only personal registrations and close without another event request', async () => {
   user.role = 'attendee'; open('/attendee/dashboard');
   const trigger = await screen.findByRole('button', { name: 'View registration' }); trigger.focus(); fireEvent.click(trigger);
@@ -69,6 +74,7 @@ it('UI1 / External AC7-8 - attendee details use only personal registrations and 
   fireEvent.click(trigger); fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
   expect(screen.queryByRole('dialog')).toBeNull();
 });
+// Test case: Opens sparse registration data and checks unavailable labels instead of invented details.
 it('UI1 / External AC7 - missing registration data is labelled unavailable rather than fabricated', async () => {
   user.role = 'attendee'; registrations = [{ id: 2, event_id: 20 }]; open('/registrations');
   fireEvent.click(await screen.findByRole('button', { name: 'View registration' }));

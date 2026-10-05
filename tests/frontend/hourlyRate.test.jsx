@@ -1,4 +1,5 @@
 // File: Verifies hourly pricing display, legacy numeric labels and invalid-rate form feedback.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {formatHourlyRate,hourlyRateValue} from '../../frontend/src/pages/venues/hourlyRate';
@@ -8,16 +9,19 @@ vi.mock('../../frontend/src/context/AuthContext',()=>({useAuth:()=>({token:'staf
 vi.mock('../../frontend/src/pages/venues/LocationPicker',()=>({default:()=>null})); // Avoids provider calls in pricing-only tests.
 vi.mock('../../frontend/src/api/client',()=>({api:{post:vi.fn(),put:vi.fn()}})); // Keeps validation tests free of real writes.
 afterEach(cleanup); // Removes dialog portals after each check.
+// Test case: Formats numeric prices and checks missing/descriptive legacy values are distinct from hourly rates.
 it('formats rates consistently and distinguishes missing or descriptive legacy prices',()=> {
  expect(formatHourlyRate('500.00')).toBe('$500/hr');expect(formatHourlyRate('75.50')).toBe('$75.50/hr');expect(formatHourlyRate('0')).toBe('$0/hr');
  expect(formatHourlyRate('S$500')).toBe('$500/hr');expect(formatHourlyRate('$1,200/hr')).toBe('$1,200/hr');
  expect(hourlyRateValue('S$500')).toBe('500');expect(formatHourlyRate('from S$500')).toBe('Hourly rate not set');expect(formatHourlyRate(null)).toBe('Hourly rate not set');
  expect(hourlyRateValue('100000000')).toBe('');expect(hourlyRateValue('9'.repeat(400))).toBe('');
 });
+// Test case: Opens venue details and checks the hourly label and dollars-per-hour suffix.
 it('venue details label the amount as hourly and append the per-hour unit',()=> {
  render(<VenueDetail venue={{name:'Hall',pricing:'75.50'}} onClose={()=>{}}/>);
  expect(screen.getByText('Hourly rate')).toBeTruthy();expect(screen.getByText('$75.50/hr')).toBeTruthy();
 });
+// Test case: Submits negative/over-precise prices and checks validation blocks saving.
 it('negative or over-precise hourly rates cannot be submitted',()=> {
  render(<AddVenueModal onClose={()=>{}}/>);
  const rate=screen.getByPlaceholderText('Hourly rate (e.g. 500)');

@@ -1,4 +1,5 @@
 // File: Tests event ownership, creation validation, role restrictions, and external audience login with mocked queries.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('../../backend/node_modules/jsonwebtoken');
@@ -39,8 +40,8 @@ after(async () => {
       // Handles this operation using the surrounding screen or request state.
       server.close(resolve)); await pool.end(); });
 
+// Test case: Reads an accessible event and checks submitted fields and a query restricted to the authenticated organiser.
 test('authorised organiser detail returns all submitted fields using a scoped SQL query', async () => {
-  // Verifies: authorised organiser detail returns all submitted fields using a scoped SQL query.
 
   mock.method(pool, 'query', async (sql, values) => {
     // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -55,8 +56,8 @@ test('authorised organiser detail returns all submitted fields using a scoped SQ
   const result = await request('/api/events/101');
   assert.equal(result.status, 200); assert.deepEqual(result.body.event, details);
 });
+// Test case: Lists My Events with a forged owner parameter and checks the query still uses the session identity.
 test('My Events filters by authenticated organiser, ignoring supplied owner query parameters', async () => {
-  // Verifies: My Events filters by authenticated organiser, ignoring supplied owner query parameters.
 
   mock.method(pool, 'query', async (sql, values) => {
     // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -69,8 +70,8 @@ test('My Events filters by authenticated organiser, ignoring supplied owner quer
   assert.equal(result.status, 200); assert.deepEqual(result.body.events, [details]);
 });
 for (const id of ['102', '999']) {
+  // Test case: Requests another organiser event or an absent ID and checks neither exposes a record.
   test(`another organiser's event and missing events are unavailable: ${id}`, async () => {
-    // Verifies: another organiser's event and missing events are unavailable: ${id}.
 
     mock.method(pool, 'query', async (sql, values) => {
       // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -83,8 +84,8 @@ for (const id of ['102', '999']) {
   });
 }
 for (const path of ['/api/events', '/api/events/101']) {
+  // Test case: Calls each private event-read endpoint without authentication and checks access denial.
   test(`unauthenticated read is denied: ${path}`, async () => {
-    // Verifies: unauthenticated read is denied: ${path}.
 
     const query = mock.method(pool, 'query', async () => {
       // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -93,8 +94,8 @@ for (const path of ['/api/events', '/api/events/101']) {
   });
 }
 for (const id of ['0', '-1', 'abc', '1.5', '2147483648', '1%20OR%201=1']) {
+  // Test case: Supplies malformed event IDs and checks validation rejects them.
   test(`invalid event ID is rejected: ${id}`, async () => {
-    // Verifies: invalid event ID is rejected: ${id}.
 
     const query = mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 
@@ -104,8 +105,8 @@ for (const id of ['0', '-1', 'abc', '1.5', '2147483648', '1%20OR%201=1']) {
   });
 }
 for (const role of ['attendee', 'venue_staff', 'technical_support']) {
+  // Test case: Tries each unsupported role against organiser details and checks the role guard denies access.
   test(`${role} cannot read organiser event details`, async () => {
-    // Verifies: ${role} cannot read organiser event details.
 
     const user = { ...organiser, role };
     const query = mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -115,8 +116,8 @@ for (const role of ['attendee', 'venue_staff', 'technical_support']) {
     assert.equal((await request('/api/events/101', { user })).status, 403); assert.equal(query.mock.callCount(), 1);
   });
 }
+// Test case: Reads an assigned event as coordinator and checks its complete submitted fields.
 test('coordinator retains access to assigned events with the same response fields', async () => {
-  // Verifies: coordinator retains access to assigned events with the same response fields.
 
   const user = { ...organiser, id: 30, role: 'event_coordinator' };
   mock.method(pool, 'query', async (sql, values) => {
@@ -131,8 +132,8 @@ const submission = { name: 'Workshop', purpose: details.purpose, proposedDate: '
   expectedAttendance: 0, programmeDetails: details.programme_details, roomLayoutPreference: 'classroom', accessibilityRequirements: details.accessibility_requirements,
   equipmentNotes: details.equipment_notes, registrationRequired: false, registrationCapacity: 0, specialArrangements: details.special_arrangements, isDraft: false };
 for (const isDraft of [true, false]) {
+  // Test case: Creates draft and submitted requests and checks fields, server-assigned ownership and their appropriate states.
   test(`creation saves fields and server-assigned owner (draft: ${isDraft})`, async () => {
-    // Verifies: creation saves fields and server-assigned owner (draft: ${isDraft}).
 
     mock.method(pool, 'query', async (sql, values) => {
       // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -149,8 +150,8 @@ for (const isDraft of [true, false]) {
   });
 }
 for (const invalid of [{ name: '' }, { programmeDetails: {} }, { specialArrangements: 'x'.repeat(10001) }, { expectedAttendance: -1 }, { proposedDate: '2026-02-30' }, { proposedStartTime: '26:00' }, { accessibilityRequirements: [{}] }, { registrationRequired: 'false' }]) {
+  // Test case: Tries each invalid event payload and checks rejection without an insert.
   test(`invalid submission ${Object.keys(invalid)[0]} is rejected without an insert`, async () => {
-    // Verifies: invalid submission ${Object.keys(invalid)[0]} is rejected without an insert.
 
     const query = mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 
@@ -160,8 +161,8 @@ for (const invalid of [{ name: '' }, { programmeDetails: {} }, { specialArrangem
     assert.equal(query.mock.callCount(), 1);
   });
 }
+// Test case: Attempts organiser event creation as attendee and checks it is forbidden.
 test('attendees cannot create organiser requests', async () => {
-  // Verifies: attendees cannot create organiser requests.
 
   const user = { ...organiser, role: 'attendee' };
   mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -170,8 +171,8 @@ test('attendees cannot create organiser requests', async () => {
       { rows: [user] }));
   assert.equal((await request('/api/events', { user, method: 'POST', body: submission })).status, 403);
 });
+// Test case: Attempts staff login through the external audience and checks no session is returned.
 test('external login rejects staff without returning a session', async () => {
-  // Verifies: external login rejects staff without returning a session.
 
   mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 

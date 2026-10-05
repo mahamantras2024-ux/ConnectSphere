@@ -1,4 +1,5 @@
 // File: Tests real staff account information instead of future-workflow placeholder panels.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import {cleanup, render, screen} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
@@ -16,6 +17,7 @@ beforeEach(()=>{
 afterEach(cleanup);
 // Opens the real protected route and authentication provider.
 function open(path){render(<MemoryRouter initialEntries={[path]}><AuthProvider><App/></AuthProvider></MemoryRouter>);}
+// Test case: Opens each internal profile workspace and checks stored account details without unimplemented task placeholders.
 it.each([
   ['technical_support','/tech-support/dashboard','Technical Support Dashboard'],
   ['event_coordinator_lead','/coordinator-lead/dashboard','Coordinator Lead Dashboard'],
@@ -29,12 +31,14 @@ it.each([
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(['/auth/me']);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
 });
+// Test case: Returns missing profile fields and checks unavailable labels without invented personal data.
 it('Internal AC3 / cleanup AC1 - absent account details are identified without fabricated personal information',async()=>{
   user={id:8,role:'technical_support'};open('/tech-support/dashboard');
   await screen.findByRole('heading',{name:'Account details'});
   expect(screen.getAllByText('Not recorded')).toHaveLength(2);
   expect(screen.getByLabelText('Provisioned workspaces').textContent).toBe('Technical Support');
 });
+// Test case: Returns multiple assigned roles and checks they appear as profile information without additional active-role grants.
 it('Internal AC3 / enhancement role switching - the profile displays assigned roles without granting additional access',async()=>{
   user.roles=['technical_support','venue_staff'];open('/tech-support/dashboard');
   await screen.findByRole('heading',{name:'Account details'});

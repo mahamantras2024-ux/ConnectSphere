@@ -1,4 +1,5 @@
 // File: Tests organiser navigation, event display/creation, ownership errors, and external sign-in destinations.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -37,6 +38,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+// Test case: Opens an assigned event through the coordinator dashboard and checks every submitted requirement in its drawer.
 it('assigned coordinator opens dashboard events and sees every submitted requirement',async()=>{
   // Verifies the coordinator's own navigation and complete record rather than relying on organiser rendering alone.
   user={...user,role:'event_coordinator'};open('/coordinator/dashboard');
@@ -45,14 +47,15 @@ it('assigned coordinator opens dashboard events and sees every submitted require
   for(const value of [event.purpose,'15/10/2026','09:00:00','12:00:00','40',event.programme_details,event.room_layout_preference,'Wheelchair access, Hearing loop',event.equipment_notes,'Yes','35',event.special_arrangements])expect(screen.getAllByText(value).length).toBeGreaterThan(0);
   expect(screen.getByRole('dialog', {name:'Event details'})).toBeTruthy();expect(api.get).toHaveBeenCalledWith('/events/101','organiser-token');
 });
+// Test case: Opens a sparse coordinator record and checks unavailable labels for missing fields.
 it('coordinator records with missing submitted information identify it as unavailable',async()=>{
   // Exercises missing-data behavior through the coordinator's protected detail route.
   user={...user,role:'event_coordinator'};api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{event:{id:101,name:'Incomplete assigned event'}});open('/events/101');
   await screen.findByRole('heading',{name:'Incomplete assigned event'});for(const label of ['Purpose','Date','Programme','Layout Requirements','Accessibility Needs','Equipment Requests','Registration Required'])expect(screen.getByText(label).parentElement.textContent).toMatch(/Not specified/);
 });
 
+// Test case: Uses My Events, opens details and returns to the list, checking submitted fields and no existing-event edit control.
 it('Organiser AC1 / UI navigation AC1 - the single My Events tab opens the workspace and submitted details', async () => {
-  // Verifies: organiser navigates from dashboard through My Events to all submitted details.
 
   open('/organizer/dashboard');
   const tab = await screen.findByRole('link', { name: 'My Events' });
@@ -69,8 +72,8 @@ it('Organiser AC1 / UI navigation AC1 - the single My Events tab opens the works
   fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
+// Test case: Returns an empty event list and checks its empty state without sample records.
 it('shows an empty My Events state without fake records', async () => {
-  // Verifies: shows an empty My Events state without fake records.
 
   api.get.mockImplementation(async (path) => // Supplies controlled api.get behavior for this regression case, including its expected result or failure.
 
@@ -79,23 +82,23 @@ it('shows an empty My Events state without fake records', async () => {
   open('/organizer/events');
   expect(await screen.findByText('You have not requested any events yet.')).toBeTruthy();
 });
+// Test case: Opens organiser routes without a session and checks external sign-in without private requests.
 it.each(['/organizer/events', '/organizer/events/101'])('unauthenticated %s uses external sign-in', async (path) => {
-  // Verifies: unauthenticated %s uses external sign-in.
 
   open(path, false);
   expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
   expect(screen.queryByText(/Staff accounts are provided/)).toBeNull();
   expect(api.get).not.toHaveBeenCalled();
 });
+// Test case: Requests denied/missing records and checks errors conceal submitted details.
 it.each(['102', '999'])('denied or missing event %s exposes no event details', async (id) => {
-  // Verifies: denied or missing event %s exposes no event details.
 
   open(`/organizer/events/${id}`);
   expect((await screen.findByRole('alert')).textContent).toBe('Event not found.');
   expect(screen.queryByText(event.special_arrangements)).toBeNull();
 });
+// Test case: Displays null/blank/false/zero/empty arrays and checks honest missing labels while retaining valid false/zero values.
 it('handles null, blank, false, zero and empty arrays without fabricated dates', async () => {
-  // Verifies: handles null, blank, false, zero and empty arrays without fabricated dates.
 
   api.get.mockImplementation(async (path) => // Supplies controlled api.get behavior for this regression case, including its expected result or failure.
 
@@ -107,8 +110,8 @@ it('handles null, blank, false, zero and empty arrays without fabricated dates',
   expect(screen.getAllByText('Not specified').length).toBeGreaterThanOrEqual(3);
   expect(screen.queryByText(/1970|Invalid Date/)).toBeNull();
 });
+// Test case: Displays HTML-like event text and checks it remains literal text without an executable image.
 it('renders event text as text rather than executable markup', async () => {
-  // Verifies: renders event text as text rather than executable markup.
 
   api.get.mockImplementation(async (path) => // Supplies controlled api.get behavior for this regression case, including its expected result or failure.
 
@@ -118,15 +121,15 @@ it('renders event text as text rather than executable markup', async () => {
   expect(await screen.findByText('<img src=x onerror=alert(1)>')).toBeTruthy();
   expect(screen.queryByRole('img')).toBeNull();
 });
+// Test case: Opens the coordinator detail URL and checks its fields and Back to Events destination.
 it('existing coordinator event-detail route still displays event information', async () => {
-  // Verifies: existing coordinator event-detail route still displays event information.
 
   user.role = 'event_coordinator'; open('/events/101');
   expect(await screen.findByRole('heading', { name: event.name })).toBeTruthy();
   expect(screen.getByRole('link', { name: 'Back to Events' }).getAttribute('href')).toBe('/events');
 });
+// Test case: Fills event requirements and checks submitted payload and navigation to the saved record.
 it('event request form sends all fields and navigates to the saved record', async () => {
-  // Verifies: event request form sends all fields and navigates to the saved record.
 
   api.post.mockResolvedValue({ event: { id: 101 }, message: 'Event request submitted.' });
   open('/organizer/events/new');
@@ -146,8 +149,8 @@ it('event request form sends all fields and navigates to the saved record', asyn
   expect(await screen.findByRole('heading', { name: event.name })).toBeTruthy();
   expect(screen.getByRole('status').textContent).toBe('Event request submitted.');
 });
+// Test case: Signs in as organiser and checks external audience, session and dashboard destination.
 it('external organiser login reuses the existing login API and dashboard destination', async () => {
-  // Verifies: external organiser login reuses the existing login API and dashboard destination.
 
   api.post.mockResolvedValue({ user, token: 'organiser-token' });
   open('/external/login', false);
@@ -158,8 +161,8 @@ it('external organiser login reuses the existing login API and dashboard destina
   expect(api.post).toHaveBeenCalledWith('/auth/login', { email: user.email, password: 'password123', audience: 'external' });
   expect(screen.getByText('ConnectSphere')).toBeTruthy();
 });
+// Test case: Signs in as attendee and checks the attendee dashboard destination.
 it('external attendee login retains its dashboard destination', async () => {
-  // Verifies: external attendee login retains its dashboard destination.
 
   user.role = 'attendee'; api.post.mockResolvedValue({ user, token: 'attendee-token' });
   open('/external/login', false);

@@ -1,4 +1,5 @@
 // File: Tests venue form validation, image rejection, catalogue refresh, and API failure handling.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -92,8 +93,8 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
 
 
   // RETURN BRANCH 3: Validation Failure Exit
+  // Test case: Supplies only a venue name and checks missing required-field errors prevent creation.
   it('1. Blocks submission when required fields are missing', async () => {
-    // Verifies: 1. Blocks submission when required fields are missing.
 
     open('/venue/dashboard', true);
 
@@ -106,8 +107,8 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
   });
 
   // RETURN BRANCH 2: Invalid File Upload Exit
+  // Test case: Selects an unsupported image and checks the inline validation error.
   it('2. Rejects invalid image file uploads with an inline error', async () => {
-    // Verifies: 2. Rejects invalid image file uploads with an alert.
 
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {
       // Supplies controlled vi.spyOn(window, 'alert') behavior for this regression case, including its expected result or failure.
@@ -125,8 +126,8 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
   });
 
   // RETURN BRANCH 4: Successful API Post & State Resolution Exit
+  // Test case: Fills valid venue data and checks creation and catalogue refresh.
   it('3. Creates a new venue and updates the catalogue when all inputs are valid', async () => {
-    // Verifies: 3. Creates a new venue and updates the catalogue when all inputs are valid.
 
     open('/venue/dashboard', true);
 
@@ -159,8 +160,8 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
   });
 
   // RETURN BRANCH 5: API Error / Catch Exit
+  // Test case: Simulates creation failure and checks a visible error instead of success.
   it('4. Handles backend server failure during venue creation gracefully', async () => {
-    // Verifies: 4. Handles backend server failure during venue creation gracefully.
 
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {
       // Supplies controlled vi.spyOn(window, 'alert') behavior for this regression case, including its expected result or failure.

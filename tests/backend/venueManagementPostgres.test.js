@@ -1,4 +1,5 @@
 // File: Tests venue lifecycle, booking history and race guards against real PostgreSQL in a disposable schema.
+// Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
 require('../../backend/node_modules/dotenv').config();
 const {test,mock}=require('node:test');
 const assert=require('node:assert/strict');
@@ -7,6 +8,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const jwt=require('../../backend/node_modules/jsonwebtoken');
 const {pool}=require('../../backend/src/config/db');
+// Test case: Inserts an actual temporary upcoming booking directly in PostgreSQL and checks impact confirmation, blocked deactivation, historical joins and concurrent booking locks; no booking screen is exercised.
 test('real venue changes preserve history, exclude inactive venues and serialize with concurrent bookings',{skip:process.env.RUN_DB_TESTS!=='1'},async()=> {
  const schema=`cs_venue_${crypto.randomBytes(8).toString('hex')}`;
  const client=await pool.connect(),other=await pool.connect();let server;

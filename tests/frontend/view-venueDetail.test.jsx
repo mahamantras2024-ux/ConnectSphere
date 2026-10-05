@@ -1,4 +1,5 @@
 // File: Tests the venue detail modal's empty guard, profile rendering, and close callback.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -79,8 +80,8 @@ describe('Venue Staff venue detail view', () => {
 
 
   // RETURN BRANCH 1: Null Guard Clause (`if (!venue) return null;`)
+  // Test case: Renders venue details without a record and checks no profile appears.
   it('1. Renders nothing when venue prop is missing or null', () => {
-    // Verifies: 1. Renders nothing when venue prop is missing or null.
 
     const { container } = render(<VenueDetail venue={null} onClose={() => {
       // Provides an intentional no-op callback for this test.
@@ -89,8 +90,8 @@ describe('Venue Staff venue detail view', () => {
   });
 
   // RETURN BRANCH 2: Primary Render Path (Displays details)
+  // Test case: Opens a complete record and checks its name, location, capacity, facilities, accessibility, layouts and operating information.
   it('2. Shows the full venue details when a venue record is opened', async () => {
-    // Verifies: 2. Shows the full venue details when a venue record is opened.
 
     open('/venue/dashboard', true);
 
@@ -114,8 +115,8 @@ describe('Venue Staff venue detail view', () => {
   });
 
   // RETURN BRANCH 3: Exit Handler Path (`onClose` trigger)
+  // Test case: Clicks the close control and checks the supplied callback runs.
   it('3. Triggers onClose callback when the close button is clicked', async () => {
-    // Verifies: 3. Triggers onClose callback when the close button is clicked.
 
     const handleClose = vi.fn();
     const mockVenue = {

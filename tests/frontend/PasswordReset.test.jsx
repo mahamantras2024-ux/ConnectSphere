@@ -1,4 +1,5 @@
 // File: Tests reset-link requests, matching passwords, fragment tokens, expired links, and session logout.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -31,8 +32,8 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+// Test case: Submits reset-link recovery and checks its API call and generic visible response.
 it('requests a reset link and shows the generic response', async () => {
-  // Verifies: requests a reset link and shows the generic response.
 
   api.post.mockResolvedValue({ message: 'If an external account matches that email, a password-reset link will be sent.' });
   renderPage('/external/forgot-password');
@@ -45,8 +46,8 @@ it('requests a reset link and shows the generic response', async () => {
   expect(api.post).toHaveBeenCalledWith('/auth/forgot-password', { email: 'alice@example.com' });
 });
 
+// Test case: Tries mismatched then matching passwords and checks validation and token submission from the URL fragment.
 it('requires matching passwords and submits the token from the URL fragment', async () => {
-  // Verifies: requires matching passwords and submits the token from the URL fragment.
 
   api.post.mockResolvedValue({ message: 'Password updated. Please sign in again.' });
   localStorage.setItem('cs_token', 'existing-session');
@@ -68,8 +69,8 @@ it('requires matching passwords and submits the token from the URL fragment', as
   expect(localStorage.getItem('cs_token')).toBeNull();
 });
 
+// Test case: Fails reset with an expired-token response and checks the visible API error.
 it('shows the API error when a reset token has expired', async () => {
-  // Verifies: shows the API error when a reset token has expired.
 
   api.post.mockRejectedValueOnce(new Error('This reset link is invalid or expired. Request a new link.'));
   const token = 'b'.repeat(64);
@@ -84,8 +85,8 @@ it('shows the API error when a reset token has expired', async () => {
   expect(api.post).toHaveBeenCalledWith('/auth/reset-password', { token, password: 'new-password123' });
 });
 
+// Test case: Opens reset without a token and checks password submission is blocked.
 it('blocks password submission when the reset token is missing', () => {
-  // Verifies: blocks password submission when the reset token is missing.
 
   renderPage('/external/reset-password', true);
 

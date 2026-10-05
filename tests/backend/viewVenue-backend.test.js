@@ -1,4 +1,5 @@
 // File: Tests public venue catalogue/detail HTTP responses and missing records with mocked queries.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -47,8 +48,8 @@ after(async () => {
 // USER STORY 2: View Venue Catalogue & Detail Tests
 // =========================================================================
 
+// Test case: Reads the catalogue endpoint and checks stored venue fixtures are returned.
 test('US2 - [200 OK] Venue catalogue listing returns stored venue records', async () => {
-  // Verifies: US2 - [200 OK] Venue catalogue listing returns stored venue records.
 
   const rows = [
     {
@@ -77,8 +78,8 @@ test('US2 - [200 OK] Venue catalogue listing returns stored venue records', asyn
   assert.equal(res.body[0].name, 'Hall A');
 });
 
+// Test case: Reads a venue by ID and checks the requested profile is returned.
 test('US2 - [200 OK] Venue detail endpoint returns requested venue profile by ID', async () => {
-  // Verifies: US2 - [200 OK] Venue detail endpoint returns requested venue profile by ID.
 
   const row = {
     id: 1,
@@ -105,8 +106,8 @@ test('US2 - [200 OK] Venue detail endpoint returns requested venue profile by ID
   assert.equal(res.body.name, 'Hall A');
 });
 
+// Test case: Requests a nonexistent venue and checks HTTP 404.
 test('US2 - [404 Not Found] Venue detail endpoint returns 404 when venue ID does not exist', async () => {
-  // Verifies: US2 - [404 Not Found] Venue detail endpoint returns 404 when venue ID does not exist.
 
   mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 
