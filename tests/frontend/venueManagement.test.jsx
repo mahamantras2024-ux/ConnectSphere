@@ -1,3 +1,5 @@
+// Sprint 2: SCRUM-35 Update Venue Record and SCRUM-36 Delete Venue Record; AC tags select relevant cases independently.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 // File: Verifies staff venue editing, booking acknowledgements, safe removal, live catalogue refresh and keyless map selection.
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {useState} from 'react';
@@ -14,7 +16,8 @@ const venue={id:7,name:'Garden Hall',location:'Stamford Road',capacity:100,suppo
 const booking={booking_id:9,event_id:2,event_name:'Annual gathering',status:'approved',start_datetime:'2030-10-10T00:00:00Z',end_datetime:'2030-10-10T04:00:00Z',reasons:['80 guests exceed the new capacity of 50.']};
 beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue([venue]);}); // Starts each case with a single active venue.
 afterEach(()=>{cleanup();vi.unstubAllGlobals();}); // Releases mounted dialogs and synthetic browser globals.
-it('prefills editable venue fields and saves its revision, availability and map coordinates',async()=> {
+// Test case: Edits an existing name and checks saving preserves revision, availability, normalized rate and coordinates.
+it('[SCRUM-35 AC1] - prefills editable venue fields and saves its revision, availability and map coordinates',async()=> {
  const saved=vi.fn(),close=vi.fn();api.put.mockResolvedValue({venue:{...venue,name:'Updated hall',revision:4}});
  render(<AddVenueModal venue={venue} onClose={close} onAdd={saved}/>);
  expect(screen.getByLabelText('Opening time *').value).toBe('08:00');expect(screen.getByLabelText('Setup time (minutes) *').value).toBe('30');expect(screen.getByPlaceholderText('Hourly rate (e.g. 500)').value).toBe('500');
@@ -23,7 +26,8 @@ it('prefills editable venue fields and saves its revision, availability and map 
  expect(api.put).toHaveBeenCalledWith('/venues/7',expect.objectContaining({name:'Updated hall',pricing:'500',revision:3,latitude:1.296,longitude:103.85,turnaroundMinutes:45,availabilityStatus:'Available'}),'staff-token');
  expect(screen.queryByRole('textbox',{name:/nearest mrt/i})).toBeNull();
 });
-it('shows affected bookings and keeps the record unsaved until staff explicitly confirm',async()=> {
+// Test case: Receives a proxy warning after capacity reduction and checks affected bookings appear before explicit confirmation saves.
+it('[SCRUM-35 AC2] - shows affected bookings and keeps the record unsaved until staff explicitly confirm',async()=> {
  const saved=vi.fn();api.put.mockRejectedValueOnce(Object.assign(new Error('Review bookings'),{details:{code:'BOOKING_IMPACT',affectedBookings:[booking],confirmationToken:'specific-change-token'}})).mockResolvedValueOnce({venue:{...venue,capacity:50}});
  render(<AddVenueModal venue={venue} onClose={()=>{}} onAdd={saved}/>);
  fireEvent.change(screen.getByLabelText('Capacity *'),{target:{value:'50'}});fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
@@ -31,33 +35,39 @@ it('shows affected bookings and keeps the record unsaved until staff explicitly 
  fireEvent.click(screen.getByRole('button',{name:'Confirm changes & save'}));await waitFor(()=>expect(saved).toHaveBeenCalledOnce());
  expect(api.put).toHaveBeenLastCalledWith('/venues/7',expect.objectContaining({capacity:50,confirmationToken:'specific-change-token'}),'staff-token');
 });
-it('changing a field after a warning invalidates the displayed acknowledgement',async()=> {
+// Test case: Changes a warned field and checks the obsolete confirmation disappears until review of the revised change.
+it('[SCRUM-35 AC2] - changing a field after a warning invalidates the displayed acknowledgement',async()=> {
  api.put.mockRejectedValue(Object.assign(new Error('Review bookings'),{details:{code:'BOOKING_IMPACT',affectedBookings:[booking],confirmationToken:'token'}}));
  render(<AddVenueModal venue={venue} onClose={()=>{}}/>);fireEvent.change(screen.getByLabelText('Capacity *'),{target:{value:'50'}});fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
  await screen.findByText('Annual gathering');fireEvent.change(screen.getByLabelText('Capacity *'),{target:{value:'60'}});
  expect(screen.queryByRole('button',{name:'Confirm changes & save'})).toBeNull();expect(screen.getByRole('button',{name:'Save changes'}).disabled).toBe(false);
 });
-it('blocked deactivation lists bookings and preserves the open record',async()=> {
+// Test case: Receives proxy booking blockers and checks their list remains visible without removal or closure.
+it('[SCRUM-36 AC2] - blocked deactivation lists bookings and preserves the open record',async()=> {
  const removed=vi.fn(),close=vi.fn();api.delete.mockRejectedValue(Object.assign(new Error('Upcoming bookings prevent deactivation.'),{details:{affectedBookings:[booking]}}));
  render(<VenueDetail venue={venue} canManage token="staff-token" onClose={close} onRemoved={removed}/>);
  fireEvent.click(screen.getByRole('button',{name:'Deactivate venue'}));expect(api.delete).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'Confirm deactivation'}));expect(await screen.findByText('Annual gathering')).toBeTruthy();
  expect(removed).not.toHaveBeenCalled();expect(close).not.toHaveBeenCalled();expect(screen.getByRole('dialog').classList.contains('venue-drawer')).toBe(true);
 });
-it('successful deactivation removes the catalogue card and closes the drawer',async()=> {
+// Test case: Confirms simulated deactivation and checks card removal, drawer closure and success feedback.
+it('[SCRUM-36 AC1/AC3] - successful deactivation removes the catalogue card and closes the drawer',async()=> {
  api.delete.mockResolvedValue({message:'Deactivated'});api.get.mockResolvedValueOnce([venue]).mockResolvedValue([]);
  render(<VenueList/>);fireEvent.click(await screen.findByRole('button',{name:/view details/i}));fireEvent.click(screen.getByRole('button',{name:'Deactivate venue'}));fireEvent.click(screen.getByRole('button',{name:'Confirm deactivation'}));
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());expect(screen.queryByRole('heading',{name:'Garden Hall'})).toBeNull();expect(screen.getByRole('status').textContent).toMatch(/deactivated/i);
 });
-it('database invalidation refreshes another staff catalogue and its open detail drawer',async()=> {
+// Test case: Simulates another staff save notification and checks the card and open drawer reload the changed capacity.
+it('[SCRUM-35 AC1] - database invalidation refreshes another staff catalogue and its open detail drawer',async()=> {
  let stream;class TestStream {constructor(){stream=this;}close(){}}vi.stubGlobal('EventSource',TestStream); // Captures the SSE callback to simulate another staff member saving.
  render(<VenueList/>);fireEvent.click(await screen.findByRole('button',{name:/view details/i}));
  api.get.mockResolvedValue([{...venue,capacity:200}]);act(()=>stream.onmessage({data:'changed'}));
  await waitFor(()=>expect(screen.getAllByText('200 Guests').length).toBe(2));
 });
-it('read-only profiles do not expose venue management controls',()=> {
+// Test case: Opens a read-only profile and checks Edit/Deactivate controls are absent.
+it('[SCRUM-35 AC1; SCRUM-36 AC1] - read-only profiles do not expose venue management controls',()=> {
  render(<VenueDetail venue={venue} onClose={()=>{}}/>);expect(screen.queryByRole('button',{name:'Edit venue'})).toBeNull();expect(screen.queryByRole('button',{name:'Deactivate venue'})).toBeNull();
 });
+// Test case: Searches/selects an address and checks automatic MRT resolution without an editable MRT field.
 it('address search requires an action and result selection calculates MRT without an editable field',async()=> {
  const changed=vi.fn();api.get.mockImplementation(async path=>path.includes('/search?')?[{location:'SMU, Singapore',latitude:1.296,longitude:103.85}]:{location:'SMU, Singapore',latitude:1.296,longitude:103.85,mrt:{name:'Bras Basah MRT',distanceM:100}});
  // Shows the latest controlled selection exactly as the real venue form does.

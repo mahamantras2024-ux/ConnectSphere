@@ -1,4 +1,5 @@
 // File: Tests authenticated Venue Staff creation, forbidden roles, and venue input validation with mocked queries.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('../../backend/node_modules/jsonwebtoken');
@@ -75,8 +76,8 @@ after(async () => {
 // USER STORY 1: Catalogue Creation Tests
 // =========================================================================
 
+// Test case: Sends a complete venue through the API as Venue Staff and checks the 201 response and saved information.
 test('US1 - [201 Created] Venue Staff can successfully create venue records', async () => {
-  // Verifies: US1 - [201 Created] Venue Staff can successfully create venue records.
 
   mock.method(pool, 'query', async (sql) => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 
@@ -96,8 +97,8 @@ test('US1 - [201 Created] Venue Staff can successfully create venue records', as
   assert.equal(res.body.message, 'Venue successfully created.');
 });
 
+// Test case: Attempts venue creation without a token and checks authentication rejection with 401.
 test('US1 - [401 Unauthorized] Reject venue creation when authorization token is missing', async () => {
-  // Verifies: US1 - [401 Unauthorized] Reject venue creation when authorization token is missing.
 
   const query = mock.method(pool, 'query', async () => {
     // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -115,8 +116,8 @@ for (const role of roles.filter((r) => // Keeps only collection entries matching
 
       // Keeps entries that meet the required field or access condition.
       r !== 'venue_staff')) {
+  // Test case: Attempts venue creation for each disallowed role and checks the role guard returns 403.
   test(`US1 - [403 Forbidden] Reject venue creation for unauthorized role: ${role}`, async () => {
-    // Verifies: US1 - [403 Forbidden] Reject venue creation for unauthorized role: ${role}.
 
     const query = mock.method(pool, 'query', async (sql) => {
       // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -136,8 +137,8 @@ for (const role of roles.filter((r) => // Keeps only collection entries matching
   });
 }
 
+// Test case: Submits an incomplete venue and checks 400 validation failure rather than record creation.
 test('US1 - [400 Bad Request] Reject venue creation when required fields are missing', async () => {
-  // Verifies: US1 - [400 Bad Request] Reject venue creation when required fields are missing.
 
   mock.method(pool, 'query', async (sql) => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 

@@ -2,6 +2,8 @@
 
 All cases are centralised in tests/backend and tests/frontend. The baseline is the six stories and 30 criteria in SPM Project (2).pdf; [the acceptance reference](sprint-one-acceptance.md) describes what each mapped test checks.
 
+Every test definition has a `// Test case:` comment describing its action and expected result. Each file also states its test scope. Frontend tests use simulated API responses where configured; most backend tests control external database/mail/provider boundaries. PostgreSQL integration suites create actual temporary records in disposable schemas. Booking-impact checks do not imply that the unfinished booking-creation interface has been tested. Parameterized definitions run once for each listed input or role.
+
 ## Run from the project root
 
 Install dependencies once with `npm ci --prefix backend` and `npm ci --prefix frontend`. No running application servers are needed.
@@ -30,7 +32,16 @@ node tests/run.cjs story coordinator-events all
 
 Each command selects related API and screen regression files. With `all`, it also includes the shared live acceptance fixture, which checks all six stories together. Selection is by test file, so shared regression files can include related criteria. Omit `all` for local-only checks. Coverage deliberately requires the full suite rather than an individual story.
 
-## Live database
+## Test each Sprint 2 venue story
+
+```powershell
+node tests/run.cjs story update-venue
+node tests/run.cjs story delete-venue
+```
+
+These select SCRUM-35 (update) or SCRUM-36 (delete/deactivate) AC-labelled cases in shared frontend and backend files. Shared permission, refresh and warning checks apply to both stories. Booking checks use proxy fixtures because the booking creation workflow is unfinished. The combined real-database lifecycle test remains in `node tests/run.cjs all` or `node tests/run.cjs integration`; adding `all` to these individual story commands does not select that combined test. Runner selection regression tests can be run with `node --test tests/runner.test.cjs`.
+
+## Live database setup
 
 The runner reads private backend/.env. The database account must be able to create/drop disposable schemas. Tests clean up their schemas and do not modify public application records. Missing database access makes live commands fail; a skipped local database test is not an integration pass. Tests replace email sends and do not email real people.
 

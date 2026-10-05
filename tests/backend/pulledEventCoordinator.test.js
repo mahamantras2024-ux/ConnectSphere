@@ -1,4 +1,5 @@
 // File: Preserves pulled controller checks, updated to Sprint 1 assignment-scoped access.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -41,6 +42,7 @@ function tick() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+// Test case: Calls the coordinator detail handler with an assigned fixture and checks the full event response.
 test('Coordinator AC2 - getEvent returns full event details for the event coordinator', async () => {
   await withMockedLoads(
     {
@@ -85,6 +87,7 @@ test('Coordinator AC2 - getEvent returns full event details for the event coordi
   );
 });
 
+// Test case: Looks up an absent event and checks the coordinator receives 404.
 test('Coordinator AC3 - getEvent returns 404 when the event does not exist', async () => {
   await withMockedLoads(
     {
@@ -107,6 +110,7 @@ test('Coordinator AC3 - getEvent returns 404 when the event does not exist', asy
   );
 });
 
+// Test case: Invokes the event guard with an unsupported role and checks the handler cannot run.
 test('Coordinator AC3 - runtime role guard denies unassigned roles', () => {
   const { requireRole } = require(path.join(ROOT, 'backend/src/middleware/role.js'));
   const res = makeRes(); let continued = false;
@@ -114,6 +118,7 @@ test('Coordinator AC3 - runtime role guard denies unassigned roles', () => {
   assert.equal(res.code, 403); assert.equal(continued, false);
 });
 
+// Test case: Creates a valid request then submits a missing name, checking 201 success and validation rejection.
 test('Event requests - createEvent returns 201 for a valid event and rejects missing names', async () => {
   const mockEventModel = {
     create: async () => ({ id: 42, name: 'Launch' }),
@@ -162,6 +167,7 @@ test('Event requests - createEvent returns 201 for a valid event and rejects mis
   );
 });
 
+// Test case: Lists events as organiser/coordinator and checks identity scoping and denial for unsupported roles.
 test('Organiser AC1 / Coordinator AC1-3 - lists respect ownership and deny unsupported roles', async () => {
   const eventModel = {
     listForOrganiser: async () => [{ id: 1 }],

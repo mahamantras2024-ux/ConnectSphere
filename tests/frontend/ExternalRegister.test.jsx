@@ -1,4 +1,5 @@
 // File: Verifies retained external registration, role boundaries and submission feedback.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -7,6 +8,7 @@ import ExternalRegister from '../../frontend/src/pages/external/ExternalRegister
 afterEach(() => { // Cleans rendered forms and API mocks between cases.
   cleanup(); vi.restoreAllMocks();
 });
+// Test case: Submits external signup and checks chosen external role data while staff role choices stay unavailable.
 it('registers external accounts while keeping staff roles unavailable', async () => {
   // Checks the real form payload, success response and supported sign-in action.
   const post = vi.spyOn(api, 'post').mockResolvedValue({ message: 'Account created. Please sign in.' });
@@ -23,6 +25,7 @@ it('registers external accounts while keeping staff roles unavailable', async ()
   expect(post).toHaveBeenCalledWith('/auth/register', { fullName: 'New Person', email: 'new@example.com', password: 'password123', confirmation: 'password123', role: 'attendee', organisationName: null });
   expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/external/login');
 });
+// Test case: Fails registration and checks entered values are retained alongside the error.
 it('retains entered fields and displays registration errors', async () => {
   // Checks confirmation mismatch and duplicate-email feedback without losing the input.
   const post = vi.spyOn(api, 'post').mockRejectedValue(new Error('An account with that email already exists.'));

@@ -1,4 +1,5 @@
 // File: Tests external signup permissions, hashed credentials and private multi-role provisioning.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const { test, mock, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('../../backend/node_modules/bcryptjs');
@@ -8,6 +9,7 @@ const app = require('../../backend/src/index');
 afterEach(() =>
       // Handles this operation using the surrounding screen or request state.
       mock.restoreAll());
+// Test case: Tries public registration with internal roles and checks rejection without account writes.
 test('public registration rejects internal roles without database writes', async () => {
   // Exercises the HTTP boundary rather than only inspecting a route declaration.
   const query = mock.method(pool, 'query', async () => {
@@ -28,6 +30,7 @@ test('public registration rejects internal roles without database writes', async
       server.close(resolve)); }
 });
 
+// Test case: Registers external users and checks hashing, ignored extra grants and preservation of duplicate accounts.
 test('external registration hashes credentials, ignores extra grants and preserves duplicate accounts', async () => {
   // Exercises successful registration and rejection of invalid/duplicate submissions through HTTP.
   let writes = 0;
@@ -58,6 +61,7 @@ test('external registration hashes credentials, ignores extra grants and preserv
     server.close(resolve);
   }); }
 });
+// Test case: Provisions a private account and checks normalized identity, password hashing and stored assigned roles.
 test('private onboarding hashes passwords, normalises identity, and persists provisioned roles', async () => {
   // Verifies the credential and role values written to the database without returning a password hash.
   mock.method(pool, 'query', async (sql, values) => {
@@ -71,6 +75,7 @@ test('private onboarding hashes passwords, normalises identity, and persists pro
   const user = await provisionAccount({ email: ' NEW@example.com ', fullName: 'New User', password: 'password123', roles: ['event_coordinator','venue_staff','venue_staff'] });
   assert.equal(user.id, 42); assert.equal(user.password_hash, undefined);
 });
+// Test case: Tries invalid identity, passwords and roles during private onboarding and checks failure before persistence.
 test('private onboarding rejects invalid identity, passwords, and unrecognised roles before persistence', async () => {
   // Checks important onboarding boundaries without duplicating successful insertion tests.
   const query = mock.method(pool, 'query', async () => {
@@ -81,6 +86,7 @@ test('private onboarding rejects invalid identity, passwords, and unrecognised r
   }
   assert.equal(query.mock.callCount(), 0);
 });
+// Test case: Attempts duplicate private onboarding and checks the existing account remains unchanged.
 test('duplicate onboarding preserves the existing account', async () => {
   // Ensures duplicate emails never overwrite an existing account or its role grants.
   mock.method(pool, 'query', async () => {

@@ -1,4 +1,5 @@
 // File: Runs opt-in real PostgreSQL login/audience checks inside an isolated temporary schema.
+// Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
 require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
@@ -6,10 +7,10 @@ const bcrypt = require('../../backend/node_modules/bcryptjs');
 const crypto = require('node:crypto');
 const { pool } = require('../../backend/src/config/db');
 
+// Test case: Creates disposable PostgreSQL accounts and checks real login for five roles, invalid credentials and external-audience restrictions.
 test('login API authenticates users and enforces external audience rules', {
   skip: process.env.RUN_DB_TESTS !== '1',
 }, async (t) => {
-  // Verifies: login API authenticates users and enforces external audience rules.
 
   const schema = `cs_login_test_${crypto.randomBytes(8).toString('hex')}`;
   const client = await pool.connect();
@@ -66,8 +67,8 @@ test('login API authenticates users and enforces external audience rules', {
     }
 
     for (const [index, [email, fullName, role]] of users.entries()) {
+      // Test case: Logs in each role with its real password hash and uppercase email and checks the token and returned identity.
       await t.test(`returns a token for valid ${role} credentials`, async () => {
-        // Verifies: returns a token for valid ${role} credentials.
 
         const isExternal = ['event_organiser', 'attendee'].includes(role);
         const result = await request({
@@ -88,8 +89,8 @@ test('login API authenticates users and enforces external audience rules', {
       });
     }
 
+    // Test case: Supplies the wrong password and checks 401 with the generic invalid-credentials message.
     await t.test('rejects invalid credentials without revealing the account state', async () => {
-      // Verifies: rejects invalid credentials without revealing the account state.
 
       const result = await request({ email: 'organiser@example.test', password: 'wrong-password' });
 
@@ -97,8 +98,8 @@ test('login API authenticates users and enforces external audience rules', {
       assert.deepEqual(result.body, { message: 'Invalid email or password.' });
     });
 
+    // Test case: Tries staff credentials through external login and checks no external session is issued.
     await t.test('rejects staff accounts for external audience login', async () => {
-      // Verifies: rejects staff accounts for external audience login.
 
       const result = await request({
         email: 'coordinator@example.test',

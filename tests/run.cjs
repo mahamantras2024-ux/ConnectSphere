@@ -4,17 +4,24 @@ const { readdirSync } = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
-// Maps each completed Sprint 1 story to its API and screen regression suites.
+// Maps Sprint 1 stories and Sprint 2 venue management stories to their regression suites.
 const stories = {
+  // Sprint 1:
   'create-venue': ['createVenue-backend','venueValidation','createVenue','venueStaff','venueInteractions'],
   'view-venue': ['viewVenue-backend','view-venueDetail','venueInteractions','hourlyRate'],
   'internal-login': ['login','pulledInternalLogin','sprintOneAccess','workspaceProfiles','workspaceNavigation','sprintOne','sprintOneEdges'],
   'external-auth': ['login','externalRegistration','ExternalRegister','sprintOneAccess','workspaceNavigation','sprintOne','registrationAndEventForm'],
   'organiser-events': ['organiserEvents','registrationModels','dashboardDrawers','workspaceNavigation','sprintOneEdges'],
-  'coordinator-events': ['pulledEventCoordinator','sprintOneAccess','dashboardDrawers','workspaceNavigation','sprintOneEdges']
+  'coordinator-events': ['pulledEventCoordinator','sprintOneAccess','dashboardDrawers','workspaceNavigation','sprintOneEdges'],
+  // Sprint 2:
+  'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
+  'delete-venue': ['venueManagement','venueInteractions']
 };
 const storyIndex = options.indexOf('story');
-const story = storyIndex < 0 ? null : stories[options[storyIndex + 1]];
+const storyName = storyIndex < 0 ? null : options[storyIndex + 1];
+const story = stories[storyName];
+// Sprint 2 AC tags keep update and delete cases separate even when they share a file.
+const storyPattern = {'update-venue':'SCRUM-35','delete-venue':'SCRUM-36'}[storyName];
 if (storyIndex >= 0 && (!story || options.includes('coverage'))) {
   console.error(`Use: node tests/run.cjs story <${Object.keys(stories).join('|')}> [all]. Run coverage on the full suite.`);
   process.exit(1);
@@ -34,14 +41,14 @@ function run(label, args, directory, env = {}) {
 }
 if (backend) {
   const files = readdirSync(path.join(__dirname, 'backend')).filter(name => name.endsWith('.test.js')).sort()
-    .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && name === 'sprintOneAcceptancePostgres.test.js'))
+    .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'sprintOneAcceptancePostgres.test.js'))
     .filter(name => !integration || coverage || ['login.test.js','postgresEvents.test.js','sprintOnePostgres.test.js','venueManagementPostgres.test.js','sprintOneAcceptancePostgres.test.js'].includes(name))
     .map(name => path.join(__dirname, 'backend', name));
-  const args = ['--test', ...files];
+  const args = ['--test', ...(storyPattern ? [`--test-name-pattern=${storyPattern}`] : []), ...files];
   run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', NODE_ENV: 'test' });
 }
 if (frontend) {
   const files = story ? readdirSync(path.join(__dirname,'frontend')).filter(name => story.includes(name.replace(/\.test\.(js|jsx)$/,''))).map(name => path.join(__dirname,'frontend',name)) : [];
-  run('Frontend tests', [path.join(root, 'frontend/node_modules/vitest/vitest.mjs'), 'run', ...files, ...(coverage ? ['--coverage'] : [])], 'frontend');
+  run('Frontend tests', [path.join(root, 'frontend/node_modules/vitest/vitest.mjs'), 'run', ...files, ...(storyPattern ? ['--testNamePattern',storyPattern] : []), ...(coverage ? ['--coverage'] : [])], 'frontend');
 }
 process.exitCode = failures ? 1 : 0;

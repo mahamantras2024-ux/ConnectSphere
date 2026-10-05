@@ -1,4 +1,5 @@
 // File: Runs Sprint 1 role, venue-buffer, and attendee-summary integration checks in a disposable PostgreSQL schema.
+// Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
 require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
@@ -7,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
 const { provisionAccount } = require('../../backend/src/db/provisionAccount');
+// Test case: Uses real isolated records to check role switching, venue buffers, attendee-only registration reads and access rejection after role revocation.
 test('Sprint 1 persists roles, venue buffers and personal registrations in real PostgreSQL', { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
   // Uses a unique schema so no live account, event, venue or registration is modified.
   const schema = `cs_sprint_one_${crypto.randomBytes(8).toString('hex')}`;

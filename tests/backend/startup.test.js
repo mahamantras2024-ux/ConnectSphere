@@ -1,9 +1,11 @@
 // File: Verifies server startup waits for database initialization and uses the configured/default port.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
+// Test case: Captures startup calls and checks initialization finishes before listening on configured/default ports.
 test('API startup waits for initialization before listening on a configured or default port',async()=>{
  const filename=path.join(__dirname,'../../backend/src/index.js');
  for(const port of [undefined,'4321']) {

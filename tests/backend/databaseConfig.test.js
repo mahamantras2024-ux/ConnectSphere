@@ -1,4 +1,5 @@
 // File: Tests PostgreSQL defaults, hosted TLS settings, and certificate loading without connecting to a database.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -31,16 +32,16 @@ function config(env, readFileSync = () => {
   return options;
 }
 
+// Test case: Evaluates empty environment settings and checks localhost and disabled TLS defaults without connecting.
 test('local database keeps non-TLS defaults', () => {
-  // Verifies: local database keeps non-TLS defaults.
 
   const options = config({});
   assert.equal(options.host, 'localhost');
   assert.equal(options.ssl, false);
 });
 
+// Test case: Supplies hosted connection settings and checks the pool receives them with TLS certificate verification enabled.
 test('hosted database uses supplied settings and verifies TLS certificates', () => {
-  // Verifies: hosted database uses supplied settings and verifies TLS certificates.
 
   const options = config({ DB_HOST: 'example.pooler.supabase.com', DB_PORT: '5432',
     DB_NAME: 'postgres', DB_USER: 'postgres.example', DB_PASSWORD: 'test-only', DB_SSL: 'true' });
@@ -52,8 +53,8 @@ test('hosted database uses supplied settings and verifies TLS certificates', () 
   assert.equal(options.ssl.ca, undefined);
 });
 
+// Test case: Supplies a certificate file and checks its contents become the trusted CA without disabling verification.
 test('provider certificate is loaded when configured without disabling verification', () => {
-  // Verifies: provider certificate is loaded when configured without disabling verification.
 
   const options = config({ DB_SSL: 'true', DB_SSL_CA_PATH: '/example/root.cer' }, (file, encoding) => {
     // Checks the expected state or returned value within this regression case.

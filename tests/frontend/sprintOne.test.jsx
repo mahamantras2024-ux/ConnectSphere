@@ -1,4 +1,5 @@
 // File: Tests revised Sprint 1 registration summaries, role switching, access boundaries, and dialog behaviour.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -20,6 +21,7 @@ beforeEach(() => {
       path === '/auth/me' ? { user } : path === '/registrations/mine' ? { registrations: [] } : path === '/venues' ? [] : { events: [] });
 });
 afterEach(cleanup);
+// Test case: Returns personal registration fixtures and checks stored event names/statuses in the attendee dashboard.
 it('attendee dashboard displays their real registration names and statuses', async () => {
   // Verifies the login dashboard criterion through the complete application route.
   api.get.mockImplementation(async path =>
@@ -30,6 +32,7 @@ it('attendee dashboard displays their real registration names and statuses', asy
   expect(screen.getByText('registered')).toBeTruthy();
   expect(api.get).toHaveBeenCalledWith('/registrations/mine', 'test-session');
 });
+// Test case: Fails registrations retrieval and checks an error rather than misleading empty-state feedback.
 it('registration API failure is shown without claiming that the attendee has no registrations', async () => {
   // Distinguishes an unavailable data source from a genuinely empty result.
   api.get.mockImplementation(async path => {
@@ -39,6 +42,7 @@ it('registration API failure is shown without claiming that the attendee has no 
   expect((await screen.findByRole('alert')).textContent).toBe('Unable to load registrations.');
   expect(screen.queryByText('No registrations yet')).toBeNull();
 });
+// Test case: Switches to a server-approved role and checks token replacement and the active workspace.
 it('role switching replaces the token and opens only the server-approved workspace', async () => {
   // Checks the user-facing role selector, API request, token persistence, and redirect.
   open('/attendee/dashboard');
@@ -51,6 +55,7 @@ it('role switching replaces the token and opens only the server-approved workspa
   expect(api.post).toHaveBeenCalledWith('/auth/switch-role', { role: 'venue_staff' }, 'test-session');
   expect(localStorage.getItem('cs_token')).toBe('venue-session');
 });
+// Test case: Fails a switch and checks the current token/workspace remain intact.
 it('failed role switching retains the existing workspace and token', async () => {
   // Ensures a denied role grant cannot change client-side authority.
   open('/attendee/dashboard'); await screen.findByRole('heading', { name: 'Attendee Dashboard' });
@@ -60,12 +65,14 @@ it('failed role switching retains the existing workspace and token', async () =>
   expect(localStorage.getItem('cs_token')).toBe('test-session');
   expect(screen.getByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
 });
+// Test case: Opens an assigned but inactive role dashboard and checks active-role guards deny it without switching.
 it('an inactive provisioned role cannot bypass dashboard guards without switching', async () => {
   // A multi-role attendee must explicitly activate Venue Staff before using its workspace.
   open('/venue/dashboard');
   expect(await screen.findByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Add venue' })).toBeNull();
 });
+// Test case: Logs out before a switch resolves and checks the late response cannot reauthenticate.
 it('a role-switch response arriving after logout cannot restore the session', async () => {
   // Exercises the asynchronous logout race through the real context implementation.
   let resolve;
@@ -87,6 +94,7 @@ it('a role-switch response arriving after logout cannot restore the session', as
       resolve({ user: { ...user, role: 'venue_staff' }, token: 'late-token' }));
   expect(screen.getByText('Signed out')).toBeTruthy(); expect(localStorage.getItem('cs_token')).toBeNull();
 });
+// Test case: Opens venue dialogs and presses Escape, checking closure and restored opener focus.
 it('venue dialogs close on Escape and restore focus to their opening control', async () => {
   // Checks keyboard accessibility for the create-record workflow.
   user = { ...user, role: 'venue_staff' }; open('/venue/dashboard');
@@ -97,6 +105,7 @@ it('venue dialogs close on Escape and restore focus to their opening control', a
       // Handles this operation using the surrounding screen or request state.
       expect(screen.queryByRole('dialog')).toBeNull()); expect(document.activeElement).toBe(button);
 });
+// Test case: Submits invalid capacity/buffers and checks visible validation errors without API writes.
 it('venue creation rejects invalid capacity and time buffers without API writes', async () => {
   // Validates boundaries beyond the required-field happy path.
   user = { ...user, role: 'venue_staff' }; open('/venue/dashboard');

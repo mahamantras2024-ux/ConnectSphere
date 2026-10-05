@@ -1,4 +1,5 @@
 // File: Tests real map component lifecycle and coordinate callbacks without downloading external map tiles.
+// Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 import {act,cleanup,render,screen} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import VenueMap from '../../frontend/src/pages/venues/VenueMap';
@@ -10,11 +11,13 @@ vi.mock('leaflet',()=>({default:{
 }}));
 beforeEach(()=>{fixture.maps.length=0;fixture.markers.length=0;vi.useFakeTimers();});
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
+// Test case: Initializes a read-only map without coordinates and checks no invented marker and resize after drawer animation.
 it('read-only maps initialize without a marker and resize after drawer animation',()=>{
  vi.stubGlobal('ResizeObserver',undefined);const view=render(<VenueMap/>);expect(screen.getByRole('region').getAttribute('aria-label')).toBe('Venue location map');expect(fixture.markers).toHaveLength(0);
  act(()=>vi.advanceTimersByTime(300));expect(fixture.maps[0].invalidateSize).toHaveBeenCalledOnce();
  fixture.maps[0].on.mock.calls[0][1]({latlng:{lat:1.3,lng:103.85}});view.unmount();expect(fixture.maps[0].remove).toHaveBeenCalledOnce();
 });
+// Test case: Updates callbacks/coordinates and unmounts, checking current click handling, old-marker removal and observer cleanup.
 it('map clicks use the current callback, marker changes remove old markers and observers release resources',()=>{
  let observer,callback;class Observer{constructor(action){observer=this;callback=action;}observe=vi.fn();disconnect=vi.fn();}
  vi.stubGlobal('ResizeObserver',Observer);const first=vi.fn(),next=vi.fn();const view=render(<VenueMap latitude={1.296} longitude={103.85} onPick={first}/>);
@@ -22,6 +25,7 @@ it('map clicks use the current callback, marker changes remove old markers and o
  view.rerender(<VenueMap latitude={1.3} longitude={103.86} onPick={next}/>);expect(fixture.markers[0].remove).toHaveBeenCalledOnce();expect(fixture.markers).toHaveLength(2);
  act(()=>fixture.maps[0].on.mock.calls[0][1]({latlng:{lat:1.3,lng:103.86}}));expect(next).toHaveBeenCalledWith({latitude:1.3,longitude:103.86});expect(first).not.toHaveBeenCalled();view.unmount();expect(observer.disconnect).toHaveBeenCalledOnce();
 });
+// Test case: Supplies partial coordinates and checks no fictional venue marker appears.
 it('partial coordinates do not create a fictitious venue marker',()=>{
  render(<VenueMap latitude={1.3}/>);expect(fixture.markers).toHaveLength(0);
 });

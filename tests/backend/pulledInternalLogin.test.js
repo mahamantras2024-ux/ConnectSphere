@@ -1,4 +1,5 @@
 // File: Preserves pulled authentication regressions against the active secure user and role contracts.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -28,6 +29,7 @@ async function withMockedRequires(stubs, fn) {
   }
 }
 
+// Test case: Omits login fields and checks staff login rejects missing email/password.
 test('Internal AC2-5 - login requires email and password', async () => {
   await withMockedRequires(
     {
@@ -58,6 +60,7 @@ test('Internal AC2-5 - login requires email and password', async () => {
   );
 });
 
+// Test case: Supplies an incorrect staff password and checks the invalid-credentials response.
 test('Internal AC2-5 - login rejects invalid password for internal staff', async () => {
   await withMockedRequires(
     {
@@ -96,6 +99,7 @@ test('Internal AC2-5 - login rejects invalid password for internal staff', async
   );
 });
 
+// Test case: Supplies valid staff credentials and checks the internal role and session token.
 test('Internal AC2-5 - login success returns internal role and token', async () => {
   await withMockedRequires(
     {
@@ -137,6 +141,7 @@ test('Internal AC2-5 - login success returns internal role and token', async () 
   );
 });
 
+// Test case: Looks up an unknown email and checks the generic invalid-credentials response.
 test('Internal AC2-5 - login rejects unknown user', async () => {
   await withMockedRequires(
     {
@@ -161,6 +166,7 @@ test('Internal AC2-5 - login rejects unknown user', async () => {
   );
 });
 
+// Test case: Simulates an unexpected login database failure and checks 500.
 test('Internal AC2-5 - login returns 500 on unexpected backend errors', async () => {
   await withMockedRequires(
     {
@@ -185,6 +191,7 @@ test('Internal AC2-5 - login returns 500 on unexpected backend errors', async ()
   );
 });
 
+// Test case: Restores a session for a missing account and checks access rejection.
 test('Internal AC2-5 - me rejects missing user account', async () => {
   await withMockedRequires(
     {
@@ -210,6 +217,7 @@ test('Internal AC2-5 - me rejects missing user account', async () => {
   );
 });
 
+// Test case: Simulates a database error during identity retrieval and checks 500 rather than a profile.
 test('Internal AC2-5 - me returns a 500 on unexpected fetch-user errors', async () => {
   await withMockedRequires(
     {
@@ -235,6 +243,7 @@ test('Internal AC2-5 - me returns a 500 on unexpected fetch-user errors', async 
   );
 });
 
+// Test case: Retrieves the authenticated account and checks its returned identity fields.
 test('Internal AC2-5 - me returns the authenticated user payload', async () => {
   await withMockedRequires(
     {
@@ -267,6 +276,7 @@ test('Internal AC2-5 - me returns the authenticated user payload', async () => {
   );
 });
 
+// Test case: Calls the role guard without a user and checks authentication rejection.
 test('Internal AC2-5 - requireRole rejects unauthenticated users', () => {
   const { requireRole } = require(roleMiddlewarePath);
   const req = { user: null };
@@ -281,6 +291,7 @@ test('Internal AC2-5 - requireRole rejects unauthenticated users', () => {
   assert.deepEqual(res.body, { error: 'Not authenticated.' });
 });
 
+// Test case: Calls the role guard with a forbidden role and checks its status and error.
 test('Internal AC2-5 - requireRole blocks forbidden roles with the expected error', () => {
   const { requireRole } = require(roleMiddlewarePath);
   const req = { user: { role: 'attendee' } };
@@ -295,6 +306,7 @@ test('Internal AC2-5 - requireRole blocks forbidden roles with the expected erro
   assert.deepEqual(res.body, { error: 'Forbidden for this role.' });
 });
 
+// Test case: Calls the role guard with the permitted internal role and checks the next handler runs.
 test('Internal AC2-5 - requireRole allows matching internal role', () => {
   const { requireRole } = require(roleMiddlewarePath);
   let called = false;
@@ -318,6 +330,7 @@ test('Internal AC2-5 - requireRole allows matching internal role', () => {
   assert.equal(res.code || 200, 200);
 });
 
+// Test case: Tries other internal roles and checks internal-account status alone does not grant access.
 test('Internal AC2-5 - requireRole blocks other internal roles', () => {
   const { requireRole } = require(roleMiddlewarePath);
   const req = { user: { role: 'event_organiser' } };

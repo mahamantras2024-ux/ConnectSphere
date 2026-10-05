@@ -1,4 +1,5 @@
 // File: Tests reset-token lifecycle, session invalidation, and mocked Gmail app-password email configuration.
+// Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
@@ -60,8 +61,8 @@ after(async () => {
   await pool.end();
 });
 
+// Test case: Requests recovery and checks only a token hash is stored while the simulated email receives the usable token.
 test('reset request stores only a token hash and emails the one-time token', async () => {
-  // Verifies: reset request stores only a token hash and emails the one-time token.
 
   let storedHash;
   mock.method(pool, 'query', async (sql, values) => {
@@ -86,8 +87,8 @@ test('reset request stores only a token hash and emails the one-time token', asy
   assert.deepEqual(Object.keys(result.body), ['message']);
 });
 
+// Test case: Requests recovery for unknown and internal-only accounts and checks identical public responses without mail.
 test('unknown emails and internal accounts receive the same reset response without mail', async () => {
-  // Verifies: unknown emails and internal accounts receive the same reset response without mail.
 
   let rows = [];
   mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -106,8 +107,8 @@ test('unknown emails and internal accounts receive the same reset response witho
   assert.equal(send.mock.callCount(), 0);
 });
 
+// Test case: Simulates email delivery failure and checks token cleanup without disclosing account existence.
 test('delivery failure clears its reset token and does not expose account existence', async () => {
-  // Verifies: delivery failure clears its reset token and does not expose account existence.
 
   const calls = [];
   mock.method(pool, 'query', async (sql, values) => {
@@ -131,8 +132,8 @@ test('delivery failure clears its reset token and does not expose account existe
   assert.equal(calls[2][1][1], calls[1][1][1]);
 });
 
+// Test case: Uses a valid reset token and checks password hashing, token consumption and session-version advancement.
 test('reset atomically consumes an unexpired token, hashes the new password, and invalidates sessions', async () => {
-  // Verifies: reset atomically consumes an unexpired token, hashes the new password, and invalidates sessions.
 
   mock.method(pool, 'query', async (sql, values) => {
     // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -150,8 +151,8 @@ test('reset atomically consumes an unexpired token, hashes the new password, and
   assert.equal(result.status, 200);
 });
 
+// Test case: Tries expired, used and unknown reset tokens and checks none can change the password.
 test('expired, consumed, and unknown reset tokens cannot update a password', async () => {
-  // Verifies: expired, consumed, and unknown reset tokens cannot update a password.
 
   mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 
@@ -163,8 +164,8 @@ test('expired, consumed, and unknown reset tokens cannot update a password', asy
   assert.equal(result.status, 400);
 });
 
+// Test case: Submits malformed tokens and checks rejection before database queries.
 test('malformed reset tokens are rejected before database access', async () => {
-  // Verifies: malformed reset tokens are rejected before database access.
 
   const query = mock.method(pool, 'query', async () => {
     // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -176,8 +177,8 @@ test('malformed reset tokens are rejected before database access', async () => {
   assert.equal(query.mock.callCount(), 0);
 });
 
+// Test case: Presents a JWT from before password reset and checks its old version cannot restore access.
 test('a pre-reset JWT cannot restore a session after password reset', async () => {
-  // Verifies: a pre-reset JWT cannot restore a session after password reset.
 
   mock.method(pool, 'query', async () => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
 
@@ -187,6 +188,7 @@ test('a pre-reset JWT cannot restore a session after password reset', async () =
   assert.equal(result.status, 401);
 });
 
+// Test case: Removes Gmail configuration and checks a recovery service error before account lookup.
 test('missing Gmail configuration returns a service error without querying accounts', async () => {
   // Verifies that missing email configuration fails independently of account existence.
   mock.method(emailService, 'emailConfig', () => {
@@ -203,8 +205,8 @@ test('missing Gmail configuration returns a service error without querying accou
   assert.equal(result.body.message, 'Password-reset email is not configured. Please contact support.');
 });
 
+// Test case: Captures simulated SMTP mail and checks the token is in the URL fragment and transport closes.
 test('Gmail reset emails keep tokens in the URL fragment and close the transport', async () => {
-  // Verifies: Gmail reset emails keep tokens in the URL fragment and close the transport.
 
   let closed = false;
   mock.method(nodemailer, 'createTransport', (config) => {
@@ -234,6 +236,7 @@ test('Gmail reset emails keep tokens in the URL fragment and close the transport
   assert.equal(closed, true);
 });
 
+// Test case: Checks Gmail configuration requires an app password and encrypted SMTP.
 test('Gmail requires app-password configuration and uses encrypted SMTP', () => {
   // Verifies Gmail configuration validation, app-password normalization, and authenticated sender identity.
 
