@@ -36,7 +36,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     const password = 'acceptance-password123';
     const accounts = {}, sessions = {};
     // Test case: Tries mismatched confirmation and duplicate email and checks invalid registration cannot replace stored credentials.
-    await t.test('external accounts require matching confirmation and reject duplicate email without changing credentials', async () => {
+    await t.test('External AC1-3 - external accounts require matching confirmation and reject duplicate email without changing credentials', async () => {
       for (const role of ['event_organiser', 'attendee']) {
         const body = { fullName: role, email: `${role}@example.test`, password, confirmation: password, role, organisationName: 'Same organisation' };
         for (const invalid of [{ confirmation: undefined }, { confirmation: 'mismatch' }, { email: 'invalid' }, { fullName: '' }, { password: '' }]) assert.equal((await request('/auth/register', { ...body, ...invalid })).status, 400);
@@ -50,7 +50,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
       }
     });
     // Test case: Provisions single-role internal accounts and checks public signup cannot grant staff roles.
-    await t.test('each internally provisioned account has one role; public signup cannot provision staff', async () => {
+    await t.test('Internal AC1 - each internally provisioned account has one role; public signup cannot provision staff', async () => {
       for (const role of ['venue_staff', 'event_coordinator', 'technical_support']) {
         accounts[role] = await provisionAccount({ email: `${role}@example.test`, fullName: role, password, roles: [role] });
         assert.deepEqual(accounts[role].roles, [role]);
@@ -58,20 +58,29 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
       }
     });
     // Test case: Authenticates all five Sprint 1 roles using real hashes and checks invalid credentials are rejected.
-    await t.test('all five roles authenticate with hashed credentials and invalid credentials fail', async () => {
+    await t.test('Internal AC2/AC5 / External AC5 - all five roles authenticate with hashed credentials and invalid credentials fail', async () => {
       for (const [role, account] of Object.entries(accounts)) {
         const credentials = { email: account.email.toUpperCase(), password, audience: ['attendee','event_organiser'].includes(role) ? 'external' : 'internal' };
         const login = await request('/auth/login', credentials);
-        assert.equal(login.status, 200); assert.equal(login.body.user.role, role);
+        assert.equal(login.status, 200);
+        assert.deepEqual(login.body.user,{id:account.id,email:account.email,full_name:role,role,roles:[role]});
+        assert.ok(login.body.token);
         sessions[role] = login.body.token;
-        assert.equal((await request('/auth/login', { ...credentials, password: 'incorrect' })).status, 401);
+        const invalid=await request('/auth/login', { ...credentials, password: 'incorrect' });
+        assert.equal(invalid.status,401);assert.deepEqual(invalid.body,{message:'Invalid email or password.'});
         assert.equal((await request('/auth/switch-role', { role: role === 'venue_staff' ? 'event_coordinator' : 'venue_staff' }, login.body.token)).status, 403);
       }
+    });
+    // Test case: Uses real staff credentials through external login and checks no session is issued; retained from the removed duplicate database login suite.
+    await t.test('Internal AC4 / External AC5 - external login refuses internal-only staff credentials',async()=>{
+      const account=accounts.event_coordinator;
+      const result=await request('/auth/login',{email:account.email,password,audience:'external'});
+      assert.equal(result.status,401);assert.deepEqual(result.body,{message:'Invalid email or password.'});
     });
     const venue = { name: 'Acceptance Hall', location: 'Stamford Road, Singapore', capacity: 120, facilities: ['Projector','Wi-Fi'], accessibilityFeatures: ['Ramp'], supportedLayouts: ['Theatre'], operatingHours: '08:00 - 18:00', pricing: '75.50' };
     let venueId;
     // Test case: Creates a complete venue as Venue Staff and checks other roles and missing fields cannot save.
-    await t.test('only Venue Staff can create a complete venue and invalid required fields do not save', async () => {
+    await t.test('Create venue AC1/AC2/AC4 - only Venue Staff can create a complete venue and invalid required fields do not save', async () => {
       for (const [role, session] of Object.entries(sessions)) if (role !== 'venue_staff') assert.equal((await request('/venues', venue, session)).status, 403);
       for (const field of ['name','location','capacity','facilities','accessibilityFeatures','supportedLayouts','operatingHours']) assert.equal((await request('/venues', { ...venue, [field]: undefined }, sessions.venue_staff)).status, 400);
       for (const invalid of [{ capacity: 0 }, { capacity: 1.5 }, { operatingHours: '18:00 - 08:00' }]) assert.equal((await request('/venues', { ...venue, ...invalid }, sessions.venue_staff)).status, 400);
@@ -80,7 +89,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
       assert.equal(created.status, 201); venueId = created.body.venue.id;
     });
     // Test case: Reads catalogue/profile records and checks all required and optional fields survive persistence.
-    await t.test('catalogue and profile return every saved required and optional venue detail', async () => {
+    await t.test('View venue AC1/AC2 - catalogue and profile return every saved required and optional venue detail', async () => {
       const catalogue = await request('/venues'); assert.equal(catalogue.status, 200); assert.equal(catalogue.body[0].id, venueId);
       const detail = await request(`/venues/${venueId}`); assert.equal(detail.status, 200);
       for (const [key, value] of Object.entries({ name: venue.name, location: venue.location, capacity: 120, facilities: venue.facilities, accessibility_features: venue.accessibilityFeatures, supported_layouts: venue.supportedLayouts, operating_hours: venue.operatingHours, pricing: '75.50' })) assert.deepEqual(detail.body[key], value);
@@ -94,7 +103,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     assert.equal(created.status, 201); const eventId = created.body.event.id;
     await client.query('UPDATE events SET coordinator_id=$1 WHERE id=$2', [accounts.event_coordinator.id, eventId]);
     // Test case: Reads organiser-owned and coordinator-assigned events and checks complete details and denial of unrelated records.
-    await t.test('organiser and assigned coordinator see all submitted details and only their own lists', async () => {
+    await t.test('Organiser AC1-3 / Coordinator AC1-3 - organiser and assigned coordinator see all submitted details and only their own lists', async () => {
       for (const role of ['event_organiser','event_coordinator']) {
         const result = await request(`/events/${eventId}`, null, sessions[role]); assert.equal(result.status, 200);
         for (const [key,value] of Object.entries({ purpose: details.purpose, proposed_date: details.proposedDate, expected_attendance: 50, programme_details: details.programmeDetails, room_layout_preference: 'Theatre', accessibility_requirements: ['Ramp'], equipment_notes: details.equipmentNotes, registration_required: true, registration_capacity: 50, special_arrangements: details.specialArrangements })) assert.deepEqual(result.body.event[key], value);
@@ -108,7 +117,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
       for (const role of ['venue_staff','technical_support','attendee']) assert.equal((await request(`/events/${eventId}`, null, sessions[role])).status, 403);
     });
     // Test case: Supplies a forged attendee parameter and checks registration summaries still belong only to the session owner.
-    await t.test('attendee summaries are private even when another attendee ID is supplied', async () => {
+    await t.test('External AC7/AC8 - attendee summaries are private even when another attendee ID is supplied', async () => {
       await client.query("INSERT INTO registrations (event_id,attendee_id,status) VALUES ($1,$2,'registered'),($1,$3,'waitlisted')", [eventId, accounts.attendee.id, otherAttendee.id]);
       const mine = await request(`/registrations/mine?attendee_id=${otherAttendee.id}`, null, sessions.attendee);
       assert.equal(mine.status, 200); assert.equal(mine.body.registrations.length, 1); assert.equal(mine.body.registrations[0].status, 'registered');

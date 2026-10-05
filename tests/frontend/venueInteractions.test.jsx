@@ -1,7 +1,7 @@
 // Sprint 2: SCRUM-35 Update Venue Record and SCRUM-36 Delete Venue Record; AC tags select relevant cases independently.
 // Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
 // File: Tests venue drawer actions, map failures, refresh cleanup, image errors and editing interactions.
-import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {useState} from 'react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {api} from '../../frontend/src/api/client';
@@ -55,7 +55,7 @@ it('[SCRUM-36 AC2] - a pending deactivation cannot close the drawer or submit tw
 });
 // Test case: Opens null/legacy venue data and checks absent records render nothing while legacy fields remain readable.
 it('missing records render nothing and legacy camel-case fields remain readable',()=>{
- const first=render(<VenueDetail venue={null} onClose={()=>{}}/>);expect(screen.queryByRole('dialog')).toBeNull();first.unmount();
+ const first=render(<VenueDetail venue={null} onClose={()=>{}}/>);expect(first.container.firstChild).toBeNull();first.unmount();
  render(<VenueDetail venue={{name:'Legacy',address:'Legacy address',facilities:'Wi-Fi',accessibilityFeatures:'Ramp',supportedLayouts:'Theatre',operatingHours:'09:00 - 18:00',availabilityStatus:'Maintenance',setupMinutes:10,turnaroundMinutes:20,mrtInfo:'City Hall MRT',price:'25',image:'https://example.test/image.jpg'}} onClose={()=>{}}/>);
  for(const value of ['Legacy address','Ramp','Theatre','09:00 - 18:00','Maintenance','10 minutes','20 minutes','City Hall MRT','$25/hr'])expect(screen.getByText(value)).toBeTruthy();
 });
@@ -146,4 +146,15 @@ it('map search and selection notify the form when location work starts and ends'
 it('[SCRUM-36 AC1] - rapid deactivation clicks issue only one mutation before React rerenders',async()=>{
  let finish;api.delete.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));render(<VenueDetail venue={venue} canManage onClose={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'Deactivate venue'}));const button=screen.getByRole('button',{name:'Confirm deactivation'});
  act(()=>{button.dispatchEvent(new MouseEvent('click',{bubbles:true}));button.dispatchEvent(new MouseEvent('click',{bubbles:true}));});expect(api.delete).toHaveBeenCalledOnce();await act(async()=>finish({}));
+});
+
+// Test case: Opens a complete catalogue record and checks every required profile field, transit information and right-side drawer; Close returns to the catalogue.
+it('View venue AC1/AC2 - catalogue details show saved venue information and close back to the list',async()=>{
+ const profile={...venue,name:'Marina Hall',location:'Marina',capacity:80,facilities:['Wi-Fi','Projector'],accessibility_features:['Wheelchair access'],supported_layouts:['Theatre','Banquet'],operating_hours:'09:00 - 18:00',mrt:'Marina Bay MRT'};
+ api.get.mockResolvedValue([profile]);render(<VenueList/>);fireEvent.click(await screen.findByRole('button',{name:/view details/i}));
+ const drawer=screen.getByRole('dialog',{name:'Venue Details'});expect(drawer.classList.contains('venue-drawer')).toBe(true);
+ expect(within(drawer).getByRole('heading',{name:'Marina Hall'})).toBeTruthy();
+ for(const value of ['Marina','80 Guests','Wi-Fi, Projector','Wheelchair access','Theatre, Banquet','09:00 - 18:00','Marina Bay MRT'])expect(within(drawer).getByText(value)).toBeTruthy();
+ expect(within(drawer).getByText(/older record has no map pin/i)).toBeTruthy();
+ fireEvent.click(within(drawer).getByRole('button',{name:'Close dialog'}));expect(screen.queryByRole('dialog')).toBeNull();expect(screen.getByRole('heading',{name:'Marina Hall'})).toBeTruthy();
 });

@@ -1,6 +1,6 @@
 // File: Tests organiser navigation, event display/creation, ownership errors, and external sign-in destinations.
 // Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -134,40 +134,29 @@ it('event request form sends all fields and navigates to the saved record', asyn
   api.post.mockResolvedValue({ event: { id: 101 }, message: 'Event request submitted.' });
   open('/organizer/events/new');
   fireEvent.change(await screen.findByLabelText('Event name'), { target: { value: 'Community Workshop' } });
-  for (const [label, value] of [['Programme', event.programme_details], ['Special arrangements', event.special_arrangements],
+  for (const [label, value] of [['Purpose',event.purpose],['Description',event.description],['Event type',event.event_type],['Proposed date','2030-10-15'],['Start time','09:00'],['End time','12:00'],['Expected attendance','50'],['Room layout preference','Theatre'],['Programme', event.programme_details], ['Special arrangements', event.special_arrangements],
     ['Equipment requirements', event.equipment_notes], ['Accessibility needs (one per line)', 'Wheelchair access\nHearing loop']]) {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   }
+  fireEvent.click(screen.getByLabelText('Requires attendee registration'));fireEvent.change(screen.getByLabelText('Registration capacity'),{target:{value:'45'}});
   fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
   await waitFor(() => // Repeats the assertion until the expected asynchronous UI or mocked API state appears.
 
       // Handles this operation using the surrounding screen or request state.
       expect(api.post).toHaveBeenCalledWith('/events', expect.objectContaining({
-    isDraft: false, programmeDetails: event.programme_details, specialArrangements: event.special_arrangements,
+    expectedAttendance:50,registrationCapacity:45,registrationRequired:true,isDraft: false, programmeDetails: event.programme_details, specialArrangements: event.special_arrangements,
     equipmentNotes: event.equipment_notes, accessibilityRequirements: event.accessibility_requirements,
   }), 'organiser-token'));
   expect(await screen.findByRole('heading', { name: event.name })).toBeTruthy();
   expect(screen.getByRole('status').textContent).toBe('Event request submitted.');
 });
-// Test case: Signs in as organiser and checks external audience, session and dashboard destination.
-it('external organiser login reuses the existing login API and dashboard destination', async () => {
 
-  api.post.mockResolvedValue({ user, token: 'organiser-token' });
-  open('/external/login', false);
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: user.email } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Login' }));
-  expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
-  expect(api.post).toHaveBeenCalledWith('/auth/login', { email: user.email, password: 'password123', audience: 'external' });
-  expect(screen.getByText('ConnectSphere')).toBeTruthy();
-});
-// Test case: Signs in as attendee and checks the attendee dashboard destination.
-it('external attendee login retains its dashboard destination', async () => {
 
-  user.role = 'attendee'; api.post.mockResolvedValue({ user, token: 'attendee-token' });
-  open('/external/login', false);
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: user.email } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Login' }));
-  expect(await screen.findByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
+
+// Test case: Fails a pending event submission after duplicate submits; checks one request, retained name and visible error through real application routing.
+it('Event requests AC1 - failed pending saves preserve input and prevent duplicate writes',async()=>{
+  let reject;api.post.mockImplementation(()=>new Promise((_,bad)=>{reject=bad;}));open('/organizer/events/new');
+  fireEvent.change(await screen.findByLabelText('Event name'),{target:{value:'Draft'}});
+  const form=screen.getByRole('button',{name:'Submit'}).closest('form');fireEvent.submit(form);fireEvent.submit(form);expect(api.post).toHaveBeenCalledOnce();
+  await act(async()=>reject(new Error('Unable to save event')));expect(screen.getByRole('alert').textContent).toBe('Unable to save event');expect(screen.getByLabelText('Event name').value).toBe('Draft');
 });

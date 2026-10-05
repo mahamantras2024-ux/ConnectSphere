@@ -1,6 +1,6 @@
 // File: Verifies retained external registration, role boundaries and submission feedback.
 // Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -42,4 +42,13 @@ it('retains entered fields and displays registration errors', async () => {
     expect(screen.getByRole('alert').textContent).toMatch(/already exists/);
   });
   expect(screen.getByLabelText('Email').value).toBe('new@example.com');
+});
+
+// Test case: Supplies organisation and matching confirmation for organiser signup, checking only one request while saving and the final sign-in action.
+it('External AC1/AC4 - organiser signup persists optional organisation and prevents duplicate submits',async()=>{
+  let finish;const post=vi.spyOn(api,'post').mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));render(<MemoryRouter><ExternalRegister/></MemoryRouter>);
+  for(const[label,value]of [['Full name','Organiser'],['Email','organiser@example.test'],['Password','password123'],['Confirm password','password123'],['Account type','event_organiser'],['Organisation name (optional)','Community group']])fireEvent.change(screen.getByLabelText(label),{target:{value}});
+  const form=screen.getByRole('button',{name:'Create account'}).closest('form');fireEvent.submit(form);fireEvent.submit(form);expect(post).toHaveBeenCalledOnce();
+  expect(post.mock.lastCall[1]).toMatchObject({role:'event_organiser',organisationName:'Community group',confirmation:'password123'});
+  await act(async()=>finish({message:'Account created. Please sign in.'}));expect(screen.getByRole('link',{name:'Sign in'})).toBeTruthy();
 });

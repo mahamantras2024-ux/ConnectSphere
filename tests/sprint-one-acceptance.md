@@ -8,26 +8,26 @@ All listed files are relative to this `tests` directory. The real database fixtu
 
 | Story / criterion | Expected behavior | Test evidence |
 | --- | --- | --- |
-| Create venue 1 | Only a logged-in Venue Staff user creates a record. | `backend/createVenue-backend.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/venueStaff.test.jsx` |
+| Create venue 1 | Only a logged-in Venue Staff user creates a record. | `backend/createVenue-backend.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/createVenue.test.jsx` |
 | Create venue 2 | Name, location, positive whole capacity, facilities, accessibility, layouts and operating times are required. | `backend/venueValidation.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/createVenue.test.jsx` |
 | Create venue 3 | Closing time is later than opening time. | `backend/venueValidation.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/venueInteractions.test.jsx` |
 | Create venue 4 | Invalid/missing required input prevents saving and produces a relevant error. | `backend/venueValidation.test.js`, `frontend/createVenue.test.jsx`, `frontend/sprintOne.test.jsx`, `frontend/venueInteractions.test.jsx` |
 | Create venue 6 | Successful saving adds a catalogue record with the submitted values. | `backend/sprintOneAcceptancePostgres.test.js`, `frontend/createVenue.test.jsx` |
-| View venue 1 | A full venue profile displays all required recorded details. | `backend/sprintOneAcceptancePostgres.test.js`, `frontend/view-venueDetail.test.jsx` |
-| View venue 2 | Available additional venue details are displayed. | `frontend/view-venueDetail.test.jsx`, `frontend/venueManagement.test.jsx`, `frontend/hourlyRate.test.jsx` |
+| View venue 1 | A full venue profile displays all required recorded details. | `backend/sprintOneAcceptancePostgres.test.js`, `frontend/venueInteractions.test.jsx` |
+| View venue 2 | Available additional venue details are displayed. | `frontend/venueInteractions.test.jsx`, `frontend/venueManagement.test.jsx`, `frontend/hourlyRate.test.jsx` |
 | View venue 4 | Missing information is explicitly unavailable rather than assumed. | `frontend/venueInteractions.test.jsx`, `frontend/hourlyRate.test.jsx` |
 | View venue 5 | Retrieval failures display an error. | `backend/sprintOneFailurePaths.test.js`, `frontend/venueInteractions.test.jsx` |
 | Internal login 1 | Staff are provisioned internally; public signup refuses every staff role. Single-role staff fixtures are used. | `backend/externalRegistration.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/ExternalRegister.test.jsx` |
-| Internal login 2 | Staff credentials are checked against stored password hashes. | `backend/login.test.js`, `backend/sprintOneAcceptancePostgres.test.js` |
-| Internal login 3 | Each staff role reaches its own dashboard with role-relevant content. | `frontend/login.test.jsx`, `frontend/venueStaff.test.jsx` |
-| Internal login 4 | Other dashboards and unassigned private event/client information remain inaccessible. | `backend/organiserEvents.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/venueStaff.test.jsx` |
+| Internal login 2 | Staff credentials are checked against stored password hashes. | `backend/sprintOneAcceptancePostgres.test.js` |
+| Internal login 3 | Each staff role reaches its own dashboard with role-relevant content. | `frontend/login.test.jsx` |
+| Internal login 4 | Other dashboards and unassigned private event/client information remain inaccessible. | `backend/organiserEvents.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/login.test.jsx` |
 | Internal login 5 | Invalid credentials fail with a clear error. | `backend/sprintOneAccess.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/login.test.jsx` |
-| External auth 1 | Organisers and attendees register with name, email, password and matching confirmation. | `backend/externalRegistration.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/ExternalRegister.test.jsx`, `frontend/registrationAndEventForm.test.jsx` |
+| External auth 1 | Organisers and attendees register with name, email, password and matching confirmation. | `backend/externalRegistration.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/ExternalRegister.test.jsx` |
 | External auth 2 | Missing information, invalid email and password mismatch prevent signup with an error. | `backend/externalRegistration.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/ExternalRegister.test.jsx` |
 | External auth 3 | An existing email cannot create another account. | `backend/externalRegistration.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/ExternalRegister.test.jsx` |
-| External auth 4 | Successful signup confirms creation and offers sign-in. | `frontend/ExternalRegister.test.jsx`, `frontend/registrationAndEventForm.test.jsx` |
-| External auth 5 | Valid external credentials succeed; invalid credentials fail with an error. | `backend/login.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `frontend/login.test.jsx` |
-| External auth 6 | Organisers reach their own dashboard and own event requests. | `backend/sprintOneAcceptancePostgres.test.js`, `frontend/organiserEvents.test.jsx`, `frontend/venueStaff.test.jsx` |
+| External auth 4 | Successful signup confirms creation and offers sign-in. | `frontend/ExternalRegister.test.jsx` |
+| External auth 5 | Valid external credentials succeed; invalid credentials fail with an error. | `backend/sprintOneAcceptancePostgres.test.js`, `frontend/login.test.jsx` |
+| External auth 6 | Organisers reach their own dashboard and own event requests. | `backend/sprintOneAcceptancePostgres.test.js`, `frontend/organiserEvents.test.jsx`, `frontend/login.test.jsx` |
 | External auth 7 | Attendees reach their own dashboard and own registrations. | `backend/sprintOneAcceptancePostgres.test.js`, `frontend/sprintOne.test.jsx` |
 | External auth 8 | Another organiser's private events and attendee's registrations cannot be accessed. | `backend/organiserEvents.test.js`, `backend/sprintOneAcceptancePostgres.test.js`, `backend/sprintOneAccess.test.js` |
 | Organiser view 1 | The dashboard lists personal requests and opens their details. | `frontend/organiserEvents.test.jsx`, `backend/sprintOneAcceptancePostgres.test.js` |
@@ -57,6 +57,6 @@ Existing signup, password reset, event requests/drafts, map/MRT selection, role 
 
 `frontend/dashboardDrawers.test.jsx` checks event-detail panels from organiser and coordinator dashboards/lists, Close/Back/Escape dismissal, origin/focus/scroll restoration, failed record reads, and attendee-only registration summaries. These preserve the existing Sprint 1 criteria rather than adding Week 7 requirements to completed stories.
 
-Latest full verification: 137 backend tests, zero live suites skipped, 158 frontend tests, and 100% per-file coverage across the scoped Sprint 1 backend and all frontend source. Generated PDFs and reports were removed as requested; this reference remains the current story-to-test map.
+The authentication checks have been consolidated: frontend/login.test.jsx owns login UI/routing/session checks, backend/sprintOneAccess.test.js owns HTTP authentication/security checks, and backend/sprintOneAcceptancePostgres.test.js owns single-role real-database acceptance. Older pulled handler suites and the duplicate database login fixture have been removed after retaining their unique assertions.
 
 

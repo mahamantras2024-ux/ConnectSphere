@@ -31,7 +31,7 @@ async function request(path, body, token) {
 // Signs a session using one provisioned active role and the current revocation version.
 function token(role = 'venue_staff', authVersion = 2) { return jwt.sign({ sub: 81, email: account.email, activeRole: role, authVersion }, process.env.JWT_SECRET); }
 // Test case: Logs in with different audiences/grants and checks the selected role belongs to the account and requested audience.
-test('login verifies credentials and selects a provisioned role in the requested audience', async () => {
+test('Internal AC2 / External AC5 - login verifies credentials and selects a provisioned role in the requested audience', async () => {
   // Verifies staff/external separation for a multi-role account and avoids credential disclosure.
   mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
@@ -40,19 +40,21 @@ test('login verifies credentials and selects a provisioned role in the requested
     const result = await request('/api/auth/login', { email: ' STAFF@example.test ', password: 'password123', audience });
     assert.equal(result.status, 200); assert.equal(result.body.user.role, expected);
     assert.equal(jwt.verify(result.body.token, process.env.JWT_SECRET).activeRole, expected);
-    assert.equal(result.body.user.password_hash, undefined);
+    assert.deepEqual(result.body.user,{id:account.id,email:account.email,full_name:account.full_name,role:expected,roles:account.roles});
   }
-  assert.equal((await request('/api/auth/login', { email: account.email, password: 'wrong-password' })).status, 401);
+  const wrong=await request('/api/auth/login', { email: account.email, password: 'wrong-password' });
+  assert.equal(wrong.status,401);assert.deepEqual(wrong.body,{message:'Invalid email or password.'});
   assert.equal((await request('/api/auth/login', { email: '', password: 'password123' })).status, 400);
   assert.equal((await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'admin' })).status, 400);
 });
 // Test case: Tries bad credentials, database failure and absent audience grants and checks clear error responses.
-test('invalid credentials, unavailable database, and accounts without audience roles produce clear errors', async () => {
+test('Internal AC5 / External AC5 - invalid credentials, unavailable database, and accounts without audience roles produce clear errors', async () => {
   // Exercises missing-account, wrong-audience, and persistence failure responses.
   mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
       { rows: [] }));
-  assert.equal((await request('/api/auth/login', { email: 'missing@example.test', password: 'password123' })).status, 401);
+  const missing=await request('/api/auth/login', { email: 'missing@example.test', password: 'password123' });
+  assert.equal(missing.status,401);assert.deepEqual(missing.body,{message:'Invalid email or password.'});
   pool.query.mock.restore(); mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
       { rows: [{ ...account, roles: [] }] }));
@@ -62,10 +64,11 @@ test('invalid credentials, unavailable database, and accounts without audience r
       }); mock.method(pool, 'query', async () => {
       // Handles this operation using the surrounding screen or request state.
        throw new Error('Unavailable'); });
-  assert.equal((await request('/api/auth/login', { email: account.email, password: 'password123' })).status, 500);
+  const failed=await request('/api/auth/login', { email: account.email, password: 'password123' });
+  assert.equal(failed.status,500);assert.deepEqual(failed.body,{message:'Unable to log in at this time.'});
 });
 // Test case: Tries an unassigned role switch then restores a valid switched session and checks its active role is retained.
-test('role switching cannot grant an unprovisioned role and session restoration retains the selected role', async () => {
+test('Role switching enhancement AC1 / Internal AC4 - role switching cannot grant an unprovisioned role and session restoration retains the selected role', async () => {
   // Checks database-backed switching and confirms client claims cannot grant additional access.
   mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
@@ -79,7 +82,7 @@ test('role switching cannot grant an unprovisioned role and session restoration 
   assert.equal((await request('/api/auth/switch-role', { role: 'attendee' })).status, 401);
 });
 // Test case: Presents revoked roles, deleted accounts, malformed JWTs and obsolete session versions and checks API access is denied.
-test('revoked roles, deleted accounts, malformed JWTs, and old session versions cannot access protected APIs', async () => {
+test('Internal AC4 / External AC8 - revoked roles, deleted accounts, malformed JWTs, and old session versions cannot access protected APIs', async () => {
   // Validates that authorisation uses current account state rather than stale JWT grants.
   mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
@@ -93,7 +96,7 @@ test('revoked roles, deleted accounts, malformed JWTs, and old session versions 
   assert.equal((await request('/api/events', null, token())).status, 401);
 });
 // Test case: Lists attendee registrations with forged identity input and checks owner scoping and unavailable write endpoints.
-test('attendee summaries query only the session owner and do not enable registration writes', async () => {
+test('External AC7/AC8 - attendee summaries query only the session owner and do not enable registration writes', async () => {
   // Ensures caller-supplied attendee IDs cannot expose another person's registrations.
   mock.method(pool, 'query', async (sql, values) => {
       // Handles this operation using the surrounding screen or request state.
