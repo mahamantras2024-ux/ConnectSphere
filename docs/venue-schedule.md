@@ -1,4 +1,6 @@
-# Venue schedule: implementation and Test Verification Record
+# Original venue schedule: historical AC1–AC5 verification record
+
+This records the original staff-only implementation. The current coordinator access, event buffers, expiring holds, request decisions, database guards and deployment instructions are documented in [Venue availability — final Test Verification Record](venue-availability-tdd.md). The original rules and results below are retained as historical evidence, not current deployment guidance.
 
 Venue Staff open **View details → View schedule**, choose a date and optionally refresh it. The agenda shows available gaps, confirmed bookings and other unavailable periods using text labels and colour. Records are loaded from the authenticated `GET /api/venues/:id/schedule?date=YYYY-MM-DD` endpoint.
 

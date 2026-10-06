@@ -52,6 +52,8 @@ function storedValue(expression, parameters) {
 /** Records parameterized writes and supplies raw rows; SQL locking and execution need separate PostgreSQL integration tests. */
 async function databaseQuery(sql, parameters = []) {
   const query = sql.trim();
+  // Simulate only a database write error; the handler must roll back and map an exclusion violation to a conflict.
+  if (fixture.writeError && /^INSERT INTO venue_bookings/i.test(query)) throw Object.assign(new Error('Database write rejected'), { code: fixture.writeError });
   if (/^(BEGIN|COMMIT|ROLLBACK)/i.test(query)) return { rows: [] };
   if (/FROM users\b/i.test(query)) return { rows: [{ id: 1, role: fixture.role }] };
   if (/^SELECT/i.test(query)) {
@@ -284,4 +286,119 @@ test('AC3 AC5 AC7 - approval rechecks maintenance recorded since the hold was cr
   // Assert: approval must not trust the historical conflict check at request creation.
   assert.equal(response.status, 409);
   assert.equal(fixture.writes.some(write => write.changes?.status === 'approved'), false);
+});
+
+for (const [name, value] of [
+  ['missing timestamp', undefined], ['non-string timestamp', 42],
+  ['impossible month', '2030-13-10T10:00:00+08:00'],
+  ['normalized invalid day', '2030-02-30T10:00:00+08:00'],
+  ['invalid clock time', '2030-10-10T99:00:00+08:00'],
+  ['missing timezone', '2030-10-10T10:00:00'],
+]) {
+  test(`AC7 - ${name} cannot become a stored reservation`, async () => {
+    // Arrange / Act: every invalid timestamp is independent of browser/server timezone interpretation.
+    const response = await request('/7/requests', { ...requestBody, startDatetime: value });
+    // Assert: a malformed date must not normalize into a different reservation or reach the write boundary.
+    assert.equal(response.status, 400);
+    assert.deepEqual(fixture.writes, []);
+  });
+}
+
+for (const [id, expected] of [[2147483646, 404], [2147483647, 404], [2147483648, 400]]) {
+  test(`AC7 - venue ID ${id} respects the database integer boundary`, async () => {
+    // Arrange: valid but absent IDs return 404; an ID above PostgreSQL's integer limit is invalid before querying.
+    fixture.venue = null;
+    // Act
+    const response = await request(`/${id}/requests`, requestBody);
+    // Assert: catches overflow reaching PostgreSQL as an unexpected server failure.
+    assert.equal(response.status, expected);
+    assert.deepEqual(fixture.writes, []);
+  });
+}
+
+test('AC7 - an inactive venue cannot acquire a hold', async () => {
+  // Arrange
+  fixture.venue.is_active = false;
+  // Act
+  const response = await request('/7/requests', requestBody);
+  // Assert: a known but withdrawn venue must remain unavailable for new requests.
+  assert.equal(response.status, 404);
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('AC7 - an absent event cannot acquire a hold', async () => {
+  // Arrange: no assignment can authorize a request for a nonexistent event.
+  fixture.event = null;
+  // Act
+  const response = await request('/7/requests', requestBody);
+  // Assert
+  assert.equal(response.status, 403);
+  assert.deepEqual(fixture.writes, []);
+});
+
+for (const [path, decision] of [
+  ['/invalid/requests/20/decision', 'approved'], ['/7/requests/invalid/decision', 'approved'],
+  ['/7/requests/20/decision', 'cancelled'],
+]) {
+  test(`AC7 - staff decision ${decision} at ${path} requires valid identifiers and an explicit decision`, async () => {
+    // Arrange: staff permission alone does not make malformed decision input valid.
+    fixture.role = 'venue_staff';
+    // Act
+    const response = await request(path, { decision }, 'PUT');
+    // Assert
+    assert.equal(response.status, 400);
+    assert.deepEqual(fixture.writes, []);
+  });
+}
+
+test('AC7 - staff cannot decide a missing venue request', async () => {
+  // Arrange: the venue exists, but it has no request with this identifier.
+  fixture.role = 'venue_staff';
+  // Act
+  const response = await request('/7/requests/20/decision', { decision: 'approved' }, 'PUT');
+  // Assert
+  assert.equal(response.status, 404);
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('AC7 - staff cannot overwrite an already decided request', async () => {
+  // Arrange: an earlier decision is authoritative; repeated or opposing decisions must not overwrite it.
+  fixture.role = 'venue_staff'; fixture.bookings = [{ ...hold, status: 'approved' }];
+  // Act
+  const response = await request('/7/requests/20/decision', { decision: 'rejected' }, 'PUT');
+  // Assert
+  assert.equal(response.status, 409);
+  assert.deepEqual(fixture.writes, []);
+});
+
+for (const [code, status] of [['23P01', 409], ['08006', 500]]) {
+  test(`AC6 AC7 - database failure ${code} returns ${status} instead of a phantom successful hold`, async () => {
+    // Arrange: the write boundary rejects after the application's initial conflict check.
+    fixture.writeError = code;
+    // Act
+    const response = await request('/7/requests', requestBody);
+    // Assert: database overlap guards become 409; connectivity failures stay failures, never successful reservations.
+    assert.equal(response.status, status);
+    assert.deepEqual(fixture.writes, []);
+  });
+}
+
+test('AC3 AC7 - maintenance with the same numeric ID as the target hold still prevents approval', async () => {
+  // Arrange: booking and maintenance sequences are independent, so equal IDs identify different records.
+  fixture.role = 'venue_staff';
+  fixture.bookings = [{ ...hold, hold_expires_at: new Date(now + 1000).toISOString() }];
+  fixture.maintenance = [{ ...hold, kind: 'unavailability' }];
+  // Act
+  const response = await request('/7/requests/20/decision', { decision: 'approved' }, 'PUT');
+  // Assert: excluding the target by ID alone would incorrectly skip maintenance and approve it.
+  assert.equal(response.status, 409);
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('AC7 - array event IDs cannot be coerced into authorized event identifiers', async () => {
+  // Arrange / Act: JSON arrays are not scalar identifiers even when JavaScript would stringify [3] as "3".
+  const response = await request('/7/requests', { ...requestBody, eventId: [3] });
+  // Assert: accepting coercion would reserve an event different from the submitted input type.
+  assert.equal(response.status, 400);
+  assert.deepEqual(fixture.writes, []);
 });

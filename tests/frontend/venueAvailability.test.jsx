@@ -127,3 +127,17 @@ it('AC5 AC8 - returning to the browser revalidates a hold that was approved whil
   expect(await screen.findByText(/Confirmed booking: Workshop/)).toBeVisible();
   expect(screen.queryByText(/Temporary Hold/)).not.toBeInTheDocument();
 });
+
+it('AC5 AC8 AC9 - expiration revalidates a stale hold so a staff-approved booking never becomes available', async () => {
+  // Arrange: approval happens on the server after loading, while the same agenda stays open through the old deadline.
+  vi.useFakeTimers(); vi.setSystemTime(expiry - 1000);
+  api.get.mockResolvedValueOnce([hold]).mockResolvedValue([{ ...hold, status: 'approved' }]);
+  render(<VenueSchedule venue={{ ...venue, setup_minutes: 0, turnaround_minutes: 0 }} initialDate={date} />);
+  await act(async () => {});
+  expect(screen.getByText(/Workshop/).closest('li')).toHaveTextContent('Temporary Hold');
+  // Act: the old hold deadline passes without a manual refresh or focus event.
+  await act(async () => { vi.advanceTimersByTime(1000); });
+  // Assert: relying solely on the old pending snapshot would incorrectly free this booked slot.
+  expect(screen.getByText(/Confirmed booking: Workshop/).closest('li')).toHaveTextContent(/10:00–11:00.*Unavailable.*Booked/);
+  expect(screen.queryByText(/10:00–11:00.*Available/)).not.toBeInTheDocument();
+});

@@ -112,3 +112,13 @@ it('AC3 AC6 - maintenance uses its recorded interval without event setup or turn
   expect(blocked).toHaveLength(1);
   expect(blocked[0]).toMatchObject({ start: at('10:00:00'), end: at('11:00:00') });
 });
+
+it('AC5 AC6 - current schedule settings override an older catalogue snapshot', () => {
+  // Arrange: staff changed the venue buffers after the catalogue loaded; the API supplies the current snapshot.
+  const record = { ...booking, setup_minutes: 30, turnaround_minutes: 15 };
+  // Act
+  const blocked = buildSchedule(date, [record], { now, setupMinutes: 5, turnaroundMinutes: 5 }).filter(segment => segment.blocked);
+  // Assert: rendering stale catalogue settings would expose both 09:30–09:55 and 11:05–11:15 as free.
+  expect(blocked[0].start).toBe(at('09:30:00'));
+  expect(blocked.at(-1).end).toBe(at('11:15:00'));
+});
