@@ -113,15 +113,16 @@ describe('dashboard and event authorization', () => {
     expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/venue/dashboard');
   });
   // Test case: Opens Venue Staff URLs as other roles and checks venue dashboard content is denied.
-  it.each(dashboards.slice(1))('Internal AC4 - does not let %s open the Venue Staff dashboard', async (role, title) => {
-
-    currentUser.role = role; open('/venue/dashboard', true);
+  it.each(dashboards.slice(1))('Internal AC4 / Venue AC1 - does not let %s open the Venue Staff dashboard', async (role, title) => {
+    // Arrange: coordinator schedule viewing does not grant staff dashboard or management permissions.
+    currentUser.role = role;
+    // Act
+    open('/venue/dashboard', true);
+    // Assert: redirect to the permitted dashboard; only coordinators additionally load the read-only catalogue.
     expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Venue Staff Dashboard' })).toBeNull();
-    expect(api.get.mock.calls.some(([endpoint]) => // Checks recorded API calls for an endpoint that should have been blocked.
-
-      // Handles this operation using the surrounding screen or request state.
-      endpoint === '/venues')).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Add venue' })).toBeNull();
+    expect(api.get.mock.calls.some(([endpoint]) => endpoint === '/venues')).toBe(role === 'event_coordinator');
   });
   // Test case: Visits a protected dashboard without a token and checks login redirection.
   it('Internal AC4 / External AC8 - redirects an unauthenticated direct dashboard visit to login', async () => {

@@ -11,7 +11,10 @@ const { validateCoordinates, nearestMrt, geocode } = require('../services/venueL
 const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { venueSchedule } = require('../controllers/venueScheduleController');
-router.get('/:id/schedule', requireAuth, requireRole('venue_staff'), asyncHandler(venueSchedule));
+const { createRequest, decideRequest } = require('../controllers/venueRequestController');
+router.get('/:id/schedule', requireAuth, requireRole('venue_staff', 'event_coordinator'), asyncHandler(venueSchedule));
+router.post('/:id/requests', requireAuth, requireRole('event_coordinator'), asyncHandler(createRequest));
+router.put('/:id/requests/:requestId/decision', requireAuth, requireRole('venue_staff'), asyncHandler(decideRequest));
 // Bounds staff address lookups and nearest-station requests while protecting the public provider.
 const locationLimit = rateLimit({ windowMs:60_000, limit:30, standardHeaders:'draft-8', legacyHeaders:false, message:{message:'Too many map requests. Please try again shortly.'} });
 router.get('/stream', catalogueStream);
