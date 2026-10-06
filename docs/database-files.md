@@ -12,6 +12,9 @@ Supabase hosts PostgreSQL; it does not replace schema upgrades or staff provisio
 | setupSprintOne.js | Applies/verifies the Sprint 1 upgrade. |
 | venueManagementSchema.sql | Venue lifecycle/location/revisions, booking safeguards, locking triggers and catalogue notifications. |
 | setupVenueManagement.js | Applies/verifies venue management. |
+| venueScheduleSchema.sql | Recorded maintenance and other venue-unavailability periods. |
+| venueAvailabilitySchema.sql | Hold deadlines and serialized, buffer-aware booking/maintenance guards. |
+| setupVenueAvailability.js | Applies the schedule and availability upgrades after venue management. |
 | provisionAccount.js | Creates internal accounts with hashed passwords and provisioned roles. |
 
 These files remain useful for teammates, deployments and tests. The obsolete schema.sql, migrate.js, seed.js and duplicate provisionVenueStaff.js were removed. An existing Supabase database does not need seeding. Retained SQL is additive history for an existing compatible database, not a verified full bootstrap for an empty database. No shared records were removed during cleanup.

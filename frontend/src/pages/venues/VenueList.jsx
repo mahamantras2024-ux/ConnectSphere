@@ -43,7 +43,7 @@ export default function VenueList() {
       setSelected(venue)}>View details <span aria-hidden="true">↗</span></button></div></div>
     </article>)}</div>}{selected && <VenueDetail venue={selected} onClose={() =>
       // Handles this control action and updates the screen state.
-      setSelected(null)} canManage={user?.role==='venue_staff'} token={token} onEdit={record=>{setSelected(null);setEditing(record);}} onRemoved={id=>{setVenues(current=>current.filter(v=>v.id!==id));setNotice('Venue deactivated. Historical bookings are preserved.');setVersion(current=>current+1);}} />}
+      setSelected(null)} canManage={user?.role==='venue_staff'} canViewSchedule={['venue_staff','event_coordinator'].includes(user?.role)} token={token} onEdit={record=>{setSelected(null);setEditing(record);}} onRemoved={id=>{setVenues(current=>current.filter(v=>v.id!==id));setNotice('Venue deactivated. Historical bookings are preserved.');setVersion(current=>current+1);}} />}
     {editing && <AddVenueModal venue={editing} onClose={()=>setEditing(null)} onAdd={record=>{setSelected(record);setNotice('Venue updated and shared with the catalogue.');setVersion(current=>current+1);}}/>}
   </section>;
 }

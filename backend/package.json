@@ -14,6 +14,8 @@
     "migrate:external-events": "node src/db/migrateExternalEvents.js",
     "setup:sprint-one": "node src/db/setupSprintOne.js",
     "setup:venue-management": "node src/db/setupVenueManagement.js",
+    "setup:venue-availability": "node src/db/setupVenueAvailability.js",
+    "test:venue-availability:integration": "RUN_VENUE_AVAILABILITY_DB=1 node --test ../tests/backend/venueAvailabilityPostgres.test.js",
     "provision:account": "node src/db/provisionAccount.js",
     "test:integration": "node ../tests/run.cjs integration"
   },

@@ -8,7 +8,7 @@ const dependency = name => fileURLToPath(new URL(`./node_modules/${name}`, impor
 export default defineConfig({
   plugins: [react()],
   server: { fs: { allow: [fileURLToPath(new URL('..', import.meta.url))] } },
-  resolve: { alias: ['react-dom', 'react-router-dom', 'react', '@testing-library/react', 'vitest', 'leaflet'].map(name => ({ find: name, replacement: dependency(name) })) },
+  resolve: { alias: ['react-dom', 'react-router-dom', 'react', '@testing-library/react', '@testing-library/jest-dom', 'vitest', 'leaflet'].map(name => ({ find: name, replacement: dependency(name) })) },
   test: {
     include: ['../tests/frontend/**/*.test.{js,jsx}'],
     environment: 'jsdom', clearMocks: true,
