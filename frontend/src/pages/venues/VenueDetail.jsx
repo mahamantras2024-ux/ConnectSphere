@@ -36,7 +36,7 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
     {venue.mrt_distance_m!=null && <p className="field-help">Nearest MRT is approximately {(venue.mrt_distance_m/1000).toFixed(2)} km away in a straight line.</p>}
     {canManage && <footer className="venue-record-actions"><button onClick={()=>onEdit?.(venue)} disabled={busy}>Edit venue</button><button className="button-danger" onClick={()=>setRemoving(true)} disabled={busy}>Deactivate venue</button></footer>}
     {removing && <section className="booking-warning"><h3>Remove this venue from the catalogue?</h3><p>Deactivating hides it from searches and preserves historical bookings. Upcoming bookings must be resolved first.</p>{error && <p role="alert" className="error-message">{error}</p>}<BookingImpactList bookings={blocked}/><div className="venue-record-actions"><button className="button-danger" disabled={busy} onClick={deactivate}>{busy?'Checking bookings…':'Confirm deactivation'}</button><button className="button-secondary" disabled={busy} onClick={()=>{setRemoving(false);setError('');setBlocked([]);}}>Keep venue</button></div></section>}
-    {canManage && <button type="button" onClick={() => setShowSchedule(true)}>View schedule</button>}
+    {canManage && <button className="schedule-action" type="button" onClick={() => setShowSchedule(true)}>View schedule</button>}
     {canManage && showSchedule && <VenueSchedule venue={venue} token={token} />}
   </div></Modal>;
 }

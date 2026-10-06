@@ -22,7 +22,7 @@ export default function VenueSchedule({ venue, token, initialDate = new Date(Dat
   return <section aria-label="Venue schedule">
     <h3>{venue.name} schedule</h3>
     <label>Schedule date <input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
-    <button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh schedule</button>
+    <button className="schedule-action" type="button" onClick={() => setRefresh(value => value + 1)}>Refresh schedule</button>
     <p>Times are in Singapore (UTC+08:00). Available means no recorded conflict; opening hours and other booking rules still apply. Confirmed bookings reserve exclusive use of this venue.</p>
     {!date ? <p>Choose a date to view the schedule.</p> : !current ? <p role="status">Loading schedule…</p> : current.error ? <p role="alert">Schedule unavailable: {current.error}</p> :
       <ul aria-label="Daily availability">{buildSchedule(date, current.records).map(segment =>
