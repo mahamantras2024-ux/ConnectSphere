@@ -9,6 +9,10 @@ const { requireRole } = require('../middleware/role');
 router.use(requireAuth);
 
 router.post('/', requireRole('event_organiser'), eventController.createEvent);
+router.put('/:id/non-critical', requireRole('event_organiser'), eventController.updateEventInformation);
+router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);
+router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);
+router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_organiser'), eventController.respondToClarification);
 
 router.get(
   '/',

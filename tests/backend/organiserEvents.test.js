@@ -172,6 +172,142 @@ test('attendees cannot create organiser requests', async () => {
   assert.equal((await request('/api/events', { user, method: 'POST', body: submission })).status, 403);
 });
 
+// Test case: AC1 - before venue confirmation, an organiser may update a critical event field.
+test('AC1 - unconfirmed venue allows an organiser to update critical event fields', async () => {
+  const updated = { ...details, description: 'Updated description', programme_details: 'Updated agenda', updated_at: new Date() };
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
+    if (sql.includes('FROM events e')) return { rows: [{ ...details, venue_confirmed: false }] };
+    assert.match(sql, /UPDATE events SET name=\$1/);
+    assert.match(sql, /WHERE id=\$2 AND organiser_id=\$3/);
+    assert.deepEqual(values, ['Renamed Workshop', '101', 12, true]);
+    return { rows: [updated] };
+  });
+  const result = await request('/api/events/101/non-critical', { method: 'PUT', body: {
+    name: 'Renamed Workshop',
+  } });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.message, 'Event information saved.');
+});
+
+// Test case: AC2 - a confirmed venue rejects critical edits but allows a non-critical edit.
+test('AC2 - confirmed venue requires a change request for critical fields and saves non-critical fields', async () => {
+  const updated = { ...details, programme_details: 'Updated agenda' };
+  const pendingRequest = { id: 501, event_id: 101, organiser_id: 12, coordinator_id: 30, requested_changes: { name: 'Updated title' }, status: 'pending' };
+  const query = mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
+    if (sql.includes('INSERT INTO event_change_requests')) {
+      assert.deepEqual(values, ['101', 12, 30, JSON.stringify({ name: 'Updated title' })]);
+      return { rows: [pendingRequest] };
+    }
+    if (sql.includes('FROM events e')) return { rows: [{ ...details, coordinator_id: 30, venue_confirmed: true }] };
+    assert.match(sql, /NOT EXISTS \(\s*SELECT 1 FROM venue_bookings/);
+    assert.deepEqual(values, ['Updated agenda', '101', 12, false]);
+    return { rows: [updated] };
+  });
+  const blocked = await request('/api/events/101/non-critical', { method: 'PUT', body: { name: 'Updated title' } });
+  assert.equal(blocked.status, 202);
+  assert.equal(blocked.body.changeRequest.status, 'pending');
+  assert.match(blocked.body.message, /confirmed event information remains in effect/);
+  const saved = await request('/api/events/101/non-critical', { method: 'PUT', body: { programmeDetails: 'Updated agenda' } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.message, 'Non-critical event information saved.');
+  assert.equal(query.mock.callCount(), 6);
+});
+
+// Test case: AC2 - a different organiser cannot update an event they do not own.
+test('AC2 - non-owner event updates return not found without writing', async () => {
+  const other = { ...organiser, id: 27 };
+  const query = mock.method(pool, 'query', async (sql) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [other] };
+    if (sql.includes('FROM events e')) return { rows: [] };
+    assert.fail('An event without an ownership match must not be updated.');
+  });
+  const result = await request('/api/events/101/non-critical', { user: other, method: 'PUT', body: { description: 'x' } });
+  assert.equal(result.status, 404);
+  assert.equal(query.mock.callCount(), 2);
+});
+
+// Test case: AC2 - a critical edit racing venue approval is rejected by the update guard.
+test('AC2 - critical edit racing venue approval is rejected without applying the change', async () => {
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
+    if (sql.includes('FROM events e')) return { rows: [{ ...details, venue_confirmed: false }] };
+    assert.match(sql, /vb\.status='approved'/);
+    assert.equal(values.at(-1), true);
+    return { rows: [] };
+  });
+  const result = await request('/api/events/101/non-critical', { method: 'PUT', body: { name: 'Workshop v2' } });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.code, 'ARRANGEMENT_CHANGED');
+});
+
+// Test case: AC3 - the assigned coordinator receives pending critical change requests in the dashboard inbox.
+test('AC3 - pending critical changes are listed only for the assigned Event Coordinator', async () => {
+  const coordinator = { ...organiser, id: 30, role: 'event_coordinator' };
+  const pending = { id: 501, event_id: 101, event_name: 'Workshop', organiser_id: 12, organiser_name: 'Alice',
+    requested_changes: { expectedAttendance: 55 }, status: 'pending' };
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
+    assert.match(sql, /r\.coordinator_id=\$1 AND r\.status='pending'/);
+    assert.deepEqual(values, [30]);
+    return { rows: [pending] };
+  });
+  const result = await request('/api/events/change-requests', { user: coordinator });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.changeRequests, [pending]);
+});
+
+// Test case: AC1/AC2 - coordinator fields and question are stored on the event and directed to its organiser.
+test('AC1/AC2 - assigned coordinator sends a clarification request identifying incomplete information', async () => {
+  const coordinator = { ...organiser, id: 30, role: 'event_coordinator' };
+  const clarificationRequest = { id: 601, event_id: 101, coordinator_id: 30, organiser_id: 12,
+    information_needed: ['expected_attendance', 'proposed_date'], message: 'Please confirm the count and date.', status: 'pending' };
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
+    assert.match(sql, /INSERT INTO event_clarification_requests/);
+    assert.match(sql, /WHERE e\.id=\$1 AND e\.coordinator_id=\$2/);
+    assert.deepEqual(values, ['101', 30, JSON.stringify(clarificationRequest.information_needed), clarificationRequest.message]);
+    return { rows: [clarificationRequest] };
+  });
+  const result = await request('/api/events/101/clarifications', { user: coordinator, method: 'POST', body: { informationNeeded: clarificationRequest.information_needed, message: clarificationRequest.message } });
+  assert.equal(result.status, 201);
+  assert.deepEqual(result.body.clarificationRequest, clarificationRequest);
+  assert.match(result.body.message, /sent to the Event Organiser/);
+});
+
+// Test case: AC1 - malformed or unselected clarification fields are rejected before any database write.
+test('AC1 - clarification request requires valid identified information and a clear question', async () => {
+  const coordinator = { ...organiser, id: 30, role: 'event_coordinator' };
+  let writes = 0;
+  mock.method(pool, 'query', async (sql) => { if (sql.includes('FROM users WHERE')) return { rows: [coordinator] }; writes += 1; return { rows: [] }; });
+  for (const body of [{ informationNeeded: [], message: 'Please clarify.' }, { informationNeeded: ['unlisted'], message: 'Please clarify.' }, { informationNeeded: ['name'], message: ' ' }]) {
+    const result = await request('/api/events/101/clarifications', { user: coordinator, method: 'POST', body });
+    assert.equal(result.status, 400);
+  }
+  assert.equal(writes, 0);
+});
+
+// Test case: AC3/AC4/AC5 - organiser response is retained, visible to coordinator, and resolves the outstanding indicator.
+test('AC3/AC4/AC5 - organiser response is retained and clears clarification outstanding state', async () => {
+  const responded = { id: 601, event_id: 101, coordinator_id: 30, organiser_id: 12, information_needed: ['expected_attendance'],
+    message: 'Please confirm the count.', status: 'responded', organiser_response: 'The expected attendance is 45.', responded_at: '2026-10-06T00:00:00Z' };
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
+    if (sql.includes('UPDATE event_clarification_requests')) {
+      assert.match(sql, /organiser_id=\$3 AND status='pending'/);
+      assert.deepEqual(values, ['101', '601', 12, responded.organiser_response]);
+      return { rows: [responded] };
+    }
+    assert.match(sql, /event_clarification_requests cr WHERE cr\.event_id=e\.id/);
+    return { rows: [{ ...details, clarification_outstanding: false, clarification_requests: [responded] }] };
+  });
+  const result = await request('/api/events/101/clarifications/601/respond', { method: 'POST', body: { response: responded.organiser_response } });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.clarificationRequest, responded);
+  assert.equal(result.body.clarificationOutstanding, false);
+});
+
 
 // Test case: Returns no assigned record for a coordinator lookup and checks a scoped query plus a 404 with no event data.
 test('Coordinator AC3 - missing or unassigned event details are unavailable',async()=>{

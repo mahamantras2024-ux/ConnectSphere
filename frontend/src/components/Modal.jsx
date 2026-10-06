@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 // Traps keyboard focus while a dialog is open and restores focus when it closes.
-export default function Modal({ title, children, onClose, wide = false, drawer = false }) {
+export default function Modal({ title, children, onClose, wide = false, drawer = false, centered = false }) {
   const ref = useRef(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -28,7 +28,9 @@ export default function Modal({ title, children, onClose, wide = false, drawer =
       document.removeEventListener('keydown', keydown); document.body.style.overflow = overflow; previous?.focus();
     };
   }, []);
-  return createPortal(<div className={`modal-backdrop ${drawer ? 'drawer-backdrop' : ''}`}><section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={`modal-panel ${wide ? 'modal-wide' : ''} ${drawer ? 'venue-drawer' : ''}`}>
+  return createPortal(<div className={`modal-backdrop ${drawer ? 'drawer-backdrop' : ''} ${centered ? 'centered-detail-backdrop' : ''}`} onClick={(event) => {
+    if (event.target === event.currentTarget) onClose();
+  }}><section ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={`modal-panel ${wide ? 'modal-wide' : ''} ${drawer ? 'venue-drawer' : ''} ${centered ? 'centered-detail-panel' : ''}`}>
     <header className="modal-header"><div><p className="eyebrow">ConnectSphere</p><h2>{title}</h2></div><button className="button-secondary modal-close" aria-label="Close dialog" onClick={onClose}><span aria-hidden="true">✕</span> Close</button></header>{drawer && <div className="drawer-navigation"><button className="button-secondary" aria-label="Back to list" onClick={onClose}><span aria-hidden="true">←</span> Back to list</button></div>}{children}
   </section></div>, document.body);
 }

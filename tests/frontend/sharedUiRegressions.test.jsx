@@ -345,6 +345,22 @@ it.each([
   await waitFor(() => expect(document.activeElement).toBe(trigger));
   expect(document.body.style.overflow).not.toBe('hidden');
 });
+
+// Test case: AC3 - shows a submitted critical change request in the assigned coordinator's dashboard inbox.
+it('AC3 - assigned Event Coordinator sees pending critical change details and the unchanged event', async () => {
+  user = { id: 30, role: 'event_coordinator', full_name: 'Casey Coordinator' };
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user }
+    : path === '/events' ? { events: [event] }
+      : path === '/events/change-requests' ? { changeRequests: [{ id: 501, event_id: 19, event_name: event.name, organiser_name: 'Avery', requested_changes: { expectedAttendance: 55 }, status: 'pending' }] }
+        : { event });
+  open('/coordinator/dashboard');
+  expect(await screen.findByRole('heading', { name: 'Critical change requests' })).toBeTruthy();
+  expect(await screen.findByText('Expected attendance:')).toBeTruthy();
+  expect(screen.getByText('55')).toBeTruthy();
+  expect(screen.getByText('Pending review')).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'View confirmed event' }).getAttribute('href')).toBe('/events/19');
+  expect(screen.getByRole('heading', { name: event.name })).toBeTruthy();
+});
 // Test case: Opens organiser details and checks Escape and Back dismiss the drawer without leaving its list.
 it('UI1 / Organiser AC1 - Escape and Back dismiss event details without leaving the event list', async () => {
   open('/organizer/events');
@@ -353,6 +369,18 @@ it('UI1 / Organiser AC1 - Escape and Back dismiss event details without leaving 
   expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
   fireEvent.click(screen.getByRole('link', { name: 'View details' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Back to list' }));
+  expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
+});
+// Test case: UI1 - event details open centered and clicking the unfocused backdrop closes the popup.
+it('UI1 - centered event details close when the organiser clicks outside the focused popup', async () => {
+  open('/organizer/events');
+  fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Event details' });
+  expect(dialog.classList.contains('centered-detail-panel')).toBe(true);
+  fireEvent.click(dialog);
+  expect(screen.getByRole('dialog', { name: 'Event details' })).toBeTruthy();
+  fireEvent.click(dialog.parentElement);
+  expect(screen.queryByRole('dialog', { name: 'Event details' })).toBeNull();
   expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
 });
 // Test case: Fails detail retrieval and checks no private data appears and Close still works.

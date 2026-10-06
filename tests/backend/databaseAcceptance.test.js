@@ -29,7 +29,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     await client.query(`SET search_path TO ${schema}`);
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255), role VARCHAR(50), organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[], accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql']) {
+    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql']) {
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
     }
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
@@ -165,6 +165,8 @@ test('Sprint 1 persists roles, venue buffers and personal registrations in real 
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255), role VARCHAR(50), organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[], accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/001-external-events.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/002-event-change-requests.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/003-event-clarifications.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/sprintOneSchema.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/venueManagementSchema.sql'), 'utf8'));
     mock.method(pool, 'query', (sql, values) =>
@@ -233,8 +235,19 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL, full_name VARCHAR(255) NOT NULL,
       role VARCHAR(50), roles TEXT[] NOT NULL DEFAULT '{}', organisation_name VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-    const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/001-external-events.sql'), 'utf8');
-    await client.query(migration);
+    // Event detail now checks approved venue bookings and outstanding clarification requests.
+    // Build those related tables in this disposable schema just as production migrations do.
+    await client.query('CREATE TABLE venues (id SERIAL PRIMARY KEY)');
+    for (const file of [
+      'migrations/001-external-events.sql',
+      'migrations/002-event-change-requests.sql',
+      'migrations/003-event-clarifications.sql',
+      'venueManagementSchema.sql'
+    ]) {
+      const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
+      await client.query(migration);
+    }
+    const eventMigration = fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/001-external-events.sql'), 'utf8');
     mock.method(pool, 'query', (sql, values) => // Supplies controlled query behavior for this regression case, including its expected result or failure.
 
       // Handles this operation using the surrounding screen or request state.
@@ -280,6 +293,9 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       assert.equal(viewed.body.event.special_arrangements, 'Vegetarian lunch'); assert.equal(viewed.body.event.proposed_date, '2026-10-15');
       assert.deepEqual(viewed.body.event.accessibility_requirements, ['Hearing loop']); assert.equal(viewed.body.event.organiser_name, 'alice');
       assert.equal(viewed.body.event.registration_required, false); assert.equal(viewed.body.event.expected_attendance, 0);
+      assert.equal(viewed.body.event.venue_confirmed, false);
+      assert.equal(viewed.body.event.clarification_outstanding, false);
+      assert.deepEqual(viewed.body.event.clarification_requests, []);
     });
     // Test case: Gives organisers the same organisation name and checks this does not grant cross-account event access.
     await t.test('same organisation name does not grant access to another organiser', async () => {
@@ -292,7 +308,7 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
     // Test case: Runs the migration again after saving an event and checks stored content survives.
     await t.test('migration is repeatable and preserves saved event content', async () => {
 
-      await client.query(migration);
+      await client.query(eventMigration);
       assert.equal((await request(`/api/events/${eventId}`, { token: aliceToken })).body.event.special_arrangements, 'Vegetarian lunch');
     });
     let rawToken;

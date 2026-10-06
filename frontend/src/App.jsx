@@ -91,7 +91,7 @@ export default function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
-        {background && <Routes><Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><Modal drawer title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /><Route path="/events/:id" element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><Modal drawer title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /></Routes>}
+        {background && <Routes><Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /><Route path="/events/:id" element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /></Routes>}
       </main>
     </div>
   );
