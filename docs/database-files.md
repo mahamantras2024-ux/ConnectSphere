@@ -5,7 +5,9 @@ Supabase hosts PostgreSQL; it does not replace schema upgrades or staff provisio
 | File in backend/src/db | Purpose |
 | --- | --- |
 | migrations/001-external-events.sql | Event requirements, reset storage and session revocation. |
-| migrateExternalEvents.js | Applies that targeted upgrade. |
+| migrations/002-event-change-requests.sql | Pending critical event change requests scoped to their assigned coordinator. |
+| migrations/003-event-clarifications.sql | Event-linked coordinator questions and organiser responses. |
+| migrateExternalEvents.js | Applies event, reset, change-request and clarification upgrades. |
 | sprintOneSchema.sql | Role grants, venue constraints, private registrations and database access protections. |
 | setupSprintOne.js | Applies/verifies the Sprint 1 upgrade. |
 | venueManagementSchema.sql | Venue lifecycle/location/revisions, booking safeguards, locking triggers and catalogue notifications. |
@@ -17,6 +19,4 @@ Supabase hosts PostgreSQL; it does not replace schema upgrades or staff provisio
 
 These files remain useful for teammates, deployments and tests. The obsolete schema.sql, migrate.js, seed.js and duplicate provisionVenueStaff.js were removed. An existing Supabase database does not need seeding. Retained SQL is additive history for an existing compatible database, not a verified full bootstrap for an empty database. No shared records were removed during cleanup.
 
-A read-only metadata check on 5 October 2026 confirmed public.users has no phone column. The completed, unreferenced removeUserPhone.sql script was subsequently deleted at the user's request. This removed only a local file; no database operation was executed. Retained SQL files are read by setup commands and live integration tests, and do not seed sample data.
-
-For the availability feature, run `npm run setup:venue-availability --prefix backend` against the intended deployment database after venue management has been installed. This upgrade was verified in disposable PostgreSQL schemas; it was not applied to shared application tables during implementation. See [the final verification record](venue-availability-tdd.md) for lifecycle rules and integration evidence.
+A read-only metadata check on 5 October 2026 confirmed public.users has no phone column. The completed, unreferenced removeUserPhone.sql script was subsequently deleted at the user's request. This removed only a local file; no database operation was executed. The SQL files are read by setup commands and live integration tests, and do not seed sample data.
