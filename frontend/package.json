@@ -18,6 +18,7 @@
     "react-router-dom": "^6.26.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.1.0",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^3.2.6",

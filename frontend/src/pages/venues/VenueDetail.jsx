@@ -4,6 +4,7 @@ import {useRef,useState} from 'react';
 import {api} from '../../api/client';
 import VenueMap from './VenueMap';
 import BookingImpactList from './BookingImpactList';
+import VenueSchedule from './VenueSchedule';
 import {formatHourlyRate} from './hourlyRate';
 // Formats list fields or displays an explicit missing-value label.
 function list(value) { return Array.isArray(value) && value.length ? value.join(', ') : typeof value === 'string' && value.trim() ? value : 'Not specified'; }
@@ -11,6 +12,7 @@ function list(value) { return Array.isArray(value) && value.length ? value.join(
 function minutes(value) { return value == null ? 'Not specified' : `${value} minutes`; }
 // Renders venue details and the embedded map, and lists bookings that prevent deactivation.
 export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canManage=false, token }) {
+  const [showSchedule, setShowSchedule] = useState(false);
   const [removing,setRemoving]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[blocked,setBlocked]=useState([]);
   const saving=useRef(false);
   // Removes the venue from active catalogues while showing server-verified blocking bookings.
@@ -34,5 +36,7 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
     {venue.mrt_distance_m!=null && <p className="field-help">Nearest MRT is approximately {(venue.mrt_distance_m/1000).toFixed(2)} km away in a straight line.</p>}
     {canManage && <footer className="venue-record-actions"><button onClick={()=>onEdit?.(venue)} disabled={busy}>Edit venue</button><button className="button-danger" onClick={()=>setRemoving(true)} disabled={busy}>Deactivate venue</button></footer>}
     {removing && <section className="booking-warning"><h3>Remove this venue from the catalogue?</h3><p>Deactivating hides it from searches and preserves historical bookings. Upcoming bookings must be resolved first.</p>{error && <p role="alert" className="error-message">{error}</p>}<BookingImpactList bookings={blocked}/><div className="venue-record-actions"><button className="button-danger" disabled={busy} onClick={deactivate}>{busy?'Checking bookings…':'Confirm deactivation'}</button><button className="button-secondary" disabled={busy} onClick={()=>{setRemoving(false);setError('');setBlocked([]);}}>Keep venue</button></div></section>}
+    {canManage && <button className="schedule-action" type="button" onClick={() => setShowSchedule(true)}>View schedule</button>}
+    {canManage && showSchedule && <VenueSchedule venue={venue} token={token} />}
   </div></Modal>;
 }

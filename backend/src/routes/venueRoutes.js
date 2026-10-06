@@ -10,6 +10,8 @@ const { catalogueStream } = require('../services/venueCatalogueStream');
 const { validateCoordinates, nearestMrt, geocode } = require('../services/venueLocation');
 const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
+const { venueSchedule } = require('../controllers/venueScheduleController');
+router.get('/:id/schedule', requireAuth, requireRole('venue_staff'), asyncHandler(venueSchedule));
 // Bounds staff address lookups and nearest-station requests while protecting the public provider.
 const locationLimit = rateLimit({ windowMs:60_000, limit:30, standardHeaders:'draft-8', legacyHeaders:false, message:{message:'Too many map requests. Please try again shortly.'} });
 router.get('/stream', catalogueStream);
