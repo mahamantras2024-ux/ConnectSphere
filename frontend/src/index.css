@@ -306,3 +306,12 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border); }
 @media (max-width: 640px) { .event-request-form { grid-template-columns: 1fr; padding: 22px; gap: 20px; } .modal-header { gap: 14px; padding: 20px; } .modal-header h2 { font-size: 20px; } .modal-close { padding: 9px 12px; } .drawer-navigation { padding: 16px 20px 0; } .venue-drawer .event-detail { padding: 24px 20px; } .navbar .nav-links { gap: 8px; } .nav-links > a { padding: 9px; } }
 @media (prefers-reduced-motion: reduce) { .record-card { transition: none; } .record-card:hover { transform: none; } }
+/* Equipment & technical support fieldset shared by the event request form and event detail editor. */
+.equipment-fields { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 18px; border: 1px solid var(--border, #e2e8f0); border-radius: 12px; }
+.equipment-fields legend { padding: 0 6px; font-weight: 600; }
+.equipment-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.equipment-fields .checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
+.equipment-fields .checkbox-label input { width: auto; }
+.equipment-row { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 10px; align-items: end; }
+.event-request-form > .equipment-fields { grid-column: 1 / -1; }
+@media (max-width: 640px) { .equipment-row { grid-template-columns: 1fr; } }
