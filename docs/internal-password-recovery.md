@@ -6,13 +6,13 @@ No new migration or email provider is required. Existing password_reset_hash, pa
 
 Public routes: /forgot-password and /reset-password. API routes: POST /api/auth/internal/forgot-password and POST /api/auth/internal/reset-password. External routes remain unchanged. Staff roles are selected from the server-owned role list; primary or secondary provisioned roles qualify. Account-level passwords are shared across an account's roles.
 
-Links last 15 minutes, are single-use, and contain the token in the URL fragment. Only a SHA-256 token hash is stored. Password reset uses an atomic expiry-guarded UPDATE, clears the token and increments auth_version to revoke old sessions. A newer reset request replaces the previous token. Failed email delivery clears only its own token. Responses remain generic for nonexistent and external-only accounts. Staff recovery allows 10 attempts per IP per 15 minutes across its two endpoints, independently of the external recovery counter.
+Links last 15 minutes, are single-use, and contain the token in the URL fragment. Only a SHA-256 token hash is stored. Password reset uses an atomic expiry-guarded UPDATE, clears the token and increments auth_version to revoke old sessions. A newer reset request replaces the previous token. Failed email delivery clears only its own token. Unknown and wrong-audience accounts now return “Account not found. Try again.” so the form stays open for correction, as explicitly requested. Staff recovery allows 10 attempts per IP per 15 minutes across its two endpoints, independently of the external recovery counter.
 
 ## Test Verification Record
 
 User story: internal ConnectSphere users recover account access through their recorded work email, matching external recovery behavior.
 - AC1: staff sign-in offers recovery and uses staff routes, with consistent UI.
-- AC2: eligible staff receive a link at their stored work email; unknown/external-only accounts receive a generic response; SMTP constructs the staff link and respects URL transport rules.
+- AC2: eligible staff receive a link at their stored work email; unknown/external-only accounts receive account-not-found feedback; SMTP constructs the staff link and respects URL transport rules.
 - AC3: matching passwords consume an eligible unexpired one-time token, hash the password, revoke sessions and return to staff login; missing/unavailable tokens are rejected.
 
 Tests in tests/frontend/PasswordReset.test.jsx:
@@ -23,7 +23,7 @@ Tests in tests/frontend/PasswordReset.test.jsx:
 
 Tests in tests/backend/externalPasswordReset.test.js:
 - Internal recovery AC1 AC2 - [each of five staff roles] receives recovery at stored work email
-- Internal recovery AC2 - unknown and external-only accounts receive identical responses without mail
+- Internal recovery AC2 - unknown and external-only accounts receive identical account-not-found responses without mail
 - Internal recovery AC3 - staff reset hashes password and consumes token with session revocation
 - Internal recovery AC2 - staff link targets internal reset page
 - Internal recovery AC2 - secondary staff role receives reset link

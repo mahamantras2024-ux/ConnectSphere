@@ -104,6 +104,7 @@ test('unknown emails and internal accounts receive the same reset response witho
   const second = await request('/api/auth/forgot-password', { body: { email: organiser.email } });
 
   assert.deepEqual(first, second);
+  assert.equal(first.status,404);assert.equal(first.body.message,'Account not found. Try again.');
   assert.equal(send.mock.callCount(), 0);
 });
 
@@ -134,6 +135,7 @@ test('delivery failure clears its reset token and does not expose account existe
 
 // Test case: Uses a valid reset token and checks password hashing, token consumption and session-version advancement.
 test('reset atomically consumes an unexpired token, hashes the new password, and invalidates sessions', async () => {
+  mock.method(emailService, 'sendPasswordChanged', async () => {});
 
   mock.method(pool, 'query', async (sql, values) => {
     // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -142,7 +144,7 @@ test('reset atomically consumes an unexpired token, hashes the new password, and
     assert.match(sql, /auth_version = auth_version \+ 1/);
     assert.match(sql, /password_reset_hash = NULL/);
     assert.equal(await bcrypt.compare('new-password123', values[1]), true);
-    return { rows: [{ id: 12 }] };
+    return { rows: [{ id: 12, email: organiser.email }] };
   });
 
   const result = await request('/api/auth/reset-password', {
@@ -301,21 +303,22 @@ for (const role of ['event_coordinator','event_coordinator_lead','venue_staff','
     assert.equal(result.status,200); assert.equal(send.mock.callCount(),1);
   });
 }
-// Internal recovery AC2: the generic response cannot reveal unknown or external-only identities.
+// Internal recovery AC2: unknown or external-only identities receive the requested correction message.
 test('Internal recovery AC2 - unknown and external-only accounts receive identical responses without mail',async()=>{
   const query=mock.method(pool,'query',async()=>({rows:[]}));
   const send=mock.method(emailService,'sendPasswordReset',async()=>assert.fail('No eligible account'));
   const missing=await request('/api/auth/internal/forgot-password',{body:{email:'missing@example.test'}});
   query.mock.mockImplementation(async()=>({rows:[organiser]}));
   const external=await request('/api/auth/internal/forgot-password',{body:{email:organiser.email}});
-  assert.deepEqual(missing,external); assert.equal(missing.status,200); assert.equal(send.mock.callCount(),0);
+  assert.deepEqual(missing,external); assert.equal(missing.status,404);assert.equal(missing.body.message,'Account not found. Try again.'); assert.equal(send.mock.callCount(),0);
 });
 // Internal recovery AC3: token consumption retains expiry, one-use and session invalidation guards.
 test('Internal recovery AC3 - staff reset hashes password and consumes token with session revocation',async()=>{
+  mock.method(emailService, 'sendPasswordChanged', async () => {});
   mock.method(pool,'query',async(sql,values)=>{
     assert.match(sql,/event_coordinator_lead/); assert.match(sql,/password_reset_expires_at > now/);
     assert.match(sql,/auth_version = auth_version \+ 1/); assert.match(sql,/password_reset_hash = NULL/);
-    assert.equal(await bcrypt.compare('new-password123',values[1]),true); return {rows:[{id:12}]};
+    assert.equal(await bcrypt.compare('new-password123',values[1]),true); return {rows:[{id:12,email:'staff@example.test'}]};
   });
   assert.equal((await request('/api/auth/internal/reset-password',{body:{token:'a'.repeat(64),password:'new-password123'}})).status,200);
 });

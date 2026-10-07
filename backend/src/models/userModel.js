@@ -96,7 +96,7 @@ async function resetAccountPassword(hash, passwordHash, internal = false) {
     WHERE password_reset_hash = $1 AND password_reset_expires_at > now()
       AND (role IN (${resetRoles(internal)}) OR
         COALESCE(to_jsonb(users)->'roles', '[]'::jsonb) ?| ARRAY[${resetRoles(internal)}])
-    RETURNING id`, [hash, passwordHash]);
+    RETURNING id, email`, [hash, passwordHash]);
   return result.rows[0] || null;
 }
 

@@ -24,7 +24,7 @@ export default function PasswordReset({ reset = false, internal = false }) {
     finally { setBusy(false); }
   }
   return <div className="auth-page"><section className="auth-form"><p className="eyebrow">Account recovery</p>
-    {reset && !token ? <><h1>Reset link invalid</h1><p>This password reset link is invalid or has expired. Please request a new one.</p><Link className="button-link" to={forgotPath}>Request new link</Link></> : message ? <div role="status"><h1>{reset ? 'Password updated!' : 'Check your inbox'}</h1><p>{reset ? message : 'If an account exists for this email, a password reset link will be sent.'}</p><Link className="button-link" to={loginPath}>Back to sign in</Link></div> : <>
+    {reset && !token ? <><h1>Reset link invalid</h1><p>This password reset link is invalid or has expired. Please request a new one.</p><Link className="button-link" to={forgotPath}>Request new link</Link></> : message ? <div role="status"><h1>{reset ? 'Password updated!' : 'Check your inbox'}</h1><p>{reset ? message : 'A password reset link will be sent.'}</p><Link className="button-link" to={loginPath}>Back to sign in</Link></div> : <>
       <h1>{reset ? 'Choose a new password' : 'Forgot your password?'}</h1><p>{reset ? 'Enter a new password for your account.' : "Enter your account email and we'll send you a one-time reset link."}</p>
       <form className="recovery-form" onSubmit={submit}><label htmlFor="resetValue">{reset ? 'New password' : 'Email address'}</label><input id="resetValue" required type={reset ? 'password' : 'email'} autoComplete={reset ? 'new-password' : 'email'} minLength={reset ? 8 : undefined} value={value} onChange={event =>
       // Handles this control action and updates the screen state.

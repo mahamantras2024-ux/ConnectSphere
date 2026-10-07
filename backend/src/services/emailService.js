@@ -43,4 +43,17 @@ async function sendPasswordReset(to, token, internal = false) {
   } finally { transport.close(); }
 }
 
-module.exports = { emailConfig, resetUrl, sendPasswordReset };
+/** Notifies the recorded account address after password persistence; never includes passwords or reset tokens. */
+async function sendPasswordChanged(to) {
+  const config = emailConfig();
+  const transport = nodemailer.createTransport(config.transport);
+  try {
+    await transport.sendMail({
+      from: config.from, to, subject: 'Your ConnectSphere password has changed',
+      text: 'Your ConnectSphere account password was changed successfully. If you did not make this change, contact your ConnectSphere administrator or support team immediately.',
+      headers: { 'X-Entity-Ref-ID': require('crypto').randomUUID() },
+    });
+  } finally { transport.close(); }
+}
+
+module.exports = { emailConfig, resetUrl, sendPasswordReset, sendPasswordChanged };

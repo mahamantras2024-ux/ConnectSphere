@@ -311,6 +311,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       await client.query(eventMigration);
       assert.equal((await request(`/api/events/${eventId}`, { token: aliceToken })).body.event.special_arrangements, 'Vegetarian lunch');
     });
+    // Observe post-change notification at the true email boundary; never send live acceptance-test mail.
+    const changedMail = mock.method(emailService, 'sendPasswordChanged', async () => {});
     let rawToken;
     mock.method(emailService, 'emailConfig', () => (// Supplies controlled emailConfig behavior for this regression case, including its expected result or failure.
 
@@ -335,6 +337,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
 
       // Converts each record into its displayed or submitted representation.
       request('/api/auth/reset-password', { method: 'POST', body: { token: rawToken, password: 'changed-password123' } })));
+      assert.equal(changedMail.mock.callCount(), 1);
+      assert.equal(changedMail.mock.calls[0].arguments[0], 'alice@example.test');
       assert.deepEqual(results.map((result) => // Extracts response statuses for the concurrent password-reset assertion.
 
       // Converts each record into its displayed or submitted representation.

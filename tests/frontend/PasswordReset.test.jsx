@@ -34,7 +34,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 // Test case: Submits reset-link recovery and checks its API call and generic visible response.
-it('requests a reset link and shows the generic response', async () => {
+it('Recovery UI AC1 - requests a reset link and shows the shortened confirmation', async () => {
 
   api.post.mockResolvedValue({ message: 'If an external account matches that email, a password-reset link will be sent.' });
   renderPage('/external/forgot-password');
@@ -43,7 +43,7 @@ it('requests a reset link and shows the generic response', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
 
   expect(await screen.findByRole('status')).toBeTruthy();
-  expect(screen.getByText(/If an account exists for this email/)).toBeTruthy();
+  expect(screen.getByText('A password reset link will be sent.')).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/auth/forgot-password', { email: 'alice@example.com' });
 });
 
@@ -133,4 +133,27 @@ it('Internal recovery AC1 - staff login opens the recovery route',async()=>{
   fireEvent.click(screen.getByRole('link',{name:'Forgot password?'}));
   expect(await screen.findByRole('heading',{name:'Forgot your password?'})).toBeTruthy();
   expect(screen.getByRole('link',{name:'Back to sign in'}).getAttribute('href')).toBe('/login');
+});
+
+// Email validation AC1: browser validation blocks malformed email submissions for both recovery audiences.
+it.each([false,true])('Email validation AC1 - invalid email blocks reset-link submission when internal=%s',internal=>{
+  renderPage(internal ? '/forgot-password' : '/external/forgot-password',false,internal);
+  fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'not-an-email'}});
+  const button=screen.getByRole('button',{name:'Send reset link'});
+  expect(button.form.checkValidity()).toBe(false);fireEvent.click(button);
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+// Email validation AC2: unmatched account feedback preserves input and supports correction for either audience.
+it.each([false,true])('Email validation AC2 - account-not-found permits retry when internal=%s',async internal=>{
+  api.post.mockRejectedValueOnce(new Error('Account not found. Try again.')).mockResolvedValueOnce({message:'Check your inbox'});
+  renderPage(internal ? '/forgot-password' : '/external/forgot-password',false,internal);
+  fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'missing@example.test'}});
+  fireEvent.click(screen.getByRole('button',{name:'Send reset link'}));
+  expect((await screen.findByRole('alert')).textContent).toBe('Account not found. Try again.');
+  expect(screen.getByLabelText('Email address').value).toBe('missing@example.test');
+  expect(screen.queryByRole('status')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'recorded@example.test'}});
+  fireEvent.click(screen.getByRole('button',{name:'Send reset link'}));await screen.findByRole('status');
+  expect(api.post).toHaveBeenLastCalledWith(internal?'/auth/internal/forgot-password':'/auth/forgot-password',{email:'recorded@example.test'});
 });

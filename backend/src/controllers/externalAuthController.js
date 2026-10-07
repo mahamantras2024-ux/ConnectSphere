@@ -63,6 +63,9 @@ const forgotPassword = asyncHandler(async (req, res) => {
         console.error('Password-reset delivery failed; check email configuration.', error.code || 'MAIL_ERROR');
       }
     }
+  } else {
+    // Requested recovery feedback: unknown or wrong-audience addresses keep the form open for correction.
+    return res.status(404).json({ message: 'Account not found. Try again.' });
   }
   return res.json({ message: internal ? 'If a staff account matches that email, a password-reset link will be sent.' : resetMessage });
 });
@@ -79,6 +82,12 @@ const resetPassword = asyncHandler(async (req, res) => {
   if (!validPassword(password)) return res.status(400).json({ message: 'Use at least 8 characters and at most 72 UTF-8 bytes for your password.' });
   const user = await userModel.resetAccountPassword(hashToken(token), await bcrypt.hash(password, 10), internal);
   if (!user) return res.status(400).json({ message: 'This reset link is invalid or expired. Request a new link.' });
+  // The update is committed and the token consumed before notification; SMTP failure must not suggest retrying the reset.
+  try { await emailService.sendPasswordChanged(user.email); }
+  catch (error) {
+    // Log delivery diagnostics without addresses, passwords, tokens or transport error text.
+    console.error('Password-change notification failed; check email configuration.', error.code || 'MAIL_ERROR');
+  }
   return res.json({ message: 'Password updated. Please sign in again.' });
 });
 
