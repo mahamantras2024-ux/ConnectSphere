@@ -11,7 +11,8 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/001-external-events.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/002-event-change-requests.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/003-event-clarifications.sql'), 'utf8'));
-    console.log('External event fields, password-reset support, event change requests and clarifications are ready.');
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/004-event-equipment-requirements.sql'), 'utf8'));
+    console.log('External event fields, password-reset support, event change requests, clarifications and equipment requirements are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

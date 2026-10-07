@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import PageIntro from '../../components/PageIntro';
+import { formatEquipmentItems } from './equipmentRequirements';
 // Renders real role-scoped summaries with loading, failure, and empty states.
 export default function EventList({ dashboard = false }) {
   const { token, user } = useAuth();
@@ -44,7 +45,7 @@ export default function EventList({ dashboard = false }) {
         : <ul className="change-request-list">{changeRequests.map(request => <li key={request.id} className="change-request-card">
           <div><strong>{request.event_name}</strong><span> from {request.organiser_name}</span><span className="status-badge status-under_review">Pending review</span></div>
           <ul>{Object.entries(request.requested_changes || {}).map(([field, value]) => <li key={field}>
-            <strong>{({ name: 'Event name', purpose: 'Purpose', eventType: 'Event type', proposedDate: 'Date', proposedStartTime: 'Start time', proposedEndTime: 'End time', expectedAttendance: 'Expected attendance', roomLayoutPreference: 'Layout requirements', registrationRequired: 'Registration required', registrationCapacity: 'Registration capacity' })[field] || field}:</strong> {Array.isArray(value) ? value.join(', ') : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value ?? 'Not specified'}
+            <strong>{({ name: 'Event name', purpose: 'Purpose', eventType: 'Event type', proposedDate: 'Date', proposedStartTime: 'Start time', proposedEndTime: 'End time', expectedAttendance: 'Expected attendance', roomLayoutPreference: 'Layout requirements', registrationRequired: 'Registration required', registrationCapacity: 'Registration capacity', equipmentItems: 'Equipment items', technicalSupportRequired: 'Technical support required', technicalSupportDetails: 'Technical support details', videoConferencingRequired: 'Video-conferencing / hybrid', technicalSpecifications: 'Special technical specifications' })[field] || field}:</strong> {field === 'equipmentItems' ? formatEquipmentItems(value) : Array.isArray(value) ? value.join(', ') : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value ?? 'Not specified'}
           </li>)}</ul>
           <Link className="button-link button-secondary" state={{ backgroundLocation: location }} to={`/events/${request.event_id}`}>View confirmed event</Link>
         </li>)}</ul>}
