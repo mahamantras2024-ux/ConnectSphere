@@ -7,6 +7,9 @@ const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 
 router.use(requireAuth);
+const lead = require('../controllers/coordinatorLeadController');
+router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
+router.put('/:id/assignment', requireRole('event_coordinator_lead'), lead.assign);
 
 router.post('/', requireRole('event_organiser'), eventController.createEvent);
 router.put('/:id/non-critical', requireRole('event_organiser'), eventController.updateEventInformation);
@@ -22,7 +25,7 @@ router.get(
 
 router.get(
   '/:id',
-  requireRole('event_coordinator', 'event_organiser'),
+  requireRole('event_coordinator', 'event_organiser', 'event_coordinator_lead'),
   eventReadController.getEvent
 );
 

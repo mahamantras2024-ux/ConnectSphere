@@ -249,7 +249,7 @@ test('AC3 - pending critical changes are listed only for the assigned Event Coor
     requested_changes: { expectedAttendance: 55 }, status: 'pending' };
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
-    assert.match(sql, /r\.coordinator_id=\$1 AND r\.status='pending'/);
+    assert.match(sql, /e\.coordinator_id=\$1 AND r\.status='pending'/);
     assert.deepEqual(values, [30]);
     return { rows: [pending] };
   });
@@ -314,4 +314,43 @@ test('Coordinator AC3 - missing or unassigned event details are unavailable',asy
   const user={...organiser,id:30,role:'event_coordinator'};
   mock.method(pool,'query',async(sql,values)=>{if(sql.includes('FROM users WHERE'))return {rows:[user]};assert.match(sql,/AND e\.coordinator_id = \$2/);assert.deepEqual(values,['999',30]);return {rows:[]};});
   assert.deepEqual(await request('/api/events/999',{user}),{status:404,body:{message:'Event not found.'}});
+});
+
+// AC1/AC2: real route middleware must keep lead queue and assignment decisions private.
+test('Lead AC1 AC2 - non-lead roles cannot review or change coordinator assignments', async () => {
+  for (const role of ['event_organiser','event_coordinator','venue_staff','attendee','technical_support']) {
+    mock.method(pool, 'query', async sql => {
+      assert.match(sql, /FROM users WHERE/);
+      return { rows: [{ ...organiser, role }] };
+    });
+    assert.equal((await request('/api/events/assignments', { user: { ...organiser, role } })).status, 403);
+    assert.equal((await request('/api/events/101/assignment', { user: { ...organiser, role }, method: 'PUT', body: { coordinatorId: 30, expectedCoordinatorId: null } })).status, 403);
+    mock.restoreAll();
+  }
+  assert.equal((await request('/api/events/assignments', { user: null })).status, 401);
+});
+
+// AC6/AC7: lead review is restricted to active submitted records and includes recorded organiser email.
+test('Lead AC2 AC6 AC7 - lead can open active event details with organiser email', async () => {
+  const user = { ...organiser, role: 'event_coordinator_lead' };
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [user] };
+    assert.deepEqual(values, ['101']);
+    assert.match(sql, /e.is_draft=false AND e.status NOT IN \('draft','cancelled','completed'\)/);
+    assert.match(sql, /organiser.email AS organiser_email/);
+    return { rows: [{ ...details, organiser_email: 'alice@example.com' }] };
+  });
+  const result = await request('/api/events/101', { user });
+  assert.equal(result.status, 200); assert.equal(result.body.event.organiser_email, 'alice@example.com');
+});
+
+// AC3/AC4: outstanding critical-change requests follow current responsibility, not the historical recipient.
+test('Lead AC3 AC4 - critical change inbox follows the current event coordinator', async () => {
+  const model = require('../../backend/src/models/eventModel');
+  mock.method(pool, 'query', async (sql, values) => {
+    assert.match(sql, /WHERE e.coordinator_id=\$1 AND r.status='pending'/);
+    assert.deepEqual(values, [30]);
+    return { rows: [{ id: 501, event_id: 101 }] };
+  });
+  assert.deepEqual(await model.listPendingChangeRequests(30), [{ id: 501, event_id: 101 }]);
 });

@@ -37,6 +37,7 @@ beforeEach(() => {
     if (path === '/venues') return [];
     if (path === '/events') return { events: [] };
     if (path === '/registrations/mine') return { registrations: [] };
+    if (path === '/events/assignments') return {events:[],coordinators:[]};
     throw new Error(`Unexpected request: ${path}`);
   });
   api.post.mockImplementation(async () => (// Supplies controlled api.post behavior for this regression case, including its expected result or failure.

@@ -306,3 +306,11 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border); }
 @media (max-width: 640px) { .event-request-form { grid-template-columns: 1fr; padding: 22px; gap: 20px; } .modal-header { gap: 14px; padding: 20px; } .modal-header h2 { font-size: 20px; } .modal-close { padding: 9px 12px; } .drawer-navigation { padding: 16px 20px 0; } .venue-drawer .event-detail { padding: 24px 20px; } .navbar .nav-links { gap: 8px; } .nav-links > a { padding: 9px; } }
 @media (prefers-reduced-motion: reduce) { .record-card { transition: none; } .record-card:hover { transform: none; } }
+
+/* Outstanding questions need a distinct red cue on both event card workspaces. */
+.status-clarification_outstanding { background: #F9DDD5; color: var(--beet); }
+
+/* Boolean editing uses a natural-size control instead of the full-width text-input layout. */
+.registration-required-editor { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.registration-required-editor span { white-space: nowrap; }
+.registration-required-checkbox { width: 16px; height: 16px; padding: 0; flex: 0 0 16px; }

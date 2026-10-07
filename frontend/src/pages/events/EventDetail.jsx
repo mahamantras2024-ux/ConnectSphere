@@ -187,7 +187,8 @@ export default function EventDetail() {
     try {
       const data = await api.post(`/events/${id}/clarifications/${request.id}/respond`, { response }, token);
       setEvent((current) => ({ ...current, clarification_outstanding: data.clarificationOutstanding,
-        clarification_requests: (current.clarification_requests || []).map((item) => item.id === request.id ? data.clarificationRequest : item) }));
+        // A response form exists only for a recorded request; preserve its sibling requests during handover.
+        clarification_requests: current.clarification_requests.map((item) => item.id === request.id ? data.clarificationRequest : item) }));
       setClarificationResponses((current) => ({ ...current, [request.id]: '' })); setSaveMessage(data.message);
     } catch (err) { setError(err.message || 'Unable to save clarification response.'); }
     finally { setClarificationSaving(false); }
@@ -226,8 +227,9 @@ export default function EventDetail() {
       : ['expectedAttendance', 'registrationCapacity'].includes(field) ? 'number' : 'text';
     const multiline = ['description', 'programmeDetails', 'accessibilityText', 'equipmentNotes', 'specialArrangements'].includes(field);
     return <form className="mt-2 grid gap-2" onSubmit={(submitEvent) => { submitEvent.preventDefault(); saveNonCritical(); }}>
-      {field === 'registrationRequired' ? <label className="flex items-center gap-2"><input type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
-        onChange={(changeEvent) => setEditValues((current) => ({ ...current, [field]: changeEvent.target.checked }))} /> Required</label>
+      {/* Keep the question before a compact checkbox so global text-input styles cannot crowd the label. */}
+      {field === 'registrationRequired' ? <label className="registration-required-editor"><span>Registration required?</span><input className="registration-required-checkbox" type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
+        onChange={(changeEvent) => setEditValues((current) => ({ ...current, [field]: changeEvent.target.checked }))} /></label>
         : multiline ? <textarea aria-label={`Edit ${label}`} value={editValues[field]} disabled={saving}
           onChange={(changeEvent) => setEditValues((current) => ({ ...current, [field]: changeEvent.target.value }))} rows={3} />
           : <input aria-label={`Edit ${label}`} type={controlType} min={controlType === 'number' ? 0 : undefined} value={editValues[field]} disabled={saving}
@@ -243,7 +245,7 @@ export default function EventDetail() {
     </form>;
   }
 
-  const backLink = !location.state?.backgroundLocation && <Link className="button-link button-secondary detail-back" to={user.role === 'event_organiser' ? '/organizer/events' : '/events'}>Back to {user.role === 'event_organiser' ? 'My Events' : 'Events'}</Link>;
+  const backLink = !location.state?.backgroundLocation && <Link className="button-link button-secondary detail-back" to={user.role === 'event_organiser' ? '/organizer/events' : user.role === 'event_coordinator_lead' ? '/coordinator-lead/dashboard' : '/events'}>Back to {user.role === 'event_organiser' ? 'My Events' : 'Events'}</Link>;
 
   if (loading) {
     return (
@@ -308,6 +310,7 @@ export default function EventDetail() {
 
       </div>
 
+      {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && <section className="card" aria-label="Organiser contact"><h2>Organiser contact</h2><p>{event.organiser_name}</p>{event.organiser_email ? <a href={`mailto:${event.organiser_email}`}>{event.organiser_email}</a> : <p>Email not recorded</p>}</section>}
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="clarifications-heading">
         <div className="section-heading"><h2 id="clarifications-heading">Clarification requests</h2>
           <span className={`status-badge ${event.clarification_outstanding ? 'status-under_review' : 'status-confirmed'}`}>{event.clarification_outstanding ? 'Outstanding' : 'No outstanding clarification'}</span></div>

@@ -1,4 +1,4 @@
-# Current functionality - 5 October 2026
+# Current functionality - 7 October 2026
 
 ## Completed Sprint 1
 
@@ -16,7 +16,8 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 ## Completed enhancements outside that baseline
 
 - Password reset with expiring single-use links and invalidation of old sessions. Encrypted Gmail SMTP connection and sender authentication were verified without sending email; inbox delivery remains unverified.
-- Server-validated switching between provisioned roles; Coordinator Lead and Safety Officer account dashboards.
+- Server-validated switching between provisioned roles; Safety Officer account dashboard.
+- [Coordinator Lead queue and assignments](coordinator-lead.md): review active submitted events, manually assign/reassign one coordinator, retain venue arrangements, transfer outstanding work and show organiser email to authorised reviewers.
 - Organiser event request creation and draft/submitted persistence.
 - Venue editing with booking-impact warnings, exact-change confirmation and stale-update protection.
 - Venue deactivation blocked by upcoming confirmed/pending bookings, affected booking lists, historical-record retention and exclusion from active catalogues.
@@ -26,7 +27,7 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 
 ## Future scope
 
-Attendee registration creation/withdrawal, booking request/approval, coordinator assignment/approval, equipment management, notification inboxes and safety review queues are not completed application workflows. Disconnected prototypes were removed. Viewing existing personal registrations and assigned events works; this does not imply those write/approval workflows exist.
+Attendee registration creation/withdrawal, booking request/approval, coordinator event approval, equipment management, notification inboxes and safety review queues are not completed application workflows. Disconnected prototypes were removed. Viewing existing personal registrations and assigned events works; this does not imply those write/approval workflows exist.
 
 Empty catalogues and missing recorded information are genuine data states. Input hints remain for usability. Map services and actual email delivery depend on external providers.
 

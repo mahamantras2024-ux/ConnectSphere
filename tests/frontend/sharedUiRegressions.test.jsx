@@ -249,7 +249,7 @@ beforeEach(()=>{
   // Arrange the authenticated account returned by the actual session endpoint.
   localStorage.clear(); localStorage.setItem('cs_token','staff-session');vi.clearAllMocks();
   user={id:8,full_name:'Chris Lee',email:'chris@example.test',role:'technical_support',roles:['technical_support']};
-  api.get.mockImplementation(async()=>({user}));
+  api.get.mockImplementation(async(path)=>path === '/events/assignments' ? {events:[],coordinators:[]} : {user});
 });
 afterEach(cleanup);
 // Opens the real protected route and authentication provider.
@@ -262,10 +262,15 @@ it.each([
 ])('Internal AC3 / cleanup AC1 - %s displays stored account data without promised task placeholders',async(role,path,title)=>{
   user={...user,role,roles:[role]};open(path);
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
-  expect(screen.getByText('chris@example.test')).toBeTruthy();
-  expect(screen.getByRole('heading',{name:'Account details'})).toBeTruthy();
+  if (role !== 'event_coordinator_lead') {
+    expect(screen.getByText('chris@example.test')).toBeTruthy();
+    expect(screen.getByRole('heading',{name:'Account details'})).toBeTruthy();
+  } else {
+    // AC1: the lead now has a genuine queue workspace rather than a profile-only placeholder.
+    expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
+  }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
-  expect(api.get.mock.calls.map(call=>call[0])).toEqual(['/auth/me']);
+  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments'] : ['/auth/me']);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
 });
 // Test case: Returns missing profile fields and checks unavailable labels without invented personal data.
