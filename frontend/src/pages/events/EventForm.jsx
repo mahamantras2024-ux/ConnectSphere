@@ -125,11 +125,11 @@ export default function EventForm() {
 
       // Handles this control action and updates the screen state.
       update('accessibilityText', e.target.value)} rows={3} /></label>
-        <EquipmentRequirementsFields value={equipment} onChange={setEquipment} disabled={busy} />
-        <label>Other equipment notes<textarea maxLength={10000} value={form.equipmentNotes} onChange={(e) => // Copies the selected input value into the equipmentNotes form field.
-
-      // Handles this control action and updates the screen state.
-      update('equipmentNotes', e.target.value)} rows={3} /></label>
+        {/* Free-text notes sit inside the equipment section so all equipment information is entered in one place. */}
+        <EquipmentRequirementsFields value={equipment} onChange={setEquipment} disabled={busy}>
+          <label>Other equipment notes<textarea maxLength={10000} value={form.equipmentNotes} rows={3}
+            onChange={(e) => update('equipmentNotes', e.target.value)} /></label>
+        </EquipmentRequirementsFields>
         <label>Special arrangements<textarea maxLength={10000} value={form.specialArrangements} onChange={(e) => // Copies the selected input value into the specialArrangements form field.
 
       // Handles this control action and updates the screen state.

@@ -6,8 +6,9 @@ import { equipmentError, equipmentFromEvent, equipmentPayload, formatEquipmentIt
 
 /**
  * Displays equipment items, support needs and technical specifications for an event.
- * Organisers can edit them directly until Technical Support confirms the arrangements; after that the
- * same form submits a change request and the confirmed values stay on screen until the coordinator reviews it.
+ * Editing follows the rest of the event page: organisers get a ✎ control (✉ once Technical Support has confirmed
+ * the arrangements) and "Save changes"/"Submit change request" with Cancel. After confirmation the edit becomes a
+ * change request and the confirmed values stay on screen until the coordinator reviews it.
  * @param {object} props
  * @param {object} props.event the loaded event record.
  * @param {boolean} props.canEdit true for the owning organiser.
@@ -21,6 +22,7 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const confirmed = Boolean(event.equipment_confirmed);
+  const editLabel = confirmed ? 'Request change to Equipment requirements' : 'Edit Equipment requirements';
 
   // Validates locally, then saves directly (200) or files a change request once arrangements are confirmed (202).
   async function save(submitEvent) {
@@ -48,26 +50,33 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2" aria-labelledby="equipment-heading">
-      <div className="section-heading">
-        <h2 id="equipment-heading" className="text-xl font-bold text-slate-900">Equipment &amp; Technical Support</h2>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h2 id="equipment-heading" className="text-xl font-bold text-slate-900">Equipment &amp; Technical Support</h2>
+          {canEdit && !draft && (
+            <button type="button" className={confirmed ? 'text-amber-800 hover:text-amber-950' : 'text-blue-700 hover:text-blue-900'}
+              aria-label={editLabel} title={editLabel}
+              onClick={() => { onMessage(''); setDraft(equipmentFromEvent(event)); }}>{confirmed ? '✉' : '✎'}</button>
+          )}
+        </div>
         <span className={`status-badge ${confirmed ? 'status-confirmed' : 'status-under_review'}`}>
           {confirmed ? 'Arrangements confirmed' : 'Awaiting technical arrangement'}
         </span>
       </div>
       {draft ? (
-        <form className="mt-4 grid gap-3" onSubmit={save}>
-          {confirmed && <p className="text-sm text-slate-600">Arrangements are confirmed, so your edit is sent to the Event Coordinator as a change request.</p>}
+        <form className="equipment-editor grid gap-4" onSubmit={save}>
+          {confirmed && <p className="text-sm text-slate-600">Arrangements are confirmed, so your edit is sent to the Event Coordinator as a change request. The confirmed details stay in effect until review.</p>}
           <EquipmentRequirementsFields value={draft} onChange={setDraft} disabled={saving} />
           {error && <p role="alert" className="error-text">{error}</p>}
           <div className="flex gap-2">
             <button type="submit" className="button-primary" disabled={saving}>
-              {saving ? 'Saving…' : confirmed ? 'Submit change request' : 'Save equipment requirements'}
+              {saving ? 'Saving…' : confirmed ? 'Submit change request' : 'Save changes'}
             </button>
             <button type="button" className="button-secondary" disabled={saving} onClick={() => { setDraft(null); setError(''); }}>Cancel</button>
           </div>
         </form>
       ) : (
-        <dl className="mt-4 grid gap-4 md:grid-cols-2">
+        <dl className="grid gap-4 md:grid-cols-2">
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Equipment items</dt>
             <dd className="mt-2 text-base font-medium text-slate-900">{formatEquipmentItems(event.equipment_items)}</dd>
@@ -91,11 +100,6 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
             <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">{children}</dd>
           </div>
         </dl>
-      )}
-      {canEdit && !draft && (
-        <button type="button" className="button-secondary mt-4" onClick={() => { onMessage(''); setDraft(equipmentFromEvent(event)); }}>
-          {confirmed ? 'Request equipment change' : 'Edit equipment requirements'}
-        </button>
       )}
     </section>
   );

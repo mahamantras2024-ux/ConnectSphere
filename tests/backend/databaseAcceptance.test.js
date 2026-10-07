@@ -1,6 +1,8 @@
 // File: Real PostgreSQL acceptance, ownership, schema and session checks in disposable schemas.
 // Test scope: Shared scenarios are sequential; each describe block owns its fixtures and hooks.
 const {describe,after}=require('node:test');
+// Load backend/.env before the shared pool is created: the pool reads its connection settings once, at require time.
+require('../../backend/node_modules/dotenv').config();
 const sharedPool=require('../../backend/src/config/db').pool;
 // Closes the shared pool once, after all grouped fixtures have finished.
 after(()=>sharedPool.end());
@@ -306,6 +308,32 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       assert.deepEqual((await request('/api/events?organiser_id=1', { token: bobToken })).body.events, []);
       assert.equal((await request(`/api/events/${eventId}`)).status, 401);
       assert.equal((await request('/api/events/999999', { token: aliceToken })).status, 404);
+    });
+    // Test case: EQ AC1-AC4 against real PostgreSQL - equipment saves and reads back, the database enforces the
+    // support-details rule, the migration is repeatable, and confirmed arrangements cannot be overwritten directly.
+    await t.test('EQ AC1/AC2/AC3/AC4 - equipment requirements persist and confirmed arrangements are protected in PostgreSQL', async () => {
+      // Arrange
+      const equipment = { equipmentItems: [{ item: 'Wireless microphone', quantity: 2 }, { item: 'Projector', quantity: 1 }],
+        technicalSupportRequired: true, technicalSupportDetails: 'AV technician on site', videoConferencingRequired: true,
+        technicalSpecifications: 'Zoom for 50 remote participants' };
+      // Act: save before confirmation, then read back.
+      const saved = await request(`/api/events/${eventId}/equipment`, { method: 'PUT', token: aliceToken, body: equipment });
+      const viewed = (await request(`/api/events/${eventId}`, { token: aliceToken })).body.event;
+      // Assert: the confirmation message and every stored value round-trip through the real schema.
+      assert.equal(saved.status, 200); assert.equal(saved.body.message, 'Equipment requirements saved.');
+      assert.deepEqual(viewed.equipment_items, equipment.equipmentItems);
+      assert.deepEqual([viewed.technical_support_required, viewed.technical_support_details, viewed.video_conferencing_required, viewed.technical_specifications, viewed.equipment_confirmed],
+        [true, 'AV technician on site', true, 'Zoom for 50 remote participants', false]);
+      // The database itself refuses "support required" without details, even if the API were bypassed.
+      await assert.rejects(client.query('UPDATE events SET technical_support_details=NULL WHERE id=$1', [eventId]), { code: '23514' });
+      // Re-running the migration keeps the saved requirements.
+      await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-equipment-requirements.sql'), 'utf8'));
+      // Technical Support confirms; with no coordinator assigned there is nobody to review a change, so the edit is refused and nothing changes.
+      await client.query('UPDATE events SET equipment_confirmed_at=now() WHERE id=$1', [eventId]);
+      const afterConfirmation = await request(`/api/events/${eventId}/equipment`, { method: 'PUT', token: aliceToken, body: { equipmentItems: [] } });
+      assert.equal(afterConfirmation.status, 409); assert.equal(afterConfirmation.body.code, 'COORDINATOR_NOT_ASSIGNED');
+      const unchanged = (await request(`/api/events/${eventId}`, { token: aliceToken })).body.event;
+      assert.deepEqual(unchanged.equipment_items, equipment.equipmentItems); assert.equal(unchanged.equipment_confirmed, true);
     });
     // Test case: Runs the migration again after saving an event and checks stored content survives.
     await t.test('migration is repeatable and preserves saved event content', async () => {

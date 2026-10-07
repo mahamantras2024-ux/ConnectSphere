@@ -59,6 +59,8 @@ afterEach(cleanup);
 it('EQ AC1/AC4 - organiser specifies items and quantities, removed rows are not sent, and submission is confirmed', async () => {
   // Arrange
   await openNewRequest();
+  // All equipment information, including the free-text notes, is entered in one section of the form.
+  expect(within(screen.getByRole('group', { name: 'Equipment & technical support' })).getByLabelText('Other equipment notes')).toBeTruthy();
   addItem('Wireless microphone', '2');
   addItem('Flip chart', '3');
   addItem('Projector', '1');
@@ -169,12 +171,12 @@ it('EQ AC3/AC4 - before confirmation the organiser updates equipment and sees a 
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
   // Act: raise microphones to 4, remove the projector, drop technical support.
-  fireEvent.click(within(equipmentSection()).getByRole('button', { name: 'Edit equipment requirements' }));
+  fireEvent.click(within(equipmentSection()).getByRole('button', { name: 'Edit Equipment requirements' }));
   expect(screen.getByLabelText('Equipment item 1').value).toBe('Wireless microphone');
   fireEvent.change(screen.getByLabelText('Quantity for item 1'), { target: { value: '4' } });
   fireEvent.click(screen.getByRole('button', { name: 'Remove equipment item 2' }));
   fireEvent.click(screen.getByLabelText('Technical support required'));
-  fireEvent.click(screen.getByRole('button', { name: 'Save equipment requirements' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
   // Assert
   await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/101/equipment', {
     equipmentItems: savedItems, technicalSupportRequired: false, technicalSupportDetails: null,
@@ -194,8 +196,8 @@ it('EQ AC3 - after confirmation an edit is submitted as a change request and con
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
   expect(within(equipmentSection()).getByText('Arrangements confirmed')).toBeTruthy();
-  expect(within(equipmentSection()).queryByRole('button', { name: 'Edit equipment requirements' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Request equipment change' }));
+  expect(within(equipmentSection()).queryByRole('button', { name: 'Edit Equipment requirements' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Request change to Equipment requirements' }));
   expect(screen.getByText(/sent to the Event Coordinator as a change request/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Quantity for item 1'), { target: { value: '5' } });
   fireEvent.click(screen.getByRole('button', { name: 'Submit change request' }));
@@ -209,9 +211,9 @@ it('EQ AC4 - a failed save keeps the edits and shows the error instead of a conf
   api.put.mockImplementation(() => new Promise((_, reject) => { rejectSave = reject; }));
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
-  fireEvent.click(screen.getByRole('button', { name: 'Edit equipment requirements' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Equipment requirements' }));
   fireEvent.change(screen.getByLabelText('Quantity for item 2'), { target: { value: '3' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save equipment requirements' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
   // While saving, inputs are locked so the in-flight values cannot drift from what was sent.
   expect(screen.getByRole('button', { name: 'Saving…' }).disabled).toBe(true);
   expect(screen.getByLabelText('Quantity for item 2').matches(':disabled')).toBe(true);
@@ -229,9 +231,9 @@ it('EQ AC4 - a failed save keeps the edits and shows the error instead of a conf
 it('EQ AC3 - the detail editor blocks invalid quantities before saving', async () => {
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
-  fireEvent.click(screen.getByRole('button', { name: 'Edit equipment requirements' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Equipment requirements' }));
   fireEvent.change(screen.getByLabelText('Quantity for item 1'), { target: { value: '' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save equipment requirements' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
   expect(screen.getByRole('alert').textContent).toBe('Quantity for Wireless microphone must be a whole number from 1 to 9999.');
   expect(api.put).not.toHaveBeenCalled();
 });
@@ -257,7 +259,7 @@ it('EQ AC1 - events without recorded equipment show that nothing was requested',
   expect(within(section).getAllByText('Not required')).toHaveLength(2);
   expect(within(section).getAllByText('Not specified')).toHaveLength(2);
   // Opening the editor on a legacy record starts from an empty list.
-  fireEvent.click(within(section).getByRole('button', { name: 'Edit equipment requirements' }));
+  fireEvent.click(within(section).getByRole('button', { name: 'Edit Equipment requirements' }));
   expect(screen.getByText('No equipment items added.')).toBeTruthy();
 });
 

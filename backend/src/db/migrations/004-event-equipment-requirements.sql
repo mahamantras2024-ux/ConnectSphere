@@ -16,12 +16,13 @@ BEGIN
       AND conrelid = 'events'::regclass) THEN
     ALTER TABLE events ADD CONSTRAINT events_equipment_items_array CHECK (jsonb_typeof(equipment_items) = 'array');
   END IF;
-  -- Support details only make sense when support is requested, and are then required.
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'events_technical_support_details'
-      AND conrelid = 'events'::regclass) THEN
-    ALTER TABLE events ADD CONSTRAINT events_technical_support_details CHECK (
-      (technical_support_required AND length(trim(technical_support_details)) > 0)
-      OR (NOT technical_support_required AND technical_support_details IS NULL));
-  END IF;
 END $$;
+-- Support details only make sense when support is requested, and are then required.
+-- COALESCE matters: with NULL details a bare length() check is NULL ("unknown"), which a CHECK constraint accepts.
+-- Dropped and re-added (rather than "add if missing") so databases that received the earlier, NULL-permissive
+-- definition are corrected when the migration is re-run.
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_technical_support_details;
+ALTER TABLE events ADD CONSTRAINT events_technical_support_details CHECK (
+  (technical_support_required AND length(trim(COALESCE(technical_support_details, ''))) > 0)
+  OR (NOT technical_support_required AND technical_support_details IS NULL));
 COMMIT;

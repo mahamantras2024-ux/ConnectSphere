@@ -306,12 +306,27 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border); }
 @media (max-width: 640px) { .event-request-form { grid-template-columns: 1fr; padding: 22px; gap: 20px; } .modal-header { gap: 14px; padding: 20px; } .modal-header h2 { font-size: 20px; } .modal-close { padding: 9px 12px; } .drawer-navigation { padding: 16px 20px 0; } .venue-drawer .event-detail { padding: 24px 20px; } .navbar .nav-links { gap: 8px; } .nav-links > a { padding: 9px; } }
 @media (prefers-reduced-motion: reduce) { .record-card { transition: none; } .record-card:hover { transform: none; } }
-/* Equipment & technical support fieldset shared by the event request form and event detail editor. */
-.equipment-fields { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 18px; border: 1px solid var(--border, #e2e8f0); border-radius: 12px; }
-.equipment-fields legend { padding: 0 6px; font-weight: 600; }
+/* Equipment & technical support section shared by the event request form and the event detail editor.
+   It reads as a titled part of the form (top divider + heading) rather than a separate boxed panel. */
+.equipment-fields { display: grid; gap: 18px; min-width: 0; margin: 0; padding: 22px 0 0; border: 0; border-top: 1px solid var(--border); }
+.equipment-fields legend { float: left; width: 100%; padding: 0; font-size: 16px; font-weight: 700; color: var(--ink); }
+.equipment-fields legend + .field-help { margin-top: -8px; }
 .equipment-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .equipment-fields .checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
-.equipment-fields .checkbox-label input { width: auto; }
-.equipment-row { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 10px; align-items: end; }
+.equipment-fields .checkbox-label input { width: auto; margin: 0; }
+.equipment-items { display: grid; gap: 10px; }
+.equipment-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px 72px; gap: 10px; align-items: center; }
+.equipment-row-head { font-size: 12px; font-weight: 600; color: var(--muted); }
+/* Row inputs are not wrapped in labels, so match the 13px text the form's labelled inputs inherit. */
+.equipment-row input { font-size: 13px; }
+.equipment-empty { margin: 0; font-size: 13px; color: var(--muted); }
+.equipment-remove { padding: 8px 0; border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.equipment-remove:hover { background: none; color: var(--ink); }
+.equipment-add { justify-self: start; }
 .event-request-form > .equipment-fields { grid-column: 1 / -1; }
-@media (max-width: 640px) { .equipment-row { grid-template-columns: 1fr; } }
+/* Inside the event detail card the section already has its heading: drop the divider and keep the legend for screen readers only. */
+.equipment-editor .equipment-fields { padding-top: 0; border-top: 0; }
+.equipment-editor .equipment-fields legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.equipment-editor .equipment-fields legend + .field-help { margin-top: 0; }
+.event-request-form > .equipment-fields .field-help { margin-top: 0; }
+@media (max-width: 640px) { .equipment-row { grid-template-columns: minmax(0, 1fr) 90px; } .equipment-row-head span:last-child { display: none; } .equipment-remove { grid-column: 1 / -1; justify-self: start; padding: 0 0 6px; } }
