@@ -265,7 +265,7 @@ it.each([
   ['Description','description','New description','New description'], ['Event type','eventType','seminar','seminar'],
   ['Date','proposedDate','2026-10-20','2026-10-20'], ['Start time','proposedStartTime','10:00','10:00'],
   ['End time','proposedEndTime','13:00','13:00'], ['Expected attendance','expectedAttendance','50',50],
-  ['Layout requirements','roomLayoutPreference','theatre','theatre'], ['Equipment requests','equipmentNotes','Projector','Projector'],
+  ['Layout requirements','roomLayoutPreference','theatre','theatre'], ['Other equipment notes','equipmentNotes','Projector','Projector'],
   ['Accessibility needs','accessibilityRequirements','Ramp\nHearing loop',['Ramp','Hearing loop']],
   ['Special arrangements','specialArrangements','Quiet room','Quiet room'], ['Registration capacity','registrationCapacity','',null],
 ])('Event AC1 AC2 - edits %s through its real control', async (label, key, value, expected) => {
@@ -464,7 +464,7 @@ it('Lead AC2 AC6 - reviews a request in the existing drawer and returns to queue
 
 // Existing event-view missing-information rule: this is deliberately incomplete API input for defensive UI testing,
 // not a claim that PostgreSQL permits a null registration_required column or returns this normal success shape.
-it.each(['Date','Start time','End time','Accessibility needs','Expected attendance','Registration capacity','Programme','Layout requirements','Equipment requests','Special arrangements','Event type','Registration required'])('Organiser view AC4 / existing edit AC2 AC3 - defensive incomplete API input defaults %s',async label=>{
+it.each(['Date','Start time','End time','Accessibility needs','Expected attendance','Registration capacity','Programme','Layout requirements','Other equipment notes','Special arrangements','Event type','Registration required'])('Organiser view AC4 / existing edit AC2 AC3 - defensive incomplete API input defaults %s',async label=>{
   const incomplete={...event,event_type:null,proposed_date:null,proposed_start_time:null,proposed_end_time:null,
     accessibility_requirements:null,registration_required:undefined,registration_capacity:null,expected_attendance:null,
     programme_details:null,room_layout_preference:null,equipment_notes:null,special_arrangements:null};
@@ -473,7 +473,7 @@ it.each(['Date','Start time','End time','Accessibility needs','Expected attendan
   api.put.mockResolvedValue({event:incomplete});
   open('/organizer/events/101');await screen.findByRole('heading',{name:event.name});
   // Act: saving a blank optional field preserves the independently specified missing values.
-  fireEvent.click(screen.getByRole('button',{name:'Edit Equipment requests'}));
+  fireEvent.click(screen.getByRole('button',{name:'Edit Other equipment notes'}));
   fireEvent.click(screen.getByRole('button',{name:'Save changes'}));fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
   await screen.findByText('Non-critical event information saved.');fireEvent.click(screen.getByRole('button',{name:'Continue'}));
   // Assert one independently specified control default per test, keeping each case focused and fast.

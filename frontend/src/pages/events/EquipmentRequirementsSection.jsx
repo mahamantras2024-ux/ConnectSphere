@@ -1,6 +1,7 @@
 // File: Shows an event's equipment and technical-support requirements and lets its organiser update them.
 import { useState } from 'react';
 import { api } from '../../api/client';
+import ActionConfirmation from '../../components/ActionConfirmation';
 import EquipmentRequirementsFields from './EquipmentRequirementsFields';
 import { equipmentError, equipmentFromEvent, equipmentPayload, formatEquipmentItems } from './equipmentRequirements';
 
@@ -21,14 +22,13 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const [success, setSuccess] = useState('');
   const confirmed = Boolean(event.equipment_confirmed);
   const editLabel = confirmed ? 'Request change to Equipment requirements' : 'Edit Equipment requirements';
 
-  // Validates locally, then saves directly (200) or files a change request once arrangements are confirmed (202).
-  async function save(submitEvent) {
-    submitEvent.preventDefault();
-    const problem = equipmentError(draft);
-    if (problem) { setError(problem); return; }
+  // Runs only after review confirmation: save unconfirmed requirements (200), or request a confirmed change (202).
+  async function save() {
     setSaving(true); setError(''); onMessage('');
     try {
       const data = await api.put(`/events/${event.id}/equipment`, equipmentPayload(draft), token);
@@ -38,7 +38,7 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
           technical_support_details: data.event.technical_support_details, video_conferencing_required: data.event.video_conferencing_required,
           technical_specifications: data.event.technical_specifications });
       }
-      onMessage(data.message);
+      setSuccess(data.message);
       setDraft(null);
     } catch (err) {
       // Keeps the organiser's edits on screen so a failed save can be corrected and retried.
@@ -64,10 +64,13 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
         </span>
       </div>
       {draft ? (
-        <form className="equipment-editor grid gap-4" onSubmit={save}>
+        <form className="equipment-editor grid gap-4" onSubmit={(e) => {
+          // Validate before review; the API runs only after the organiser explicitly confirms.
+          e.preventDefault(); const problem = equipmentError(draft); setError(problem); if (!problem) setReviewing(true);
+        }}>
           {confirmed && <p className="text-sm text-slate-600">Arrangements are confirmed, so your edit is sent to the Event Coordinator as a change request. The confirmed details stay in effect until review.</p>}
           <EquipmentRequirementsFields value={draft} onChange={setDraft} disabled={saving} />
-          {error && <p role="alert" className="error-text">{error}</p>}
+          {error && !reviewing && <p role="alert" className="error-text">{error}</p>}
           <div className="flex gap-2">
             <button type="submit" className="button-primary" disabled={saving}>
               {saving ? 'Saving…' : confirmed ? 'Submit change request' : 'Save changes'}
@@ -101,6 +104,10 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
           </div>
         </dl>
       )}
+      {reviewing && <ActionConfirmation action={confirmed ? 'submit this equipment change request' : 'update these equipment requirements'} busy={saving} error={error} success={success} onConfirm={save} onClose={() => {
+        // Keep cancelled edits available; acknowledge a successful update in the surrounding event page.
+        setReviewing(false); setError(''); if (success) { onMessage(success); setSuccess(''); }
+      }} />}
     </section>
   );
 }

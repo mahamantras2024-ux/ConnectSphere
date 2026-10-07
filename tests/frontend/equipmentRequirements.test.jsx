@@ -30,6 +30,8 @@ const equipmentSection = () => screen.getByRole('region', { name: 'Equipment & T
 async function openNewRequest() {
   open('/organizer/events/new');
   fireEvent.change(await screen.findByLabelText('Event name'), { target: { value: 'Community Workshop' } });
+  // Submission requires date, both times and positive attendance; drafts remain optional.
+  for (const [label, value] of [['Proposed date','2030-10-15'],['Start time','09:00'],['End time','12:00'],['Expected attendance','50']]) fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 // Adds an equipment row on the new-request form and fills its item and quantity.
 function addItem(item, quantity) {
@@ -67,6 +69,8 @@ it('EQ AC1/AC4 - organiser specifies items and quantities, removed rows are not 
   // Act: remove row 2 (Flip chart) then submit.
   fireEvent.click(screen.getByRole('button', { name: 'Remove equipment item 2' }));
   fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   // Assert: the remaining rows keep their own values, and the confirmation is shown on the saved record.
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events', expect.objectContaining({
     equipmentItems: [{ item: 'Wireless microphone', quantity: 2 }, { item: 'Projector', quantity: 1 }],
@@ -85,6 +89,8 @@ it('EQ AC1/AC2 - technical support needs and video-conferencing specifications a
   fireEvent.click(screen.getByLabelText('Video-conferencing / hybrid facilities required'));
   fireEvent.change(screen.getByLabelText('Special technical specifications'), { target: { value: 'Zoom for 50 remote participants' } });
   fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events', expect.objectContaining({
     equipmentItems: [], technicalSupportRequired: true, technicalSupportDetails: 'AV technician on site',
     videoConferencingRequired: true, technicalSpecifications: 'Zoom for 50 remote participants',
@@ -99,6 +105,8 @@ it('EQ AC1 - unticking technical support hides and withholds previously typed de
   fireEvent.click(screen.getByLabelText('Technical support required'));
   expect(screen.queryByLabelText('Technical support details')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events', expect.objectContaining({
     isDraft: true, technicalSupportRequired: false, technicalSupportDetails: null }), 'organiser-token'));
 });
@@ -131,6 +139,8 @@ it.each([['1', [{ item: 'Projector', quantity: 1 }]], ['9999', [{ item: 'Project
     await openNewRequest();
     addItem('Projector', quantity);
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events', expect.objectContaining({ equipmentItems }), 'organiser-token'));
   });
 
@@ -139,6 +149,8 @@ it('EQ AC1 - a completely blank row is ignored', async () => {
   await openNewRequest();
   addItem('', '');
   fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events', expect.objectContaining({ equipmentItems: [] }), 'organiser-token'));
 });
 
@@ -177,6 +189,8 @@ it('EQ AC3/AC4 - before confirmation the organiser updates equipment and sees a 
   fireEvent.click(screen.getByRole('button', { name: 'Remove equipment item 2' }));
   fireEvent.click(screen.getByLabelText('Technical support required'));
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect(api.put).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   // Assert
   await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/101/equipment', {
     equipmentItems: savedItems, technicalSupportRequired: false, technicalSupportDetails: null,
@@ -186,6 +200,10 @@ it('EQ AC3/AC4 - before confirmation the organiser updates equipment and sees a 
   expect(within(equipmentSection()).getByText('Not required')).toBeTruthy();
   // The raw UPDATE row's timestamp must not replace the stored calendar date.
   expect(screen.getByText('15/10/2026')).toBeTruthy();
+  // Success must be acknowledged before returning to the event's saved status.
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByText('Equipment requirements saved.')).toBeTruthy();
 });
 
 // Test case: Edits equipment after confirmation; the request is sent but the confirmed list stays displayed with the change-request message.
@@ -201,6 +219,8 @@ it('EQ AC3 - after confirmation an edit is submitted as a change request and con
   expect(screen.getByText(/sent to the Event Coordinator as a change request/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Quantity for item 1'), { target: { value: '5' } });
   fireEvent.click(screen.getByRole('button', { name: 'Submit change request' }));
+  expect(api.put).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   expect(await screen.findByText(/confirmed equipment arrangements remain in effect/)).toBeTruthy();
   expect(within(equipmentSection()).getByText('Wireless microphone × 2, Projector × 1')).toBeTruthy();
 });
@@ -214,14 +234,18 @@ it('EQ AC4 - a failed save keeps the edits and shows the error instead of a conf
   fireEvent.click(screen.getByRole('button', { name: 'Edit Equipment requirements' }));
   fireEvent.change(screen.getByLabelText('Quantity for item 2'), { target: { value: '3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect(api.put).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   // While saving, inputs are locked so the in-flight values cannot drift from what was sent.
-  expect(screen.getByRole('button', { name: 'Saving…' }).disabled).toBe(true);
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Saving…' }).disabled).toBe(true);
   expect(screen.getByLabelText('Quantity for item 2').matches(':disabled')).toBe(true);
   await act(async () => rejectSave(new Error('Server unavailable')));
   expect(screen.getByRole('alert').textContent).toBe('Server unavailable');
   expect(screen.getByLabelText('Quantity for item 2').value).toBe('3');
   expect(screen.queryByText('Equipment requirements saved.')).toBeNull();
   // Cancel discards the draft and returns to the stored values.
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByLabelText('Quantity for item 2').value).toBe('3');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(within(equipmentSection()).getByText('Wireless microphone × 2, Projector × 1')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
@@ -276,4 +300,27 @@ it('EQ AC3 - coordinators see requested equipment changes as readable items in t
   const item = await screen.findByText('Equipment items:');
   expect(item.parentElement.textContent).toBe('Equipment items: Wireless microphone × 4');
   expect(screen.getByText('Technical support required:').parentElement.textContent).toBe('Technical support required: No');
+});
+
+// Merge regression: new technical free-text questions retain the organiser's optional evidence policy.
+it('EQ AC2 / Workflow AC4 AC5 - confirms a request containing technical specifications and its uploaded document', async () => {
+  // Arrange real FileReader bytes alongside the textual requirement.
+  await openNewRequest();
+  fireEvent.change(screen.getByLabelText('Special technical specifications'), { target: { value: 'Hybrid keynote' } });
+  const file = new File(['%PDF-1.4\nHybrid keynote'], 'specification.pdf', { type: 'application/pdf' });
+  fireEvent.change(screen.getByLabelText('Special technical specifications attachment'), { target: { files: [file] } });
+  await screen.findByRole('link', { name: 'specification.pdf' });
+  expect(screen.getByLabelText('Technical support details attachment')).toBeTruthy();
+  expect(screen.queryByLabelText('Accessibility needs attachment')).toBeNull();
+  // Act: neither the click nor opening the review dialog may write prematurely.
+  fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+  // Assert both independent values survive the same request and success requires acknowledgement.
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events', expect.objectContaining({
+    technicalSpecifications: 'Hybrid keynote', attachments: { technicalSpecifications: {
+      name: 'specification.pdf', data: btoa('%PDF-1.4\nHybrid keynote'),
+    } },
+  }), 'organiser-token'));
+  expect(await screen.findByRole('dialog', { name: 'Action completed' })).toBeTruthy();
 });

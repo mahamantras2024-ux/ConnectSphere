@@ -4,6 +4,8 @@ export const attachmentFields = {
   name: 'Event name', purpose: 'Purpose', description: 'Description', eventType: 'Event type',
   roomLayoutPreference: 'Room layout preference', programmeDetails: 'Programme',
   equipmentNotes: 'Equipment requirements', specialArrangements: 'Special arrangements',
+  // New equipment free-text questions follow the same per-question evidence policy.
+  technicalSupportDetails: 'Technical support details', technicalSpecifications: 'Special technical specifications',
 };
 
 /** Reads one allowed file of up to 2 MiB for an authenticated event request; the server verifies its bytes. */

@@ -1,4 +1,5 @@
-require('../../backend/node_modules/dotenv').config();
+// Resolve configuration before the shared pool is created, even when tests run from the repository root.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').resolve(__dirname, '../../backend/.env') });
 const { describe, test, before, beforeEach, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -57,7 +58,7 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
       INSERT INTO venues VALUES (7,'Hall','Available')`);
     const client = await database.connect();
     try {
-      for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql',
+      for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql','migrations/004-event-equipment-requirements.sql',
         'venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql']) {
         await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db',name),'utf8'));
       }

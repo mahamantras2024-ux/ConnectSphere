@@ -64,6 +64,6 @@ for(const length of [254,255,256])test(`Workflow AC5 - filename length boundary 
 // AC5: the persistence boundary also defaults an omitted optional attachment map to an empty JSON object.
 test('Workflow AC5 - model creation defaults optional attachments to empty map',async()=>{
  const {create}=require('../../backend/src/models/eventModel');
- mock.method(pool,'query',async(sql,values)=>{assert.match(sql,/INSERT INTO events/);assert.equal(values[18],'{}');return {rows:[{id:1}]};});
+ mock.method(pool,'query',async(sql,values)=>{assert.match(sql,/INSERT INTO events/);assert.equal(values[23],'{}');return {rows:[{id:1}]};});
  assert.deepEqual(await create({...complete,isDraft:false,organiserId:2,accessibilityRequirements:[]}),{id:1});
 });

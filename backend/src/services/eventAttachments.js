@@ -1,4 +1,4 @@
-const fields = ['name', 'purpose', 'description', 'eventType', 'roomLayoutPreference', 'programmeDetails', 'equipmentNotes', 'specialArrangements'];
+const fields = ['name', 'purpose', 'description', 'eventType', 'roomLayoutPreference', 'programmeDetails', 'equipmentNotes', 'specialArrangements', 'technicalSupportDetails', 'technicalSpecifications'];
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const types = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', pdf: 'application/pdf', doc: 'application/msword' };
 

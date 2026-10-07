@@ -395,7 +395,7 @@ test('Workflow AC2 - HTTP creation saves an entirely incomplete draft',async()=>
   mock.method(pool,'query',async(sql,values)=>{
     if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
     assert.match(sql,/INSERT INTO events/);assert.equal(values[1],'');assert.equal(values[5],null);assert.equal(values[8],null);
-    assert.equal(values[16],true);assert.equal(values[17],'draft');assert.equal(values[18],'{}');
+    assert.equal(values[16],true);assert.equal(values[17],'draft');assert.equal(values[23],'{}');
     return {rows:[{id:101,name:'',is_draft:true,status:'draft',attachments:{}}]};
   });
   assert.equal((await request('/api/events',{method:'POST',body:{isDraft:true}})).status,201);
