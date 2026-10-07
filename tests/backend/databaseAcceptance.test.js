@@ -1,5 +1,7 @@
 // File: Real PostgreSQL acceptance, ownership, schema and session checks in disposable schemas.
 // Test scope: Shared scenarios are sequential; each describe block owns its fixtures and hooks.
+// The pool snapshots process.env during import, so load the backend config first regardless of the runner's cwd.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').resolve(__dirname, '../../backend/.env') });
 const {describe,after}=require('node:test');
 const sharedPool=require('../../backend/src/config/db').pool;
 // Closes the shared pool once, after all grouped fixtures have finished.
@@ -9,7 +11,6 @@ after(()=>sharedPool.end());
 describe('sprintOneAcceptancePostgres',{concurrency:false},()=>{
 // File: Verifies the PDF's Sprint 1 acceptance criteria against actual PostgreSQL in a disposable schema.
 // Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
-require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
@@ -147,7 +148,6 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
 describe('sprintOnePostgres',{concurrency:false},()=>{
 // File: Runs Sprint 1 role, venue-buffer, and attendee-summary integration checks in a disposable PostgreSQL schema.
 // Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
-require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -212,7 +212,6 @@ describe('postgresEvents',{concurrency:false},()=>{
 // File: Runs opt-in real PostgreSQL event/migration/reset integration checks inside an isolated temporary schema.
 // Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 // Opt-in integration test: all records live in a random temporary schema.
-require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
