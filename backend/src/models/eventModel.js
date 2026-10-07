@@ -35,7 +35,7 @@ async function findAccessibleById(id, user) {
   if (!ownerColumn && !lead) return null;
   // The column is selected from the fixed allowlist above, never request input.
   const result = await pool.query(`
-    SELECT e.id, e.organiser_id, e.coordinator_id, e.name, e.purpose,
+    SELECT e.id, e.organiser_id, e.coordinator_id, e.name, e.purpose, e.attachments,
       e.description, e.event_type, e.proposed_date::text AS proposed_date,
       e.proposed_start_time, e.proposed_end_time, e.expected_attendance,
       e.programme_details, e.room_layout_preference, e.accessibility_requirements,
@@ -64,14 +64,14 @@ async function create(data) {
       proposed_date, proposed_start_time, proposed_end_time, expected_attendance,
       programme_details, room_layout_preference, accessibility_requirements,
       equipment_notes, registration_required, registration_capacity,
-      special_arrangements, is_draft, status)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18)
+      special_arrangements, is_draft, status, attachments)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19::jsonb)
     RETURNING *`, [data.organiserId, data.name, data.purpose, data.description,
       data.eventType, data.proposedDate, data.proposedStartTime, data.proposedEndTime,
       data.expectedAttendance, data.programmeDetails, data.roomLayoutPreference,
       JSON.stringify(data.accessibilityRequirements), data.equipmentNotes,
       data.registrationRequired, data.registrationCapacity, data.specialArrangements,
-      data.isDraft, data.isDraft ? 'draft' : 'submitted']);
+      data.isDraft, data.isDraft ? 'draft' : 'submitted', JSON.stringify(data.attachments || {})]);
   return result.rows[0];
 }
 
@@ -83,11 +83,11 @@ async function updateEditable(id, organiserId, data, hasCriticalChanges) {
     expectedAttendance: 'expected_attendance', programmeDetails: 'programme_details',
     roomLayoutPreference: 'room_layout_preference', accessibilityRequirements: 'accessibility_requirements',
     equipmentNotes: 'equipment_notes', registrationRequired: 'registration_required',
-    registrationCapacity: 'registration_capacity', specialArrangements: 'special_arrangements'
+    registrationCapacity: 'registration_capacity', specialArrangements: 'special_arrangements', attachments: 'attachments'
   };
   const fields = Object.keys(data);
-  const values = fields.map((field) => field === 'accessibilityRequirements' ? JSON.stringify(data[field]) : data[field]);
-  const assignments = fields.map((field, index) => `${columns[field]}=$${index + 1}${field === 'accessibilityRequirements' ? '::jsonb' : ''}`);
+  const values = fields.map((field) => ['accessibilityRequirements','attachments'].includes(field) ? JSON.stringify(data[field]) : data[field]);
+  const assignments = fields.map((field, index) => `${columns[field]}=$${index + 1}${['accessibilityRequirements','attachments'].includes(field) ? '::jsonb' : ''}`);
   const idIndex = values.length + 1;
   const organiserIndex = values.length + 2;
   const criticalIndex = values.length + 3;

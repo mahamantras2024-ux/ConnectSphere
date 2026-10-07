@@ -317,3 +317,17 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 
 /* Staff has one recovery link: centre it beneath Login while external links retain their layout. */
 .auth-footer.staff-login-footer { justify-content: center; }
+
+/* Row-based request groups keep the established palette and wrap actions on narrow screens. */
+.event-request-rows { list-style:none; padding:0; display:grid; gap:12px; }
+.event-request-row { display:flex; justify-content:space-between; align-items:center; gap:20px; border:1px solid var(--border); border-radius:12px; padding:22px; background:#FFFFFA; }
+.event-request-row h3 { margin:0 0 8px; }
+.request-row-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.confirmation-content { padding:24px; }
+.event-attachments { grid-column:1 / -1; padding:20px 0; }
+.attachment-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0; }
+@media(max-width:640px) { .event-request-row { flex-direction:column; align-items:stretch; } }
+/* Long event answers and filenames must wrap instead of pushing actions beyond the viewport. */
+.event-request-row > div { min-width: 0; }
+.event-request-row h3, .event-request-row p, .attachment-row a { overflow-wrap: anywhere; }
+.request-row-actions { flex-shrink: 0; }

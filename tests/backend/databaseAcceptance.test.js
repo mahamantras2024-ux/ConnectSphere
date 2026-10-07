@@ -29,7 +29,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     await client.query(`SET search_path TO ${schema}`);
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255), role VARCHAR(50), organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[], accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql']) {
+    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql']) {
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
     }
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
@@ -167,6 +167,7 @@ test('Sprint 1 persists roles, venue buffers and personal registrations in real 
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/001-external-events.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/002-event-change-requests.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/003-event-clarifications.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-attachments.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/sprintOneSchema.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/venueManagementSchema.sql'), 'utf8'));
     mock.method(pool, 'query', (sql, values) =>
@@ -223,7 +224,7 @@ const emailService = require('../../backend/src/services/emailService');
 const { provisionAccount } = require('../../backend/src/db/provisionAccount');
 
 // Test case: Exercises organiser ownership, repeatable migrations and password reset using an isolated real PostgreSQL schema.
-test('PostgreSQL event ownership, additive migration and password reset', { skip: process.env.RUN_DB_TESTS !== '1' }, async (t) => {
+test('Workflow AC2 AC3 AC5 - PostgreSQL event ownership, additive migration and password reset', { skip: process.env.RUN_DB_TESTS !== '1' }, async (t) => {
 
   const schema = `cs_event_test_${crypto.randomBytes(8).toString('hex')}`;
   const client = await pool.connect();
@@ -241,7 +242,7 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
     for (const file of [
       'migrations/001-external-events.sql',
       'migrations/002-event-change-requests.sql',
-      'migrations/003-event-clarifications.sql',
+      'migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql',
       'venueManagementSchema.sql'
     ]) {
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
@@ -280,11 +281,11 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       assert.ok(aliceToken); assert.ok(bobToken);
     });
     // Test case: Saves and reads every submitted field and checks forged owner input cannot replace the session owner.
-    await t.test('save and read all submitted fields without changing owner from request input', async () => {
+    await t.test('Workflow AC2 - save and read all submitted fields without changing owner from request input', async () => {
 
       const created = await request('/api/events', { method: 'POST', token: aliceToken, body: { name: 'SQL round trip',
         purpose: 'Verify persistence', proposedDate: '2026-10-15', proposedStartTime: '09:00', proposedEndTime: '12:00',
-        expectedAttendance: 0, programmeDetails: 'Welcome\nWorkshop', roomLayoutPreference: 'classroom', accessibilityRequirements: ['Hearing loop'],
+        expectedAttendance: 1, programmeDetails: 'Welcome\nWorkshop', roomLayoutPreference: 'classroom', accessibilityRequirements: ['Hearing loop'],
         equipmentNotes: 'Microphone', registrationRequired: false, registrationCapacity: 0, specialArrangements: 'Vegetarian lunch', organiserId: 2 } });
       assert.equal(created.status, 201); eventId = created.body.event.id;
       assert.equal(created.body.event.organiser_id, 1); assert.equal(created.body.event.status, 'submitted');
@@ -292,7 +293,7 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       assert.equal(viewed.status, 200); assert.equal(viewed.body.event.programme_details, 'Welcome\nWorkshop');
       assert.equal(viewed.body.event.special_arrangements, 'Vegetarian lunch'); assert.equal(viewed.body.event.proposed_date, '2026-10-15');
       assert.deepEqual(viewed.body.event.accessibility_requirements, ['Hearing loop']); assert.equal(viewed.body.event.organiser_name, 'alice');
-      assert.equal(viewed.body.event.registration_required, false); assert.equal(viewed.body.event.expected_attendance, 0);
+      assert.equal(viewed.body.event.registration_required, false); assert.equal(viewed.body.event.expected_attendance, 1);
       assert.equal(viewed.body.event.venue_confirmed, false);
       assert.equal(viewed.body.event.clarification_outstanding, false);
       assert.deepEqual(viewed.body.event.clarification_requests, []);

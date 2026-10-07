@@ -1,3 +1,5 @@
+import ActionConfirmation from '../../components/ActionConfirmation';
+import EventAttachments from '../../components/EventAttachments';
 // File: Loads and formats persisted event details, handling missing values and request failures.
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
@@ -24,6 +26,11 @@ export default function EventDetail() {
   const [editValues, setEditValues] = useState(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmUpdate, setConfirmUpdate] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState('');
+  const [updateError, setUpdateError] = useState('');
+  const [readingFiles, setReadingFiles] = useState(0);
+  const [fileChanges, setFileChanges] = useState({});
   const [activeEditField, setActiveEditField] = useState('');
   const [clarificationFields, setClarificationFields] = useState([]);
   const [clarificationMessage, setClarificationMessage] = useState('');
@@ -124,8 +131,8 @@ export default function EventDetail() {
       char.toUpperCase());
   };
 
+  /** Persists the confirmed field/file update; failures retain the editor for correction or retry. */
   async function saveNonCritical() {
-    if (saving || !editValues) return;
     setSaving(true);
     setSaveMessage('');
     setError('');
@@ -134,7 +141,7 @@ export default function EventDetail() {
       let value = editValues[activeEditField];
       if (activeEditField === 'accessibilityText') value = value.split('\n').map((item) => item.trim()).filter(Boolean);
       if (['expectedAttendance', 'registrationCapacity'].includes(activeEditField)) value = value === '' ? null : Number(value);
-      const payload = { [apiField]: value };
+      const payload = activeEditField==='attachments'?{attachments:fileChanges}:{ [apiField]: value };
       const data = await api.put(`/events/${id}/non-critical`, payload, token);
       if (!data.changeRequest) {
         setEvent((current) => ({ ...current, ...data.event }));
@@ -157,10 +164,11 @@ export default function EventDetail() {
       } else {
         setEditValues((current) => ({ ...current, [activeEditField]: currentEditValue(activeEditField) }));
       }
-      setSaveMessage(data.message || 'Non-critical event information saved.');
+      setUpdateSuccess(data.message || 'Non-critical event information saved.');
+      setFileChanges({});
       setActiveEditField('');
     } catch (err) {
-      setError(err.message || 'Unable to save event information.');
+      setUpdateError(err.message || 'Unable to save event information.');
     } finally {
       setSaving(false);
     }
@@ -226,7 +234,7 @@ export default function EventDetail() {
     const controlType = field === 'proposedDate' ? 'date' : ['proposedStartTime', 'proposedEndTime'].includes(field) ? 'time'
       : ['expectedAttendance', 'registrationCapacity'].includes(field) ? 'number' : 'text';
     const multiline = ['description', 'programmeDetails', 'accessibilityText', 'equipmentNotes', 'specialArrangements'].includes(field);
-    return <form className="mt-2 grid gap-2" onSubmit={(submitEvent) => { submitEvent.preventDefault(); saveNonCritical(); }}>
+    return <form className="mt-2 grid gap-2" onSubmit={(submitEvent) => { submitEvent.preventDefault(); setUpdateError('');setConfirmUpdate(true); }}>
       {/* Keep the question before a compact checkbox so global text-input styles cannot crowd the label. */}
       {field === 'registrationRequired' ? <label className="registration-required-editor"><span>Registration required?</span><input className="registration-required-checkbox" type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
         onChange={(changeEvent) => setEditValues((current) => ({ ...current, [field]: changeEvent.target.checked }))} /></label>
@@ -310,6 +318,9 @@ export default function EventDetail() {
 
       </div>
 
+      {confirmUpdate&&<ActionConfirmation action="update this event request" busy={saving} error={updateError} success={updateSuccess} onConfirm={saveNonCritical} onClose={()=>{setConfirmUpdate(false);if(updateSuccess){setSaveMessage(updateSuccess);setUpdateSuccess('');}}}/>}
+      <EventAttachments value={{...(event.attachments || {}),...fileChanges}} onBusy={delta=>setReadingFiles(current=>current+delta)} onChange={user.role==='event_organiser'?(field,file)=>{setFileChanges(current=>({...current,[field]:file}));setActiveEditField('attachments');}:undefined}/>
+      {activeEditField==='attachments'&&<button disabled={readingFiles>0||saving} onClick={()=>{setUpdateError('');setConfirmUpdate(true);}}>Save attachments</button>}
       {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && <section className="card" aria-label="Organiser contact"><h2>Organiser contact</h2><p>{event.organiser_name}</p>{event.organiser_email ? <a href={`mailto:${event.organiser_email}`}>{event.organiser_email}</a> : <p>Email not recorded</p>}</section>}
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="clarifications-heading">
         <div className="section-heading"><h2 id="clarifications-heading">Clarification requests</h2>
@@ -452,7 +463,7 @@ export default function EventDetail() {
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
           <h2 className="mb-5 text-xl font-bold text-slate-900">Special Arrangements</h2>
-          <p className="whitespace-pre-wrap">{renderEditableField('specialArrangements', 'Special arrangements', event.special_arrangements)}</p>
+          <div className="whitespace-pre-wrap">{renderEditableField('specialArrangements', 'Special arrangements', event.special_arrangements)}</div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">

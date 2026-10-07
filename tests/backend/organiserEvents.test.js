@@ -129,24 +129,24 @@ test('coordinator retains access to assigned events with the same response field
   assert.deepEqual((await request('/api/events/101', { user })).body.event, details);
 });
 const submission = { name: 'Workshop', purpose: details.purpose, proposedDate: '2026-10-15', proposedStartTime: '09:00', proposedEndTime: '12:00',
-  expectedAttendance: 0, programmeDetails: details.programme_details, roomLayoutPreference: 'classroom', accessibilityRequirements: details.accessibility_requirements,
+  expectedAttendance: 40, programmeDetails: details.programme_details, roomLayoutPreference: 'classroom', accessibilityRequirements: details.accessibility_requirements,
   equipmentNotes: details.equipment_notes, registrationRequired: false, registrationCapacity: 0, specialArrangements: details.special_arrangements, isDraft: false };
 for (const isDraft of [true, false]) {
   // Test case: Creates draft and submitted requests and checks fields, server-assigned ownership and their appropriate states.
-  test(`creation saves fields and server-assigned owner (draft: ${isDraft})`, async () => {
+  test(`Workflow AC2 - creation saves fields and server-assigned owner (draft: ${isDraft})`, async () => {
 
     mock.method(pool, 'query', async (sql, values) => {
       // Supplies controlled query behavior for this regression case, including its expected result or failure.
 
       if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
       assert.match(sql, /INSERT INTO events/);
-      assert.equal(values[0], 12); assert.equal(values[8], 0); assert.equal(values[9], submission.programmeDetails);
+      assert.equal(values[0], 12); assert.equal(values[8], isDraft ? 0 : 40); assert.equal(values[9], submission.programmeDetails);
       assert.equal(values[11], JSON.stringify(submission.accessibilityRequirements)); assert.equal(values[12], submission.equipmentNotes);
       assert.equal(values[13], false); assert.equal(values[14], 0); assert.equal(values[15], submission.specialArrangements);
       assert.equal(values[16], isDraft); assert.equal(values[17], isDraft ? 'draft' : 'submitted');
       return { rows: [{ ...details, is_draft: isDraft }] };
     });
-    assert.equal((await request('/api/events', { method: 'POST', body: { ...submission, isDraft, organiserId: 27, organiser_id: 27, status: 'approved' } })).status, 201);
+    assert.equal((await request('/api/events', { method: 'POST', body: { ...submission, expectedAttendance: isDraft ? 0 : 40, isDraft, organiserId: 27, organiser_id: 27, status: 'approved' } })).status, 201);
   });
 }
 for (const invalid of [{ name: '' }, { programmeDetails: {} }, { specialArrangements: 'x'.repeat(10001) }, { expectedAttendance: -1 }, { proposedDate: '2026-02-30' }, { proposedStartTime: '26:00' }, { accessibilityRequirements: [{}] }, { registrationRequired: 'false' }]) {
@@ -353,4 +353,77 @@ test('Lead AC3 AC4 - critical change inbox follows the current event coordinator
     return { rows: [{ id: 501, event_id: 101 }] };
   });
   assert.deepEqual(await model.listPendingChangeRequests(30), [{ id: 501, event_id: 101 }]);
+});
+
+// Workflow AC2: every required submission value is enforced through the HTTP route, not only the helper.
+for (const field of ['name','proposedDate','proposedStartTime','proposedEndTime','expectedAttendance']) {
+  test(`Workflow AC2 - HTTP submission rejects missing ${field} before insertion`, async () => {
+    mock.method(pool,'query',async sql=>{assert.match(sql,/FROM users WHERE/);return {rows:[organiser]};});
+    const result=await request('/api/events',{method:'POST',body:{...submission,[field]:null}});
+    assert.equal(result.status,400);
+  });
+}
+// Workflow AC2: submitted requirements cannot be cleared; optional legacy fields remain editable.
+for (const [field,value] of [['proposedDate',null],['proposedStartTime',null],['proposedEndTime',null],['expectedAttendance',0]]) {
+  test(`Workflow AC2 - HTTP update cannot clear submitted ${field}`,async()=>{
+    mock.method(pool,'query',async sql=>{if(sql.includes('FROM users WHERE'))return {rows:[organiser]};assert.match(sql,/SELECT/);return {rows:[details]};});
+    assert.equal((await request('/api/events/101/non-critical',{method:'PUT',body:{[field]:value}})).status,400);
+  });
+}
+// Workflow AC5: controller integration must not bypass attachment validation on creation or update.
+for (const method of ['POST','PUT'])for (const attachments of [null,{accessibilityRequirements:null},{purpose:{name:'fake.pdf',data:Buffer.from('not a PDF').toString('base64')}}]) {
+  test(`Workflow AC5 - ${method} rejects invalid attachments ${JSON.stringify(attachments)}`,async()=>{
+    mock.method(pool,'query',async sql=>{if(sql.includes('FROM users WHERE'))return {rows:[organiser]};assert.match(sql,/SELECT/);return {rows:[details]};});
+    const route=method==='POST'?'/api/events':'/api/events/101/non-critical';
+    const body=method==='POST'?{...submission,attachments}:{attachments};
+    assert.equal((await request(route,{method,body})).status,400);
+  });
+}
+// Workflow AC5: critical attachment changes must use the confirmed-event review path.
+test('Workflow AC5 - critical attachment replacement awaits coordinator review',async()=>{
+  const file={name:'purpose.pdf',data:Buffer.from('%PDF-purpose').toString('base64')};
+  mock.method(pool,'query',async(sql,values)=>{
+    if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
+    if(sql.includes('INSERT INTO event_change_requests')){assert.equal(JSON.parse(values[3]).attachments.purpose.name,file.name);return {rows:[{id:1,status:'pending'}]};}
+    assert.match(sql,/SELECT/);return {rows:[{...details,venue_confirmed:true,coordinator_id:30}]};
+  });
+  const result=await request('/api/events/101/non-critical',{method:'PUT',body:{attachments:{purpose:file}}});
+  assert.equal(result.status,202);assert.equal(result.body.changeRequest.status,'pending');
+});
+// Workflow AC2: a completely blank draft is intentional and must retain an empty (non-null) stored name.
+test('Workflow AC2 - HTTP creation saves an entirely incomplete draft',async()=>{
+  mock.method(pool,'query',async(sql,values)=>{
+    if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
+    assert.match(sql,/INSERT INTO events/);assert.equal(values[1],'');assert.equal(values[5],null);assert.equal(values[8],null);
+    assert.equal(values[16],true);assert.equal(values[17],'draft');assert.equal(values[18],'{}');
+    return {rows:[{id:101,name:'',is_draft:true,status:'draft',attachments:{}}]};
+  });
+  assert.equal((await request('/api/events',{method:'POST',body:{isDraft:true}})).status,201);
+});
+// Workflow AC5: replacing/removing a non-critical attachment uses JSONB and preserves unrelated files.
+for(const removing of [false,true])test(`Workflow AC5 - non-critical attachment ${removing?'removal':'replacement'} persists without losing other files`,async()=>{
+  const keep={name:'keep.pdf',data:Buffer.from('%PDF-keep').toString('base64'),type:'application/pdf',size:9};
+  const incoming={name:'equipment.pdf',data:Buffer.from('%PDF-equipment').toString('base64')};
+  const current={...details,attachments:{purpose:keep,equipmentNotes:keep}};
+  mock.method(pool,'query',async(sql,values)=>{
+    if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
+    if(sql.includes('UPDATE events')){
+      assert.match(sql,/attachments=\$1::jsonb/);const files=JSON.parse(values[0]);assert.deepEqual(files.purpose,keep);
+      if(removing)assert.equal(Object.hasOwn(files,'equipmentNotes'),false);else assert.equal(files.equipmentNotes.name,'equipment.pdf');
+      return {rows:[{...current,attachments:files}]};
+    }
+    assert.match(sql,/SELECT/);return {rows:[current]};
+  });
+  const result=await request('/api/events/101/non-critical',{method:'PUT',body:{attachments:{equipmentNotes:removing?null:incoming}}});
+  assert.equal(result.status,200);assert.equal(result.body.event.attachments.purpose.name,'keep.pdf');
+});
+// Workflow AC2: editing an incomplete draft can clear its name without violating the NOT NULL column.
+test('Workflow AC2 - draft update permits an empty name',async()=>{
+ mock.method(pool,'query',async(sql,values)=>{
+  if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
+  if(sql.includes('UPDATE events')){assert.equal(values[0],'');return {rows:[{...details,name:'',status:'draft',is_draft:true}]};}
+  return {rows:[{...details,status:'draft',is_draft:true}]};
+ });
+ const result=await request('/api/events/101/non-critical',{method:'PUT',body:{name:''}});
+ assert.equal(result.status,200);assert.equal(result.body.event.name,'');
 });

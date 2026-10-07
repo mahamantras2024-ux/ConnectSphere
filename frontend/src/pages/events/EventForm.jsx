@@ -1,6 +1,8 @@
 // File: Collects organiser event requirements and saves a draft or submitted request through the API.
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import ActionConfirmation from '../../components/ActionConfirmation';
+import EventAttachments from '../../components/EventAttachments';
 import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
@@ -16,6 +18,10 @@ export default function EventForm() {
     roomLayoutPreference: '', registrationRequired: false, registrationCapacity: '',
     programmeDetails: '', specialArrangements: '', equipmentNotes: '', accessibilityText: '',
   });
+  const [attachments, setAttachments] = useState({});
+  const [reading, setReading] = useState(0);
+  const [pending, setPending] = useState(null);
+  const [saved, setSaved] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -30,11 +36,10 @@ export default function EventForm() {
   // Builds the event payload, saves a draft/submission, and navigates to its saved detail page.
   async function submit(isDraft) {
     setError('');
-    if (busy) return;
     setBusy(true);
     try {
       const payload = {
-        ...form,
+        ...form, attachments,
         accessibilityRequirements: form.accessibilityText.split('\n').map((item) => // Trims each text entry before building the submitted field list.
 
       // Converts each record into its displayed or submitted representation.
@@ -44,7 +49,7 @@ export default function EventForm() {
         isDraft,
       };
       const data = await api.post('/events', payload, token);
-      navigate(`/organizer/events/${data.event.id}`, { state: { message: data.message } });
+      setSaved(data);
     } catch (err) {
       setError(err.message);
     } finally { setBusy(false); }
@@ -52,10 +57,10 @@ export default function EventForm() {
 
   return (
     <div className="card">
-      <Link className="button-link button-secondary detail-back" to="/organizer/events">← Back to My Events</Link><PageIntro title="New event request" eyebrow="Start something memorable" description="Share your plans, save a draft, or send a request to your coordinator." />
+      <Link className="button-link button-secondary detail-back" to="/organizer/events">← Back to My Events</Link><PageIntro title="New event request" eyebrow="Start something memorable" description="Share your plans, save a draft, or submit a request to the Coordinator Lead." />
       <form className="event-form event-request-form" onSubmit={(e) => {
-        // Prevents browser form submission and chooses draft or submitted event saving.
-         e.preventDefault(); submit(e.nativeEvent.submitter?.value === 'draft'); }}>
+        // Submission uses native required-field validation; the separate draft button allows incomplete data.
+        e.preventDefault(); setError(''); setPending(false); }}>
         <label>Event name
           <input value={form.name} onChange={(e) => // Copies the selected input value into the name form field.
 
@@ -81,25 +86,25 @@ export default function EventForm() {
       update('eventType', e.target.value)} placeholder="conference, seminar, workshop…" />
         </label>
         <label>Proposed date
-          <input type="date" value={form.proposedDate} onChange={(e) => // Copies the selected input value into the proposedDate form field.
+          <input required type="date" value={form.proposedDate} onChange={(e) => // Copies the selected input value into the proposedDate form field.
 
       // Handles this control action and updates the screen state.
       update('proposedDate', e.target.value)} />
         </label>
         <label>Start time
-          <input type="time" value={form.proposedStartTime} onChange={(e) => // Copies the selected input value into the proposedStartTime form field.
+          <input required type="time" value={form.proposedStartTime} onChange={(e) => // Copies the selected input value into the proposedStartTime form field.
 
       // Handles this control action and updates the screen state.
       update('proposedStartTime', e.target.value)} />
         </label>
         <label>End time
-          <input type="time" value={form.proposedEndTime} onChange={(e) => // Copies the selected input value into the proposedEndTime form field.
+          <input required type="time" value={form.proposedEndTime} onChange={(e) => // Copies the selected input value into the proposedEndTime form field.
 
       // Handles this control action and updates the screen state.
       update('proposedEndTime', e.target.value)} />
         </label>
         <label>Expected attendance
-          <input type="number" min="0" value={form.expectedAttendance} onChange={(e) => // Copies the selected input value into the expectedAttendance form field.
+          <input required type="number" min="1" value={form.expectedAttendance} onChange={(e) => // Copies the selected input value into the expectedAttendance form field.
 
       // Handles this control action and updates the screen state.
       update('expectedAttendance', e.target.value)} />
@@ -142,13 +147,15 @@ export default function EventForm() {
           </label>
         )}
 
-        {error && <p role="alert" className="error-text">{error}</p>}
 
+
+        <EventAttachments value={attachments} onChange={(field,file)=>setAttachments(current=>({...current,[field]:file}))} onBusy={delta=>setReading(current=>current+delta)}/>
         <div className="form-actions">
-          <button className="button-secondary" type="submit" value="draft" disabled={busy}>Save as draft</button>
-          <button type="submit" value="submitted" disabled={busy}>{busy ? 'Saving...' : 'Submit'}</button>
+          <button className="button-secondary" type="button" value="draft" onClick={() => { setError(''); setPending(true); }} disabled={busy || reading>0 || pending!==null}>Save as draft</button>
+          <button type="submit" value="submitted" disabled={busy || reading>0 || pending!==null}>{busy ? 'Saving...' : 'Submit'}</button>
         </div>
       </form>
+      {pending!==null&&<ActionConfirmation action={pending?'save this draft':'submit this event request'} busy={busy} error={error} success={saved?.message} onConfirm={()=>submit(pending)} onClose={()=>{if(saved)navigate(`/organizer/events/${saved.event.id}`,{state:{message:saved.message}});else setPending(null);}}/>}
 
 
     </div>

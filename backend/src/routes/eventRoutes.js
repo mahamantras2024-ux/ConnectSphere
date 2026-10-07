@@ -11,6 +11,10 @@ const lead = require('../controllers/coordinatorLeadController');
 router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
 router.put('/:id/assignment', requireRole('event_coordinator_lead'), lead.assign);
 
+const drafts=require('../controllers/eventDraftController');
+router.delete('/:id/draft',requireRole('event_organiser'),drafts.remove);
+router.post('/:id/submit',requireRole('event_organiser'),drafts.submit);
+
 router.post('/', requireRole('event_organiser'), eventController.createEvent);
 router.put('/:id/non-critical', requireRole('event_organiser'), eventController.updateEventInformation);
 router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);

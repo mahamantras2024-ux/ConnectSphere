@@ -57,7 +57,7 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
       INSERT INTO venues VALUES (7,'Hall','Available')`);
     const client = await database.connect();
     try {
-      for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql',
+      for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql',
         'venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql']) {
         await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db',name),'utf8'));
       }
@@ -89,6 +89,50 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
     if (database) await database.end();
     await admin(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await pool.end();
+  });
+
+  // Workflow AC2/AC3/AC5: real SQL verifies ownership, persisted files and queue entry together.
+  test('Workflow AC2 AC3 AC5 - incomplete drafts retain files, validate submission and enter lead queue once', async () => {
+    const file = {name:'agenda.pdf',data:Buffer.from('%PDF-agenda').toString('base64')};
+    const draft = await submit({name:'',proposedDate:null,proposedStartTime:null,proposedEndTime:null,expectedAttendance:null,isDraft:true,attachments:{purpose:file}});
+    assert.equal((await request(`/events/${draft.id}/submit`,2,{},'POST')).status,400);
+    assert.equal((await request(`/events/${draft.id}/draft`,1,undefined,'DELETE')).status,403);
+    assert.equal((await request(`/events/${draft.id}/draft`,3,undefined,'DELETE')).status,403);
+    const detail = await request(`/events/${draft.id}`,2);
+    assert.equal(detail.body.event.attachments.purpose.data,file.data);
+    const update = await request(`/events/${draft.id}/non-critical`,2,{name:'Ready',proposedDate:'2090-01-10',proposedStartTime:'10:00',proposedEndTime:'11:00',expectedAttendance:1},'PUT');
+    assert.equal(update.status,200);
+    const sent = await request(`/events/${draft.id}/submit`,2,{},'POST');
+    assert.equal(sent.status,200);assert.equal(sent.body.event.id,draft.id);assert.equal(sent.body.event.coordinator_id,null);
+    assert.equal(sent.body.event.attachments.purpose.data,file.data);
+    assert.equal((await request(`/events/${draft.id}/submit`,2,{},'POST')).status,404);
+    assert.equal((await request(`/events/${draft.id}/draft`,2,undefined,'DELETE')).status,404);
+    assert.deepEqual((await request('/events/assignments')).body.events.map(event=>event.id),[draft.id]);
+  });
+
+  // Workflow AC3: a second organiser cannot read/delete another organiser's files or draft.
+  test('Workflow AC3 AC5 - draft deletion is private and cannot remove submitted events', async () => {
+    await database.query("INSERT INTO users VALUES (6,'other@example.test','Other','event_organiser','{}',0) ON CONFLICT DO NOTHING");
+    const draft = await submit({isDraft:true});
+    assert.equal((await request(`/events/${draft.id}`,6)).status,404);
+    assert.equal((await request(`/events/${draft.id}/draft`,6,undefined,'DELETE')).status,404);
+    assert.equal((await request(`/events/${draft.id}/draft`,2,undefined,'DELETE')).status,200);
+    assert.equal((await request(`/events/${draft.id}`,2)).status,404);
+    const submitted = await submit();
+    assert.equal((await request(`/events/${submitted.id}/draft`,2,undefined,'DELETE')).status,404);
+  });
+
+  // Workflow AC3/AC4: simultaneous decisions cannot both mutate the same still-draft record.
+  test('Workflow AC3 AC4 - concurrent deletion and submission have one winner', async () => {
+    const draft = await submit({isDraft:true});
+    const results = await Promise.all([
+      request(`/events/${draft.id}/submit`,2,{},'POST'),
+      request(`/events/${draft.id}/draft`,2,undefined,'DELETE'),
+    ]);
+    assert.deepEqual(results.map(result=>result.status).sort(),[200,404]);
+    const persisted = (await database.query('SELECT status,is_draft,coordinator_id FROM events WHERE id=$1',[draft.id])).rows;
+    if(results[0].status===200)assert.deepEqual(persisted,[{status:'submitted',is_draft:false,coordinator_id:null}]);
+    else assert.deepEqual(persisted,[]);
   });
 
   test('Lead AC1 AC2 - organiser submission enters queue while drafts and terminal events are excluded', async () => {
