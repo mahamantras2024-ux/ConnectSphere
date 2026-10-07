@@ -1,5 +1,11 @@
 // File: Queries and creates user accounts and stores/consumes password-reset hashes with session-version invalidation.
 const { pool } = require('../config/db');
+const { internalRoles } = require('../auth/roles');
+
+// Only server-owned role constants enter SQL; the endpoint selects a fixed recovery audience.
+function resetRoles(internal) {
+  return (internal ? internalRoles : ['event_organiser', 'attendee']).map(role => `'${role}'`).join(', ');
+}
 
 /**
  * Fetch a user by email address
@@ -64,13 +70,13 @@ async function createUser({ email, password_hash, full_name, role = 'venue_staff
   return result.rows[0];
 }
 
-// Stores an external user's reset-token hash with a 15-minute expiry.
-async function setPasswordReset(id, hash) {
+// Stores an eligible account's reset-token hash with a 15-minute expiry.
+async function setPasswordReset(id, hash, internal = false) {
   const result = await pool.query(`
     UPDATE users SET password_reset_hash = $2,
       password_reset_expires_at = now() + interval '15 minutes'
-    WHERE id = $1 AND (role IN ('event_organiser', 'attendee') OR
-      COALESCE(to_jsonb(users)->'roles', '[]'::jsonb) ?| ARRAY['event_organiser', 'attendee'])
+    WHERE id = $1 AND (role IN (${resetRoles(internal)}) OR
+      COALESCE(to_jsonb(users)->'roles', '[]'::jsonb) ?| ARRAY[${resetRoles(internal)}])
     RETURNING id`, [id, hash]);
   return result.rows[0] || null;
 }
@@ -81,15 +87,15 @@ async function clearPasswordReset(id, hash) {
     WHERE id = $1 AND password_reset_hash = $2`, [id, hash]);
 }
 
-// Atomically consumes a valid external reset token and increments the session version.
-async function resetExternalPassword(hash, passwordHash) {
+// Atomically consumes a valid account reset token and increments the session version.
+async function resetAccountPassword(hash, passwordHash, internal = false) {
   // Atomic consumption prevents two simultaneous requests from reusing a link.
   const result = await pool.query(`
     UPDATE users SET password_hash = $2, password_reset_hash = NULL,
       password_reset_expires_at = NULL, auth_version = auth_version + 1
     WHERE password_reset_hash = $1 AND password_reset_expires_at > now()
-      AND (role IN ('event_organiser', 'attendee') OR
-        COALESCE(to_jsonb(users)->'roles', '[]'::jsonb) ?| ARRAY['event_organiser', 'attendee'])
+      AND (role IN (${resetRoles(internal)}) OR
+        COALESCE(to_jsonb(users)->'roles', '[]'::jsonb) ?| ARRAY[${resetRoles(internal)}])
     RETURNING id`, [hash, passwordHash]);
   return result.rows[0] || null;
 }
@@ -97,7 +103,7 @@ async function resetExternalPassword(hash, passwordHash) {
 module.exports = {
   setPasswordReset,
   clearPasswordReset,
-  resetExternalPassword,
+  resetAccountPassword,
   getUserByEmail,
   getUserById,
   createUser

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
+import App from '../../frontend/src/App';
 import PasswordReset from '../../frontend/src/pages/external/PasswordReset';
 
 vi.mock('../../frontend/src/api/client', () => (// Replaces the imported dependency with controlled test doubles while retaining needed exports.
@@ -13,11 +14,11 @@ vi.mock('../../frontend/src/api/client', () => (// Replaces the imported depende
       { api: { get: vi.fn(), post: vi.fn() } }));
 
 // Renders the page under test with its required router/authentication context.
-function renderPage(path, reset = false) {
+function renderPage(path, reset = false, internal = false) {
   render(
     <MemoryRouter initialEntries={[path]}>
       <AuthProvider>
-        <PasswordReset reset={reset} />
+        <PasswordReset reset={reset} internal={internal} />
       </AuthProvider>
     </MemoryRouter>
   );
@@ -100,4 +101,36 @@ it('Password recovery AC1 - pending reset-link requests cannot submit twice',asy
   let finish;api.post.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));renderPage('/external/forgot-password');
   fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'alice@example.test'}});const form=screen.getByRole('button',{name:'Send reset link'}).closest('form');
   fireEvent.submit(form);fireEvent.submit(form);expect(api.post).toHaveBeenCalledOnce();await act(async()=>finish({message:'Check email'}));
+});
+
+// Internal recovery AC1 AC2: staff use their own endpoint and return to staff sign-in.
+it('Internal recovery AC1 AC2 - requests work-email link and returns to staff login',async()=>{
+  api.post.mockResolvedValue({message:'Check email'});renderPage('/forgot-password',false,true);
+  fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'staff@example.test'}});
+  fireEvent.click(screen.getByRole('button',{name:'Send reset link'}));
+  await screen.findByRole('status');
+  expect(api.post).toHaveBeenCalledWith('/auth/internal/forgot-password',{email:'staff@example.test'});
+  expect(screen.getByRole('link',{name:'Back to sign in'}).getAttribute('href')).toBe('/login');
+});
+// Internal recovery AC3: staff passwords use fragment tokens and the internal consumption route.
+it('Internal recovery AC3 - updates staff password through internal route',async()=>{
+  api.post.mockResolvedValue({message:'Password updated'});renderPage('/reset-password#token='+ 'a'.repeat(64),true,true);
+  fireEvent.change(screen.getByLabelText('New password'),{target:{value:'new-password123'}});
+  fireEvent.change(screen.getByLabelText('Confirm password'),{target:{value:'new-password123'}});
+  fireEvent.click(screen.getByRole('button',{name:'Update password'}));await screen.findByRole('status');
+  expect(api.post).toHaveBeenCalledWith('/auth/internal/reset-password',{token:'a'.repeat(64),password:'new-password123'});
+});
+// Internal recovery AC3: missing staff tokens direct users to staff link recovery.
+it('Internal recovery AC3 - missing token offers internal recovery',()=>{
+  renderPage('/reset-password',true,true);
+  expect(screen.getByRole('link',{name:'Request new link'}).getAttribute('href')).toBe('/forgot-password');
+});
+
+// Internal recovery AC1: exercise the actual staff login link and public route, not only a standalone page.
+it('Internal recovery AC1 - staff login opens the recovery route',async()=>{
+  render(<MemoryRouter initialEntries={['/login']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  expect(screen.queryByRole('link',{name:'Create an account'})).toBeNull();
+  fireEvent.click(screen.getByRole('link',{name:'Forgot password?'}));
+  expect(await screen.findByRole('heading',{name:'Forgot your password?'})).toBeTruthy();
+  expect(screen.getByRole('link',{name:'Back to sign in'}).getAttribute('href')).toBe('/login');
 });

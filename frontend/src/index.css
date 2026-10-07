@@ -314,3 +314,6 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .registration-required-editor { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .registration-required-editor span { white-space: nowrap; }
 .registration-required-checkbox { width: 16px; height: 16px; padding: 0; flex: 0 0 16px; }
+
+/* Staff has one recovery link: centre it beneath Login while external links retain their layout. */
+.auth-footer.staff-login-footer { justify-content: center; }

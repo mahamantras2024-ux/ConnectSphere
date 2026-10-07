@@ -38,6 +38,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/external/login" element={<Login external />} />
           <Route path="/external/register" element={<ExternalRegister />} />
+          <Route path="/forgot-password" element={<PasswordReset internal />} />
+          <Route path="/reset-password" element={<PasswordReset internal reset />} />
           <Route path="/external/forgot-password" element={<PasswordReset />} />
           <Route path="/external/reset-password" element={<PasswordReset reset />} />
           <Route path="/organizer/events" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventList /></ProtectedRoute>} />

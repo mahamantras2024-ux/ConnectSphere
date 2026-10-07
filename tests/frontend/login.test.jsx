@@ -240,3 +240,13 @@ it('Internal AC2 / External AC5 - browser validation requires valid email and pa
   fireEvent.change(screen.getByLabelText('Password'),{target:{value:'password123'}});expect(form.checkValidity()).toBe(false);
   fireEvent.change(screen.getByLabelText('Email'),{target:{value:'staff@example.test'}});expect(form.checkValidity()).toBe(true);expect(api.post).not.toHaveBeenCalled();
 });
+
+// Staff login UI AC1: only the staff footer centres its recovery link beneath the submit button.
+it.each([false,true])('Staff login UI AC1 - centres recovery link only when external=%s is false',async external=>{
+  open(external ? '/external/login' : '/login');
+  const link=await screen.findByRole('link',{name:'Forgot password?'});
+  const footer=link.closest('.auth-footer');
+  expect(footer.classList.contains('staff-login-footer')).toBe(!external);
+  expect(screen.getByRole('button',{name:'Login'}).compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(link.getAttribute('href')).toBe(external ? '/external/forgot-password' : '/forgot-password');
+});
