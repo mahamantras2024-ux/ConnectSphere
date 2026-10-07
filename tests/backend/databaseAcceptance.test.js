@@ -1,6 +1,8 @@
 // File: Real PostgreSQL acceptance, ownership, schema and session checks in disposable schemas.
 // Test scope: Shared scenarios are sequential; each describe block owns its fixtures and hooks.
 const {describe,after}=require('node:test');
+// Load backend/.env before the shared pool is created: the pool reads its connection settings once, at require time.
+require('../../backend/node_modules/dotenv').config();
 const sharedPool=require('../../backend/src/config/db').pool;
 // Closes the shared pool once, after all grouped fixtures have finished.
 after(()=>sharedPool.end());

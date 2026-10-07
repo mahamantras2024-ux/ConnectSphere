@@ -193,7 +193,7 @@ test('CR AC3 - approving applies the exact changes and notifies the organiser, t
   assert.equal(result.body.message, 'Change approved and applied. Relevant staff have been notified.');
   assert.deepEqual(result.body.notified, { organiser: [12], venueStaff: [41], technicalSupport: [61] });
   assert.deepEqual(result.body.changes.map((change) => [change.field, change.current, change.requested]),
-    [['expectedAttendance', 80, 150], ['proposedEndTime', '12:00:00', '12:30:00']]);
+    [['proposedEndTime', '12:00:00', '12:30:00'], ['expectedAttendance', 80, 150]]);
   assert.deepEqual(result.body.arrangements[0].reasons.at(-1), '150 expected guests exceed the venue capacity of 100.');
   // Assert: writes - the event gets exactly the requested values; the request records the reviewer.
   assert.deepEqual(tx.find('UPDATE events SET')[0].values, [101, 150, '12:30']);
@@ -204,7 +204,7 @@ test('CR AC3 - approving applies the exact changes and notifies the organiser, t
   const [userIds, , , types, , messages] = tx.find('INSERT INTO notifications')[0].values;
   assert.deepEqual(userIds, [12, 41, 61]);
   assert.deepEqual(types, ['change_request_approved', 'event_details_changed', 'event_details_changed']);
-  assert.match(messages[0], /were approved and applied\.\nExpected attendance: 80 → 150\nEnd time: 12:00:00 → 12:30:00/);
+  assert.match(messages[0], /were approved and applied\.\nEnd time: 12:00:00 → 12:30:00\nExpected attendance: 80 → 150/);
   assert.match(messages[1], /Hall A: .*150 expected guests exceed the venue capacity of 100\./);
   // Assert: notifications commit with the decision ("immediately"), and emails go out only afterwards.
   assert.deepEqual(tx.statements.map((statement) => statement.sql.split(/\s+/)[0]).filter((word) => ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(word)), ['BEGIN', 'COMMIT']);

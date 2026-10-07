@@ -24,10 +24,15 @@ function isSupportedField(field) {
  * Lists each requested field whose value differs from the event's current value (AC1).
  * @param {object} event current event row (snake_case columns).
  * @param {object} requestedChanges stored camelCase changes from the organiser (never null: the column is NOT NULL).
- * @returns {{ field: string, label: string, current: *, requested: * }[]} only real changes; unknown fields are labelled by key.
+ * @returns {{ field: string, label: string, current: *, requested: * }[]} only real changes, in event field order; unknown fields are labelled by key.
  */
 function describeChanges(event, requestedChanges) {
-  return Object.entries(requestedChanges).flatMap(([field, requested]) => {
+  // PostgreSQL JSONB does not keep key order, so changes are listed in the event's standard field order
+  // (the order of EVENT_FIELDS, matching the event page), followed by any fields this release does not know.
+  const known = Object.keys(EVENT_FIELDS).filter((field) => Object.hasOwn(requestedChanges, field));
+  const unknown = Object.keys(requestedChanges).filter((field) => !isSupportedField(field));
+  return [...known, ...unknown].flatMap((field) => {
+    const requested = requestedChanges[field];
     const definition = EVENT_FIELDS[field];
     const current = definition ? event[definition.column] : undefined;
     const before = comparable(field, current);

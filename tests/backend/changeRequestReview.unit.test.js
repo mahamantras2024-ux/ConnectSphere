@@ -32,10 +32,23 @@ test('CR AC1 - change details list only fields whose value really changes, with 
   const changes = describeChanges(event, { expectedAttendance: 150, proposedStartTime: '10:00', registrationRequired: true,
     accessibilityRequirements: ['Wheelchair access'], proposedDate: '2026-10-16' });
   assert.deepEqual(changes, [
+    { field: 'proposedDate', label: 'Date', current: '2026-10-15', requested: '2026-10-16' },
     { field: 'expectedAttendance', label: 'Expected attendance', current: 80, requested: 150 },
     { field: 'registrationRequired', label: 'Registration required', current: false, requested: true },
-    { field: 'proposedDate', label: 'Date', current: '2026-10-15', requested: '2026-10-16' },
   ]);
+});
+
+// Test case: PostgreSQL JSONB reorders keys, so the same request can come back in any key order; the coordinator must always
+// see the changes in the event page's field order (date before attendance before registration), with unknown fields last.
+test('CR AC1 - changes are listed in event field order regardless of how the stored request orders its keys', () => {
+  const stored = [
+    { registrationRequired: true, newerField: 'x', expectedAttendance: 150, proposedDate: '2026-10-16' },
+    { proposedDate: '2026-10-16', expectedAttendance: 150, newerField: 'x', registrationRequired: true },
+  ];
+  for (const requested of stored) {
+    assert.deepEqual(describeChanges(event, requested).map((change) => change.field),
+      ['proposedDate', 'expectedAttendance', 'registrationRequired', 'newerField']);
+  }
 });
 
 // Test case: Zero, false and empty values are real values; changing to or from them must be reported, not dropped.
