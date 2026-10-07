@@ -52,7 +52,7 @@ function mockUpdate({ event = storedEvent, writeResult = { ...storedEvent } } = 
   });
   return writes;
 }
-const create = (body) => request('/api/events', { method: 'POST', body: { name: 'Workshop', isDraft: false, ...body } });
+const create = (body) => request('/api/events', { method: 'POST', body: { name: 'Workshop', proposedDate: '2030-10-15', proposedStartTime: '09:00', proposedEndTime: '12:00', expectedAttendance: 50, isDraft: false, ...body } });
 const updateEquipment = (body, id = 101) => request(`/api/events/${id}/equipment`, { method: 'PUT', body });
 
 before(async () => {
@@ -76,7 +76,7 @@ for (const isDraft of [true, false]) {
     const values = inserts[0];
     assert.equal(values[0], 12);
     assert.deepEqual(JSON.parse(values[18]), fullEquipment.equipmentItems);
-    assert.deepEqual(values.slice(19), [true, 'On-site AV technician 09:00-12:00', true, fullEquipment.technicalSpecifications]);
+    assert.deepEqual(values.slice(19, 23), [true, 'On-site AV technician 09:00-12:00', true, fullEquipment.technicalSpecifications]);
   });
 }
 
@@ -85,7 +85,7 @@ test('EQ AC1 - equipment is optional: omitted fields save no items and no techni
   const inserts = mockCreate();
   const result = await create({});
   assert.equal(result.status, 201);
-  assert.deepEqual([JSON.parse(inserts[0][18]), ...inserts[0].slice(19)], [[], false, null, false, null]);
+  assert.deepEqual([JSON.parse(inserts[0][18]), ...inserts[0].slice(19, 23)], [[], false, null, false, null]);
 });
 
 // Quantity must be a whole number of units from 1 to 9999 (agreed implementation guard).
@@ -176,7 +176,7 @@ for (const [label, fields, expected] of [
   test(`EQ AC2 - ${label} is ${expected === 201 ? 'accepted' : 'rejected'}`, async () => {
     const inserts = mockCreate();
     assert.equal((await create(fields)).status, expected);
-    if (expected === 201) assert.deepEqual(inserts[0].slice(21), [true, 'x'.repeat(10000)]);
+    if (expected === 201) assert.deepEqual(inserts[0].slice(21, 23), [true, 'x'.repeat(10000)]);
     else assert.equal(inserts.length, 0);
   });
 }
@@ -296,3 +296,16 @@ for (const role of ['attendee', 'event_coordinator', 'technical_support', 'venue
     assert.equal((await request('/api/events/101/equipment', { user, method: 'PUT', body: { equipmentItems: [] } })).status, 403);
   });
 }
+
+// Merge regression: equipment and uploaded evidence must occupy separate persisted columns.
+test('EQ AC1 / Workflow AC5 - one event persists equipment and its question attachment together', async () => {
+  // Arrange an actual PDF signature; the attachment validator remains real.
+  const inserts = mockCreate();
+  const file = { name: 'programme.pdf', data: Buffer.from('%PDF-1.4\nProgramme').toString('base64') };
+  // Act through the authenticated event route.
+  const result = await create({ ...fullEquipment, attachments: { technicalSpecifications: file } });
+  // Assert independent business values, catching either feature overwriting the other in the INSERT.
+  assert.equal(result.status, 201);
+  assert.deepEqual(JSON.parse(inserts[0][18]), fullEquipment.equipmentItems);
+  assert.deepEqual(JSON.parse(inserts[0][23]).technicalSpecifications, { ...file, type: 'application/pdf', size: Buffer.from('%PDF-1.4\nProgramme').length });
+});

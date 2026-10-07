@@ -1,3 +1,5 @@
+const { submissionError } = require('../services/eventRequestValidation');
+const { validateAttachments, mergeAttachments } = require('../services/eventAttachments');
 // File: Validates and stores organiser event requests and re-exports completed role-scoped reads.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
@@ -15,7 +17,7 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   const textFields = { name: 255, purpose: 10000, description: 10000, eventType: 100, roomLayoutPreference: 100,
     programmeDetails: 10000, equipmentNotes: 10000, specialArrangements: 10000 };
   const editableFields = new Set([...Object.keys(textFields), 'proposedDate', 'proposedStartTime', 'proposedEndTime',
-    'expectedAttendance', 'registrationRequired', 'registrationCapacity', 'accessibilityRequirements']);
+    'expectedAttendance', 'registrationRequired', 'registrationCapacity', 'accessibilityRequirements','attachments']);
   const nonCriticalFields = new Set(['description', 'programmeDetails', 'equipmentNotes', 'specialArrangements', 'accessibilityRequirements']);
   const submittedFields = Object.keys(input);
   if (!submittedFields.length || submittedFields.some((field) => !editableFields.has(field))) {
@@ -23,15 +25,17 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   }
   const current = await eventModel.findAccessibleById(id, req.user);
   if (!current) return res.status(404).json({ message: 'Event not found.' });
-  const hasCriticalChanges = submittedFields.some((field) => !nonCriticalFields.has(field));
+  // Attached evidence follows the same critical/non-critical rule as the answer it supports.
+  const hasCriticalChanges = submittedFields.some(field => field === 'attachments'
+    ? Object.keys(input.attachments || {}).some(key => !nonCriticalFields.has(key)) : !nonCriticalFields.has(field));
   const data = {};
   for (const [field, max] of Object.entries(textFields)) {
     if (!(field in input)) continue;
     const value = input[field];
-    if (typeof value !== 'string' || value.length > max || (field === 'name' && !value.trim())) {
+    if (typeof value !== 'string' || value.length > max || (field === 'name' && !value.trim() && !current.is_draft)) {
       return res.status(400).json({ message: `${field} must be text of at most ${max} characters.` });
     }
-    data[field] = value.trim() || null;
+    data[field] = field === 'name' ? value.trim() : value.trim() || null;
   }
   if ('accessibilityRequirements' in input) {
     const accessibility = input.accessibilityRequirements;
@@ -73,6 +77,18 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   const resultingEnd = Object.hasOwn(data, 'proposedEndTime') ? data.proposedEndTime : current.proposed_end_time;
   if (resultingStart && resultingEnd && resultingStart.padEnd(8, ':00') >= resultingEnd.padEnd(8, ':00')) {
     return res.status(400).json({ message: 'End time must be later than start time.' });
+  }
+  if (!current.is_draft && current.status !== 'draft') {
+    // Existing requests may predate required submission fields; optional edits remain possible.
+    // Prevent clearing any required field explicitly included in this update.
+    const required = ['name','proposedDate','proposedStartTime','proposedEndTime','expectedAttendance'];
+    if (required.some(field => Object.hasOwn(data, field) && (data[field] == null || data[field] === '' || (field === 'expectedAttendance' && data[field] < 1)))) {
+      return res.status(400).json({ message: 'Name, date, times and attendance cannot be cleared on submitted requests.' });
+    }
+  }
+  if (Object.hasOwn(input,'attachments')) {
+    try {data.attachments=mergeAttachments(current.attachments || {},validateAttachments(input.attachments));}
+    catch(error){return res.status(400).json({message:error.message});}
   }
   if (current.venue_confirmed && hasCriticalChanges) {
     if (!current.coordinator_id) {
@@ -185,7 +201,7 @@ const createEvent = asyncHandler(async (req, res) => {
     }
     data[field] = value?.trim() || null;
   }
-  if (!data.name) return res.status(400).json({ message: 'Event name is required.' });
+
   for (const field of ['isDraft', 'registrationRequired']) {
     if (input[field] !== undefined && typeof input[field] !== 'boolean') {
       return res.status(400).json({ message: `${field} must be true or false.` });
@@ -215,6 +231,14 @@ const createEvent = asyncHandler(async (req, res) => {
   if (data.proposedStartTime && data.proposedEndTime && data.proposedStartTime.padEnd(8, ':00') >= data.proposedEndTime.padEnd(8, ':00')) {
     return res.status(400).json({ message: 'End time must be later than start time.' });
   }
+  // Incomplete drafts preserve an empty name; only submitting requires all coordination fields.
+  if (data.isDraft) data.name = data.name || '';
+  else {
+    const error = submissionError(data);
+    if (error) return res.status(400).json({ message: error });
+  }
+  try { data.attachments=mergeAttachments({},validateAttachments(input.attachments === undefined ? {} : input.attachments)); }
+  catch(error) {return res.status(400).json({message:error.message});}
   const accessibility = input.accessibilityRequirements ?? [];
   if (!Array.isArray(accessibility) || accessibility.length > 50 ||
       accessibility.some((item) => // Detects an invalid text entry in the submitted accessibility requirements.

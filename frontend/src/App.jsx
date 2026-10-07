@@ -21,6 +21,7 @@ import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import VenueDashboard from './pages/venue/VenueDashboard';
 import MyRegistrations from './pages/registrations/MyRegistrations';
 import StaffWorkspace from './pages/StaffWorkspace';
+import CoordinatorLeadDashboard from './pages/coordinator/CoordinatorLeadDashboard';
 
 // Renders shared navigation and the registered public, role-protected, and fallback routes.
 export default function App() {
@@ -37,6 +38,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/external/login" element={<Login external />} />
           <Route path="/external/register" element={<ExternalRegister />} />
+          <Route path="/forgot-password" element={<PasswordReset internal />} />
+          <Route path="/reset-password" element={<PasswordReset internal reset />} />
           <Route path="/external/forgot-password" element={<PasswordReset />} />
           <Route path="/external/reset-password" element={<PasswordReset reset />} />
           <Route path="/organizer/events" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventList /></ProtectedRoute>} />
@@ -45,7 +48,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/registrations" element={<ProtectedRoute roles={['attendee']}><MyRegistrations /></ProtectedRoute>} />
-          <Route path="/coordinator-lead/dashboard" element={<ProtectedRoute roles={['event_coordinator_lead']}><StaffWorkspace role="event_coordinator_lead" /></ProtectedRoute>} />
+          <Route path="/coordinator-lead/dashboard" element={<ProtectedRoute roles={['event_coordinator_lead']}><CoordinatorLeadDashboard /></ProtectedRoute>} />
           <Route path="/safety/dashboard" element={<ProtectedRoute roles={['safety_officer']}><StaffWorkspace role="safety_officer" /></ProtectedRoute>} />
 
           <Route
@@ -86,12 +89,12 @@ export default function App() {
 
           <Route
             path="/events/:id"
-            element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><EventDetail /></ProtectedRoute>}
+            element={<ProtectedRoute roles={['event_coordinator', 'event_organiser', 'event_coordinator_lead']}><EventDetail /></ProtectedRoute>}
           />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
-        {background && <Routes><Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /><Route path="/events/:id" element={<ProtectedRoute roles={['event_coordinator', 'event_organiser']}><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /></Routes>}
+        {background && <Routes><Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /><Route path="/events/:id" element={<ProtectedRoute roles={['event_coordinator', 'event_organiser', 'event_coordinator_lead']}><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /></Routes>}
       </main>
     </div>
   );

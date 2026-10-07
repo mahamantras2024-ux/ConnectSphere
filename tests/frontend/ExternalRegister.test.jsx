@@ -4,6 +4,8 @@ import { act, render, screen, cleanup, fireEvent, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
+import App from '../../frontend/src/App';
+import { AuthProvider } from '../../frontend/src/context/AuthContext';
 import ExternalRegister from '../../frontend/src/pages/external/ExternalRegister';
 afterEach(() => { // Cleans rendered forms and API mocks between cases.
   cleanup(); vi.restoreAllMocks();
@@ -51,4 +53,19 @@ it('External AC1/AC4 - organiser signup persists optional organisation and preve
   const form=screen.getByRole('button',{name:'Create account'}).closest('form');fireEvent.submit(form);fireEvent.submit(form);expect(post).toHaveBeenCalledOnce();
   expect(post.mock.lastCall[1]).toMatchObject({role:'event_organiser',organisationName:'Community group',confirmation:'password123'});
   await act(async()=>finish({message:'Account created. Please sign in.'}));expect(screen.getByRole('link',{name:'Sign in'})).toBeTruthy();
+});
+
+// External registration UI AC1: users can leave an unfinished signup and return to external sign-in.
+it('External registration UI AC1 - Back to sign in opens external login without creating an account',async()=>{
+  // Arrange real app routing and authentication; observe only the HTTP boundary.
+  localStorage.clear();const post=vi.spyOn(api,'post');
+  render(<MemoryRouter initialEntries={['/external/register']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Full name'),{target:{value:'Unfinished account'}});
+  // Act: navigation must work without submitting required registration fields.
+  const back=screen.getByRole('link',{name:'Back to sign in'});
+  expect(back.getAttribute('href')).toBe('/external/login');fireEvent.click(back);
+  // Assert the actual external login page appears and no registration request was sent.
+  expect(await screen.findByRole('heading',{name:'Sign in'})).toBeTruthy();
+  expect(screen.queryByRole('heading',{name:'Create your account'})).toBeNull();
+  expect(post).not.toHaveBeenCalled();
 });

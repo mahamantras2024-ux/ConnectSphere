@@ -73,7 +73,7 @@ export default function Login({ external = false }) {
         <button type="submit" disabled={loading}>
           {loading ? 'Signing in...' : 'Login'}
         </button>
-        {external && <p className="auth-footer"><Link to="/external/register">Create an account</Link><Link to="/external/forgot-password">Forgot password?</Link></p>}
+        <p className={external ? "auth-footer" : "auth-footer staff-login-footer"}>{external && <Link to="/external/register">Create an account</Link>}<Link to={external ? "/external/forgot-password" : "/forgot-password"}>Forgot password?</Link></p>
       </form>
     </div>
   );

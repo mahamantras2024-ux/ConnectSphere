@@ -77,6 +77,16 @@ test('Shared regression consolidation AC1 - story and integration commands use t
  }
 });
 
+// Lead AC1–AC7: feature commands select the owning tests and live mode explicitly enables isolated PostgreSQL evidence.
+test('Lead AC1–AC7 - runner selects lead tests and opts into isolated assignment persistence',()=>{
+  const [backend,frontend]=commands(['story','coordinator-lead']);
+  assert.ok(backend.args.some(arg=>arg.endsWith('coordinatorLead.test.js')));
+  assert.ok(frontend.args.some(arg=>arg.endsWith('coordinatorLead.test.jsx')));
+  assert.equal(backend.settings.env.RUN_LEAD_DB,'0');
+  const [live]=commands(['integration']);
+  assert.ok(live.args.some(arg=>arg.endsWith('coordinatorLeadPostgres.test.js')));
+  assert.equal(live.settings.env.RUN_LEAD_DB,'1');
+});
 // Test case: Ensures the PostgreSQL acceptance harness loads backend/.env before importing the pool that captures its connection settings.
 test('PostgreSQL acceptance harness - loads configured database settings before creating its shared pool',()=>{
  const acceptance=fs.readFileSync(path.join(__dirname,'backend','databaseAcceptance.test.js'),'utf8');

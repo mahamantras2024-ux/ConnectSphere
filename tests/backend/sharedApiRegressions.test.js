@@ -220,7 +220,7 @@ test('unexpected registration database failures reach the central error response
  assert.equal(result.status,500);assert.equal(result.body.message,'Registration unavailable.');
 });
 // Test case: The database has not been migrated (missing column/table); users get a clear 503 without SQL details, and the log names the fix.
-test('a database missing a migration returns a clear update-required message instead of raw SQL errors',async()=>{
+test('EQ AC1 / Workflow AC2 - a database missing a migration returns a clear update-required message instead of raw SQL errors',async()=>{
  const logged=mock.method(console,'error',()=>{});
  // Arrange: event creation hits a database where migration 004 has not added the equipment columns.
  mock.method(db.pool,'query',async sql=>{
@@ -228,7 +228,7 @@ test('a database missing a migration returns a clear update-required message ins
   throw Object.assign(new Error('column "equipment_items" of relation "events" does not exist'),{code:'42703'});
  });
  // Act
- const result=await request('/api/events',{method:'POST',token:jwt.sign({sub:12},process.env.JWT_SECRET),body:{name:'Workshop'}});
+ const result=await request('/api/events',{method:'POST',token:jwt.sign({sub:12},process.env.JWT_SECRET),body:{name:'Workshop',proposedDate:'2030-10-15',proposedStartTime:'09:00',proposedEndTime:'12:00',expectedAttendance:50}});
  // Assert
  assert.equal(result.status,503);
  assert.equal(result.body.code,'DATABASE_UPDATE_REQUIRED');
