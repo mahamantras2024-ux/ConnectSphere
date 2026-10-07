@@ -4,8 +4,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
-import EquipmentRequirementsFields from './EquipmentRequirementsFields';
-import { emptyEquipment, equipmentError, equipmentPayload } from './equipmentRequirements';
 
 // Covers: Event Request Creation + Draft Event Requests.
 // Renders event requirement inputs and draft/submission actions for an organiser.
@@ -18,7 +16,6 @@ export default function EventForm() {
     roomLayoutPreference: '', registrationRequired: false, registrationCapacity: '',
     programmeDetails: '', specialArrangements: '', equipmentNotes: '', accessibilityText: '',
   });
-  const [equipment, setEquipment] = useState(emptyEquipment);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -34,14 +31,10 @@ export default function EventForm() {
   async function submit(isDraft) {
     setError('');
     if (busy) return;
-    // Stops before any request when an equipment row would be rejected, so the organiser can fix it in place.
-    const equipmentProblem = equipmentError(equipment);
-    if (equipmentProblem) { setError(equipmentProblem); return; }
     setBusy(true);
     try {
       const payload = {
         ...form,
-        ...equipmentPayload(equipment),
         accessibilityRequirements: form.accessibilityText.split('\n').map((item) => // Trims each text entry before building the submitted field list.
 
       // Converts each record into its displayed or submitted representation.
@@ -125,11 +118,10 @@ export default function EventForm() {
 
       // Handles this control action and updates the screen state.
       update('accessibilityText', e.target.value)} rows={3} /></label>
-        {/* Free-text notes sit inside the equipment section so all equipment information is entered in one place. */}
-        <EquipmentRequirementsFields value={equipment} onChange={setEquipment} disabled={busy}>
-          <label>Other equipment notes<textarea maxLength={10000} value={form.equipmentNotes} rows={3}
-            onChange={(e) => update('equipmentNotes', e.target.value)} /></label>
-        </EquipmentRequirementsFields>
+        <label>Equipment requirements<textarea maxLength={10000} value={form.equipmentNotes} onChange={(e) => // Copies the selected input value into the equipmentNotes form field.
+
+      // Handles this control action and updates the screen state.
+      update('equipmentNotes', e.target.value)} rows={3} /></label>
         <label>Special arrangements<textarea maxLength={10000} value={form.specialArrangements} onChange={(e) => // Copies the selected input value into the specialArrangements form field.
 
       // Handles this control action and updates the screen state.

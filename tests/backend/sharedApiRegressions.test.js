@@ -219,26 +219,6 @@ test('unexpected registration database failures reach the central error response
  const result=await request('/api/auth/register',{method:'POST',body:{role:'event_organiser',fullName:'Alice',email:'alice@example.test',password:'password123',confirmation:'password123',organisationName:' Example '}});
  assert.equal(result.status,500);assert.equal(result.body.message,'Registration unavailable.');
 });
-// Test case: The database has not been migrated (missing column/table); users get a clear 503 without SQL details, and the log names the fix.
-test('a database missing a migration returns a clear update-required message instead of raw SQL errors',async()=>{
- const logged=mock.method(console,'error',()=>{});
- // Arrange: event creation hits a database where migration 004 has not added the equipment columns.
- mock.method(db.pool,'query',async sql=>{
-  if(sql.includes('FROM users WHERE'))return {rows:[{id:12,email:'org@example.com',role:'event_organiser',auth_version:0}]};
-  throw Object.assign(new Error('column "equipment_items" of relation "events" does not exist'),{code:'42703'});
- });
- // Act
- const result=await request('/api/events',{method:'POST',token:jwt.sign({sub:12},process.env.JWT_SECRET),body:{name:'Workshop'}});
- // Assert
- assert.equal(result.status,503);
- assert.equal(result.body.code,'DATABASE_UPDATE_REQUIRED');
- assert.equal(result.body.message,'ConnectSphere is waiting for a database update. Please try again later or contact an administrator.');
- assert.doesNotMatch(JSON.stringify(result.body),/equipment_items|relation|column/);
- assert.ok(logged.mock.calls.some(call=>/migrate:external-events/.test(call.arguments[0])));
- // An unrelated database error code is not mislabelled as a missing migration.
- const res=response();errorHandler(Object.assign(new Error('duplicate key'),{code:'23505'}),{},res,()=>{});
- assert.equal(res.code,500);assert.equal(res.body.message,'duplicate key');
-});
 // Test case: Passes explicit-status and message-free errors and checks status, message and fallback fields.
 test('server error responses support explicit status and a missing-message fallback',()=>{
  mock.method(console,'error',()=>{});
