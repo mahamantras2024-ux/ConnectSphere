@@ -76,3 +76,11 @@ test('Shared regression consolidation AC1 - story and integration commands use t
   assert.ok(!call.args.some(arg=>/sprintOne(?:Access|FailurePaths|AcceptancePostgres|Postgres|Edges)?\.test|workspace(?:Profiles|Navigation)\.test|dashboardDrawers\.test|postgresEvents\.test|(?:startup|databaseConfig)\.test/.test(arg)));
  }
 });
+
+// Test case: Ensures the PostgreSQL acceptance harness loads backend/.env before importing the pool that captures its connection settings.
+test('PostgreSQL acceptance harness - loads configured database settings before creating its shared pool',()=>{
+ const acceptance=fs.readFileSync(path.join(__dirname,'backend','databaseAcceptance.test.js'),'utf8');
+ const environmentLoad=acceptance.indexOf("dotenv').config({ path:");
+ const poolImport=acceptance.indexOf("require('../../backend/src/config/db')");
+ assert.ok(environmentLoad>=0&&poolImport>environmentLoad);
+});
