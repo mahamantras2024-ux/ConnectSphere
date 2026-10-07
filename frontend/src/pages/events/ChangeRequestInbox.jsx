@@ -30,6 +30,8 @@ export default function ChangeRequestInbox() {
   const location = useLocation();
   const [requests, setRequests] = useState([]);
   const [loadError, setLoadError] = useState('');
+  // Until the first response arrives the inbox must not claim there are no requests.
+  const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [deciding, setDeciding] = useState(null);
   const [rejecting, setRejecting] = useState(null);
@@ -44,7 +46,7 @@ export default function ChangeRequestInbox() {
       setRequests(data.changeRequests || []); setLoadError('');
     }).catch((err) => {
       setLoadError(err.message);
-    });
+    }).finally(() => setLoading(false));
   }, [token, reloadKey]);
 
   // Sends the decision; buttons stay disabled while `deciding` is set, so one click sends one decision.
@@ -67,10 +69,11 @@ export default function ChangeRequestInbox() {
 
   return (
     <section className="change-request-inbox" aria-labelledby="change-requests-title">
-      <div className="section-heading"><h2 id="change-requests-title">Critical change requests</h2><span className="badge">{requests.length} pending</span></div>
+      <div className="section-heading"><h2 id="change-requests-title">Critical change requests</h2>{!loading && <span className="badge">{requests.length} pending</span>}</div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
-      {loadError ? <p role="alert" className="error-message">{loadError}</p> : requests.length === 0
+      {loading ? <p role="status" className="loading-state">Loading change requests...</p>
+        : loadError ? <p role="alert" className="error-message">{loadError}</p> : requests.length === 0
         ? <p className="text-slate-600">No pending change requests.</p>
         : <ul className="change-request-list">{requests.map((request) => (
           <li key={request.id} className="change-request-card">

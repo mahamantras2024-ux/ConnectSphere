@@ -17,6 +17,8 @@ export default function NotificationsPanel() {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
+  // Until the first response arrives the panel must not claim there are no notifications.
+  const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(null);
   const [actionError, setActionError] = useState('');
 
@@ -29,7 +31,7 @@ export default function NotificationsPanel() {
     }).catch(() => {
       // A plain message (not an alert) keeps a notification outage from masking the dashboard's own errors.
       setLoadFailed(true);
-    });
+    }).finally(() => setLoading(false));
   }, [token]);
 
   // Marks one notification read; the button is disabled while its request is in flight so the count drops once.
@@ -48,8 +50,9 @@ export default function NotificationsPanel() {
 
   return (
     <section className="notifications-panel" aria-labelledby="notifications-title">
-      <div className="section-heading"><h2 id="notifications-title">Notifications</h2><span className="badge">{unreadCount} unread</span></div>
-      {loadFailed ? <p className="error-message">Notifications could not be loaded right now.</p>
+      <div className="section-heading"><h2 id="notifications-title">Notifications</h2>{!loading && <span className="badge">{unreadCount} unread</span>}</div>
+      {loading ? <p role="status" className="loading-state">Loading notifications...</p>
+        : loadFailed ? <p className="error-message">Notifications could not be loaded right now.</p>
         : notifications.length === 0 ? <p className="text-slate-600">No notifications yet.</p>
           : <ul className="notification-list">{notifications.map((notification) => (
             <li key={notification.id} className={notification.read_at ? 'notification-item' : 'notification-item notification-unread'}>

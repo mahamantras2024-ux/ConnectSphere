@@ -221,3 +221,29 @@ it.each([
   // Only coordinators get the review inbox.
   expect(screen.queryByRole('region', { name: 'Critical change requests' })).toBeNull();
 });
+
+// Test case: Slow responses must not be mistaken for "no change requests" or "no notifications" (a coordinator could
+// otherwise conclude nothing was sent); counts appear only once the real data has loaded.
+it('CR AC1/AC2 - while loading, the inbox and notifications say they are loading instead of reporting nothing', async () => {
+  // Arrange: both lists stay pending until released.
+  const pending = {};
+  api.get.mockImplementation((path) => {
+    if (path === '/auth/me') return Promise.resolve({ user });
+    if (path === '/events/change-requests' || path === '/notifications') return new Promise((resolve) => { pending[path] = resolve; });
+    return Promise.resolve({ events: [] });
+  });
+  open('/coordinator/dashboard');
+  // Assert while pending: loading text, no empty-state claims and no counts.
+  expect(await within(await screen.findByRole('region', { name: 'Critical change requests' })).findByText('Loading change requests...')).toBeTruthy();
+  expect(within(notificationsPanel()).getByText('Loading notifications...')).toBeTruthy();
+  expect(screen.queryByText('No pending change requests.')).toBeNull();
+  expect(screen.queryByText('No notifications yet.')).toBeNull();
+  expect(screen.queryByText(/\d+ pending/)).toBeNull();
+  expect(screen.queryByText(/\d+ unread/)).toBeNull();
+  // Act: the data arrives.
+  await act(async () => { pending['/events/change-requests']({ changeRequests: [renameRequest] }); pending['/notifications']({ notifications: [], unreadCount: 0 }); });
+  // Assert: real content replaces the loading text.
+  expect(within(inbox()).getByText('1 pending')).toBeTruthy();
+  expect(within(inbox()).queryByText('Loading change requests...')).toBeNull();
+  expect(within(notificationsPanel()).getByText('No notifications yet.')).toBeTruthy();
+});

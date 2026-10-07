@@ -311,7 +311,8 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .change-table caption { text-align: left; font-weight: 600; padding-bottom: 6px; }
 .change-table th, .change-table td { padding: 6px 8px; border-bottom: 1px solid #eee3c4; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .change-table thead th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b6b5a; }
-.arrangement-warning { display: grid; gap: 6px; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
+/* Raised specificity: the generic `.change-request-card > div` row layout would otherwise squeeze the warning onto one line. */
+.change-request-card > .arrangement-warning { display: grid; gap: 6px; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
 /* In-app notifications shown on each role dashboard. */
 .notifications-panel { display: grid; gap: 12px; margin-bottom: 28px; }
 .notification-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
