@@ -1,6 +1,8 @@
 // File: Collects organiser event requirements and saves a draft or submitted request through the API.
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import EquipmentRequirementsFields from './EquipmentRequirementsFields';
+import { emptyEquipment, equipmentError, equipmentPayload } from './equipmentRequirements';
 import ActionConfirmation from '../../components/ActionConfirmation';
 import EventAttachments from '../../components/EventAttachments';
 import PageIntro from '../../components/PageIntro';
@@ -18,6 +20,7 @@ export default function EventForm() {
     roomLayoutPreference: '', registrationRequired: false, registrationCapacity: '',
     programmeDetails: '', specialArrangements: '', equipmentNotes: '', accessibilityText: '',
   });
+  const [equipment, setEquipment] = useState(emptyEquipment);
   const [attachments, setAttachments] = useState({});
   const [reading, setReading] = useState(0);
   const [pending, setPending] = useState(null);
@@ -39,7 +42,7 @@ export default function EventForm() {
     setBusy(true);
     try {
       const payload = {
-        ...form, attachments,
+        ...form, ...equipmentPayload(equipment), attachments,
         accessibilityRequirements: form.accessibilityText.split('\n').map((item) => // Trims each text entry before building the submitted field list.
 
       // Converts each record into its displayed or submitted representation.
@@ -60,7 +63,7 @@ export default function EventForm() {
       <Link className="button-link button-secondary detail-back" to="/organizer/events">← Back to My Events</Link><PageIntro title="New event request" eyebrow="Start something memorable" description="Share your plans, save a draft, or submit a request to the Coordinator Lead." />
       <form className="event-form event-request-form" onSubmit={(e) => {
         // Submission uses native required-field validation; the separate draft button allows incomplete data.
-        e.preventDefault(); setError(''); setPending(false); }}>
+        e.preventDefault(); const problem = equipmentError(equipment); setError(problem); if (!problem) setPending(false); }}>
         <label>Event name
           <input value={form.name} onChange={(e) => // Copies the selected input value into the name form field.
 
@@ -123,10 +126,9 @@ export default function EventForm() {
 
       // Handles this control action and updates the screen state.
       update('accessibilityText', e.target.value)} rows={3} /></label>
-        <label>Equipment requirements<textarea maxLength={10000} value={form.equipmentNotes} onChange={(e) => // Copies the selected input value into the equipmentNotes form field.
-
-      // Handles this control action and updates the screen state.
-      update('equipmentNotes', e.target.value)} rows={3} /></label>
+        <EquipmentRequirementsFields value={equipment} onChange={setEquipment} disabled={busy}>
+          <label>Other equipment notes<textarea maxLength={10000} value={form.equipmentNotes} onChange={(e) => update('equipmentNotes', e.target.value)} rows={3} /></label>
+        </EquipmentRequirementsFields>
         <label>Special arrangements<textarea maxLength={10000} value={form.specialArrangements} onChange={(e) => // Copies the selected input value into the specialArrangements form field.
 
       // Handles this control action and updates the screen state.
@@ -149,9 +151,10 @@ export default function EventForm() {
 
 
 
+        {error && pending===null && <p role="alert" className="error-text">{error}</p>}
         <EventAttachments value={attachments} onChange={(field,file)=>setAttachments(current=>({...current,[field]:file}))} onBusy={delta=>setReading(current=>current+delta)}/>
         <div className="form-actions">
-          <button className="button-secondary" type="button" value="draft" onClick={() => { setError(''); setPending(true); }} disabled={busy || reading>0 || pending!==null}>Save as draft</button>
+          <button className="button-secondary" type="button" value="draft" onClick={() => { const problem = equipmentError(equipment); setError(problem); if (!problem) setPending(true); }} disabled={busy || reading>0 || pending!==null}>Save as draft</button>
           <button type="submit" value="submitted" disabled={busy || reading>0 || pending!==null}>{busy ? 'Saving...' : 'Submit'}</button>
         </div>
       </form>

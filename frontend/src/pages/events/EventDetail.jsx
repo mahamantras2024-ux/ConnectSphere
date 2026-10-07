@@ -5,13 +5,14 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 const clarificationFieldLabels = {
   name: 'Event name', purpose: 'Purpose', description: 'Description', event_type: 'Event type',
   proposed_date: 'Date', proposed_start_time: 'Start time', proposed_end_time: 'End time',
   expected_attendance: 'Expected attendance', programme_details: 'Programme',
   room_layout_preference: 'Layout requirements', accessibility_requirements: 'Accessibility needs',
-  equipment_notes: 'Equipment requests', registration_required: 'Registration required',
+  equipment_notes: 'Equipment requirements', registration_required: 'Registration required',
   registration_capacity: 'Registration capacity', special_arrangements: 'Special arrangements',
 };
 
@@ -449,17 +450,13 @@ export default function EventDetail() {
                 {renderEditableField('accessibilityText', 'Accessibility needs', event.accessibility_requirements)}
               </dd>
             </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Equipment Requests
-              </dt>
-              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
-                {renderEditableField('equipmentNotes', 'Equipment requests', event.equipment_notes)}
-              </dd>
-            </div>
           </dl>
         </section>
+
+        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
+          onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>
+          {renderEditableField('equipmentNotes', 'Other equipment notes', event.equipment_notes)}
+        </EquipmentRequirementsSection>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
           <h2 className="mb-5 text-xl font-bold text-slate-900">Special Arrangements</h2>

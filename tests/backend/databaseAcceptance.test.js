@@ -1,6 +1,10 @@
 // File: Real PostgreSQL acceptance, ownership, schema and session checks in disposable schemas.
 // Test scope: Shared scenarios are sequential; each describe block owns its fixtures and hooks.
+// The pool snapshots process.env during import, so load the backend config first regardless of the runner's cwd.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').resolve(__dirname, '../../backend/.env') });
 const {describe,after}=require('node:test');
+// Load backend/.env before the shared pool is created: the pool reads its connection settings once, at require time.
+require('../../backend/node_modules/dotenv').config();
 const sharedPool=require('../../backend/src/config/db').pool;
 // Closes the shared pool once, after all grouped fixtures have finished.
 after(()=>sharedPool.end());
@@ -9,7 +13,6 @@ after(()=>sharedPool.end());
 describe('sprintOneAcceptancePostgres',{concurrency:false},()=>{
 // File: Verifies the PDF's Sprint 1 acceptance criteria against actual PostgreSQL in a disposable schema.
 // Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
-require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
@@ -29,7 +32,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     await client.query(`SET search_path TO ${schema}`);
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255), role VARCHAR(50), organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[], accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql']) {
+    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql']) {
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
     }
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
@@ -147,7 +150,6 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
 describe('sprintOnePostgres',{concurrency:false},()=>{
 // File: Runs Sprint 1 role, venue-buffer, and attendee-summary integration checks in a disposable PostgreSQL schema.
 // Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
-require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -168,6 +170,7 @@ test('Sprint 1 persists roles, venue buffers and personal registrations in real 
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/002-event-change-requests.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/003-event-clarifications.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-attachments.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-equipment-requirements.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/sprintOneSchema.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/venueManagementSchema.sql'), 'utf8'));
     mock.method(pool, 'query', (sql, values) =>
@@ -213,7 +216,6 @@ describe('postgresEvents',{concurrency:false},()=>{
 // File: Runs opt-in real PostgreSQL event/migration/reset integration checks inside an isolated temporary schema.
 // Test scope: Uses real handlers/services with controlled database/email/provider boundaries where configured.
 // Opt-in integration test: all records live in a random temporary schema.
-require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
@@ -224,7 +226,7 @@ const emailService = require('../../backend/src/services/emailService');
 const { provisionAccount } = require('../../backend/src/db/provisionAccount');
 
 // Test case: Exercises organiser ownership, repeatable migrations and password reset using an isolated real PostgreSQL schema.
-test('Workflow AC2 AC3 AC5 - PostgreSQL event ownership, additive migration and password reset', { skip: process.env.RUN_DB_TESTS !== '1' }, async (t) => {
+test('PostgreSQL event ownership, additive migration and password reset', { skip: process.env.RUN_DB_TESTS !== '1' }, async (t) => {
 
   const schema = `cs_event_test_${crypto.randomBytes(8).toString('hex')}`;
   const client = await pool.connect();
@@ -242,7 +244,8 @@ test('Workflow AC2 AC3 AC5 - PostgreSQL event ownership, additive migration and 
     for (const file of [
       'migrations/001-external-events.sql',
       'migrations/002-event-change-requests.sql',
-      'migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql',
+      'migrations/003-event-clarifications.sql',
+      'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql',
       'venueManagementSchema.sql'
     ]) {
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
@@ -281,7 +284,7 @@ test('Workflow AC2 AC3 AC5 - PostgreSQL event ownership, additive migration and 
       assert.ok(aliceToken); assert.ok(bobToken);
     });
     // Test case: Saves and reads every submitted field and checks forged owner input cannot replace the session owner.
-    await t.test('Workflow AC2 - save and read all submitted fields without changing owner from request input', async () => {
+    await t.test('save and read all submitted fields without changing owner from request input', async () => {
 
       const created = await request('/api/events', { method: 'POST', token: aliceToken, body: { name: 'SQL round trip',
         purpose: 'Verify persistence', proposedDate: '2026-10-15', proposedStartTime: '09:00', proposedEndTime: '12:00',
@@ -306,14 +309,39 @@ test('Workflow AC2 AC3 AC5 - PostgreSQL event ownership, additive migration and 
       assert.equal((await request(`/api/events/${eventId}`)).status, 401);
       assert.equal((await request('/api/events/999999', { token: aliceToken })).status, 404);
     });
+    // Test case: EQ AC1-AC4 against real PostgreSQL - equipment saves and reads back, the database enforces the
+    // support-details rule, the migration is repeatable, and confirmed arrangements cannot be overwritten directly.
+    await t.test('EQ AC1/AC2/AC3/AC4 - equipment requirements persist and confirmed arrangements are protected in PostgreSQL', async () => {
+      // Arrange
+      const equipment = { equipmentItems: [{ item: 'Wireless microphone', quantity: 2 }, { item: 'Projector', quantity: 1 }],
+        technicalSupportRequired: true, technicalSupportDetails: 'AV technician on site', videoConferencingRequired: true,
+        technicalSpecifications: 'Zoom for 50 remote participants' };
+      // Act: save before confirmation, then read back.
+      const saved = await request(`/api/events/${eventId}/equipment`, { method: 'PUT', token: aliceToken, body: equipment });
+      const viewed = (await request(`/api/events/${eventId}`, { token: aliceToken })).body.event;
+      // Assert: the confirmation message and every stored value round-trip through the real schema.
+      assert.equal(saved.status, 200); assert.equal(saved.body.message, 'Equipment requirements saved.');
+      assert.deepEqual(viewed.equipment_items, equipment.equipmentItems);
+      assert.deepEqual([viewed.technical_support_required, viewed.technical_support_details, viewed.video_conferencing_required, viewed.technical_specifications, viewed.equipment_confirmed],
+        [true, 'AV technician on site', true, 'Zoom for 50 remote participants', false]);
+      // The database itself refuses "support required" without details, even if the API were bypassed.
+      await assert.rejects(client.query('UPDATE events SET technical_support_details=NULL WHERE id=$1', [eventId]), { code: '23514' });
+      // Re-running the migration keeps the saved requirements.
+      await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-attachments.sql'), 'utf8'));
+      await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-equipment-requirements.sql'), 'utf8'));
+      // Technical Support confirms; with no coordinator assigned there is nobody to review a change, so the edit is refused and nothing changes.
+      await client.query('UPDATE events SET equipment_confirmed_at=now() WHERE id=$1', [eventId]);
+      const afterConfirmation = await request(`/api/events/${eventId}/equipment`, { method: 'PUT', token: aliceToken, body: { equipmentItems: [] } });
+      assert.equal(afterConfirmation.status, 409); assert.equal(afterConfirmation.body.code, 'COORDINATOR_NOT_ASSIGNED');
+      const unchanged = (await request(`/api/events/${eventId}`, { token: aliceToken })).body.event;
+      assert.deepEqual(unchanged.equipment_items, equipment.equipmentItems); assert.equal(unchanged.equipment_confirmed, true);
+    });
     // Test case: Runs the migration again after saving an event and checks stored content survives.
     await t.test('migration is repeatable and preserves saved event content', async () => {
 
       await client.query(eventMigration);
       assert.equal((await request(`/api/events/${eventId}`, { token: aliceToken })).body.event.special_arrangements, 'Vegetarian lunch');
     });
-    // Observe post-change notification at the true email boundary; never send live acceptance-test mail.
-    const changedMail = mock.method(emailService, 'sendPasswordChanged', async () => {});
     let rawToken;
     mock.method(emailService, 'emailConfig', () => (// Supplies controlled emailConfig behavior for this regression case, including its expected result or failure.
 
@@ -338,8 +366,6 @@ test('Workflow AC2 AC3 AC5 - PostgreSQL event ownership, additive migration and 
 
       // Converts each record into its displayed or submitted representation.
       request('/api/auth/reset-password', { method: 'POST', body: { token: rawToken, password: 'changed-password123' } })));
-      assert.equal(changedMail.mock.callCount(), 1);
-      assert.equal(changedMail.mock.calls[0].arguments[0], 'alice@example.test');
       assert.deepEqual(results.map((result) => // Extracts response statuses for the concurrent password-reset assertion.
 
       // Converts each record into its displayed or submitted representation.

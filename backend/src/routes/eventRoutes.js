@@ -17,6 +17,7 @@ router.post('/:id/submit',requireRole('event_organiser'),drafts.submit);
 
 router.post('/', requireRole('event_organiser'), eventController.createEvent);
 router.put('/:id/non-critical', requireRole('event_organiser'), eventController.updateEventInformation);
+router.put('/:id/equipment', requireRole('event_organiser'), eventController.updateEquipmentRequirements);
 router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);
 router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);
 router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_organiser'), eventController.respondToClarification);

@@ -78,7 +78,7 @@ it('assigned coordinator opens dashboard events and sees every submitted require
 it('coordinator records with missing submitted information identify it as unavailable',async()=>{
   // Exercises missing-data behavior through the coordinator's protected detail route.
   user={...user,role:'event_coordinator'};api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{event:{id:101,name:'Incomplete assigned event'}});open('/events/101');
-  await screen.findByRole('heading',{name:'Incomplete assigned event'});for(const label of ['Purpose','Date','Programme','Layout Requirements','Accessibility Needs','Equipment Requests','Registration Required'])expect(screen.getByText(label,{selector:'dt'}).parentElement.textContent).toMatch(/Not specified/);
+  await screen.findByRole('heading',{name:'Incomplete assigned event'});for(const label of ['Purpose','Date','Programme','Layout Requirements','Accessibility Needs','Other equipment notes','Registration Required'])expect(screen.getByText(label,{selector:'dt'}).parentElement.textContent).toMatch(/Not specified/);
 });
 
 // Test case: Uses My Events, opens details and returns to the list, checking submitted fields and pencil controls beside editable fields.
@@ -223,7 +223,7 @@ it('Workflow AC2 AC4 - event request form confirms all fields and navigates afte
   open('/organizer/events/new');
   fireEvent.change(await screen.findByLabelText('Event name'), { target: { value: 'Community Workshop' } });
   for (const [label, value] of [['Purpose',event.purpose],['Description',event.description],['Event type',event.event_type],['Proposed date','2030-10-15'],['Start time','09:00'],['End time','12:00'],['Expected attendance','50'],['Room layout preference','Theatre'],['Programme', event.programme_details], ['Special arrangements', event.special_arrangements],
-    ['Equipment requirements', event.equipment_notes], ['Accessibility needs (one per line)', 'Wheelchair access\nHearing loop']]) {
+    ['Other equipment notes', event.equipment_notes], ['Accessibility needs (one per line)', 'Wheelchair access\nHearing loop']]) {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   }
   fireEvent.click(screen.getByLabelText('Requires attendee registration'));fireEvent.change(screen.getByLabelText('Registration capacity'),{target:{value:'45'}});

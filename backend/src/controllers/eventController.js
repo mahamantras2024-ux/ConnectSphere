@@ -3,6 +3,7 @@ const { validateAttachments, mergeAttachments } = require('../services/eventAtta
 // File: Validates and stores organiser event requests and re-exports completed role-scoped reads.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
+const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
 // Reuses the completed owner/assignment-scoped event read handlers.
 const { getEvent, listEvents } = require('./eventReadController');
 
@@ -105,6 +106,38 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   const event = await eventModel.updateEditable(id, req.user.id, data, hasCriticalChanges);
   if (!event) return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The venue was confirmed while you were editing. Refresh the event and submit a change request for critical information.' });
   return res.json({ event, message: current.venue_confirmed ? 'Non-critical event information saved.' : 'Event information saved.' });
+});
+
+// PUT /api/events/:id/equipment replaces the organiser's equipment requirements before Technical Support
+// confirms them; afterwards the same edit becomes a change request so confirmed arrangements stay in effect.
+const updateEquipmentRequirements = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) return res.status(400).json({ message: 'Choose a valid event.' });
+  // express.json() always supplies an object body, so no fallback is needed here.
+  const equipment = validateEquipmentRequirements(req.body);
+  if (equipment.error) return res.status(400).json({ message: equipment.error });
+  const current = await eventModel.findAccessibleById(id, req.user);
+  if (!current) return res.status(404).json({ message: 'Event not found.' });
+
+  if (!current.equipment_confirmed) {
+    const event = await eventModel.updateEquipment(id, req.user.id, equipment.data);
+    // No row means Technical Support confirmed the arrangements between the read above and this write.
+    if (!event) {
+      return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'Equipment arrangements were confirmed while you were editing. Refresh the event and submit a change request.' });
+    }
+    return res.json({ event, message: 'Equipment requirements saved.' });
+  }
+  if (!current.coordinator_id) {
+    return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a change request.' });
+  }
+  const changeRequest = await eventModel.createEquipmentChangeRequest(id, req.user.id, current.coordinator_id, equipment.data);
+  if (!changeRequest) {
+    return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The event arrangements changed. Refresh the event and try again.' });
+  }
+  return res.status(202).json({
+    changeRequest,
+    message: 'Change request submitted. The confirmed equipment arrangements remain in effect, and the Event Coordinator has been notified.',
+  });
 });
 
 // GET /api/events/change-requests returns pending notifications scoped to the assigned coordinator.
@@ -218,8 +251,12 @@ const createEvent = asyncHandler(async (req, res) => {
 
       // Converts each record into its displayed or submitted representation.
       item.trim());
+  // Equipment and technical-support needs are part of the request (optional; defaults mean nothing requested).
+  const equipment = validateEquipmentRequirements(input);
+  if (equipment.error) return res.status(400).json({ message: equipment.error });
+  Object.assign(data, equipment.data);
   const event = await eventModel.create(data);
   return res.status(201).json({ event, message: data.isDraft ? 'Draft saved.' : 'Event request submitted.' });
 });
 
-module.exports = { createEvent, updateEventInformation, listChangeRequests, createClarificationRequest, respondToClarification, listEvents, getEvent };
+module.exports = { createEvent, updateEventInformation, updateEquipmentRequirements, listChangeRequests, createClarificationRequest, respondToClarification, listEvents, getEvent };
