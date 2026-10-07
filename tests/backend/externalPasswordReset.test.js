@@ -73,18 +73,19 @@ test('reset request stores only a token hash and emails the one-time token', asy
     storedHash = values[1];
     return { rows: [{ id: 12 }] };
   });
-  mock.method(emailService, 'sendPasswordReset', async (address, rawToken) => {
-    // Supplies controlled sendPasswordReset behavior for this regression case, including its expected result or failure.
-
-    assert.equal(address, organiser.email);
-    assert.match(rawToken, /^[a-f0-9]{64}$/);
-    assert.notEqual(storedHash, rawToken);
-    assert.equal(storedHash, crypto.createHash('sha256').update(rawToken).digest('hex'));
-  });
+  // Records the email instead of asserting inside the mock, so a request that never sends mail fails below.
+  const send = mock.method(emailService, 'sendPasswordReset', async () => {});
 
   const result = await request('/api/auth/forgot-password', { body: { email: organiser.email } });
   assert.equal(result.status, 200);
   assert.deepEqual(Object.keys(result.body), ['message']);
+  assert.equal(send.mock.callCount(), 1);
+  const [address, rawToken] = send.mock.calls[0].arguments;
+  assert.equal(address, organiser.email);
+  assert.match(rawToken, /^[a-f0-9]{64}$/);
+  // Only the SHA-256 hash of the emailed token is stored, never the token itself.
+  assert.notEqual(storedHash, rawToken);
+  assert.equal(storedHash, crypto.createHash('sha256').update(rawToken).digest('hex'));
 });
 
 // Test case: Requests recovery for unknown and internal-only accounts and checks identical public responses without mail.
@@ -209,6 +210,7 @@ test('missing Gmail configuration returns a service error without querying accou
 test('Gmail reset emails keep tokens in the URL fragment and close the transport', async () => {
 
   let closed = false;
+  const sent = [];
   mock.method(nodemailer, 'createTransport', (config) => {
     // Supplies controlled createTransport behavior for this regression case, including its expected result or failure.
 
@@ -218,14 +220,8 @@ test('Gmail reset emails keep tokens in the URL fragment and close the transport
     assert.equal(config.auth.user, 'sender@gmail.com');
     assert.equal(config.auth.pass, 'abcdefghijklmnop');
     return {
-      sendMail: async (message) => {
-        // Checks the expected state or returned value within this regression case.
-
-        assert.equal(message.to, organiser.email);
-        assert.equal(message.from, 'Event Portal <sender@gmail.com>');
-        assert.match(message.text, /reset-password#token=/);
-        assert.ok(message.text.includes('https://events.example.test/external/reset-password#token='));
-      },
+      // Records the message; assertions run after the call so a missing sendMail fails the test.
+      sendMail: async (message) => { sent.push(message); },
       close: () => {
         // Provides the controlled return value or asynchronous action needed by this test.
          closed = true; },
@@ -233,6 +229,10 @@ test('Gmail reset emails keep tokens in the URL fragment and close the transport
   });
 
   await emailService.sendPasswordReset(organiser.email, 'a'.repeat(64));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, organiser.email);
+  assert.equal(sent[0].from, 'Event Portal <sender@gmail.com>');
+  assert.ok(sent[0].text.includes(`https://events.example.test/external/reset-password#token=${'a'.repeat(64)}`));
   assert.equal(closed, true);
 });
 

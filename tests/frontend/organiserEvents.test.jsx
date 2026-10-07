@@ -1,6 +1,6 @@
 // File: Tests organiser navigation, event display/creation, ownership errors, and external sign-in destinations.
 // Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -245,4 +245,217 @@ it('Event requests AC1 - failed pending saves preserve input and prevent duplica
   fireEvent.change(await screen.findByLabelText('Event name'),{target:{value:'Draft'}});
   const form=screen.getByRole('button',{name:'Submit'}).closest('form');fireEvent.submit(form);fireEvent.submit(form);expect(api.post).toHaveBeenCalledOnce();
   await act(async()=>reject(new Error('Unable to save event')));expect(screen.getByRole('alert').textContent).toBe('Unable to save event');expect(screen.getByLabelText('Event name').value).toBe('Draft');
+});
+
+// ---------- Organiser updates before venue confirmation (edit AC1/AC2) and clarification handling (clarification AC1-AC5) ----------
+
+// Each critical field uses an editor suited to its value and sends the typed value in the API's format.
+// The fixture has no confirmed venue, so every field is directly editable (AC1).
+it.each([
+  // [editor label, displayed heading, input type, stored value shown in editor, new value, API payload, saved record, displayed result]
+  ['Date', 'Date', 'date', '2026-10-15', '2026-11-02', { proposedDate: '2026-11-02' }, { proposed_date: '2026-11-02' }, '02/11/2026'],
+  ['Start time', 'Start Time', 'time', '09:00', '10:30', { proposedStartTime: '10:30' }, { proposed_start_time: '10:30:00' }, '10:30:00'],
+  ['Expected attendance', 'Expected Attendance', 'number', '40', '120', { expectedAttendance: 120 }, { expected_attendance: 120 }, '120'],
+  // Clearing a number means "not specified", which the API stores as null rather than 0.
+  ['Expected attendance', 'Expected Attendance', 'number', '40', '', { expectedAttendance: null }, { expected_attendance: null }, 'Not specified'],
+])('AC1 - before venue confirmation the %s editor saves the new value', async (label, heading, type, before, after, payload, stored, shown) => {
+  // Arrange
+  api.put.mockResolvedValue({ event: { ...event, ...stored }, message: 'Event information saved.' });
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  // Act
+  fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` }));
+  const input = screen.getByLabelText(`Edit ${label}`);
+  expect([input.type, input.value]).toEqual([type, before]);
+  if (type === 'number') expect(input.min).toBe('0');
+  fireEvent.change(input, { target: { value: after } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  // Assert: exact payload, confirmation, and the saved value displayed in place of the old one.
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/101/non-critical', payload, 'organiser-token'));
+  expect(await screen.findByText('Event information saved.')).toBeTruthy();
+  const field = screen.getByText(heading, { selector: 'dt' }).parentElement;
+  expect(within(field).getByText(shown)).toBeTruthy();
+});
+
+// Test case: Unticks "Registration required" with its checkbox editor and checks false is sent and shown.
+it('AC1 - registration can be switched off with its checkbox editor before venue confirmation', async () => {
+  api.put.mockResolvedValue({ event: { ...event, registration_required: false }, message: 'Event information saved.' });
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Registration required' }));
+  const checkbox = screen.getByLabelText('Edit Registration required');
+  expect(checkbox.checked).toBe(true);
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/101/non-critical', { registrationRequired: false }, 'organiser-token'));
+  expect(within(screen.getByText('Registration Required', { selector: 'dt' }).parentElement).getByText('No')).toBeTruthy();
+});
+
+// Test case: Edits accessibility needs one per line; blank lines and padding are dropped before sending the list.
+it('AC2 - accessibility needs are edited one per line and saved as a clean list', async () => {
+  api.put.mockResolvedValue({ event: { ...event, accessibility_requirements: ['Ramp', 'Hearing loop'] }, message: 'Event information saved.' });
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Accessibility needs' }));
+  const editor = screen.getByLabelText('Edit Accessibility needs');
+  expect(editor.value).toBe('Wheelchair access\nHearing loop');
+  fireEvent.change(editor, { target: { value: '  Ramp \n\n Hearing loop ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/101/non-critical', { accessibilityRequirements: ['Ramp', 'Hearing loop'] }, 'organiser-token'));
+  expect(await screen.findByText('Ramp, Hearing loop')).toBeTruthy();
+});
+
+// Test case: Starts an edit and cancels it; nothing is sent, the stored value stays, and reopening shows the stored value again.
+it('AC2 - cancelling an edit discards the typed value without saving', async () => {
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Programme' }));
+  fireEvent.change(screen.getByLabelText('Edit Programme'), { target: { value: 'Discarded agenda' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(api.put).not.toHaveBeenCalled();
+  expect(screen.getByText(event.programme_details)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Programme' }));
+  expect(screen.getByLabelText('Edit Programme').value).toBe(event.programme_details);
+});
+
+// Test case: Presses Save twice (form submitted twice) while the first save is pending; only one update is sent.
+it('AC2 - a second submit while saving does not send a duplicate update', async () => {
+  let finish;
+  api.put.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Description' }));
+  fireEvent.change(screen.getByLabelText('Edit Description'), { target: { value: 'New description' } });
+  const form = screen.getByLabelText('Edit Description').closest('form');
+  fireEvent.submit(form); fireEvent.submit(form);
+  expect(api.put).toHaveBeenCalledOnce();
+  await act(async () => finish({ event: { ...event, description: 'New description' }, message: 'Event information saved.' }));
+  expect(screen.getByText('Event information saved.')).toBeTruthy();
+});
+
+// Test case: The save is refused by the server; its reason is shown and no saved confirmation appears.
+it('AC2 - a failed save shows the server reason instead of a confirmation', async () => {
+  api.put.mockRejectedValue(new Error('description must be text of at most 10000 characters.'));
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Description' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('description must be text of at most 10000 characters.');
+  expect(screen.queryByText(/information saved/)).toBeNull();
+});
+
+// Test case: A record without a stored name opens an empty, controlled name editor.
+// React would also render a null value as an empty box, so the observable defect is React's null-value warning
+// (an uncontrolled input that later switches to controlled while typing); the test fails if that warning appears.
+it('Organiser AC4 - missing values open as empty editors', async () => {
+  const warnings = vi.spyOn(console, 'error').mockImplementation(() => {});
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: { id: 101, organiser_id: 12, status: 'draft' } });
+  open('/organizer/events/101');
+  expect(await screen.findByRole('heading', { name: 'Not specified' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Event name' }));
+  const editor = screen.getByLabelText('Edit Event name');
+  fireEvent.change(editor, { target: { value: 'Named at last' } });
+  expect(editor.value).toBe('Named at last');
+  expect(warnings.mock.calls.flat().join(' ')).not.toMatch(/should not be null|uncontrolled/);
+  warnings.mockRestore();
+});
+
+// Test case: The coordinator ticks two fields then unticks one; only the field still ticked is identified as needing clarification.
+it('Clarification AC1 - unticking a field removes it from the clarification request', async () => {
+  user = { ...user, id: 30, role: 'event_coordinator' };
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: { ...event, clarification_requests: [] } });
+  api.post.mockResolvedValue({ clarificationRequest: { id: 602, information_needed: ['programme_details'], message: 'Please share timings.', status: 'pending' },
+    message: 'Clarification request sent to the Event Organiser.' });
+  open('/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByLabelText('Expected attendance'));
+  fireEvent.click(screen.getByLabelText('Programme'));
+  fireEvent.click(screen.getByLabelText('Expected attendance'));
+  fireEvent.change(screen.getByLabelText('What needs clarification?'), { target: { value: 'Please share timings.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send clarification request' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/101/clarifications',
+    { informationNeeded: ['programme_details'], message: 'Please share timings.' }, 'organiser-token'));
+});
+
+// Test case: Submits the clarification form twice while the first request is pending; only one request reaches the organiser.
+it('Clarification AC2 - a second submit while sending does not send a duplicate clarification request', async () => {
+  user = { ...user, id: 30, role: 'event_coordinator' };
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: { ...event, clarification_requests: [] } });
+  api.post.mockImplementation(() => new Promise(() => {}));
+  open('/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByLabelText('Expected attendance'));
+  fireEvent.change(screen.getByLabelText('What needs clarification?'), { target: { value: 'Please confirm.' } });
+  const form = screen.getByRole('button', { name: 'Send clarification request' }).closest('form');
+  fireEvent.submit(form); fireEvent.submit(form);
+  expect(api.post).toHaveBeenCalledOnce();
+});
+
+// Test case: Sending a clarification fails; the server reason is shown and nothing is marked outstanding.
+it('Clarification AC2 - a failed clarification request shows the reason and is not marked outstanding', async () => {
+  user = { ...user, id: 30, role: 'event_coordinator' };
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: { ...event, clarification_requests: [] } });
+  api.post.mockRejectedValue(new Error('Assigned event not found.'));
+  open('/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByLabelText('Expected attendance'));
+  fireEvent.change(screen.getByLabelText('What needs clarification?'), { target: { value: 'Please confirm.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send clarification request' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('Assigned event not found.');
+  expect(screen.queryByText(/Clarification outstanding/)).toBeNull();
+});
+
+// Test case: Two clarifications are pending; answering one updates only that one, and the other still awaits a response.
+it('Clarification AC4/AC5 - answering one of two clarifications keeps the other outstanding', async () => {
+  const first = { id: 601, information_needed: ['expected_attendance'], message: 'Confirm the count.', status: 'pending' };
+  const second = { id: 602, information_needed: ['programme_details'], message: 'Share timings.', status: 'pending' };
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user }
+    : { event: { ...event, clarification_outstanding: true, clarification_requests: [second, first] } });
+  api.post.mockResolvedValue({ clarificationRequest: { ...first, status: 'responded', organiser_response: '45 people.' },
+    clarificationOutstanding: true, message: 'Clarification response saved.' });
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.change(screen.getByLabelText('Response or amendment to clarification 601'), { target: { value: '45 people.' } });
+  fireEvent.click(within(screen.getByText('Confirm the count.').closest('li')).getByRole('button', { name: 'Send response' }));
+  expect(await screen.findByText('45 people.')).toBeTruthy();
+  expect(within(screen.getByText('Confirm the count.').closest('li')).getByText('Organiser responded')).toBeTruthy();
+  expect(within(screen.getByText('Share timings.').closest('li')).getByText('Awaiting organiser response')).toBeTruthy();
+  expect(screen.getByLabelText('Response or amendment to clarification 602')).toBeTruthy();
+  expect(screen.getByText(/Clarification outstanding/)).toBeTruthy();
+});
+
+// Test case: Submits a response twice while the first is pending; only one response is sent.
+it('Clarification AC4 - a second submit while sending does not send a duplicate response', async () => {
+  const pending = { id: 601, information_needed: ['expected_attendance'], message: 'Confirm the count.', status: 'pending' };
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: { ...event, clarification_outstanding: true, clarification_requests: [pending] } });
+  api.post.mockImplementation(() => new Promise(() => {}));
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.change(screen.getByLabelText('Response or amendment to clarification 601'), { target: { value: '45 people.' } });
+  const form = screen.getByRole('button', { name: 'Send response' }).closest('form');
+  fireEvent.submit(form); fireEvent.submit(form);
+  expect(api.post).toHaveBeenCalledOnce();
+});
+
+// Test case: Saving a response fails; the reason is shown and the request is not shown as answered.
+it('Clarification AC4 - a failed response shows the reason and leaves the request unanswered', async () => {
+  const pending = { id: 601, information_needed: ['expected_attendance'], message: 'Confirm the count.', status: 'pending' };
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: { ...event, clarification_outstanding: true, clarification_requests: [pending] } });
+  api.post.mockRejectedValue(new Error('Outstanding clarification request not found.'));
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.change(screen.getByLabelText('Response or amendment to clarification 601'), { target: { value: '45 people.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send response' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('Outstanding clarification request not found.');
+  expect(screen.queryByText('Organiser responded')).toBeNull();
+});
+
+// Test case: My Events marks only the event waiting on a clarification, so the organiser can see which needs their answer.
+it('Clarification AC5 - the event list flags only events with an outstanding clarification', async () => {
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user }
+    : { events: [{ ...event, clarification_outstanding: true }, { ...event, id: 102, name: 'Second event', clarification_outstanding: false }] });
+  open('/organizer/events');
+  const waiting = (await screen.findByRole('heading', { name: event.name })).closest('article');
+  expect(within(waiting).getByText('Clarification outstanding')).toBeTruthy();
+  expect(within(screen.getByRole('heading', { name: 'Second event' }).closest('article')).queryByText('Clarification outstanding')).toBeNull();
 });

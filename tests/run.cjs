@@ -4,7 +4,7 @@ const { readdirSync } = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
-// Maps Sprint 1 stories and Sprint 2 venue management stories to their regression suites.
+// Maps Sprint 1 stories and Sprint 2 venue/event stories to their regression suites.
 const stories = {
   // Sprint 1:
   'create-venue': ['createVenue-backend','venueValidation','createVenue','venueInteractions'],
@@ -15,7 +15,9 @@ const stories = {
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
   'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
-  'delete-venue': ['venueManagement','venueInteractions']
+  'delete-venue': ['venueManagement','venueInteractions'],
+  // Sprint 2 event workflow:
+  'change-request-review': ['changeRequestReview','changeRequestReview.unit','organiserEvents','sharedUiRegressions']
 };
 const storyIndex = options.indexOf('story');
 const storyName = storyIndex < 0 ? null : options[storyIndex + 1];

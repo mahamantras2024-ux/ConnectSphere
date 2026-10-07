@@ -79,12 +79,13 @@ after(async () => {
 // Test case: Sends a complete venue through the API as Venue Staff and checks the 201 response and saved information.
 test('US1 - [201 Created] Venue Staff can successfully create venue records', async () => {
 
-  mock.method(pool, 'query', async (sql) => (// Supplies controlled query behavior for this regression case, including its expected result or failure.
-
-      // Handles this operation using the surrounding screen or request state.
-      {
-    rows: sql.includes('FROM users') ? [user] : [{ id: 10, name: sampleVenue.name }],
-  }));
+  // Records the INSERT so the test checks what would be saved, not just what the mock returns.
+  const inserts = [];
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users')) return { rows: [user] };
+    if (sql.includes('INSERT INTO venues')) inserts.push(values);
+    return { rows: [{ id: 10, name: sampleVenue.name }] };
+  });
 
   const res = await apiRequest('/api/venues', {
     method: 'POST',
@@ -93,8 +94,10 @@ test('US1 - [201 Created] Venue Staff can successfully create venue records', as
   });
 
   assert.equal(res.status, 201);
-  assert.equal(res.body.venue.name, 'Hall A');
   assert.equal(res.body.message, 'Venue successfully created.');
+  // Exactly one venue is inserted with the submitted required fields, in the INSERT's column order.
+  assert.equal(inserts.length, 1);
+  assert.deepEqual(inserts[0].slice(0, 7), ['Hall A', 'Level 1', 40, ['classroom'], ['wheelchair'], ['Wi-Fi'], '08:00 - 22:00']);
 });
 
 // Test case: Attempts venue creation without a token and checks authentication rejection with 401.

@@ -306,3 +306,16 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border); }
 @media (max-width: 640px) { .event-request-form { grid-template-columns: 1fr; padding: 22px; gap: 20px; } .modal-header { gap: 14px; padding: 20px; } .modal-header h2 { font-size: 20px; } .modal-close { padding: 9px 12px; } .drawer-navigation { padding: 16px 20px 0; } .venue-drawer .event-detail { padding: 24px 20px; } .navbar .nav-links { gap: 8px; } .nav-links > a { padding: 9px; } }
 @media (prefers-reduced-motion: reduce) { .record-card { transition: none; } .record-card:hover { transform: none; } }
+/* Change-request review: current vs requested comparison and arrangement warnings. */
+.change-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.change-table caption { text-align: left; font-weight: 600; padding-bottom: 6px; }
+.change-table th, .change-table td { padding: 6px 8px; border-bottom: 1px solid #eee3c4; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.change-table thead th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b6b5a; }
+.arrangement-warning { display: grid; gap: 6px; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
+/* In-app notifications shown on each role dashboard. */
+.notifications-panel { display: grid; gap: 12px; margin-bottom: 28px; }
+.notification-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.notification-item { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; background: white; }
+.notification-unread { border-color: #c9d79a; background: #fbfdf3; }
+.notification-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.notification-item .button-secondary { justify-self: start; }
