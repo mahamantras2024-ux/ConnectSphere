@@ -105,6 +105,7 @@ test('unknown emails and internal accounts receive the same reset response witho
   const second = await request('/api/auth/forgot-password', { body: { email: organiser.email } });
 
   assert.deepEqual(first, second);
+  assert.equal(first.status,404);assert.equal(first.body.message,'Account not found. Try again.');
   assert.equal(send.mock.callCount(), 0);
 });
 
@@ -135,6 +136,7 @@ test('delivery failure clears its reset token and does not expose account existe
 
 // Test case: Uses a valid reset token and checks password hashing, token consumption and session-version advancement.
 test('reset atomically consumes an unexpired token, hashes the new password, and invalidates sessions', async () => {
+  mock.method(emailService, 'sendPasswordChanged', async () => {});
 
   mock.method(pool, 'query', async (sql, values) => {
     // Supplies controlled query behavior for this regression case, including its expected result or failure.
@@ -143,7 +145,7 @@ test('reset atomically consumes an unexpired token, hashes the new password, and
     assert.match(sql, /auth_version = auth_version \+ 1/);
     assert.match(sql, /password_reset_hash = NULL/);
     assert.equal(await bcrypt.compare('new-password123', values[1]), true);
-    return { rows: [{ id: 12 }] };
+    return { rows: [{ id: 12, email: organiser.email }] };
   });
 
   const result = await request('/api/auth/reset-password', {
@@ -284,3 +286,80 @@ test('Gmail requires app-password configuration and uses encrypted SMTP', () => 
     });
   }
 });
+
+// Internal recovery AC1 AC2: every provisioned staff role receives a hashed one-time link at its stored email.
+for (const role of ['event_coordinator','event_coordinator_lead','venue_staff','technical_support','safety_officer']) {
+  test(`Internal recovery AC1 AC2 - ${role} receives recovery at stored work email`, async () => {
+    let storedHash;
+    mock.method(pool,'query',async(sql,values)=>{
+      if(sql.includes('SELECT')) { assert.deepEqual(values,['work@example.test']); return {rows:[{...organiser,email:'work@example.test',role}]}; }
+      assert.match(sql,/event_coordinator_lead/); assert.match(sql,/ARRAY\['event_coordinator'/); assert.match(sql,/15 minutes/); storedHash=values[1]; return {rows:[{id:12}]};
+    });
+    const send=mock.method(emailService,'sendPasswordReset',async(address,raw,internal)=>{
+      assert.equal(address,'work@example.test'); assert.equal(internal,true);
+      assert.equal(storedHash,crypto.createHash('sha256').update(raw).digest('hex'));
+    });
+    const result=await request('/api/auth/internal/forgot-password',{body:{email:' WORK@example.test '}});
+    assert.equal(result.status,200); assert.equal(send.mock.callCount(),1);
+  });
+}
+// Internal recovery AC2: unknown or external-only identities receive the requested correction message.
+test('Internal recovery AC2 - unknown and external-only accounts receive identical responses without mail',async()=>{
+  const query=mock.method(pool,'query',async()=>({rows:[]}));
+  const send=mock.method(emailService,'sendPasswordReset',async()=>assert.fail('No eligible account'));
+  const missing=await request('/api/auth/internal/forgot-password',{body:{email:'missing@example.test'}});
+  query.mock.mockImplementation(async()=>({rows:[organiser]}));
+  const external=await request('/api/auth/internal/forgot-password',{body:{email:organiser.email}});
+  assert.deepEqual(missing,external); assert.equal(missing.status,404);assert.equal(missing.body.message,'Account not found. Try again.'); assert.equal(send.mock.callCount(),0);
+});
+// Internal recovery AC3: token consumption retains expiry, one-use and session invalidation guards.
+test('Internal recovery AC3 - staff reset hashes password and consumes token with session revocation',async()=>{
+  mock.method(emailService, 'sendPasswordChanged', async () => {});
+  mock.method(pool,'query',async(sql,values)=>{
+    assert.match(sql,/event_coordinator_lead/); assert.match(sql,/password_reset_expires_at > now/);
+    assert.match(sql,/auth_version = auth_version \+ 1/); assert.match(sql,/password_reset_hash = NULL/);
+    assert.equal(await bcrypt.compare('new-password123',values[1]),true); return {rows:[{id:12,email:'staff@example.test'}]};
+  });
+  assert.equal((await request('/api/auth/internal/reset-password',{body:{token:'a'.repeat(64),password:'new-password123'}})).status,200);
+});
+// Internal recovery AC2: emailed staff links must reach the staff recovery page, with secret in fragment.
+test('Internal recovery AC2 - staff link targets internal reset page',()=>{
+  const url=new URL(emailService.resetUrl('a'.repeat(64),true));
+  assert.equal(url.pathname,'/reset-password'); assert.equal(url.search,''); assert.equal(url.hash,'#token='+ 'a'.repeat(64),true);
+});
+
+// Internal recovery AC2: secondary provisioned staff roles are eligible without changing the primary role.
+test('Internal recovery AC2 - secondary staff role receives reset link',async()=>{
+  mock.method(pool,'query',async sql=>({rows:sql.includes('SELECT')?[{...organiser,roles:['event_coordinator']}]:[{id:12}]}));
+  const send=mock.method(emailService,'sendPasswordReset',async()=>{});
+  assert.equal((await request('/api/auth/internal/forgot-password',{body:{email:organiser.email}})).status,200);
+  assert.equal(send.mock.callCount(),1);
+});
+// Internal recovery AC3: invalid/expired tokens remain errors on the staff endpoint.
+test('Internal recovery AC3 - unavailable staff reset token cannot change password',async()=>{
+  const query=mock.method(pool,'query',async()=>({rows:[]}));
+  assert.equal((await request('/api/auth/internal/reset-password',{body:{token:'a'.repeat(64),password:'new-password123'}})).status,400);
+  assert.equal(query.mock.callCount(),1);
+});
+
+// Internal recovery AC2: keep real message construction; mock only the SMTP transport boundary.
+test('Internal recovery AC2 - SMTP message delivers internal link to recorded work email and closes transport',async()=>{
+  let delivered,closed=false;
+  mock.method(nodemailer,'createTransport',()=>({sendMail:async message=>{delivered=message;},close:()=>{closed=true;}}));
+  await emailService.sendPasswordReset('staff@example.test','a'.repeat(64),true);
+  assert.equal(delivered.to,'staff@example.test');
+  assert.ok(delivered.text.includes('https://events.example.test/reset-password#token='+ 'a'.repeat(64)));
+  assert.equal(delivered.text.includes('/external/'),false); assert.equal(closed,true);
+});
+
+// Internal recovery AC2: staff reset links respect the existing URL transport rules.
+for(const [appUrl,environment,allowed] of [['ftp://events.example.test','test',false],['http://events.example.test','production',false],['https://events.example.test','production',true],['http://localhost:5173','test',true]]) {
+  test(`Internal recovery AC2 - ${environment} link transport ${appUrl}`,()=>{
+    const previousUrl=process.env.PUBLIC_APP_URL,previousEnvironment=process.env.NODE_ENV;
+    try {
+      process.env.PUBLIC_APP_URL=appUrl;process.env.NODE_ENV=environment;
+      if(allowed) assert.equal(new URL(emailService.resetUrl('token',true)).pathname,'/reset-password');
+      else assert.throws(()=>emailService.resetUrl('token',true),/HTTPS/);
+    } finally {process.env.PUBLIC_APP_URL=previousUrl;process.env.NODE_ENV=previousEnvironment;}
+  });
+}

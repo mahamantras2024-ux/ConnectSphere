@@ -64,8 +64,26 @@ test('CR AC1 - zero, false and missing values are reported as genuine changes', 
 
 // Test case: A field from a newer client has no known column; it is still shown to the coordinator under its own name.
 test('CR AC1 - fields this release cannot store are still shown by name', () => {
-  assert.deepEqual(describeChanges(event, { equipmentItems: [{ item: 'Projector', quantity: 1 }] }),
-    [{ field: 'equipmentItems', label: 'equipmentItems', current: null, requested: [{ item: 'Projector', quantity: 1 }] }]);
+  assert.deepEqual(describeChanges(event, { futureField: 'x' }),
+    [{ field: 'futureField', label: 'futureField', current: null, requested: 'x' }]);
+});
+
+// Test case: Structured changes (equipment lists from the equipment story, attachments from the request workflow) are shown
+// as readable entries - item × quantity and file names - never as raw objects or file contents.
+test('CR AC1 - equipment and attachment changes are shown as readable entries', () => {
+  const stored = { ...event, equipment_items: [{ item: 'Projector', quantity: 1 }],
+    attachments: { programme_details: { name: 'agenda.pdf', type: 'application/pdf', data: 'QUJD' } } };
+  assert.deepEqual(describeChanges(stored, {
+    equipmentItems: [{ item: 'Projector', quantity: 2 }, { item: 'Microphone', quantity: 1 }],
+    attachments: { programme_details: { name: 'agenda-v2.pdf', type: 'application/pdf', data: 'REVG' } },
+  // Listed in the shared field order (attachments are defined before the equipment fields).
+  }), [
+    { field: 'attachments', label: 'Attachments', current: ['agenda.pdf'], requested: ['agenda-v2.pdf'] },
+    { field: 'equipmentItems', label: 'Equipment items', current: ['Projector × 1'], requested: ['Projector × 2', 'Microphone × 1'] },
+  ]);
+  // Removing every attachment or item shows "None", not a blank.
+  assert.deepEqual(changeLines(describeChanges(stored, { equipmentItems: [], attachments: {} })),
+    ['Attachments: agenda.pdf → None', 'Equipment items: Projector × 1 → None']);
 });
 
 // Week 7 #1: 30 min setup / 45 min turnaround. The next booking's occupancy starts at 13:00.

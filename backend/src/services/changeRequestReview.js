@@ -39,7 +39,9 @@ function describeChanges(event, requestedChanges) {
     const after = comparable(field, requested);
     // JSON comparison treats equal lists/values as unchanged while keeping 0 and false distinct from null.
     if (JSON.stringify(before) === JSON.stringify(after)) return [];
-    return [{ field, label: definition?.label || field, current: before, requested: after }];
+    // Structured values (attachments, equipment lists) are shown as readable entries rather than raw objects.
+    const shown = definition?.display || ((value) => value);
+    return [{ field, label: definition?.label || field, current: shown(before), requested: shown(after) }];
   });
 }
 

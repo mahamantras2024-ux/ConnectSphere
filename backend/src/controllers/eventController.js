@@ -1,3 +1,5 @@
+const { submissionError } = require('../services/eventRequestValidation');
+const { validateAttachments, mergeAttachments } = require('../services/eventAttachments');
 // File: Validates and stores organiser event requests and re-exports completed role-scoped reads.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
@@ -5,6 +7,7 @@ const db = require('../config/db');
 const notificationService = require('../services/notificationService');
 const { decideChangeRequest } = require('../services/changeRequestDecisions');
 const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements, changeLines } = require('../services/changeRequestReview');
+const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
 // Reuses the completed owner/assignment-scoped event read handlers.
 const { getEvent, listEvents } = require('./eventReadController');
 
@@ -18,7 +21,7 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   const textFields = { name: 255, purpose: 10000, description: 10000, eventType: 100, roomLayoutPreference: 100,
     programmeDetails: 10000, equipmentNotes: 10000, specialArrangements: 10000 };
   const editableFields = new Set([...Object.keys(textFields), 'proposedDate', 'proposedStartTime', 'proposedEndTime',
-    'expectedAttendance', 'registrationRequired', 'registrationCapacity', 'accessibilityRequirements']);
+    'expectedAttendance', 'registrationRequired', 'registrationCapacity', 'accessibilityRequirements','attachments']);
   const nonCriticalFields = new Set(['description', 'programmeDetails', 'equipmentNotes', 'specialArrangements', 'accessibilityRequirements']);
   const submittedFields = Object.keys(input);
   if (!submittedFields.length || submittedFields.some((field) => !editableFields.has(field))) {
@@ -26,15 +29,17 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   }
   const current = await eventModel.findAccessibleById(id, req.user);
   if (!current) return res.status(404).json({ message: 'Event not found.' });
-  const hasCriticalChanges = submittedFields.some((field) => !nonCriticalFields.has(field));
+  // Attached evidence follows the same critical/non-critical rule as the answer it supports.
+  const hasCriticalChanges = submittedFields.some(field => field === 'attachments'
+    ? Object.keys(input.attachments || {}).some(key => !nonCriticalFields.has(key)) : !nonCriticalFields.has(field));
   const data = {};
   for (const [field, max] of Object.entries(textFields)) {
     if (!(field in input)) continue;
     const value = input[field];
-    if (typeof value !== 'string' || value.length > max || (field === 'name' && !value.trim())) {
+    if (typeof value !== 'string' || value.length > max || (field === 'name' && !value.trim() && !current.is_draft)) {
       return res.status(400).json({ message: `${field} must be text of at most ${max} characters.` });
     }
-    data[field] = value.trim() || null;
+    data[field] = field === 'name' ? value.trim() : value.trim() || null;
   }
   if ('accessibilityRequirements' in input) {
     const accessibility = input.accessibilityRequirements;
@@ -77,6 +82,18 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   if (resultingStart && resultingEnd && resultingStart.padEnd(8, ':00') >= resultingEnd.padEnd(8, ':00')) {
     return res.status(400).json({ message: 'End time must be later than start time.' });
   }
+  if (!current.is_draft && current.status !== 'draft') {
+    // Existing requests may predate required submission fields; optional edits remain possible.
+    // Prevent clearing any required field explicitly included in this update.
+    const required = ['name','proposedDate','proposedStartTime','proposedEndTime','expectedAttendance'];
+    if (required.some(field => Object.hasOwn(data, field) && (data[field] == null || data[field] === '' || (field === 'expectedAttendance' && data[field] < 1)))) {
+      return res.status(400).json({ message: 'Name, date, times and attendance cannot be cleared on submitted requests.' });
+    }
+  }
+  if (Object.hasOwn(input,'attachments')) {
+    try {data.attachments=mergeAttachments(current.attachments || {},validateAttachments(input.attachments));}
+    catch(error){return res.status(400).json({message:error.message});}
+  }
   if (current.venue_confirmed && hasCriticalChanges) {
     if (!current.coordinator_id) {
       return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a critical change request.' });
@@ -103,6 +120,47 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   const event = await eventModel.updateEditable(id, req.user.id, data, hasCriticalChanges);
   if (!event) return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The venue was confirmed while you were editing. Refresh the event and submit a change request for critical information.' });
   return res.json({ event, message: current.venue_confirmed ? 'Non-critical event information saved.' : 'Event information saved.' });
+});
+
+// PUT /api/events/:id/equipment replaces the organiser's equipment requirements before Technical Support
+// confirms them; afterwards the same edit becomes a change request so confirmed arrangements stay in effect.
+const updateEquipmentRequirements = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) return res.status(400).json({ message: 'Choose a valid event.' });
+  // express.json() always supplies an object body, so no fallback is needed here.
+  const equipment = validateEquipmentRequirements(req.body);
+  if (equipment.error) return res.status(400).json({ message: equipment.error });
+  const current = await eventModel.findAccessibleById(id, req.user);
+  if (!current) return res.status(404).json({ message: 'Event not found.' });
+
+  if (!current.equipment_confirmed) {
+    const event = await eventModel.updateEquipment(id, req.user.id, equipment.data);
+    // No row means Technical Support confirmed the arrangements between the read above and this write.
+    if (!event) {
+      return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'Equipment arrangements were confirmed while you were editing. Refresh the event and submit a change request.' });
+    }
+    return res.json({ event, message: 'Equipment requirements saved.' });
+  }
+  if (!current.coordinator_id) {
+    return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a change request.' });
+  }
+  // Like other critical changes, the coordinator is notified of each changed equipment field (current vs requested).
+  const changes = describeChanges(current, equipment.data);
+  const notification = {
+    title: `New change request: ${current.name}`,
+    message: `The Event Organiser requested equipment changes to ${current.name}.\n${changeLines(changes).join('\n')}`,
+    details: { changes },
+  };
+  const created = await eventModel.createEquipmentChangeRequest(id, req.user.id, current.coordinator_id, equipment.data, notification);
+  if (!created) {
+    return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The event arrangements changed. Refresh the event and try again.' });
+  }
+  const { coordinator_email: coordinatorEmail, ...changeRequest } = created;
+  await notificationService.emailNotifications([{ email: coordinatorEmail, ...notification }]);
+  return res.status(202).json({
+    changeRequest,
+    message: 'Change request submitted. The confirmed equipment arrangements remain in effect, and the Event Coordinator has been notified.',
+  });
 });
 
 // GET /api/events/change-requests returns pending notifications scoped to the assigned coordinator.
@@ -202,7 +260,7 @@ const createEvent = asyncHandler(async (req, res) => {
     }
     data[field] = value?.trim() || null;
   }
-  if (!data.name) return res.status(400).json({ message: 'Event name is required.' });
+
   for (const field of ['isDraft', 'registrationRequired']) {
     if (input[field] !== undefined && typeof input[field] !== 'boolean') {
       return res.status(400).json({ message: `${field} must be true or false.` });
@@ -232,6 +290,14 @@ const createEvent = asyncHandler(async (req, res) => {
   if (data.proposedStartTime && data.proposedEndTime && data.proposedStartTime.padEnd(8, ':00') >= data.proposedEndTime.padEnd(8, ':00')) {
     return res.status(400).json({ message: 'End time must be later than start time.' });
   }
+  // Incomplete drafts preserve an empty name; only submitting requires all coordination fields.
+  if (data.isDraft) data.name = data.name || '';
+  else {
+    const error = submissionError(data);
+    if (error) return res.status(400).json({ message: error });
+  }
+  try { data.attachments=mergeAttachments({},validateAttachments(input.attachments === undefined ? {} : input.attachments)); }
+  catch(error) {return res.status(400).json({message:error.message});}
   const accessibility = input.accessibilityRequirements ?? [];
   if (!Array.isArray(accessibility) || accessibility.length > 50 ||
       accessibility.some((item) => // Detects an invalid text entry in the submitted accessibility requirements.
@@ -244,8 +310,12 @@ const createEvent = asyncHandler(async (req, res) => {
 
       // Converts each record into its displayed or submitted representation.
       item.trim());
+  // Equipment and technical-support needs are part of the request (optional; defaults mean nothing requested).
+  const equipment = validateEquipmentRequirements(input);
+  if (equipment.error) return res.status(400).json({ message: equipment.error });
+  Object.assign(data, equipment.data);
   const event = await eventModel.create(data);
   return res.status(201).json({ event, message: data.isDraft ? 'Draft saved.' : 'Event request submitted.' });
 });
 
-module.exports = { createEvent, updateEventInformation, listChangeRequests, decideChangeRequest: decideChangeRequestHandler, createClarificationRequest, respondToClarification, listEvents, getEvent };
+module.exports = { createEvent, updateEventInformation, updateEquipmentRequirements, listChangeRequests, decideChangeRequest: decideChangeRequestHandler, createClarificationRequest, respondToClarification, listEvents, getEvent };

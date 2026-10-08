@@ -19,8 +19,8 @@ function emailConfig() {
 }
 
 // Builds a password-reset URL with the token in its fragment and enforces production HTTPS.
-function resetUrl(token) {
-  const url = new URL('/external/reset-password', process.env.PUBLIC_APP_URL || 'http://localhost:5173');
+function resetUrl(token, internal = false) {
+  const url = new URL(internal ? '/reset-password' : '/external/reset-password', process.env.PUBLIC_APP_URL || 'http://localhost:5173');
   if (!['http:', 'https:'].includes(url.protocol) ||
       (process.env.NODE_ENV === 'production' && url.protocol !== 'https:')) {
     throw new Error('PUBLIC_APP_URL must use HTTPS in production.');
@@ -31,13 +31,26 @@ function resetUrl(token) {
 }
 
 // Sends a one-time reset link through the configured SMTP transport and closes it.
-async function sendPasswordReset(to, token) {
+async function sendPasswordReset(to, token, internal = false) {
   const config = emailConfig();
   const transport = nodemailer.createTransport(config.transport);
   try {
     await transport.sendMail({
       from: config.from, to, subject: 'Reset your Event Portal password',
-      text: `Use this link to reset your password: ${resetUrl(token)}\n\nThis link expires in 15 minutes and can be used once. If you did not request it, ignore this email.`,
+      text: `Use this link to reset your password: ${resetUrl(token, internal)}\n\nThis link expires in 15 minutes and can be used once. If you did not request it, ignore this email.`,
+      headers: { 'X-Entity-Ref-ID': require('crypto').randomUUID() },
+    });
+  } finally { transport.close(); }
+}
+
+/** Notifies the recorded account address after password persistence; never includes passwords or reset tokens. */
+async function sendPasswordChanged(to) {
+  const config = emailConfig();
+  const transport = nodemailer.createTransport(config.transport);
+  try {
+    await transport.sendMail({
+      from: config.from, to, subject: 'Your ConnectSphere password has changed',
+      text: 'Your ConnectSphere account password was changed successfully. If you did not make this change, contact your ConnectSphere administrator or support team immediately.',
       headers: { 'X-Entity-Ref-ID': require('crypto').randomUUID() },
     });
   } finally { transport.close(); }
@@ -55,4 +68,4 @@ async function sendNotificationEmail(to, subject, text) {
   } finally { transport.close(); }
 }
 
-module.exports = { emailConfig, resetUrl, sendPasswordReset, sendNotificationEmail };
+module.exports = { emailConfig, resetUrl, sendPasswordReset, sendPasswordChanged, sendNotificationEmail };

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import OrganiserRequestList from './OrganiserRequestList';
 import PageIntro from '../../components/PageIntro';
 import NotificationsPanel from '../../components/NotificationsPanel';
 import ChangeRequestInbox from './ChangeRequestInbox';
@@ -25,8 +26,9 @@ export default function EventList({ dashboard = false }) {
     {dashboard && <NotificationsPanel />}
     {!organiser && dashboard && <ChangeRequestInbox />}
     <div className="section-heading"><h2>{organiser ? 'Your event requests' : 'Assigned events'}</h2><span className="badge">{events.length} events</span></div>
-    {loading ? <p role="status" className="loading-state">Loading events...</p> : error ? <p role="alert" className="error-message">{error}</p> : events.length === 0 ? <section className="empty-state"><span className="empty-symbol" aria-hidden="true">◇</span><h2>{organiser ? 'A great event starts here.' : 'No assigned events yet.'}</h2><p>{organiser ? 'You have not requested any events yet.' : 'Events assigned by your Coordinator Lead will appear here.'}</p></section> : <div className="record-grid">{events.map(event =>
-      // Converts each record into its displayed or submitted representation.
-      <article className="record-card" key={event.id}><div className="record-top"><span className="record-number">EVENT / {String(event.id).padStart(3, '0')}</span><span className={`status-badge status-${event.status}`}>{event.status?.replace(/_/g, ' ') || 'Draft'}</span>{event.clarification_outstanding && <span className="status-badge status-under_review">Clarification outstanding</span>}</div><h3>{event.name || 'Untitled Event'}</h3><p>{event.purpose || 'No purpose provided'}</p><Link className="button-link button-secondary record-action" state={{ backgroundLocation: location }} to={`${organiser ? '/organizer/events' : '/events'}/${event.id}`}>View details <span aria-hidden="true">↗</span></Link></article>)}</div>}
+    {loading ? <p role="status" className="loading-state">Loading events...</p> : error ? <p role="alert" className="error-message">{error}</p> : events.length === 0 && !organiser ? <section className="empty-state"><span className="empty-symbol" aria-hidden="true">◇</span><h2>No assigned events yet.</h2><p>Events assigned by your Coordinator Lead will appear here.</p></section> : organiser ? <OrganiserRequestList events={events} onChange={setEvents} token={token}/> : <div className="record-grid">{events.map(event => {
+      // Coordinator cards retain the operational lifecycle; organiser grouping is handled above.
+      const displayStatus = event.status;
+      return <article className="record-card" key={event.id}><div className="record-top"><span className="record-number">EVENT / {String(event.id).padStart(3, '0')}</span><span className={`status-badge status-${displayStatus}`}>{displayStatus?.replace(/_/g, ' ') || 'Draft'}</span>{event.clarification_outstanding && <span className="status-badge status-clarification_outstanding">Clarification outstanding</span>}</div><h3>{event.name || 'Untitled Event'}</h3><p>{event.purpose || 'No purpose provided'}</p><Link className="button-link button-secondary record-action" state={{ backgroundLocation: location }} to={`/events/${event.id}`}>View details <span aria-hidden="true">↗</span></Link></article>; })}</div>}
   </div>;
 }

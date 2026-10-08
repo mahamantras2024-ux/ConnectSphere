@@ -153,9 +153,9 @@ it.each(['event_coordinator','event_organiser'])('lists %s events with honest mi
   expect(await screen.findByText('Untitled Event')).toBeTruthy();expect(screen.getByText('No purpose provided')).toBeTruthy();expect(screen.getByText('Draft')).toBeTruthy();
 });
 // Test case: Returns absent/error/late event summaries and checks distinct feedback without reopening an unmounted screen.
-it('empty, absent and failed event summaries are distinct', async () => {
+it('Workflow AC1 - empty, absent and failed event summaries are distinct', async () => {
   api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{});open(<App/>,'/organizer/events');
-  expect(await screen.findByText('You have not requested any events yet.')).toBeTruthy();cleanup();
+  expect(await screen.findByText('No draft requests.')).toBeTruthy();cleanup();
   api.get.mockImplementation(async path=>{if(path==='/auth/me')return {user};throw new Error('Database offline');});open(<App/>,'/organizer/events');
   expect((await screen.findByRole('alert')).textContent).toBe('Database offline');
 });
@@ -264,7 +264,7 @@ beforeEach(()=>{
   // Arrange the authenticated account returned by the actual session endpoint.
   localStorage.clear(); localStorage.setItem('cs_token','staff-session');vi.clearAllMocks();
   user={id:8,full_name:'Chris Lee',email:'chris@example.test',role:'technical_support',roles:['technical_support']};
-  api.get.mockImplementation(async()=>({user}));
+  api.get.mockImplementation(async(path)=>path === '/events/assignments' ? {events:[],coordinators:[]} : {user});
 });
 afterEach(cleanup);
 // Opens the real protected route and authentication provider.
@@ -277,11 +277,17 @@ it.each([
 ])('Internal AC3 / cleanup AC1 - %s displays stored account data without promised task placeholders',async(role,path,title)=>{
   user={...user,role,roles:[role]};open(path);
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
-  expect(screen.getByText('chris@example.test')).toBeTruthy();
-  expect(screen.getByRole('heading',{name:'Account details'})).toBeTruthy();
+  if (role !== 'event_coordinator_lead') {
+    expect(screen.getByText('chris@example.test')).toBeTruthy();
+    expect(screen.getByRole('heading',{name:'Account details'})).toBeTruthy();
+  } else {
+    // AC1: the lead now has a genuine queue workspace rather than a profile-only placeholder.
+    expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
+  }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
-  // No event or client data is requested; Technical Support additionally reads only its own notifications (Change Request Review AC3).
-  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role==='technical_support'?['/auth/me','/notifications']:['/auth/me']);
+  // No event or client data is requested; each staff workspace loads only its own queue or notifications.
+  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
+    : role === 'technical_support' ? ['/auth/me','/notifications'] : ['/auth/me']);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
 });
 // Test case: Returns missing profile fields and checks unavailable labels without invented personal data.

@@ -87,7 +87,9 @@ test('CR AC1 - the coordinator sees each changed field with its current and requ
     queries.push({ sql, values });
     if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
     if (sql.includes('FROM event_change_requests r')) {
-      assert.match(sql, /r\.coordinator_id=\$1 AND r\.status='pending' AND e\.coordinator_id=r\.coordinator_id/);
+      // The inbox follows the event's current coordinator, so requests move with a Lead reassignment.
+      assert.match(sql, /WHERE e\.coordinator_id=\$1 AND r\.status='pending'/);
+      assert.doesNotMatch(sql, /r\.coordinator_id=\$1/);
       return { rows: [{ id: 501, event_id: 101, event_name: 'Workshop', organiser_id: 12, organiser_name: 'Alice', status: 'pending',
         requested_changes: { proposedEndTime: '12:30', name: 'Workshop' }, event_record: { ...event, proposed_date: '2030-10-15' } }] };
     }
@@ -197,7 +199,9 @@ test('CR AC3 - approving applies the exact changes and notifies the organiser, t
   assert.deepEqual(result.body.arrangements[0].reasons.at(-1), '150 expected guests exceed the venue capacity of 100.');
   // Assert: writes - the event gets exactly the requested values; the request records the reviewer.
   assert.deepEqual(tx.find('UPDATE events SET')[0].values, [101, 150, '12:30']);
-  assert.match(tx.find('FROM event_change_requests r JOIN events e')[0].sql, /e\.coordinator_id=\$2[\s\S]*FOR UPDATE OF r, e/);
+  assert.match(tx.find('FROM event_change_requests r JOIN events e')[0].sql, /WHERE r\.id=\$1 AND e\.coordinator_id=\$2[\s\S]*FOR UPDATE OF r, e/);
+  // Decided by the event's current coordinator: a request inherited at reassignment is not tied to its original recipient.
+  assert.doesNotMatch(tx.find('FROM event_change_requests r JOIN events e')[0].sql, /r\.coordinator_id=\$2/);
   assert.deepEqual(tx.find('UPDATE event_change_requests')[0].values, [501, 'approved', 30, null]);
   // Booking 9 has a decision-maker, so the all-Venue-Staff list is never needed.
   assert.deepEqual(tx.find('SELECT id FROM users').map((statement) => statement.values[0]), ['technical_support']);
@@ -335,11 +339,11 @@ test('CR AC3 - an already decided request cannot be processed again', async () =
 // Test case: The request contains a field this release cannot store; approval is refused instead of half-applying it.
 test('CR AC3 - a request with changes this release cannot apply is not half-applied', async () => {
   mockAuth();
-  const tx = mockTransaction({ lockedRequest: { ...pendingRequest, requested_changes: { expectedAttendance: 150, equipmentItems: [] } } });
+  const tx = mockTransaction({ lockedRequest: { ...pendingRequest, requested_changes: { expectedAttendance: 150, futureField: 'x' } } });
   const result = await decide({ decision: 'approved' });
   assert.equal(result.status, 409);
   assert.equal(result.body.code, 'UNSUPPORTED_CHANGE');
-  assert.match(result.body.message, /equipmentItems/);
+  assert.match(result.body.message, /futureField/);
   assert.equal(tx.find('UPDATE events SET').length, 0);
 });
 
@@ -396,4 +400,46 @@ test('CR AC2 - users can mark only their own notifications as read', async () =>
   assert.equal((await request('/api/notifications/4/read', { method: 'POST' })).status, 404);
   assert.equal((await request('/api/notifications/abc/read', { method: 'POST' })).status, 400);
   assert.equal((await request('/api/notifications', { user: null })).status, 401);
+});
+
+// ---------- Integration with the equipment story (changes after Technical Support confirmation) ----------
+
+// Test case: An equipment change request is approved; the equipment columns are written exactly as requested.
+test('CR AC3 - approving an equipment change request applies the new equipment requirements', async () => {
+  mockAuth();
+  const equipmentRequest = { ...pendingRequest, requested_changes: { equipmentItems: [{ item: 'Projector', quantity: 2 }],
+    technicalSupportRequired: true, technicalSupportDetails: 'AV technician' } };
+  const tx = mockTransaction({ lockedRequest: equipmentRequest, bookings: [] });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+  const result = await decide({ decision: 'approved' });
+  assert.equal(result.status, 200);
+  const update = tx.find('UPDATE events SET')[0];
+  assert.match(update.sql, /equipment_items=\$2::jsonb, technical_support_required=\$3, technical_support_details=\$4/);
+  assert.deepEqual(update.values, [101, JSON.stringify([{ item: 'Projector', quantity: 2 }]), true, 'AV technician']);
+});
+
+// Test case: After confirmation an organiser's equipment edit becomes a change request; the coordinator is notified in the
+// same statement (AC2) with readable before/after lines, emailed, and the address is not returned to the organiser.
+test('CR AC2 - an equipment change request notifies the assigned coordinator', async () => {
+  const inserts = [];
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
+    if (sql.includes('INSERT INTO event_change_requests')) {
+      inserts.push({ sql, values });
+      return { rows: [{ id: 502, event_id: 101, coordinator_id: 30, status: 'pending', coordinator_email: 'chris@example.com' }] };
+    }
+    if (sql.includes('FROM events e')) return { rows: [{ ...event, equipment_confirmed: true, equipment_items: [{ item: 'Projector', quantity: 1 }],
+      technical_support_required: false, technical_support_details: null, video_conferencing_required: false, technical_specifications: null }] };
+    throw new Error(`Unexpected query: ${sql}`);
+  });
+  const send = mock.method(emailService, 'sendNotificationEmail', async () => {});
+  const result = await request('/api/events/101/equipment', { user: organiser, method: 'PUT', body: { equipmentItems: [{ item: 'Projector', quantity: 2 }] } });
+  assert.equal(result.status, 202);
+  assert.equal(inserts.length, 1);
+  assert.match(inserts[0].sql, /INSERT INTO event_change_requests[\s\S]*INSERT INTO notifications[\s\S]*'change_request_submitted'/);
+  const [, , , , title, message] = inserts[0].values;
+  assert.equal(title, 'New change request: Workshop');
+  assert.equal(message, 'The Event Organiser requested equipment changes to Workshop.\nEquipment items: Projector × 1 → Projector × 2');
+  assert.deepEqual(send.mock.calls.map((call) => call.arguments), [['chris@example.com', title, message]]);
+  assert.equal(result.body.changeRequest.coordinator_email, undefined);
 });

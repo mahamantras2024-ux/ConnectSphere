@@ -54,11 +54,12 @@ async function decideChangeRequest(requestId, coordinatorId, decision, reason) {
   let outcome;
   try {
     await client.query('BEGIN');
-    // Locks the request and its event; requiring both coordinator matches denies a coordinator who was reassigned away.
+    // Locks the request and its event. Responsibility follows the event's current coordinator (the Lead can reassign
+    // events), so a request inherited at handover is decided by the new coordinator and no longer by the previous one.
     const request = (await client.query(`
       SELECT r.id, r.event_id, r.organiser_id, r.coordinator_id, r.requested_changes, r.status, to_jsonb(e) AS event
       FROM event_change_requests r JOIN events e ON e.id=r.event_id
-      WHERE r.id=$1 AND r.coordinator_id=$2 AND e.coordinator_id=$2
+      WHERE r.id=$1 AND e.coordinator_id=$2
       FOR UPDATE OF r, e`, [requestId, coordinatorId])).rows[0];
     if (!request) throw failure(404, 'Change request not found.');
     if (request.status !== 'pending') throw failure(409, 'This change request has already been decided.', 'ALREADY_DECIDED');

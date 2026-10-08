@@ -12,7 +12,8 @@ export default defineConfig({
   test: {
     include: ['../tests/frontend/**/*.test.{js,jsx}'],
     environment: 'jsdom', clearMocks: true,
-    maxWorkers: 3,
+    // A single worker avoids local CPU contention causing unrelated UI wait timeouts under coverage.
+    maxWorkers: 1,
     coverage: { provider: 'v8', include: ['src/**/*.{js,jsx}'], reporter: ['text', 'html', 'json', 'json-summary'], reportsDirectory: '../coverage/frontend', thresholds: { statements:100, branches:100, functions:100, lines:100, perFile:true } },
   },
 });

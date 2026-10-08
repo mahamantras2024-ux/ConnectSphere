@@ -12,6 +12,13 @@ export function formatChangeValue(value) {
   return String(value);
 }
 
+/** Lets the coordinator open each proposed attachment before deciding (files travel with the change request). */
+function AttachmentLinks({ files }) {
+  const entries = Object.entries(files);
+  if (!entries.length) return 'None';
+  return entries.map(([question, file]) => <a key={question} className="block" download={file.name} href={`data:${file.type};base64,${file.data}`}>{file.name}</a>);
+}
+
 /** Summarises who the server notified so the coordinator knows relevant personnel were informed (AC3). */
 function notifiedSummary(notified) {
   const groups = ['the organiser'];
@@ -45,7 +52,7 @@ export default function ChangeRequestInbox() {
     api.get('/events/change-requests', token).then((data) => {
       setRequests(data.changeRequests || []); setLoadError('');
     }).catch((err) => {
-      setLoadError(err.message);
+      setLoadError(err.message || 'Unable to load change requests.');
     }).finally(() => setLoading(false));
   }, [token, reloadKey]);
 
@@ -82,7 +89,8 @@ export default function ChangeRequestInbox() {
               <caption>Requested changes to {request.event_name}</caption>
               <thead><tr><th scope="col">Field</th><th scope="col">Current</th><th scope="col">Requested</th></tr></thead>
               <tbody>{request.changes.map((change) => (
-                <tr key={change.field}><th scope="row">{change.label}</th><td>{formatChangeValue(change.current)}</td><td>{formatChangeValue(change.requested)}</td></tr>
+                <tr key={change.field}><th scope="row">{change.label}</th><td>{formatChangeValue(change.current)}</td>
+                  <td>{change.field === 'attachments' ? <AttachmentLinks files={request.requested_changes.attachments} /> : formatChangeValue(change.requested)}</td></tr>
               ))}</tbody>
             </table>
             {request.arrangements.length > 0 && (

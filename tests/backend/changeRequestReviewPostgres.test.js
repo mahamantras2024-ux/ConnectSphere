@@ -12,7 +12,8 @@ const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 
 const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
-  'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-change-request-review.sql'];
+  'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
+  'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql'];
 
 // Test case: Organiser submits a critical change on a confirmed booking; the coordinator sees current vs requested values and the
 // affected booking, approves it, and the organiser, the booking's Venue Staff decision-maker and Technical Support are notified
@@ -32,7 +33,7 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
       for (const file of migrations) await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
       // The review migration must be safe to re-run on a database that already has it.
-      await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-change-request-review.sql'), 'utf8'));
+      await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/005-change-request-review.sql'), 'utf8'));
 
       // People: ids are fixed by insertion order. Vera approved the booking; Vic is other Venue Staff; Tess is Technical Support.
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['cara', 'event_coordinator'], ['vera', 'venue_staff'],
@@ -144,6 +145,16 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       const olivia = await notificationsFor('olivia');
       assert.equal(olivia[1].type, 'change_request_rejected');
       assert.equal(olivia[1].message, 'Your requested changes to Workshop were not approved. The confirmed details remain in effect.\nReason: Name is already in use.');
+      // ---------- Reassignment (Coordinator Lead story): a pending request moves with the event ----------
+      assert.equal((await as('olivia', 'PUT', '/events/1/non-critical', { expectedAttendance: 120 })).status, 202);
+      const handedOver = (await as('chris', 'GET', '/events/change-requests')).body.changeRequests[0];
+      await client.query('UPDATE events SET coordinator_id = $1 WHERE id = 1', [id.cara]);
+      assert.deepEqual((await as('chris', 'GET', '/events/change-requests')).body.changeRequests, []);
+      assert.equal((await as('chris', 'POST', `/events/change-requests/${handedOver.id}/decision`, { decision: 'rejected' })).status, 404);
+      assert.deepEqual((await as('cara', 'GET', '/events/change-requests')).body.changeRequests.map((item) => item.id), [handedOver.id]);
+      assert.equal((await as('cara', 'POST', `/events/change-requests/${handedOver.id}/decision`, { decision: 'rejected' })).status, 200);
+      assert.equal((await client.query('SELECT reviewed_by FROM event_change_requests WHERE id=$1', [handedOver.id])).rows[0].reviewed_by, id.cara);
+
       // The database itself refuses an over-long reason even if the API check were bypassed.
       await assert.rejects(client.query('UPDATE event_change_requests SET decision_reason=$1 WHERE id=$2', ['x'.repeat(4001), second.id]), { code: '23514' });
     } finally {

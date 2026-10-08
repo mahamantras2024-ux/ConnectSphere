@@ -1,6 +1,8 @@
 // File: Provides keyboard-accessible dialogs with Escape dismissal and focus restoration.
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+const activeDialogs = [];
+let backgroundOverflow;
 // Traps keyboard focus while a dialog is open and restores focus when it closes.
 export default function Modal({ title, children, onClose, wide = false, drawer = false, centered = false }) {
   const ref = useRef(null);
@@ -8,12 +10,17 @@ export default function Modal({ title, children, onClose, wide = false, drawer =
   close.current = onClose;
   useEffect(() => {
     // Locks background scrolling and installs the dialog's keyboard handler.
+    const dialog = ref.current;
+    // Capture the original scroll state once, so closing nested dialogs in any order restores it.
+    if (!activeDialogs.length) backgroundOverflow = document.body.style.overflow;
+    activeDialogs.push(dialog);
     const previous = document.activeElement;
-    const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     ref.current?.focus();
     // Closes on Escape and cycles Tab through enabled dialog controls.
     function keydown(event) {
+      // Only the top dialog handles keys when a confirmation overlays event details.
+      if (activeDialogs[activeDialogs.length - 1] !== dialog) return;
       if (event.key === 'Escape') close.current();
       if (event.key !== 'Tab') return;
       const items = [...ref.current.querySelectorAll('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')];
@@ -25,7 +32,8 @@ export default function Modal({ title, children, onClose, wide = false, drawer =
     document.addEventListener('keydown', keydown);
     return () => {
       // Restores scrolling, removes the handler, and returns focus to the opening control.
-      document.removeEventListener('keydown', keydown); document.body.style.overflow = overflow; previous?.focus();
+      activeDialogs.splice(activeDialogs.indexOf(dialog), 1);
+      document.removeEventListener('keydown', keydown); document.body.style.overflow = activeDialogs.length ? 'hidden' : backgroundOverflow; previous?.focus();
     };
   }, []);
   return createPortal(<div className={`modal-backdrop ${drawer ? 'drawer-backdrop' : ''} ${centered ? 'centered-detail-backdrop' : ''}`} onClick={(event) => {

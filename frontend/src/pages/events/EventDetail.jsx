@@ -1,15 +1,18 @@
+import ActionConfirmation from '../../components/ActionConfirmation';
+import EventAttachments from '../../components/EventAttachments';
 // File: Loads and formats persisted event details, handling missing values and request failures.
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 const clarificationFieldLabels = {
   name: 'Event name', purpose: 'Purpose', description: 'Description', event_type: 'Event type',
   proposed_date: 'Date', proposed_start_time: 'Start time', proposed_end_time: 'End time',
   expected_attendance: 'Expected attendance', programme_details: 'Programme',
   room_layout_preference: 'Layout requirements', accessibility_requirements: 'Accessibility needs',
-  equipment_notes: 'Equipment requests', registration_required: 'Registration required',
+  equipment_notes: 'Equipment requirements', registration_required: 'Registration required',
   registration_capacity: 'Registration capacity', special_arrangements: 'Special arrangements',
 };
 
@@ -49,6 +52,11 @@ export default function EventDetail() {
   const [editValues, setEditValues] = useState(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmUpdate, setConfirmUpdate] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState('');
+  const [updateError, setUpdateError] = useState('');
+  const [readingFiles, setReadingFiles] = useState(0);
+  const [fileChanges, setFileChanges] = useState({});
   const [activeEditField, setActiveEditField] = useState('');
   const [clarificationFields, setClarificationFields] = useState([]);
   const [clarificationMessage, setClarificationMessage] = useState('');
@@ -133,9 +141,8 @@ export default function EventDetail() {
       char.toUpperCase());
   };
 
+  /** Persists the confirmed field/file update; failures retain the editor for correction or retry. */
   async function saveNonCritical() {
-    // A second submit (e.g. pressing Enter twice) while saving must not send a duplicate update.
-    if (saving) return;
     setSaving(true);
     setSaveMessage('');
     setError('');
@@ -144,7 +151,7 @@ export default function EventDetail() {
       let value = editValues[activeEditField];
       if (activeEditField === 'accessibilityText') value = value.split('\n').map((item) => item.trim()).filter(Boolean);
       if (['expectedAttendance', 'registrationCapacity'].includes(activeEditField)) value = value === '' ? null : Number(value);
-      const payload = { [apiField]: value };
+      const payload = activeEditField==='attachments'?{attachments:fileChanges}:{ [apiField]: value };
       const data = await api.put(`/events/${id}/non-critical`, payload, token);
       if (!data.changeRequest) {
         const saved = { ...event, ...data.event };
@@ -154,12 +161,11 @@ export default function EventDetail() {
         // A change request leaves the confirmed value in effect, so the editor returns to it.
         resetEditValue(activeEditField);
       }
-      // Both API outcomes (saved or change request submitted) always include a confirmation message.
-      setSaveMessage(data.message);
+      setUpdateSuccess(data.message || 'Non-critical event information saved.');
+      setFileChanges({});
       setActiveEditField('');
     } catch (err) {
-      // The API client always supplies a readable message for failed requests.
-      setError(err.message);
+      setUpdateError(err.message || 'Unable to save event information.');
     } finally {
       setSaving(false);
     }
@@ -167,30 +173,29 @@ export default function EventDetail() {
 
   async function sendClarificationRequest(submitEvent) {
     submitEvent.preventDefault();
-    // The send button is disabled until fields and a question are entered; this guard stops a duplicate submit while saving.
-    if (clarificationSaving) return;
+    if (clarificationSaving || !clarificationFields.length || !clarificationMessage.trim()) return;
     setClarificationSaving(true); setError(''); setSaveMessage('');
     try {
       const data = await api.post(`/events/${id}/clarifications`, { informationNeeded: clarificationFields, message: clarificationMessage }, token);
       setEvent((current) => ({ ...current, clarification_outstanding: true,
-        clarification_requests: [data.clarificationRequest, ...current.clarification_requests] }));
+        clarification_requests: [data.clarificationRequest, ...(current.clarification_requests || [])] }));
       setClarificationFields([]); setClarificationMessage(''); setSaveMessage(data.message);
-    } catch (err) { setError(err.message); }
+    } catch (err) { setError(err.message || 'Unable to send clarification request.'); }
     finally { setClarificationSaving(false); }
   }
 
   async function respondToClarification(submitEvent, request) {
     submitEvent.preventDefault();
-    // The send button is disabled until a response is typed; this guard stops a duplicate submit while saving.
-    if (clarificationSaving) return;
-    const response = clarificationResponses[request.id];
+    const response = clarificationResponses[request.id] || '';
+    if (clarificationSaving || !response.trim()) return;
     setClarificationSaving(true); setError(''); setSaveMessage('');
     try {
       const data = await api.post(`/events/${id}/clarifications/${request.id}/respond`, { response }, token);
       setEvent((current) => ({ ...current, clarification_outstanding: data.clarificationOutstanding,
+        // A response form exists only for a recorded request; preserve its sibling requests during handover.
         clarification_requests: current.clarification_requests.map((item) => item.id === request.id ? data.clarificationRequest : item) }));
       setClarificationResponses((current) => ({ ...current, [request.id]: '' })); setSaveMessage(data.message);
-    } catch (err) { setError(err.message); }
+    } catch (err) { setError(err.message || 'Unable to save clarification response.'); }
     finally { setClarificationSaving(false); }
   }
 
@@ -219,9 +224,10 @@ export default function EventDetail() {
     const controlType = field === 'proposedDate' ? 'date' : ['proposedStartTime', 'proposedEndTime'].includes(field) ? 'time'
       : ['expectedAttendance', 'registrationCapacity'].includes(field) ? 'number' : 'text';
     const multiline = ['description', 'programmeDetails', 'accessibilityText', 'equipmentNotes', 'specialArrangements'].includes(field);
-    return <form className="mt-2 grid gap-2" onSubmit={(submitEvent) => { submitEvent.preventDefault(); saveNonCritical(); }}>
-      {field === 'registrationRequired' ? <label className="flex items-center gap-2"><input type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
-        onChange={(changeEvent) => setEditValues((current) => ({ ...current, [field]: changeEvent.target.checked }))} /> Required</label>
+    return <form className="mt-2 grid gap-2" onSubmit={(submitEvent) => { submitEvent.preventDefault(); setUpdateError('');setConfirmUpdate(true); }}>
+      {/* Keep the question before a compact checkbox so global text-input styles cannot crowd the label. */}
+      {field === 'registrationRequired' ? <label className="registration-required-editor"><span>Registration required?</span><input className="registration-required-checkbox" type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
+        onChange={(changeEvent) => setEditValues((current) => ({ ...current, [field]: changeEvent.target.checked }))} /></label>
         : multiline ? <textarea aria-label={`Edit ${label}`} value={editValues[field]} disabled={saving}
           onChange={(changeEvent) => setEditValues((current) => ({ ...current, [field]: changeEvent.target.value }))} rows={3} />
           : <input aria-label={`Edit ${label}`} type={controlType} min={controlType === 'number' ? 0 : undefined} value={editValues[field]} disabled={saving}
@@ -237,7 +243,7 @@ export default function EventDetail() {
     </form>;
   }
 
-  const backLink = !location.state?.backgroundLocation && <Link className="button-link button-secondary detail-back" to={user.role === 'event_organiser' ? '/organizer/events' : '/events'}>Back to {user.role === 'event_organiser' ? 'My Events' : 'Events'}</Link>;
+  const backLink = !location.state?.backgroundLocation && <Link className="button-link button-secondary detail-back" to={user.role === 'event_organiser' ? '/organizer/events' : user.role === 'event_coordinator_lead' ? '/coordinator-lead/dashboard' : '/events'}>Back to {user.role === 'event_organiser' ? 'My Events' : 'Events'}</Link>;
 
   if (loading) {
     return (
@@ -302,6 +308,10 @@ export default function EventDetail() {
 
       </div>
 
+      {confirmUpdate&&<ActionConfirmation action="update this event request" busy={saving} error={updateError} success={updateSuccess} onConfirm={saveNonCritical} onClose={()=>{setConfirmUpdate(false);if(updateSuccess){setSaveMessage(updateSuccess);setUpdateSuccess('');}}}/>}
+      <EventAttachments value={{...(event.attachments || {}),...fileChanges}} onBusy={delta=>setReadingFiles(current=>current+delta)} onChange={user.role==='event_organiser'?(field,file)=>{setFileChanges(current=>({...current,[field]:file}));setActiveEditField('attachments');}:undefined}/>
+      {activeEditField==='attachments'&&<button disabled={readingFiles>0||saving} onClick={()=>{setUpdateError('');setConfirmUpdate(true);}}>Save attachments</button>}
+      {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && <section className="card" aria-label="Organiser contact"><h2>Organiser contact</h2><p>{event.organiser_name}</p>{event.organiser_email ? <a href={`mailto:${event.organiser_email}`}>{event.organiser_email}</a> : <p>Email not recorded</p>}</section>}
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="clarifications-heading">
         <div className="section-heading"><h2 id="clarifications-heading">Clarification requests</h2>
           <span className={`status-badge ${event.clarification_outstanding ? 'status-under_review' : 'status-confirmed'}`}>{event.clarification_outstanding ? 'Outstanding' : 'No outstanding clarification'}</span></div>
@@ -429,21 +439,17 @@ export default function EventDetail() {
                 {renderEditableField('accessibilityText', 'Accessibility needs', event.accessibility_requirements)}
               </dd>
             </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Equipment Requests
-              </dt>
-              <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
-                {renderEditableField('equipmentNotes', 'Equipment requests', event.equipment_notes)}
-              </dd>
-            </div>
           </dl>
         </section>
 
+        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
+          onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>
+          {renderEditableField('equipmentNotes', 'Other equipment notes', event.equipment_notes)}
+        </EquipmentRequirementsSection>
+
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
           <h2 className="mb-5 text-xl font-bold text-slate-900">Special Arrangements</h2>
-          <p className="whitespace-pre-wrap">{renderEditableField('specialArrangements', 'Special arrangements', event.special_arrangements)}</p>
+          <div className="whitespace-pre-wrap">{renderEditableField('specialArrangements', 'Special arrangements', event.special_arrangements)}</div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">

@@ -247,3 +247,14 @@ it('CR AC1/AC2 - while loading, the inbox and notifications say they are loading
   expect(within(inbox()).queryByText('Loading change requests...')).toBeNull();
   expect(within(notificationsPanel()).getByText('No notifications yet.')).toBeTruthy();
 });
+
+// Test case: The organiser's change removes every attachment; the coordinator sees the current file and "None" requested,
+// not a blank cell or a broken link (structured attachments come from the merged request-workflow story).
+it('CR AC1 - a change that removes all attachments shows None as the requested value', async () => {
+  changeRequests = [{ ...renameRequest, requested_changes: { attachments: {} }, arrangements: [],
+    changes: [{ field: 'attachments', label: 'Attachments', current: ['agenda.pdf'], requested: [] }] }];
+  open('/coordinator/dashboard');
+  const row = (await screen.findByRole('rowheader', { name: 'Attachments' })).closest('tr');
+  expect(within(row).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['agenda.pdf', 'None']);
+  expect(within(row).queryByRole('link')).toBeNull();
+});

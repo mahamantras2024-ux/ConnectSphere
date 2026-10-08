@@ -33,7 +33,7 @@ export default function ExternalRegister() {
       {role === 'event_organiser' && <><label htmlFor="organisationName">Organisation name (optional)</label><input id="organisationName" name="organisationName" maxLength={255} autoComplete="organization" /></>}
       <label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
       <label htmlFor="confirmation">Confirm password</label><input id="confirmation" name="confirmation" type="password" autoComplete="new-password" minLength={8} required />
-      <button disabled={busy}>{busy ? 'Creating account...' : 'Create account'}</button><Link to="/external/login">Already have an account? Sign in</Link>
+      <button disabled={busy}>{busy ? 'Creating account...' : 'Create account'}</button><Link className="text-link" to="/external/login">Back to sign in</Link>
     </form>}
   </div></section>;
 }
