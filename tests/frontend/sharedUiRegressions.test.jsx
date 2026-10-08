@@ -257,27 +257,39 @@ it('an event with no recorded registration setting is explicitly marked unavaila
 
 });
 
-// Group: workspaceProfiles - unchanged observable behavior checks.
+// Group: workspaceProfiles - verifies the Technical Support queue and preserves other staff workspaces.
 describe('workspaceProfiles',()=>{
 let user;
 beforeEach(()=>{
   // Arrange the authenticated account returned by the actual session endpoint.
   localStorage.clear(); localStorage.setItem('cs_token','staff-session');vi.clearAllMocks();
   user={id:8,full_name:'Chris Lee',email:'chris@example.test',role:'technical_support',roles:['technical_support']};
-  api.get.mockImplementation(async(path)=>path === '/events/assignments' ? {events:[],coordinators:[]} : {user});
+  api.get.mockImplementation(async(path)=>{
+    if(path === '/auth/me') return {user};
+    if(path === '/events/assignments') return {events:[],coordinators:[]};
+    if(path === '/events/equipment-requests') return {requests:[]};
+    if(path === '/events/equipment-inventory') return {inventory:[]};
+    if(path === '/events/equipment-reservations') return {requests:[],reservations:[]};
+    throw new Error(`Unexpected API route: ${path}`);
+  });
 });
 afterEach(cleanup);
 // Opens the real protected route and authentication provider.
 function open(path){render(<MemoryRouter initialEntries={[path]}><AuthProvider><App/></AuthProvider></MemoryRouter>);}
-// Test case: Opens each internal profile workspace and checks stored account details without unimplemented task placeholders.
+// Test case: Opens each internal workspace and checks its authorised screen rather than unfinished task placeholders.
 it.each([
   ['technical_support','/tech-support/dashboard','Technical Support Dashboard'],
   ['event_coordinator_lead','/coordinator-lead/dashboard','Coordinator Lead Dashboard'],
   ['safety_officer','/safety/dashboard','Safety Officer Dashboard'],
-])('Internal AC3 / cleanup AC1 - %s displays stored account data without promised task placeholders',async(role,path,title)=>{
+])('Internal workspace AC1 - %s displays its authorised workspace',async(role,path,title)=>{
   user={...user,role,roles:[role]};open(path);
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
-  if (role !== 'event_coordinator_lead') {
+  if (role === 'technical_support') {
+    fireEvent.click(screen.getByRole('tab',{name:'Equipment request review'}));
+    expect(screen.getByRole('heading',{name:'Pending equipment requests'})).toBeTruthy();
+    expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
+    expect(screen.queryByText('chris@example.test')).toBeNull();
+  } else if (role === 'safety_officer') {
     expect(screen.getByText('chris@example.test')).toBeTruthy();
     expect(screen.getByRole('heading',{name:'Account details'})).toBeTruthy();
   } else {
@@ -285,24 +297,34 @@ it.each([
     expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
-  // No event or client data is requested; each staff workspace loads only its own queue or notifications.
-  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications'] : ['/auth/me']);
+  const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
+    : role === 'technical_support' ? ['/auth/me','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations'] : ['/auth/me'];
+  expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
 });
-// Test case: Returns missing profile fields and checks unavailable labels without invented personal data.
-it('Internal AC3 / cleanup AC1 - absent account details are identified without fabricated personal information',async()=>{
+// Test case: The Technical Support queue loads even when optional profile fields are absent.
+it('Internal AC1 AC5 - Technical Support queue loads without optional profile fields',async()=>{
   user={id:8,role:'technical_support'};open('/tech-support/dashboard');
+  fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
+  expect(await screen.findByText('No pending equipment requests.')).toBeTruthy();
+  expect(screen.queryByText('Not recorded')).toBeNull();
+  expect(api.get).toHaveBeenCalledWith('/events/equipment-requests','staff-session');
+});
+// Test case: Multi-role identity stays on the active Technical Support workspace without venue-only controls.
+it('Internal AC1 AC5 - multi-role Technical Support session does not gain venue controls',async()=>{
+  user.roles=['technical_support','venue_staff'];open('/tech-support/dashboard');
+  fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
+  await screen.findByRole('heading',{name:'Pending equipment requests'});
+  expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'Add venue'})).toBeNull();
+});
+
+// Test case: Safety staff keep the existing profile fallback when the role list and identity details are absent.
+it('Internal AC3 - safety workspace handles missing profile fields and roles list',async()=>{
+  user={id:8,role:'safety_officer'};open('/safety/dashboard');
   await screen.findByRole('heading',{name:'Account details'});
   expect(screen.getAllByText('Not recorded')).toHaveLength(2);
-  expect(screen.getByLabelText('Provisioned workspaces').textContent).toBe('Technical Support');
-});
-// Test case: Returns multiple assigned roles and checks they appear as profile information without additional active-role grants.
-it('Internal AC3 / enhancement role switching - the profile displays assigned roles without granting additional access',async()=>{
-  user.roles=['technical_support','venue_staff'];open('/tech-support/dashboard');
-  await screen.findByRole('heading',{name:'Account details'});
-  expect(screen.getByLabelText('Provisioned workspaces').textContent).toBe('Technical Support, Venue Staff');
-  expect(screen.queryByRole('button',{name:'Add venue'})).toBeNull();
+  expect(screen.getByLabelText('Provisioned workspaces').textContent).toBe('Safety Officer');
 });
 
 });

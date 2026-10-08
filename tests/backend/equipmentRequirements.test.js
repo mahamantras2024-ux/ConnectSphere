@@ -209,6 +209,7 @@ test('EQ AC3/AC4 - before confirmation an update replaces the whole equipment li
   assert.equal(result.body.message, 'Equipment requirements saved.');
   assert.equal(writes.length, 1);
   assert.match(writes[0].sql, /UPDATE events SET equipment_items=\$3::jsonb/);
+  assert.match(writes[0].sql, /equipment_requirements_version=equipment_requirements_version\+1/);
   assert.match(writes[0].sql, /organiser_id=\$2 AND equipment_confirmed_at IS NULL/);
   assert.deepEqual(writes[0].values, ['101', 12, JSON.stringify(replacement.equipmentItems), false, null, true, 'Hybrid panel']);
   assert.deepEqual(result.body.event.equipment_items, replacement.equipmentItems);
