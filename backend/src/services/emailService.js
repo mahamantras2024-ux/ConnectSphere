@@ -56,4 +56,16 @@ async function sendPasswordChanged(to) {
   } finally { transport.close(); }
 }
 
-module.exports = { emailConfig, resetUrl, sendPasswordReset, sendPasswordChanged };
+// Sends a plain-text in-app notification copy by email, linking back to the application to act on it.
+async function sendNotificationEmail(to, subject, text) {
+  const config = emailConfig();
+  const transport = nodemailer.createTransport(config.transport);
+  try {
+    await transport.sendMail({
+      from: config.from, to, subject,
+      text: `${text}\n\nOpen ConnectSphere to review: ${new URL('/', process.env.PUBLIC_APP_URL).toString()}`,
+    });
+  } finally { transport.close(); }
+}
+
+module.exports = { emailConfig, resetUrl, sendPasswordReset, sendPasswordChanged, sendNotificationEmail };

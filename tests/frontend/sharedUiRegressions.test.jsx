@@ -270,7 +270,9 @@ it.each([
     expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
-  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments'] : ['/auth/me']);
+  // Each workspace loads only its own queue: the Lead's assignments and the Safety Officer's safety checks (Approve/Reject story).
+  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
+    : role === 'safety_officer' ? ['/auth/me','/safety/checks'] : ['/auth/me']);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
 });
 // Test case: Returns missing profile fields and checks unavailable labels without invented personal data.

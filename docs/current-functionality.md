@@ -25,6 +25,15 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 - Embedded address search/map selection, automatic nearest MRT and hourly rates displayed as `$xx/hr`.
 - Right-side event, registration and venue details, clear navigation/close controls and keyboard/focus handling.
 
+## Event approval and rejection (Sprint 2)
+
+- The Safety Officer dashboard lists submitted events whose venue and technical arrangements are confirmed, with attendance, venue capacity, layout, accessibility and equipment. The officer records Approved, Rejected or Changes requested; notes are required unless approving. The assigned coordinator is notified.
+- On the event page, the assigned coordinator sees a readiness checklist (clarifications, venue, technical arrangements, safety check). **Approve** needs every item complete and a passed safety check. **Reject** (optional reason) is allowed even when arrangements are not confirmed. An outstanding clarification blocks both.
+- The decision sets the event status to Approved/Rejected and keeps who decided, when and why on the event record. The organiser is notified in-app and by email, and sees the outcome on the event page.
+- The rules live in `backend/src/services/eventDecisionPolicy.js` (`DECISION_REQUIREMENTS`). Change those lists when the customer clarifies the rejection rule.
+- Apply `backend/src/db/migrations/006-event-decisions.sql` (`npm run migrate:external-events --prefix backend`) on existing databases. It is additive and re-runnable.
+- Venue Staff approval of venue requests and Technical Support confirmation of equipment have no portal screens yet; until those stories land, those prerequisites come from data.
+
 ## Future scope
 
 Attendee registration creation/withdrawal, booking request/approval, coordinator event approval, equipment management, notification inboxes and safety review queues are not completed application workflows. Disconnected prototypes were removed. Viewing existing personal registrations and assigned events works; this does not imply those write/approval workflows exist.

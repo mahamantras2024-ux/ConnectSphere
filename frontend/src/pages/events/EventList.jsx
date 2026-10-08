@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import OrganiserRequestList from './OrganiserRequestList';
 import PageIntro from '../../components/PageIntro';
+import NotificationsPanel from '../../components/NotificationsPanel';
 import { formatEquipmentItems } from './equipmentRequirements';
 // Renders real role-scoped summaries with loading, failure, and empty states.
 export default function EventList({ dashboard = false }) {
@@ -39,6 +40,7 @@ export default function EventList({ dashboard = false }) {
   }, [token, organiser, dashboard]);
   const title = dashboard ? `${organiser ? 'Event Organiser' : 'Event Coordinator'} Dashboard` : organiser ? 'My Events' : 'Events';
   return <div className="page"><PageIntro title={title} eyebrow={organiser ? 'Event planning' : 'Assigned to you'} description={organiser ? 'Your requests, their progress, and every detail in one place.' : 'Review the submitted information for events assigned to you.'} action={organiser && <Link className="button-link" to="/organizer/events/new">Request an event <span aria-hidden="true">↗</span></Link>} />
+    {dashboard && <NotificationsPanel />}
     {!organiser && dashboard && <section className="change-request-inbox" aria-labelledby="change-requests-title">
       <div className="section-heading"><h2 id="change-requests-title">Critical change requests</h2><span className="badge">{changeRequests.length} pending</span></div>
       {changeRequestError ? <p role="alert" className="error-message">{changeRequestError}</p> : changeRequests.length === 0
