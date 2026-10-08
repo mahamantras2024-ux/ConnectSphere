@@ -13,7 +13,10 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/003-event-clarifications.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/004-event-attachments.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/004-event-equipment-requirements.sql'), 'utf8'));
-    console.log('External event fields, password-reset support, event change requests and clarifications, attachments and equipment requirements are ready.');
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/005-technical-support-reviews.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/006-equipment-inventory-reservations.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/007-equipment-stock-quantities.sql'), 'utf8'));
+    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, Technical Support reviews and equipment reservations are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
