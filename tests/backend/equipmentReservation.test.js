@@ -71,7 +71,16 @@ after(async () => {
 
 // AC1 - Reservation workspace lists eligible reviewed requests and reviewer/time audit for confirmed allocations.
 test('AC1 - lists requests awaiting reservation and confirmed allocation audit details', async () => {
-  const candidate = { ...event, review_reason: null };
+  const fullyFulfillableWithoutItems = { ...event, equipment_items: [], review_reason: null };
+  const partiallyFulfillableWithoutItems = {
+    ...event,
+    id: 502,
+    name: 'Community Meetup',
+    equipment_items: [],
+    review_outcome: 'partially_fulfillable',
+    review_reason: 'No itemized equipment was requested.',
+  };
+  const candidates = [fullyFulfillableWithoutItems, partiallyFulfillableWithoutItems];
   const audit = {
     ...reservation,
     event_name: event.name,
@@ -79,25 +88,29 @@ test('AC1 - lists requests awaiting reservation and confirmed allocation audit d
     items: [{ assetCode: 'PROJ-001', name: 'Projector', quantity: 2 }],
   };
   const queries = [];
-  mock.method(pool, 'query', async sql => {
+  mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
-    queries.push(sql);
-    if (sql.includes('JOIN event_equipment_reviews review')) return { rows: [candidate] };
+    queries.push({ sql, values });
+    if (sql.includes('JOIN event_equipment_reviews review')) return { rows: candidates };
     return { rows: [audit] };
   });
 
   const result = await request('/api/events/equipment-reservations');
 
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.requests, [candidate]);
+  assert.deepEqual(result.body.requests, candidates);
   assert.deepEqual(result.body.reservations, [audit]);
   assert.equal(queries.length, 2);
-  const candidateSql = queries.find(sql => sql.includes('JOIN event_equipment_reviews review'));
-  assert.match(candidateSql, /NOT EXISTS/i);
-  assert.match(candidateSql, /proposed_end_time\s*>\s*LOCALTIME/i);
-  const auditSql = queries.find(sql => sql.includes('SELECT reservation.id'));
-  assert.match(auditSql, /AS reserved_by_name/i);
-  assert.match(auditSql, /reserved_item\.quantity/i);
+  const candidateQuery = queries.find(query => query.sql.includes('JOIN event_equipment_reviews review'));
+  assert.match(candidateQuery.sql, /NOT EXISTS/i);
+  assert.match(candidateQuery.sql, /proposed_end_time\s*>\s*LOCALTIME/i);
+  assert.match(candidateQuery.sql, /review\.outcome IN \('fully_fulfillable', 'partially_fulfillable'\)/i);
+  assert.doesNotMatch(candidateQuery.sql, /jsonb_array_length\s*\(\s*e\.equipment_items\s*\)\s*>\s*0/i);
+  const auditQuery = queries.find(query => query.sql.includes('SELECT reservation.id'));
+  assert.match(auditQuery.sql, /reservation\.reserved_by=\$1/i);
+  assert.deepEqual(auditQuery.values, [supportStaff.id]);
+  assert.match(auditQuery.sql, /AS reserved_by_name/i);
+  assert.match(auditQuery.sql, /reserved_item\.quantity/i);
 });
 
 // AC2 - Reservation atomically writes selected units and records the authenticated reviewer and timestamp.
@@ -109,9 +122,12 @@ test('AC2 - reserves selected stock and persists who reserved it and when', asyn
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
       if (sql.includes('SELECT e.id, e.name, e.proposed_date')) return { rows: [event] };
       if (sql.includes('FROM equipments') && sql.includes('FOR UPDATE')) {
-        return { rows: [{ id: 31, name: 'Projector', asset_code: 'PROJ-001', specification: 'Full HD', quantity: 3 }] };
+        return { rows: [
+          { id: 31, name: 'Projector', asset_code: 'PROJ-001', specification: 'Full HD', quantity: 3 },
+          { id: 32, name: 'Video Camera', asset_code: 'CAM-001', specification: '4K', quantity: 1 },
+        ] };
       }
-      if (sql.includes('FROM equipments stock')) return { rows: [{ id: 31, available_quantity: 3 }] };
+      if (sql.includes('FROM equipments stock')) return { rows: [{ id: 31, available_quantity: 3 }, { id: 32, available_quantity: 1 }] };
       if (sql.includes('INSERT INTO event_equipment_reservations')) return { rows: [reservation] };
       return { rows: [] };
     },
@@ -122,21 +138,33 @@ test('AC2 - reserves selected stock and persists who reserved it and when', asyn
 
   const result = await request('/api/events/501/equipment-reservations', {
     method: 'POST',
-    body: { selections: [{ inventoryId: 31, quantity: 2 }] },
+    body: {
+      selections: [{ inventoryId: 31, quantity: 2 }, { inventoryId: 32, quantity: 1 }],
+      additionalItems: [{ item: 'Video Camera', quantity: 1 }],
+    },
   });
 
   assert.equal(result.status, 201);
   assert.equal(result.body.reservation.reserved_by, supportStaff.id);
   assert.equal(result.body.reservation.reserved_at, reservation.reserved_at);
-  assert.deepEqual(result.body.items, [{
-    inventoryId: 31, assetCode: 'PROJ-001', name: 'Projector', quantity: 2,
-  }]);
+  assert.deepEqual(result.body.items, [
+    { inventoryId: 31, assetCode: 'PROJ-001', name: 'Projector', quantity: 2 },
+    { inventoryId: 32, assetCode: 'CAM-001', name: 'Video Camera', quantity: 1 },
+  ]);
   const header = calls.find(call => call.sql.includes('INSERT INTO event_equipment_reservations'));
   assert.deepEqual(header.values, [
     501, 1, '2026-10-12', '09:00:00', '12:00:00', 'Innovation Hall', 'Level 3', supportStaff.id,
   ]);
+  const availabilityCheck = calls.find(call => call.sql.includes('FROM equipments stock'));
+  assert.deepEqual(JSON.parse(availabilityCheck.values[4]), [
+    { inventory_id: 31, quantity: 2 },
+    { inventory_id: 32, quantity: 1 },
+  ]);
   const items = calls.find(call => call.sql.includes('INSERT INTO event_equipment_reservation_items'));
-  assert.deepEqual(JSON.parse(items.values[1]), [{ inventoryId: 31, quantity: 2 }]);
+  assert.deepEqual(JSON.parse(items.values[1]), [
+    { inventory_id: 31, quantity: 2 },
+    { inventory_id: 32, quantity: 1 },
+  ]);
   assert.equal(calls.at(-1).sql, 'COMMIT');
 });
 

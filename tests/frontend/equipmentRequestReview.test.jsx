@@ -34,15 +34,27 @@ async function openDashboard() {
 beforeEach(() => {
   localStorage.clear();
   let pendingRequest = eventRequest;
+  let reservationRequest = null;
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
     if (path === '/events/equipment-requests') return { requests: pendingRequest ? [pendingRequest] : [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
-    if (path === '/events/equipment-reservations') return { requests: [], reservations: [] };
+    if (path === '/events/equipment-reservations') {
+      return { requests: reservationRequest ? [reservationRequest] : [], reservations: [] };
+    }
     throw new Error(`Unexpected API route: ${path}`);
   });
-  api.post.mockImplementation(async path => {
-    if (path.endsWith('/equipment-reviews')) pendingRequest = null;
+  api.post.mockImplementation(async (path, body) => {
+    if (path.endsWith('/equipment-reviews')) {
+      pendingRequest = null;
+      if (body.outcome === 'fully_fulfillable' || body.outcome === 'partially_fulfillable') {
+        reservationRequest = {
+          ...eventRequest,
+          review_outcome: body.outcome,
+          review_reason: body.reason || null,
+        };
+      }
+    }
     return { review: { outcome: 'fully_fulfillable' }, message: 'Review saved.' };
   });
 });
@@ -84,7 +96,14 @@ it.each([
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome, ...(reason ? { reason } : {}), requestVersion: 1,
   }, 'support-token'));
-  expect(screen.queryByRole('article', { name: 'Community Workshop' })).toBeNull();
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  const reservationPanel = screen.getByRole('tabpanel', { name: 'Equipment reservation' });
+  if (outcome === 'fully_fulfillable' || outcome === 'partially_fulfillable') {
+    expect(await within(reservationPanel).findByRole('article', { name: 'Community Workshop' })).toBeTruthy();
+    expect(within(reservationPanel).getByText(`Review: ${outcome.replaceAll('_', ' ')}${reason ? ` — ${reason}` : ''}`)).toBeTruthy();
+  } else {
+    expect(within(reservationPanel).queryByRole('article', { name: 'Community Workshop' })).toBeNull();
+  }
 });
 
 // AC3: a partial or unavailable choice cannot be persisted without a reason.
@@ -204,16 +223,18 @@ it('AC2 AC4 - disables duplicate review submissions while saving', async () => {
   expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
 });
 
-// AC4 - The review shortcut takes staff directly to the reservation tab after the audit write succeeds.
-it('AC4 - saves the review and opens equipment reservation', async () => {
+// AC4 - Saving a review opens the reservation tab without a second navigation action.
+it('AC4 - saves the review and immediately opens equipment reservation', async () => {
   await openDashboard();
   const card = await screen.findByRole('article', { name: 'Community Workshop' });
   fireEvent.change(within(card).getByLabelText('Fulfillment decision'), {
     target: { value: 'fully_fulfillable' },
   });
-  fireEvent.click(within(card).getByRole('button', { name: 'Save review & go to equipment reservation' }));
+  expect(within(card).queryByRole('button', { name: 'Save review & go to equipment reservation' })).toBeNull();
+  fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
 
   expect(await screen.findByRole('heading', { name: 'Equipment availability and reservation' })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome: 'fully_fulfillable',
     requestVersion: 1,

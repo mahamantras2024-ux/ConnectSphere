@@ -5,6 +5,11 @@ import EquipmentInventorySection from '../../frontend/src/pages/tech-support/Equ
 
 afterEach(cleanup);
 
+// The catalogue has no caption, so scope to its region and use the first table before the calendar.
+function getInventoryTable() {
+  return within(screen.getByRole('region', { name: 'Equipment inventory' })).getAllByRole('table')[0];
+}
+
 const inventory = [
   {
     id: 1,
@@ -13,7 +18,7 @@ const inventory = [
     specification: 'Full HD 1080p, 4,000 lumens, HDMI',
     quantity: 3,
     availabilities: [
-      { date: '2026-10-12', startTime: '09:00:00', endTime: '17:00:00', status: 'Available', availableQuantity: 3 },
+      { date: '2026-10-12', startTime: '09:00:00', endTime: '17:00:00', status: 'Available', availableQuantity: 1 },
       { date: '2026-10-14', startTime: '09:00:00', endTime: '18:00:00', status: 'Reserved', availableQuantity: 0, eventName: 'Town Hall' },
     ],
   },
@@ -29,15 +34,47 @@ const inventory = [
   },
 ];
 
-// Arrange provisioned assets; Act render the catalogue; Assert its columns expose stock, not calendar rows.
-it('AC1 - shows seeded asset identifiers, names, specifications, and quantities without availability columns', () => {
+// AC1 - Without a selected date, the catalogue presents total stock rather than slot availability.
+it('AC1 - shows total quantity until a date is selected', () => {
   render(<EquipmentInventorySection inventory={inventory} error="" />);
-  const table = screen.getByRole('table', { name: 'Equipment catalogue' });
+  const table = getInventoryTable();
 
   expect(within(table).getByRole('columnheader', { name: 'ID' })).toBeTruthy();
+  expect(within(table).getByRole('columnheader', { name: 'Total quantity' })).toBeTruthy();
+  expect(within(table).queryByRole('columnheader', { name: 'Available quantity' })).toBeNull();
   expect(within(table).getByRole('row', { name: /PROJ-001 Projector Full HD 1080p, 4,000 lumens, HDMI 3/ })).toBeTruthy();
   expect(within(table).queryByText('12 October 2026')).toBeNull();
   expect(screen.queryByRole('heading', { name: 'Availability calendar' })).toBeNull();
+});
+
+// AC2 - Availability is deducted for reservations overlapping the chosen date and time.
+it('AC2 - shows the remaining quantity for a selected date and time range', () => {
+  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-12' } });
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '09:00' } });
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '17:00' } });
+
+  const table = getInventoryTable();
+  expect(within(table).getByRole('columnheader', { name: 'Available quantity' })).toBeTruthy();
+  expect(within(table).getByRole('row', { name: /PROJ-001 Projector.*1$/ })).toBeTruthy();
+});
+
+// AC2 - A date without a full time range reports the highest matching availability as an upper bound.
+it('AC2 - labels date-only availability as an upper bound', () => {
+  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-12' } });
+
+  const table = getInventoryTable();
+  expect(within(table).getByRole('row', { name: /PROJ-001 Projector.*Up to 1$/ })).toBeTruthy();
+});
+
+// AC3 - Fully reserved equipment remains visible with zero available for its selected slot.
+it('AC3 - shows zero available when the selected date window is fully reserved', () => {
+  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-14' } });
+
+  const table = getInventoryTable();
+  expect(within(table).getByRole('row', { name: /PROJ-001 Projector.*0$/ })).toBeTruthy();
 });
 
 // AC2 - Searching by asset ID or name filters the table and reveals the separate calendar.
@@ -47,7 +84,7 @@ it('AC2 - searches by ID or name and shows the matched asset calendar separately
     target: { value: 'PROJ-001' },
   });
 
-  expect(screen.getByRole('table', { name: /Equipment matching filters/ })).toBeTruthy();
+  expect(getInventoryTable()).toBeTruthy();
   expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
   expect(screen.queryByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeNull();
   const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
@@ -83,7 +120,7 @@ it('AC3 - filters by either time boundary and clears all inventory filters', () 
   expect(screen.getByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeTruthy();
 
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-  expect(screen.getByRole('table', { name: 'Equipment catalogue' })).toBeTruthy();
+  expect(getInventoryTable()).toBeTruthy();
   expect(screen.getAllByRole('row')).toHaveLength(3);
 });
 

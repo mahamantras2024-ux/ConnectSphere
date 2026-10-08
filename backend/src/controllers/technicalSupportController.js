@@ -4,6 +4,27 @@ const eventModel = require('../models/eventModel');
 
 const outcomes = new Set(['fully_fulfillable', 'partially_fulfillable', 'not_fulfillable']);
 const MAX_REASON_LENGTH = 10000;
+const MAX_MANUAL_EQUIPMENT_ITEMS = 50;
+
+/** Validates staff-entered equipment names and quantities before querying stock. */
+function validateAdditionalItems(items) {
+  if (items === undefined) return { items: [] };
+  if (!Array.isArray(items) || items.length > MAX_MANUAL_EQUIPMENT_ITEMS) {
+    return { error: `Additional equipment must be a list of at most ${MAX_MANUAL_EQUIPMENT_ITEMS} items.` };
+  }
+  const normalisedItems = [];
+  for (const entry of items) {
+    const name = typeof entry?.item === 'string' ? entry.item.trim() : '';
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+        Object.keys(entry).some(key => !['item', 'quantity'].includes(key)) ||
+        !name || name.length > 255 ||
+        !Number.isInteger(entry.quantity) || entry.quantity < 1 || entry.quantity > 10000) {
+      return { error: 'Each additional equipment item needs a name and a whole-number quantity from 1 to 10000.' };
+    }
+    normalisedItems.push({ item: name, quantity: entry.quantity });
+  }
+  return { items: normalisedItems };
+}
 
 /**
  * Returns upcoming equipment requests that still need Technical Support review.
@@ -61,20 +82,22 @@ const listEquipmentInventory = asyncHandler(async (req, res) => {
 const listEquipmentReservations = asyncHandler(async (req, res) => {
   const [requests, reservations] = await Promise.all([
     eventModel.listEquipmentReservationCandidates(),
-    eventModel.listActiveEquipmentReservations(),
+    eventModel.listActiveEquipmentReservations(req.user.id),
   ]);
   return res.status(200).json({ requests, reservations });
 });
 
 /**
- * Checks individual assets whose availability windows cover the reviewed event slot.
+ * Checks reviewed and staff-entered equipment against the event's available assets.
  */
 const checkEquipmentAvailability = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) {
     return res.status(400).json({ message: 'Choose a valid event.' });
   }
-  const availability = await eventModel.getEquipmentReservationAvailability(Number(id));
+  const validation = validateAdditionalItems(req.body?.additionalItems);
+  if (validation.error) return res.status(400).json({ message: validation.error });
+  const availability = await eventModel.getEquipmentReservationAvailability(Number(id), validation.items);
   if (!availability) return res.status(404).json({ message: 'Reviewed equipment request not found.' });
   if (availability.alreadyReserved) {
     return res.status(409).json({ message: 'This request already has a confirmed equipment reservation.' });
@@ -83,11 +106,17 @@ const checkEquipmentAvailability = asyncHandler(async (req, res) => {
 });
 
 /**
- * Validates selected asset IDs and atomically reserves them for the authenticated staff member.
+ * Validates selected asset IDs and atomically reserves reviewed or staff-entered equipment.
  */
 const reserveEquipment = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const selections = req.body?.selections;
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
+      Object.keys(req.body).some(key => !['selections', 'additionalItems'].includes(key))) {
+    return res.status(400).json({ message: 'Choose valid equipment assets to reserve.' });
+  }
+  const validation = validateAdditionalItems(req.body.additionalItems);
+  if (validation.error) return res.status(400).json({ message: validation.error });
   if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647 ||
       !Array.isArray(selections) || selections.length < 1 || selections.length > 50 ||
       selections.some(selection => !selection || Object.keys(selection).some(key => !['inventoryId', 'quantity'].includes(key)) ||
@@ -97,7 +126,7 @@ const reserveEquipment = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Choose valid equipment assets to reserve.' });
   }
 
-  const result = await eventModel.createEquipmentReservation(Number(id), selections, req.user.id);
+  const result = await eventModel.createEquipmentReservation(Number(id), selections, req.user.id, validation.items);
   if (result.conflict) return res.status(409).json({ message: result.conflict });
   return res.status(201).json({ ...result, message: 'Equipment reservation confirmed.' });
 });

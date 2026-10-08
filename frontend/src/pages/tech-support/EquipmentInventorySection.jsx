@@ -1,6 +1,23 @@
 // File: Displays the fixed asset catalogue and a separate calendar for searched equipment.
 import { useState } from 'react';
 
+// Reserved slots are shown in neutral grey; the "· Reserved" text keeps the status readable without colour.
+const CALENDAR_STYLES = `
+.equipment-calendar-window.is-reserved {
+  background: #e9ecef;
+  border-color: #ced4da;
+  color: #6c757d;
+}
+.equipment-calendar-window.is-reserved small { color: inherit; }
+@media (prefers-color-scheme: dark) {
+  .equipment-calendar-window.is-reserved {
+    background: #2b3138;
+    border-color: #444c56;
+    color: #9aa4ae;
+  }
+}
+`;
+
 const formatDate = value => value
   ? new Intl.DateTimeFormat('en-SG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(`${value}T00:00:00Z`))
@@ -17,10 +34,14 @@ function matchesFilters(window, date, fromTime, toTime) {
 
 const getAvailabilityWindows = item => Array.isArray(item.availabilities) ? item.availabilities : [];
 
+// A window is reserved when it is not open and is tied to a reservation (status says so, or an event holds it).
+const isReservedWindow = window => window.status !== 'Available' &&
+  (/reserv|book/i.test(String(window.status)) || Boolean(window.eventName));
+
 /**
  * Filters the read-only catalogue by asset ID/name and availability date/time range.
  * Availability range filters show only assets whose available window covers the full range.
- * The calendar is kept separate from the catalogue and appears only for a non-empty search.
+ * Available quantities are date-specific and show the best matching window unless a full range is set.
  */
 export default function EquipmentInventorySection({ inventory, error }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,14 +73,21 @@ export default function EquipmentInventorySection({ inventory, error }) {
       matchesFilters(window, dateFilter, fromTime, toTime)
     ));
     const availableWindows = matchingWindows.filter(window => window.status === 'Available');
-    if (hasAvailabilityFilter && availableWindows.length === 0) return [];
+    if (hasAvailabilityFilter && (dateFilter ? matchingWindows : availableWindows).length === 0) return [];
     return [{
       ...item,
-      matchingWindows: availableWindows.filter(window => (
-        matchesFilters(window, dateFilter, fromTime, toTime)
-      )),
+      matchingWindows: availableWindows,
     }];
   });
+
+  // A date without a complete time range may match several windows, so report the best slot as an upper bound.
+  function getAvailableQuantity(item) {
+    if (!dateFilter) return null;
+    const matchingWindows = getAvailabilityWindows(item).filter(window => (
+      matchesFilters(window, dateFilter, fromTime, toTime)
+    ));
+    return Math.max(0, ...matchingWindows.map(window => Number(window.availableQuantity) || 0));
+  }
 
   function clearFilters() {
     setSearchTerm('');
@@ -70,13 +98,10 @@ export default function EquipmentInventorySection({ inventory, error }) {
 
   return (
     <section aria-labelledby="equipment-inventory-heading">
+      <style>{CALENDAR_STYLES}</style>
       <div className="section-heading">
         <h2 id="equipment-inventory-heading">Equipment inventory</h2>
       </div>
-      <p>
-        Showing {filteredAssets.length} of {inventory.length} pre-provisioned physical assets.
-        {' '}Search for an asset to view its availability calendar below.
-      </p>
       <div className="equipment-inventory-filters">
         <label>
           Search by ID or name
@@ -132,17 +157,12 @@ export default function EquipmentInventorySection({ inventory, error }) {
           ) : (
           <div className="equipment-inventory-table-wrap">
             <table className="equipment-inventory-table">
-              <caption>
-                {hasFilter
-                  ? `Equipment matching filters${dateFilter ? ` on ${formatDate(dateFilter)}` : ''}${fromTime ? ` from ${fromTime}` : ''}${toTime ? ` to ${toTime}` : ''}`
-                  : 'Equipment catalogue'}
-              </caption>
               <thead>
                 <tr>
                   <th scope="col">ID</th>
                   <th scope="col">Name</th>
                   <th scope="col">Specifications</th>
-                  <th scope="col">Quantity</th>
+                  <th scope="col">{dateFilter ? 'Available quantity' : 'Total quantity'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -151,7 +171,9 @@ export default function EquipmentInventorySection({ inventory, error }) {
                     <th scope="row">{item.asset_code}</th>
                     <td>{item.name}</td>
                     <td>{item.specification}</td>
-                    <td>{item.quantity}</td>
+                    <td>{dateFilter
+                      ? `${fromTime && toTime ? '' : 'Up to '}${getAvailableQuantity(item)}`
+                      : item.quantity}</td>
                   </tr>
                 ))}
               </tbody>
@@ -163,10 +185,8 @@ export default function EquipmentInventorySection({ inventory, error }) {
               <div className="section-heading">
                 <h3 id="equipment-calendar-heading">Availability calendar</h3>
               </div>
-              <p>Calendar for equipment matching “{searchTerm.trim()}”. Matching available windows are highlighted.</p>
               <div className="equipment-inventory-table-wrap">
                 <table className="equipment-inventory-table equipment-availability-calendar">
-                  <caption>Equipment availability calendar</caption>
                   <thead>
                     <tr>
                       <th scope="col">ID</th>
@@ -203,10 +223,13 @@ export default function EquipmentInventorySection({ inventory, error }) {
                                       matchingWindow.startTime === window.startTime &&
                                       matchingWindow.endTime === window.endTime
                                     ));
+                                    const classes = ['equipment-calendar-window'];
+                                    if (matches) classes.push('is-available');
+                                    else if (isReservedWindow(window)) classes.push('is-reserved');
                                     return (
                                       <li
                                         key={`${window.startTime}-${window.endTime}-${index}`}
-                                        className={matches ? 'equipment-calendar-window is-available' : 'equipment-calendar-window'}
+                                        className={classes.join(' ')}
                                       >
                                         <span>{window.startTime.slice(0, 5)}–{window.endTime.slice(0, 5)}</span>
                                         <small>{window.availableQuantity} available · {window.status}</small>

@@ -21,6 +21,7 @@ const request = {
   venue_location: 'Level 3',
   review_outcome: 'fully_fulfillable',
   review_reason: null,
+  equipment_items: [{ item: 'Projector', quantity: 2 }],
 };
 const supportUser = {
   id: 41, full_name: 'Taylor Support', email: 'staff@example.com', role: 'technical_support',
@@ -34,6 +35,34 @@ const availableItems = [{
     quantity: 4, available_quantity: 3,
   }],
 }];
+
+// AC1 - Reviewed events remain visible even when no itemized equipment was requested.
+it('AC1 - shows fully and partially fulfillable requests without equipment items', () => {
+  const requestsWithoutItems = [
+    { ...request, equipment_items: [] },
+    {
+      ...request,
+      id: 502,
+      name: 'Community Meetup',
+      review_outcome: 'partially_fulfillable',
+      review_reason: 'No itemized equipment was requested.',
+      equipment_items: [],
+    },
+  ];
+  render(<EquipmentReservationSection
+    requests={requestsWithoutItems}
+    reservations={[]}
+    token="staff-token"
+    onReserved={vi.fn()}
+  />);
+
+  const fullRequest = screen.getByRole('article', { name: 'Community Workshop' });
+  const partialRequest = screen.getByRole('article', { name: 'Community Meetup' });
+  expect(within(fullRequest).getByText('Review: fully fulfillable')).toBeTruthy();
+  expect(within(partialRequest).getByText('Review: partially fulfillable — No itemized equipment was requested.')).toBeTruthy();
+  expect(within(fullRequest).getByLabelText('Additional equipment name 1')).toBeTruthy();
+  expect(within(partialRequest).getByLabelText('Additional equipment name 1')).toBeTruthy();
+});
 
 afterEach(() => {
   cleanup();
@@ -88,8 +117,49 @@ it('AC2 - caps a partial reservation to the remaining available quantity', async
   }, 'staff-token'));
 });
 
-// AC3 - Confirmed reservations remain visible with allocated quantity and reviewer identity/time.
-it('AC3 - displays the reservation audit record and allocated stock', () => {
+// AC5 - Staff can check free-text equipment additions and reserve available items while unavailable items stay listed.
+it('AC5 - checks manual equipment names and quantities then reserves available matching stock', async () => {
+  const videoCamera = {
+    id: 32, asset_code: 'CAM-001', name: 'Video Camera', specification: '4K recording',
+    quantity: 1, available_quantity: 1,
+  };
+  const checkedItems = [
+    availableItems[0],
+    { item: 'Video Camera', requestedQuantity: 1, availableQuantity: 1, availableAssets: [videoCamera] },
+    { item: 'Audio Mixer', requestedQuantity: 1, availableQuantity: 0, availableAssets: [] },
+  ];
+  api.post
+    .mockResolvedValueOnce({ availability: { items: checkedItems } })
+    .mockResolvedValueOnce({
+      reservation: { id: 903, reserved_by: 41, reserved_at: '2026-10-08T12:00:00.000Z' },
+      items: [],
+    });
+  render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+
+  fireEvent.change(within(candidate).getByLabelText('Additional equipment name 1'), {
+    target: { value: 'Video Camera' },
+  });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Add additional equipment' }));
+  fireEvent.change(within(candidate).getByLabelText('Additional equipment name 2'), {
+    target: { value: 'Audio Mixer' },
+  });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+
+  expect(await within(candidate).findByText(/Audio Mixer: 0 of 1 requested available — Not available/)).toBeTruthy();
+  expect(api.post).toHaveBeenNthCalledWith(1, '/events/501/equipment-availability', {
+    additionalItems: [{ item: 'Video Camera', quantity: 1 }, { item: 'Audio Mixer', quantity: 1 }],
+  }, 'staff-token');
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Confirm reservation' }));
+
+  await waitFor(() => expect(api.post).toHaveBeenNthCalledWith(2, '/events/501/equipment-reservations', {
+    selections: [{ inventoryId: 31, quantity: 2 }, { inventoryId: 32, quantity: 1 }],
+    additionalItems: [{ item: 'Video Camera', quantity: 1 }, { item: 'Audio Mixer', quantity: 1 }],
+  }, 'staff-token'));
+});
+
+// AC3 - Confirmed reservation audit details and allocated stock are presented as a readable table row.
+it('AC3 - displays confirmed reservations in a table with allocated stock and audit details', () => {
   render(<EquipmentReservationSection
     requests={[]}
     reservations={[{
@@ -102,8 +172,14 @@ it('AC3 - displays the reservation audit record and allocated stock', () => {
     onReserved={vi.fn()}
   />);
 
-  expect(screen.getByText(/Reserved by Taylor Support/)).toBeTruthy();
-  expect(screen.getByText(/PROJ-001 — Projector \(×2\)/)).toBeTruthy();
+  const reservationSection = screen.getByRole('region', { name: 'Equipment Reservations' });
+  const table = within(reservationSection).getByRole('table');
+  const reservationRow = within(table).getByRole('row', { name: /Community Workshop/ });
+  expect(within(reservationRow).getByRole('rowheader').textContent).toBe('Community Workshop');
+  expect(within(reservationRow).getByText(/12 October 2026 09:00–12:00/)).toBeTruthy();
+  expect(within(reservationRow).getByText('Innovation Hall')).toBeTruthy();
+  expect(within(reservationRow).getByText('PROJ-001 — Projector (×2)')).toBeTruthy();
+  expect(within(reservationRow).getByText(new Date('2026-10-08T12:00:00.000Z').toLocaleString())).toBeTruthy();
 });
 
 // AC2 - A full review cannot be finalised unless all requested units remain available in the slot.
@@ -171,7 +247,7 @@ it('AC3 - offers navigation back to request review when no items await reservati
 
   fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
   expect(onGoToReviews).toHaveBeenCalledOnce();
-  expect(screen.getByText('No equipment requests are ready to reserve')).toBeTruthy();
+  expect(screen.getByText('No reviewed equipment requests yet')).toBeTruthy();
 });
 
 // AC4 - The dashboard refreshes and displays the saved reservation after the reservation API succeeds.
@@ -212,6 +288,8 @@ it('AC4 - confirms a reservation through the dashboard and refreshes its audit r
   fireEvent.click(within(candidate).getByRole('button', { name: 'Confirm reservation' }));
 
   expect(await screen.findByText('Equipment reservation confirmed for Community Workshop.')).toBeTruthy();
-  expect(screen.getByText(/Reserved by Taylor Support/)).toBeTruthy();
-  expect(screen.getByText(/PROJ-001 — Projector \(×2\)/)).toBeTruthy();
+  const reservationSection = screen.getByRole('region', { name: 'Equipment Reservations' });
+  const reservationTable = within(reservationSection).getByRole('table');
+  const reservationRow = within(reservationTable).getByRole('row', { name: /Community Workshop/ });
+  expect(within(reservationRow).getByText('PROJ-001 — Projector (×2)')).toBeTruthy();
 });

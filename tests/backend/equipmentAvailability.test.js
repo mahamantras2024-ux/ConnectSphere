@@ -29,14 +29,17 @@ const event = {
 };
 
 // Calls the real authenticated route while database responses stay deterministic.
-async function request(path) {
+async function request(path, options = {}) {
+  const { method = 'GET', body } = options;
   const signedToken = jwt.sign({
     sub: supportStaff.id,
     role: supportStaff.role,
     authVersion: supportStaff.auth_version,
   }, process.env.JWT_SECRET);
   const response = await fetch(`${base}${path}`, {
-    headers: { Authorization: `Bearer ${signedToken}` },
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signedToken}` },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   return { status: response.status, body: await response.json() };
 }
@@ -119,6 +122,63 @@ test('AC2 - checks matching stock and subtracts reservations overlapping the eve
   assert.match(stockQuery.sql, /reservation\.start_time < \$4::time/i);
   assert.match(stockQuery.sql, /reservation\.end_time > \$3::time/i);
   assert.deepEqual(stockQuery.values, [['projector'], '2026-10-12', '09:00:00', '12:00:00']);
+});
+
+// AC4 - Staff-added items are checked alongside equipment detected in the event request.
+test('AC4 - checks additional requested names and returns unavailable items with zero stock', async () => {
+  const camera = {
+    id: 32,
+    asset_code: 'CAM-001',
+    name: 'Video Camera',
+    specification: '4K',
+    status: 'operational',
+    quantity: 1,
+    available_quantity: 1,
+    available_date: '2026-10-12',
+    available_start_time: '09:00:00',
+    available_end_time: '17:00:00',
+  };
+  let stockQuery;
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    if (sql.includes('FROM events e')) return { rows: [event] };
+    stockQuery = { sql, values };
+    return { rows: [camera] };
+  });
+
+  const result = await request('/api/events/501/equipment-availability', {
+    method: 'POST',
+    body: { additionalItems: [{ item: 'Video Camera', quantity: 1 }, { item: 'Audio Mixer', quantity: 2 }] },
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(stockQuery.values[0], ['projector', 'video camera', 'audio mixer']);
+  assert.deepEqual(result.body.availability.items.map(item => ({
+    item: item.item,
+    requestedQuantity: item.requestedQuantity,
+    availableQuantity: item.availableQuantity,
+  })), [
+    { item: 'Projector', requestedQuantity: 2, availableQuantity: 0 },
+    { item: 'Video Camera', requestedQuantity: 1, availableQuantity: 1 },
+    { item: 'Audio Mixer', requestedQuantity: 2, availableQuantity: 0 },
+  ]);
+});
+
+// AC4 - Invalid staff-entered quantities are rejected before an inventory query.
+test('AC4 - rejects invalid additional equipment quantities', async () => {
+  const query = mock.method(pool, 'query', async sql => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    assert.fail('Invalid manual equipment must be rejected before checking inventory.');
+  });
+
+  const result = await request('/api/events/501/equipment-availability', {
+    method: 'POST',
+    body: { additionalItems: [{ item: 'Video Camera', quantity: 0 }] },
+  });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.message, /whole-number quantity/i);
+  assert.equal(query.mock.callCount(), 1);
 });
 
 // AC3 - An event with an existing current reservation cannot be allocated twice.
