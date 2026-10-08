@@ -67,6 +67,7 @@ test('AC1 - lists upcoming pending requests with event, venue, quantity, and tec
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.requests, [eventRequest]);
   assert.match(listSql, /proposed_date\s*>=\s*CURRENT_DATE/i);
+  assert.match(listSql, /proposed_end_time\s*>\s*LOCALTIME/i);
   assert.match(listSql, /is_draft\s*=\s*false/i);
   assert.match(listSql, /equipment_requirements_version/i);
   for (const field of ['equipment_items', 'equipment_notes', 'technical_support_required',
@@ -102,6 +103,7 @@ for (const scenario of [
     assert.equal(result.body.review.outcome, scenario.outcome);
     assert.equal(result.body.review.reviewed_at, '2030-01-01T10:00:00.000Z');
     assert.match(write.sql, /INSERT INTO event_equipment_reviews/i);
+    assert.match(write.sql, /proposed_end_time\s*>\s*LOCALTIME/i);
     assert.match(write.sql, /reviewed_by/i);
     assert.match(write.sql, /reviewed_at/i);
     assert.match(write.sql, /ON CONFLICT \(event_id, request_version\) DO NOTHING/i);
@@ -204,4 +206,3 @@ test('AC5 - denies a coordinator access to all Technical Support equipment route
   assert.equal(reservations.status, 403);
   assert.equal(query.mock.callCount(), 4);
 });
-

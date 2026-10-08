@@ -1,7 +1,9 @@
 // File: Tests the fixed equipment catalogue, filters, and search-triggered availability calendar.
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, expect, it } from 'vitest';
 import EquipmentInventorySection from '../../frontend/src/pages/tech-support/EquipmentInventorySection';
+
+afterEach(cleanup);
 
 const inventory = [
   {
@@ -66,4 +68,31 @@ it('AC3 - applies available date, from, and to filters and rejects a reversed ti
   fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
   expect(screen.getByRole('alert').textContent).toContain('must be later');
   expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
+});
+
+// AC3 - Time-only filters work without a date and the clear action restores the complete fixed catalogue.
+it('AC3 - filters by either time boundary and clears all inventory filters', () => {
+  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '09:00' } });
+  expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
+  expect(screen.getByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeTruthy();
+
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '17:30' } });
+  expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
+  expect(screen.getByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeTruthy();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  expect(screen.getByRole('table', { name: 'Equipment catalogue' })).toBeTruthy();
+  expect(screen.getAllByRole('row')).toHaveLength(3);
+});
+
+// AC1 - Missing catalogue data and API failures render distinct, explicit states.
+it('AC1 - distinguishes an empty catalogue from a failed inventory request', () => {
+  const { rerender } = render(<EquipmentInventorySection inventory={[]} error="" />);
+  expect(screen.getByText('No equipment catalogue is available.')).toBeTruthy();
+
+  rerender(<EquipmentInventorySection inventory={[]} error="Catalogue unavailable." />);
+  expect(screen.getByRole('alert').textContent).toBe('Catalogue unavailable.');
+  expect(screen.queryByText('No equipment catalogue is available.')).toBeNull();
 });

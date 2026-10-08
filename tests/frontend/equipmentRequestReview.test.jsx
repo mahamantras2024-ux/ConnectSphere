@@ -21,7 +21,7 @@ const eventRequest = {
 };
 
 // Opens the protected dashboard and selects the review tab required by these cases.
-async async function openDashboard() {
+async function openDashboard() {
   localStorage.setItem('cs_token', 'support-token');
   render(
     <MemoryRouter initialEntries={['/tech-support/dashboard']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -204,3 +204,36 @@ it('AC2 AC4 - disables duplicate review submissions while saving', async () => {
   expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
 });
 
+// AC4 - The review shortcut takes staff directly to the reservation tab after the audit write succeeds.
+it('AC4 - saves the review and opens equipment reservation', async () => {
+  await openDashboard();
+  const card = await screen.findByRole('article', { name: 'Community Workshop' });
+  fireEvent.change(within(card).getByLabelText('Fulfillment decision'), {
+    target: { value: 'fully_fulfillable' },
+  });
+  fireEvent.click(within(card).getByRole('button', { name: 'Save review & go to equipment reservation' }));
+
+  expect(await screen.findByRole('heading', { name: 'Equipment availability and reservation' })).toBeTruthy();
+  expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
+    outcome: 'fully_fulfillable',
+    requestVersion: 1,
+  }, 'support-token');
+});
+
+// AC1 - A failing section remains independently visible when each dashboard data request errors.
+it('AC1 - reports inventory and reservation load errors in their respective tabs', async () => {
+  api.get.mockImplementation(async path => {
+    if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/equipment-requests') throw new Error('Request queue unavailable.');
+    if (path === '/events/equipment-inventory') throw new Error('Catalogue unavailable.');
+    if (path === '/events/equipment-reservations') throw new Error('Reservation list unavailable.');
+    throw new Error(`Unexpected API route: ${path}`);
+  });
+  await openDashboard();
+  expect((await screen.findByRole('alert')).textContent).toContain('Request queue unavailable.');
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Equipment info' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Catalogue unavailable.');
+  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Reservation list unavailable.');
+});

@@ -156,7 +156,6 @@ async function listPendingEquipmentRequests() {
     ) venue ON true
     WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
-      AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND (
         jsonb_array_length(e.equipment_items) > 0
@@ -189,6 +188,7 @@ async function createEquipmentReview(eventId, data, reviewerId) {
       FROM events e
       WHERE e.id=$1 AND e.equipment_requirements_version=$5
         AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+        AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND (
           jsonb_array_length(e.equipment_items) > 0
@@ -253,64 +253,6 @@ async function listEquipmentInventory() {
 }
 
 /**
- * Changes stock or availability without reducing stock below any currently overlapping reservations.
- */
-async function updateEquipmentInventory(id, data, staffId) {
-  const client = await databasePool.connect();
-  try {
-    await client.query('BEGIN');
-    const current = (await client.query(
-      'SELECT id FROM equipments WHERE id=$1 FOR UPDATE',
-      [id],
-    )).rows[0];
-    if (!current) {
-      await client.query('ROLLBACK');
-      return null;
-    }
-
-    const maximumReserved = (await client.query(`
-      WITH reservation_changes AS (
-        SELECT r.event_date, r.start_time AS boundary, ri.quantity::bigint AS delta
-        FROM event_equipment_reservations r
-        JOIN event_equipment_reservation_items ri ON ri.reservation_id=r.id
-        WHERE ri.inventory_id=$1 AND r.status='reserved' AND r.event_date >= CURRENT_DATE
-        UNION ALL
-        SELECT r.event_date, r.end_time AS boundary, -ri.quantity::bigint AS delta
-        FROM event_equipment_reservations r
-        JOIN event_equipment_reservation_items ri ON ri.reservation_id=r.id
-        WHERE ri.inventory_id=$1 AND r.status='reserved' AND r.event_date >= CURRENT_DATE
-      ), reservation_levels AS (
-        SELECT sum(delta) OVER (
-          PARTITION BY event_date ORDER BY boundary, delta
-          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS reserved_quantity
-        FROM reservation_changes
-      )
-      SELECT COALESCE(max(reserved_quantity), 0) AS maximum_reserved
-      FROM reservation_levels
-    `, [id])).rows[0].maximum_reserved;
-    if (data.totalQuantity < Number(maximumReserved)) {
-      await client.query('ROLLBACK');
-      return { conflict: 'The stock count cannot be lower than equipment already reserved for an overlapping event.' };
-    }
-
-    const updated = (await client.query(`
-      UPDATE equipments
-      SET total_quantity=$2, is_active=$3, updated_by=$4, updated_at=now()
-      WHERE id=$1
-      RETURNING id, name, total_quantity, is_active, created_by, created_at, updated_by, updated_at
-    `, [id, data.totalQuantity, data.isActive, staffId])).rows[0];
-    await client.query('COMMIT');
-    return updated;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
  * Lists reviewed requests with equipment that still needs to be reserved.
  */
 async function listEquipmentReservationCandidates() {
@@ -331,6 +273,7 @@ async function listEquipmentReservationCandidates() {
       LIMIT 1
     ) venue ON true
     WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+      AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
       AND jsonb_array_length(e.equipment_items) > 0

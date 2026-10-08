@@ -270,6 +270,7 @@ it.each([
   user={...user,role,roles:[role]};open(path);
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   if (role === 'technical_support') {
+    fireEvent.click(screen.getByRole('tab',{name:'Equipment request review'}));
     expect(screen.getByRole('heading',{name:'Pending equipment requests'})).toBeTruthy();
     expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
     expect(screen.queryByText('chris@example.test')).toBeNull();
@@ -289,6 +290,7 @@ it.each([
 // Test case: The Technical Support queue loads even when optional profile fields are absent.
 it('Internal AC1 AC5 - Technical Support queue loads without optional profile fields',async()=>{
   user={id:8,role:'technical_support'};open('/tech-support/dashboard');
+  fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
   expect(await screen.findByText('No pending equipment requests.')).toBeTruthy();
   expect(screen.queryByText('Not recorded')).toBeNull();
   expect(api.get).toHaveBeenCalledWith('/events/equipment-requests','staff-session');
@@ -296,6 +298,7 @@ it('Internal AC1 AC5 - Technical Support queue loads without optional profile fi
 // Test case: Multi-role identity stays on the active Technical Support workspace without venue-only controls.
 it('Internal AC1 AC5 - multi-role Technical Support session does not gain venue controls',async()=>{
   user.roles=['technical_support','venue_staff'];open('/tech-support/dashboard');
+  fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
   await screen.findByRole('heading',{name:'Pending equipment requests'});
   expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Add venue'})).toBeNull();
