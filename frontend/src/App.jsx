@@ -21,6 +21,7 @@ import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import VenueDashboard from './pages/venue/VenueDashboard';
 import MyRegistrations from './pages/registrations/MyRegistrations';
 import StaffWorkspace from './pages/StaffWorkspace';
+import SafetyOfficerDashboard from './pages/safety/SafetyOfficerDashboard';
 import CoordinatorLeadDashboard from './pages/coordinator/CoordinatorLeadDashboard';
 
 // Renders shared navigation and the registered public, role-protected, and fallback routes.
@@ -49,7 +50,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/registrations" element={<ProtectedRoute roles={['attendee']}><MyRegistrations /></ProtectedRoute>} />
           <Route path="/coordinator-lead/dashboard" element={<ProtectedRoute roles={['event_coordinator_lead']}><CoordinatorLeadDashboard /></ProtectedRoute>} />
-          <Route path="/safety/dashboard" element={<ProtectedRoute roles={['safety_officer']}><StaffWorkspace role="safety_officer" /></ProtectedRoute>} />
+          <Route path="/safety/dashboard" element={<ProtectedRoute roles={['safety_officer']}><SafetyOfficerDashboard /></ProtectedRoute>} />
 
           <Route
             path="/dashboard"

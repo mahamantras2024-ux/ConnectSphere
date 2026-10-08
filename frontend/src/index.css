@@ -395,3 +395,13 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .notification-unread { border-color: #c9d79a; background: #fbfdf3; }
 .notification-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .notification-item .button-secondary { justify-self: start; }
+/* Event review decision: readiness checklist. */
+.decision-checklist { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.decision-checklist li { display: grid; grid-template-columns: minmax(150px, auto) auto 1fr; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.decision-checklist .decision-unmet { border-color: #f0c36d; background: #fffaf0; }
+.status-approved { background: #e3efd9; color: #2f5a1f; }
+.status-changes_requested { background: #faeae7; color: #98453b; }
+/* Safety Officer queue. */
+.safety-queue { margin-top: 24px; }
+.safety-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+@media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }

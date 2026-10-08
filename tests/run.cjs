@@ -19,7 +19,9 @@ const stories = {
   // Lead workflow also retains owner/assignment and real-routing regressions.
   'coordinator-lead': ['coordinatorLead','coordinatorLeadPostgres','organiserEvents','login','sharedUiRegressions'],
   // Sprint 2 event workflow:
-  'change-request-review': ['changeRequestReview','changeRequestReview.unit','changeRequestReviewPostgres','organiserEvents','sharedUiRegressions']
+  'change-request-review': ['changeRequestReview','changeRequestReview.unit','changeRequestReviewPostgres','organiserEvents','sharedUiRegressions'],
+  // Approve/reject decisions, Operational Safety Checks and the organiser's outcome notification.
+  'event-decision': ['eventDecision','eventDecisionPolicy.unit','eventDecisionPostgres','organiserEvents','sharedUiRegressions']
 };
 const storyIndex = options.indexOf('story');
 const storyName = storyIndex < 0 ? null : options[storyIndex + 1];
@@ -46,7 +48,7 @@ function run(label, args, directory, env = {}) {
 if (backend) {
   const files = readdirSync(path.join(__dirname, 'backend')).filter(name => name.endsWith('.test.js')).sort()
     .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'databaseAcceptance.test.js'))
-    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js'].includes(name))
+    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js'].includes(name))
     .map(name => path.join(__dirname, 'backend', name));
   const args = ['--test', ...(storyPattern ? [`--test-name-pattern=${storyPattern}`] : []), ...files];
   run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', RUN_LEAD_DB: liveDatabase ? '1' : '0', NODE_ENV: 'test' });

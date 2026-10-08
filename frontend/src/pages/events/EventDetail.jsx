@@ -6,6 +6,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
+import EventDecisionSection from './EventDecisionSection';
 
 const clarificationFieldLabels = {
   name: 'Event name', purpose: 'Purpose', description: 'Description', event_type: 'Event type',
@@ -312,6 +313,7 @@ export default function EventDetail() {
       <EventAttachments value={{...(event.attachments || {}),...fileChanges}} onBusy={delta=>setReadingFiles(current=>current+delta)} onChange={user.role==='event_organiser'?(field,file)=>{setFileChanges(current=>({...current,[field]:file}));setActiveEditField('attachments');}:undefined}/>
       {activeEditField==='attachments'&&<button disabled={readingFiles>0||saving} onClick={()=>{setUpdateError('');setConfirmUpdate(true);}}>Save attachments</button>}
       {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && <section className="card" aria-label="Organiser contact"><h2>Organiser contact</h2><p>{event.organiser_name}</p>{event.organiser_email ? <a href={`mailto:${event.organiser_email}`}>{event.organiser_email}</a> : <p>Email not recorded</p>}</section>}
+      <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="clarifications-heading">
         <div className="section-heading"><h2 id="clarifications-heading">Clarification requests</h2>
           <span className={`status-badge ${event.clarification_outstanding ? 'status-under_review' : 'status-confirmed'}`}>{event.clarification_outstanding ? 'Outstanding' : 'No outstanding clarification'}</span></div>

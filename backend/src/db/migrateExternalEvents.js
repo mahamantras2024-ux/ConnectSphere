@@ -15,9 +15,11 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/004-event-equipment-requirements.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/005-change-request-review.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/005-technical-support-reviews.sql'), 'utf8'));
+    // 006 runs after 005: it widens the notification types that the change-request migration created.
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/006-event-decisions.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/006-equipment-inventory-reservations.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/007-equipment-stock-quantities.sql'), 'utf8'));
-    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, change-request review and notifications, Technical Support reviews and equipment reservations are ready.');
+    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, change-request review and notifications, Technical Support reviews, event decisions, equipment reservations, and equipment stock quantities are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
