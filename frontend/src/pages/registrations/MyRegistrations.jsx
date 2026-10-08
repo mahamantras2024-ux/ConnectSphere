@@ -10,18 +10,12 @@ export default function MyRegistrations({ dashboard = false }) {
   const [selected, setSelected] = useState(null);
   const [registrations, setRegistrations] = useState([]), [error, setError] = useState(''), [loading, setLoading] = useState(true);
   useEffect(() => {
-    // Loads attendee-scoped records and prevents late responses from updating a changed session.
-    let active = true; setLoading(true); setError('');
-    api.get('/registrations/mine', token).then(data => {
-      // Applies the successfully loaded result.
-       if (active) setRegistrations(data.registrations || []); }).catch(err => {
-      // Reports a failed asynchronous operation.
-       if (active) setError(err.message); }).finally(() => {
-      // Clears the pending state when the operation finishes.
-       if (active) setLoading(false); });
-    return () => {
-      // Handles this operation using the surrounding screen or request state.
-       active = false; };
+    // Loads attendee-scoped records. A token change always unmounts this page (logout or role switch), and React 18
+    // ignores updates after unmount, so no stale-response guard is needed.
+    setLoading(true); setError('');
+    api.get('/registrations/mine', token).then(data => setRegistrations(data.registrations || []))
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
   }, [token]);
   return <div className="page"><PageIntro title={dashboard ? 'Attendee Dashboard' : 'My registrations'} eyebrow="Your event journey" description="Keep track of your existing registrations and their status." />
     {loading ? <p role="status" className="loading-state">Loading registrations...</p> : error ? <p role="alert" className="error-message">{error}</p> : !registrations.length ? <section className="empty-state"><span className="empty-symbol" aria-hidden="true">◇</span><h2>No registrations yet</h2><p>You haven't registered for any events yet.</p></section> : <div className="record-grid">{registrations.map(record =>

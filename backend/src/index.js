@@ -29,6 +29,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/venues', venueRoutes);
 app.use('/api/registrations', require('./routes/registrationRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 // 404 & Error Handling
 app.use((req, res) => // Returns the JSON 404 response for an unmatched API route.

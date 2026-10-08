@@ -1,5 +1,6 @@
 // File: Stores organiser event requests and reads event lists/details with owner or coordinator scoping.
 const pool = require('../config/db');
+const { EVENT_FIELDS } = require('../services/eventFields');
 
 // Lists events owned by the supplied organiser, newest first.
 async function listForOrganiser(organiserId) {
@@ -81,19 +82,18 @@ async function create(data) {
   return result.rows[0];
 }
 
+// Builds "column=$n" assignments from the shared allow-list; field names never come from SQL text supplied by clients.
+function assignmentsFor(data, firstIndex = 1) {
+  const fields = Object.keys(data);
+  const values = fields.map((field) => EVENT_FIELDS[field].json ? JSON.stringify(data[field]) : data[field]);
+  const assignments = fields.map((field, index) =>
+    `${EVENT_FIELDS[field].column}=$${index + firstIndex}${EVENT_FIELDS[field].json ? '::jsonb' : ''}`);
+  return { values, assignments };
+}
+
 // Updates a fixed set of event fields; critical changes are blocked once a venue is approved.
 async function updateEditable(id, organiserId, data, hasCriticalChanges) {
-  const columns = {
-    name: 'name', purpose: 'purpose', description: 'description', eventType: 'event_type',
-    proposedDate: 'proposed_date', proposedStartTime: 'proposed_start_time', proposedEndTime: 'proposed_end_time',
-    expectedAttendance: 'expected_attendance', programmeDetails: 'programme_details',
-    roomLayoutPreference: 'room_layout_preference', accessibilityRequirements: 'accessibility_requirements',
-    equipmentNotes: 'equipment_notes', registrationRequired: 'registration_required',
-    registrationCapacity: 'registration_capacity', specialArrangements: 'special_arrangements', attachments: 'attachments'
-  };
-  const fields = Object.keys(data);
-  const values = fields.map((field) => ['accessibilityRequirements','attachments'].includes(field) ? JSON.stringify(data[field]) : data[field]);
-  const assignments = fields.map((field, index) => `${columns[field]}=$${index + 1}${['accessibilityRequirements','attachments'].includes(field) ? '::jsonb' : ''}`);
+  const { values, assignments } = assignmentsFor(data);
   const idIndex = values.length + 1;
   const organiserIndex = values.length + 2;
   const criticalIndex = values.length + 3;
@@ -107,17 +107,61 @@ async function updateEditable(id, organiserId, data, hasCriticalChanges) {
   return result.rows[0] || null;
 }
 
-// Persists a pending critical-change request for an organiser-owned event with an approved venue.
-async function createChangeRequest(id, organiserId, coordinatorId, changes) {
+// Persists a pending critical-change request for an organiser-owned event with an approved venue and, in the
+// same statement, the assigned coordinator's notification, so a request can never exist without its notification.
+// Returns the request plus `coordinator_email` (for the follow-up email only; never sent to the organiser).
+async function createChangeRequest(id, organiserId, coordinatorId, changes, notification) {
   const result = await pool.query(`
-    INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes)
-    SELECT e.id, e.organiser_id, e.coordinator_id, $4::jsonb
-    FROM events e
-    WHERE e.id=$1 AND e.organiser_id=$2 AND e.coordinator_id=$3
-      AND EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id=e.id AND vb.status='approved')
-    RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at`,
-  [id, organiserId, coordinatorId, JSON.stringify(changes)]);
+    WITH cr AS (
+      INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes)
+      SELECT e.id, e.organiser_id, e.coordinator_id, $4::jsonb
+      FROM events e
+      WHERE e.id=$1 AND e.organiser_id=$2 AND e.coordinator_id=$3
+        AND EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id=e.id AND vb.status='approved')
+      RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at
+    ), notified AS (
+      INSERT INTO notifications (user_id, event_id, change_request_id, type, title, message, details)
+      SELECT cr.coordinator_id, cr.event_id, cr.id, 'change_request_submitted', $5, $6, $7::jsonb FROM cr
+    )
+    SELECT cr.*, coordinator.email AS coordinator_email FROM cr JOIN users coordinator ON coordinator.id=cr.coordinator_id`,
+  [id, organiserId, coordinatorId, JSON.stringify(changes), notification.title, notification.message,
+    JSON.stringify(notification.details)]);
   return result.rows[0] || null;
+}
+
+// Applies approved changes to an event inside the caller's transaction and returns the updated row as JSON
+// (dates/times as plain text) so it can be compared and displayed consistently.
+async function applyChanges(db, eventId, changes) {
+  const { values, assignments } = assignmentsFor(changes, 2);
+  const result = await db.query(`UPDATE events SET ${assignments.join(', ')}, updated_at=now()
+    WHERE id=$1 RETURNING to_jsonb(events.*) AS event`, [eventId, ...values]);
+  return result.rows[0].event;
+}
+
+// Reads the event's active and pending venue bookings with each venue's capacity, layouts and buffers.
+// When `withPeriods` is true, every recorded booking/closure at those venues is attached for conflict checks.
+async function loadArrangements(db, eventId, withPeriods) {
+  const bookings = (await db.query(`
+    SELECT vb.id, vb.venue_id, vb.status, vb.start_datetime, vb.end_datetime, vb.hold_expires_at, vb.decision_by,
+      v.name AS venue_name, v.capacity, v.supported_layouts, v.setup_minutes, v.turnaround_minutes
+    FROM venue_bookings vb JOIN venues v ON v.id=vb.venue_id
+    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'approved')
+    ORDER BY vb.id`, [eventId])).rows;
+  if (!withPeriods || !bookings.length) return bookings;
+  const periods = (await db.query(`
+    SELECT id, venue_id, 'booking' AS kind, status, start_datetime, end_datetime, hold_expires_at
+    FROM venue_bookings WHERE venue_id = ANY($1::int[])
+    UNION ALL
+    SELECT id, venue_id, 'unavailability' AS kind, 'unavailable' AS status, start_datetime, end_datetime, NULL::timestamptz
+    FROM venue_unavailability WHERE venue_id = ANY($1::int[])`, [[...new Set(bookings.map((booking) => booking.venue_id))]])).rows;
+  return bookings.map((booking) => ({ ...booking, periods: periods.filter((period) => period.venue_id === booking.venue_id) }));
+}
+
+// Lists ids of every account holding the given role, as primary role or as an extra provisioned role.
+async function userIdsWithRole(db, role) {
+  const result = await db.query(`SELECT id FROM users
+    WHERE role=$1 OR COALESCE(to_jsonb(users)->'roles', '[]'::jsonb) ? $1 ORDER BY id`, [role]);
+  return result.rows.map((row) => row.id);
 }
 
 // Replaces an owned event's equipment requirements only while Technical Support has not confirmed them.
@@ -132,15 +176,24 @@ async function updateEquipment(id, organiserId, data) {
   return result.rows[0] || null;
 }
 
-// Persists a pending equipment change request once arrangements are confirmed, leaving the event untouched.
-async function createEquipmentChangeRequest(id, organiserId, coordinatorId, changes) {
+// Persists a pending equipment change request once arrangements are confirmed, leaving the event untouched, and stores
+// the assigned coordinator's notification in the same statement (as createChangeRequest does for other critical fields).
+// Returns the request plus `coordinator_email` (for the follow-up email only; never sent to the organiser).
+async function createEquipmentChangeRequest(id, organiserId, coordinatorId, changes, notification) {
   const result = await pool.query(`
-    INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes)
-    SELECT e.id, e.organiser_id, e.coordinator_id, $4::jsonb
-    FROM events e
-    WHERE e.id=$1 AND e.organiser_id=$2 AND e.coordinator_id=$3 AND e.equipment_confirmed_at IS NOT NULL
-    RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at`,
-  [id, organiserId, coordinatorId, JSON.stringify(changes)]);
+    WITH cr AS (
+      INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes)
+      SELECT e.id, e.organiser_id, e.coordinator_id, $4::jsonb
+      FROM events e
+      WHERE e.id=$1 AND e.organiser_id=$2 AND e.coordinator_id=$3 AND e.equipment_confirmed_at IS NOT NULL
+      RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at
+    ), notified AS (
+      INSERT INTO notifications (user_id, event_id, change_request_id, type, title, message, details)
+      SELECT cr.coordinator_id, cr.event_id, cr.id, 'change_request_submitted', $5, $6, $7::jsonb FROM cr
+    )
+    SELECT cr.*, coordinator.email AS coordinator_email FROM cr JOIN users coordinator ON coordinator.id=cr.coordinator_id`,
+  [id, organiserId, coordinatorId, JSON.stringify(changes), notification.title, notification.message,
+    JSON.stringify(notification.details)]);
   return result.rows[0] || null;
 }
 
@@ -148,7 +201,8 @@ async function createEquipmentChangeRequest(id, organiserId, coordinatorId, chan
 async function listPendingChangeRequests(coordinatorId) {
   const result = await pool.query(`
     SELECT r.id, r.event_id, e.name AS event_name, r.organiser_id,
-      organiser.full_name AS organiser_name, r.requested_changes, r.status, r.submitted_at
+      organiser.full_name AS organiser_name, r.requested_changes, r.status, r.submitted_at,
+      to_jsonb(e) AS event_record
     FROM event_change_requests r
     JOIN events e ON e.id=r.event_id
     JOIN users organiser ON organiser.id=r.organiser_id
@@ -185,6 +239,9 @@ module.exports = {
   updateEquipment,
   createEquipmentChangeRequest,
   createChangeRequest,
+  applyChanges,
+  loadArrangements,
+  userIdsWithRole,
   listPendingChangeRequests,
   createClarificationRequest,
   respondToClarification,

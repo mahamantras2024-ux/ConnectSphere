@@ -17,14 +17,27 @@ const venue={id:7,name:'Test hall',location:'Existing address',capacity:100,faci
 beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue([venue]);});
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();});
 // Test case: Returns wrapped/sparse venues and settles requests after unmount, checking unavailable labels and ignored late data.
-it('handles object catalogues, missing details and late responses without fictional values',async()=>{
+it('handles object catalogues and missing details without fictional values',async()=>{
  api.get.mockResolvedValue({venues:[{id:7,name:'Sparse venue'}]});render(<VenueList/>);
  await screen.findByText('Sparse venue');expect(screen.getByText('Location not specified')).toBeTruthy();expect(screen.getByText('Hours not specified')).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:/View details/}));expect(screen.getAllByText('Not specified').length).toBeGreaterThan(4);
  fireEvent.click(screen.getByRole('button',{name:'Close dialog'}));expect(screen.queryByRole('dialog')).toBeNull();cleanup();
  api.get.mockResolvedValue({});render(<VenueList/>);await screen.findByText('No venues found. Add a venue to start your catalogue.');cleanup();
- let resolve,reject;api.get.mockImplementation(()=>new Promise((done,bad)=>{resolve=done;reject=bad;}));const view=render(<VenueList/>);view.unmount();await act(async()=>resolve([]));
- const failed=render(<VenueList/>);failed.unmount();await act(async()=>reject(new Error('Late')));
+});
+// Test case: A refresh (browser focus) starts a newer catalogue load while an older one is still pending; the late older answer must not replace newer data.
+it.each([['success'],['failure']])('a late %s from an older catalogue load does not replace a newer refresh',async outcome=>{
+ // Arrange: the first load stays pending; the refresh answers with the current catalogue.
+ let settleOld;
+ api.get.mockImplementationOnce(()=>new Promise((done,bad)=>{settleOld={done,bad};})).mockResolvedValueOnce([{...venue,name:'Current hall'}]);
+ render(<VenueList/>);
+ // Act
+ act(()=>{window.dispatchEvent(new Event('focus'));});
+ expect(await screen.findByText('Current hall')).toBeTruthy();
+ await act(async()=>outcome==='success'?settleOld.done([{...venue,name:'Stale hall'}]):settleOld.bad(new Error('Late failure')));
+ // Assert
+ expect(screen.getByText('Current hall')).toBeTruthy();
+ expect(screen.queryByText('Stale hall')).toBeNull();
+ expect(screen.queryByRole('alert')).toBeNull();
 });
 // Test case: Removes a venue from simulated results and checks focus refresh closes its drawer; fake-time polling also refreshes the catalogue.
 it('[SCRUM-35 AC1; SCRUM-36 AC1] - focus and fallback polling refresh the catalogue and close a removed open record',async()=>{
@@ -88,8 +101,30 @@ it('late map and search responses cannot overwrite a newer selection or a closed
  fireEvent.click(screen.getByRole('button',{name:'Search'}));fireEvent.click(screen.getByRole('button',{name:'Map point'}));
  await act(async()=>pending[0].resolve([]));expect(screen.queryByRole('alert')).toBeNull();
  view.unmount();await act(async()=>pending[1].resolve({location:'Late',mrt:{name:'Late'}}));expect(changed).not.toHaveBeenCalled();
- const failed=render(<LocationPicker value={{location:'Previous'}} onChange={changed}/>);fireEvent.click(screen.getByRole('button',{name:'Search'}));failed.unmount();await act(async()=>pending[2].reject(new Error('Late error')));
- const mapFail=render(<LocationPicker value={{location:'Previous'}} onChange={changed}/>);fireEvent.click(screen.getByRole('button',{name:'Map point'}));mapFail.unmount();await act(async()=>pending[3].reject(new Error('Late error')));
+});
+// Test case: Pressing Enter starts a newer search while an older one is pending; the older search's late failure must not show over the newer results.
+it('a late failure from a superseded address search is not shown',async()=>{
+ const pending=[];api.get.mockImplementation(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
+ render(<LocationPicker value={{location:'Previous'}} onChange={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Search'}));
+ fireEvent.keyDown(screen.getByPlaceholderText('Location / Address *'),{key:'Enter'});
+ expect(pending).toHaveLength(2);
+ await act(async()=>pending[1].resolve([{location:'Current address',latitude:1.3,longitude:103.8}]));
+ await act(async()=>pending[0].reject(new Error('Late error')));
+ expect(screen.queryByRole('alert')).toBeNull();
+ expect(screen.getByRole('button',{name:'Current address'})).toBeTruthy();
+});
+// Test case: A newer map point replaces an older pending one; the older point's late failure must not show an error or change the chosen location.
+it('a late failure from a superseded map point is not shown',async()=>{
+ const pending=[];const changed=vi.fn();api.get.mockImplementation(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
+ render(<LocationPicker value={{location:'Previous'}} onChange={changed}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Map point'}));
+ fireEvent.click(screen.getByRole('button',{name:'Map point'}));
+ await act(async()=>pending[1].resolve({location:'Current point',mrt:{name:'Current MRT'}}));
+ await act(async()=>pending[0].reject(new Error('Late error')));
+ expect(screen.queryByRole('alert')).toBeNull();
+ expect(changed).toHaveBeenCalledTimes(1);
+ expect(changed.mock.calls[0][0].location).toBe('Current point');
 });
 // Test case: Simulates image read failure/replacement and checks the error, reader cancellation and new preview.
 it('[SCRUM-35 AC1] - image read failures show a useful error and a second upload cancels the first reader',()=>{

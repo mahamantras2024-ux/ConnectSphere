@@ -1,6 +1,6 @@
 // File: Tests organiser navigation, event display/creation, ownership errors, and external sign-in destinations.
 // Test scope: Uses real components/utilities with controlled API/provider responses where configured; live service delivery is outside this scope.
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -399,17 +399,21 @@ it.each([new Error('Offline'),{}])('Clarification AC4 - failed replies report an
 // AC3: inherited critical-change inbox shows heterogeneous requested fields with honest missing-value labels.
 it('Event AC3 - coordinator inbox renders pending changes and missing event summaries',async()=>{
   user={...user,role:'event_coordinator'};
-  api.get.mockImplementation(async path=>path==='/auth/me'?{user}:path==='/events'?{events:[{id:101,name:null,purpose:null,status:null,clarification_outstanding:true}]}:path==='/events/change-requests'?{changeRequests:[{id:501,event_id:101,event_name:'Workshop',organiser_name:'Alice',requested_changes:{accessibilityRequirements:['Ramp'],registrationRequired:false,other:null,expectedAttendance:5}}, {id:502,event_id:101,event_name:'Another',requested_changes:{registrationRequired:true}},{id:503,event_id:101,event_name:'Third',requested_changes:null}]}:[]);
+  api.get.mockImplementation(async path=>path==='/auth/me'?{user}:path==='/events'?{events:[{id:101,name:null,purpose:null,status:null,clarification_outstanding:true}]}:path==='/events/change-requests'?{changeRequests:[
+    // The review API describes each change (current vs requested); an empty change list is valid too.
+    {id:501,event_id:101,event_name:'Workshop',organiser_name:'Alice',requested_changes:{},arrangements:[],changes:[{field:'accessibilityRequirements',label:'Accessibility needs',current:[],requested:['Ramp']},{field:'registrationRequired',label:'Registration required',current:true,requested:false},{field:'other',label:'other',current:null,requested:5}]},
+    {id:502,event_id:101,event_name:'Another',requested_changes:{},arrangements:[],changes:[{field:'registrationRequired',label:'Registration required',current:false,requested:true}]},
+    {id:503,event_id:101,event_name:'Third',requested_changes:{},arrangements:[],changes:[]}]}:path==='/notifications'?{notifications:[],unreadCount:0}:[]);
   open('/coordinator/dashboard');await screen.findByText('Ramp');
-  expect(screen.getByText('No')).toBeTruthy();expect(screen.getByText('Yes')).toBeTruthy();
-  expect(screen.getByText('Not specified')).toBeTruthy();expect(screen.getByText('Untitled Event')).toBeTruthy();
+  expect(screen.getAllByText('No')).toHaveLength(2);expect(screen.getAllByText('Yes')).toHaveLength(2);
+  expect(screen.getByText('Not specified')).toBeTruthy();expect(screen.getByText('None')).toBeTruthy();expect(screen.getByText('Untitled Event')).toBeTruthy();
   expect(screen.getByText('Clarification outstanding')).toBeTruthy();
 });
 
 // AC3: a failed inbox load is an error, not a claim that no coordinator work is pending.
 it.each([new Error('Offline'),{}])('Event AC3 - coordinator inbox reports retrieval failure %j',async failure=>{
   user={...user,role:'event_coordinator'};
-  api.get.mockImplementation(async path=>{if(path==='/auth/me')return {user};if(path==='/events')return {events:[]};if(path==='/events/change-requests')throw failure;return [];});
+  api.get.mockImplementation(async path=>{if(path==='/auth/me')return {user};if(path==='/events')return {events:[]};if(path==='/events/change-requests')throw failure;return {notifications:[],unreadCount:0};});
   open('/coordinator/dashboard');expect((await screen.findByRole('alert')).textContent).toBe(failure.message||'Unable to load change requests.');
 });
 

@@ -16,6 +16,31 @@ const clarificationFieldLabels = {
   registration_capacity: 'Registration capacity', special_arrangements: 'Special arrangements',
 };
 
+/**
+ * Converts a stored event (snake_case API fields) into editor values keyed by edit field.
+ * Missing values become empty inputs (or an unticked box) so editors never show "null"; zero stays zero.
+ * Used when the event loads, after a save, and to restore a field when an edit is cancelled.
+ */
+function toEditValues(event) {
+  return {
+    name: event.name || '',
+    purpose: event.purpose || '',
+    description: event.description || '',
+    eventType: event.event_type || '',
+    proposedDate: event.proposed_date?.slice(0, 10) || '',
+    proposedStartTime: event.proposed_start_time?.slice(0, 5) || '',
+    proposedEndTime: event.proposed_end_time?.slice(0, 5) || '',
+    expectedAttendance: event.expected_attendance ?? '',
+    programmeDetails: event.programme_details || '',
+    roomLayoutPreference: event.room_layout_preference || '',
+    equipmentNotes: event.equipment_notes || '',
+    accessibilityText: (event.accessibility_requirements || []).join('\n'),
+    specialArrangements: event.special_arrangements || '',
+    registrationRequired: event.registration_required ?? false,
+    registrationCapacity: event.registration_capacity ?? '',
+  };
+}
+
 // Loads an accessible event and renders persisted fields with safe missing-value formatting.
 export default function EventDetail() {
   const { id } = useParams();
@@ -54,23 +79,7 @@ export default function EventDetail() {
 
         if (isMounted) {
           setEvent(data.event);
-          if (data.event) setEditValues({
-            name: data.event.name || '',
-            purpose: data.event.purpose || '',
-            description: data.event.description || '',
-            eventType: data.event.event_type || '',
-            proposedDate: data.event.proposed_date?.slice(0, 10) || '',
-            proposedStartTime: data.event.proposed_start_time?.slice(0, 5) || '',
-            proposedEndTime: data.event.proposed_end_time?.slice(0, 5) || '',
-            expectedAttendance: data.event.expected_attendance ?? '',
-            programmeDetails: data.event.programme_details || '',
-            roomLayoutPreference: data.event.room_layout_preference || '',
-            equipmentNotes: data.event.equipment_notes || '',
-            accessibilityText: (data.event.accessibility_requirements || []).join('\n'),
-            specialArrangements: data.event.special_arrangements || '',
-            registrationRequired: data.event.registration_required ?? false,
-            registrationCapacity: data.event.registration_capacity ?? '',
-          });
+          if (data.event) setEditValues(toEditValues(data.event));
         }
       } catch (err) {
         if (isMounted) {
@@ -145,25 +154,12 @@ export default function EventDetail() {
       const payload = activeEditField==='attachments'?{attachments:fileChanges}:{ [apiField]: value };
       const data = await api.put(`/events/${id}/non-critical`, payload, token);
       if (!data.changeRequest) {
-        setEvent((current) => ({ ...current, ...data.event }));
-        setEditValues((current) => ({
-          ...current,
-          ...data.event,
-          eventType: data.event.event_type ?? '',
-          proposedDate: data.event.proposed_date?.slice(0, 10) || '',
-          proposedStartTime: data.event.proposed_start_time?.slice(0, 5) || '',
-          proposedEndTime: data.event.proposed_end_time?.slice(0, 5) || '',
-          accessibilityText: (data.event.accessibility_requirements || []).join('\n'),
-          registrationRequired: data.event.registration_required ?? false,
-          registrationCapacity: data.event.registration_capacity ?? '',
-          expectedAttendance: data.event.expected_attendance ?? '',
-          programmeDetails: data.event.programme_details || '',
-          roomLayoutPreference: data.event.room_layout_preference || '',
-          equipmentNotes: data.event.equipment_notes || '',
-          specialArrangements: data.event.special_arrangements || '',
-        }));
+        const saved = { ...event, ...data.event };
+        setEvent(saved);
+        setEditValues(toEditValues(saved));
       } else {
-        setEditValues((current) => ({ ...current, [activeEditField]: currentEditValue(activeEditField) }));
+        // A change request leaves the confirmed value in effect, so the editor returns to it.
+        resetEditValue(activeEditField);
       }
       setUpdateSuccess(data.message || 'Non-critical event information saved.');
       setFileChanges({});
@@ -207,16 +203,9 @@ export default function EventDetail() {
     'expectedAttendance', 'roomLayoutPreference', 'registrationRequired', 'registrationCapacity']);
   const editingAllowed = () => user.role === 'event_organiser';
 
-  function currentEditValue(field) {
-    const sourceField = { eventType: 'event_type', proposedDate: 'proposed_date', proposedStartTime: 'proposed_start_time',
-      proposedEndTime: 'proposed_end_time', accessibilityText: 'accessibility_requirements', programmeDetails: 'programme_details',
-      roomLayoutPreference: 'room_layout_preference', equipmentNotes: 'equipment_notes', specialArrangements: 'special_arrangements',
-      expectedAttendance: 'expected_attendance', registrationRequired: 'registration_required', registrationCapacity: 'registration_capacity' }[field] || field;
-    const source = event[sourceField];
-    if (field === 'accessibilityText') return (source || []).join('\n');
-    if (field === 'proposedDate') return source?.slice(0, 10) || '';
-    if (field === 'proposedStartTime' || field === 'proposedEndTime') return source?.slice(0, 5) || '';
-    return source ?? (field === 'registrationRequired' ? false : '');
+  // Restores one editor to the event's stored value (used on Cancel and after a change request).
+  function resetEditValue(field) {
+    setEditValues((current) => ({ ...current, [field]: toEditValues(event)[field] }));
   }
 
   function renderEditableField(field, label, value, critical = false, displayValue = value) {
@@ -247,7 +236,7 @@ export default function EventDetail() {
         <button type="submit" disabled={saving} className="button-primary">{saving ? 'Saving…'
           : event.venue_confirmed && criticalFields.has(field) ? 'Submit change request' : 'Save changes'}</button>
         <button type="button" disabled={saving} className="button-secondary" onClick={() => {
-          setEditValues((current) => ({ ...current, [field]: currentEditValue(field) }));
+          resetEditValue(field);
           setActiveEditField('');
         }}>Cancel</button>
       </div>
@@ -328,7 +317,7 @@ export default function EventDetail() {
           <span className={`status-badge ${event.clarification_outstanding ? 'status-under_review' : 'status-confirmed'}`}>{event.clarification_outstanding ? 'Outstanding' : 'No outstanding clarification'}</span></div>
         {(event.clarification_requests || []).length === 0 ? <p className="text-slate-600">No clarification requests have been sent for this event.</p>
           : <ol className="grid gap-4">{event.clarification_requests.map((request) => <li key={request.id} className="change-request-card">
-            <div><strong>Information needed:</strong> {request.information_needed.map((field) => clarificationFieldLabels[field] || field).join(', ')}</div>
+            <div><strong>Information needed:</strong> {request.information_needed.map((field) => clarificationFieldLabels[field]).join(', ')}</div>
             <p className="whitespace-pre-wrap">{request.message}</p>
             <p className="text-sm text-slate-600">{request.status === 'pending' ? 'Awaiting organiser response' : 'Organiser responded'}</p>
             {request.organiser_response && <div className="rounded-lg bg-slate-50 p-3"><strong>Organiser response or amendment</strong><p className="mt-1 whitespace-pre-wrap">{request.organiser_response}</p></div>}

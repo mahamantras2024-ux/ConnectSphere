@@ -1,7 +1,7 @@
 // File: Shared UI access, navigation, account, drawer and failure-state regression checks.
 // Test scope: Real routing and components; only API responses are controlled. Each describe owns its setup.
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
-import {MemoryRouter,Route,Routes} from 'react-router-dom';
+import {MemoryRouter,Route,Routes,useNavigate} from 'react-router-dom';
 import {describe,afterEach,beforeEach,expect,it,vi} from 'vitest';
 import App from '../../frontend/src/App';
 import {AuthProvider,useAuth} from '../../frontend/src/context/AuthContext';
@@ -9,6 +9,7 @@ import {api} from '../../frontend/src/api/client';
 import Modal from '../../frontend/src/components/Modal';
 import Dashboard from '../../frontend/src/pages/Dashboard';
 import EventDetail from '../../frontend/src/pages/events/EventDetail';
+import ProtectedRoute from '../../frontend/src/components/ProtectedRoute';
 import EventList from '../../frontend/src/pages/events/EventList';
 import MyRegistrations from '../../frontend/src/pages/registrations/MyRegistrations';
 vi.mock('../../frontend/src/api/client',()=>({api:{get:vi.fn(),post:vi.fn()}}));
@@ -152,13 +153,11 @@ it.each(['event_coordinator','event_organiser'])('lists %s events with honest mi
   expect(await screen.findByText('Untitled Event')).toBeTruthy();expect(screen.getByText('No purpose provided')).toBeTruthy();expect(screen.getByText('Draft')).toBeTruthy();
 });
 // Test case: Returns absent/error/late event summaries and checks distinct feedback without reopening an unmounted screen.
-it('Workflow AC1 - empty, absent and failed event summaries are distinct and late requests cannot change a closed screen', async () => {
+it('Workflow AC1 - empty, absent and failed event summaries are distinct', async () => {
   api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{});open(<App/>,'/organizer/events');
   expect(await screen.findByText('No draft requests.')).toBeTruthy();cleanup();
   api.get.mockImplementation(async path=>{if(path==='/auth/me')return {user};throw new Error('Database offline');});open(<App/>,'/organizer/events');
-  expect((await screen.findByRole('alert')).textContent).toBe('Database offline');cleanup();
-  let finish;api.get.mockImplementation(path=>path==='/auth/me'?Promise.resolve({user}):new Promise(resolve=>{finish=resolve;}));
-  const view=open(<App/>,'/organizer/events');await screen.findByText('Loading events...');view.unmount();await act(async()=>finish({events:[]}));
+  expect((await screen.findByRole('alert')).textContent).toBe('Database offline');
 });
 // Test case: Returns a null event then a message-free failure and checks unavailable-record versus fallback-error feedback.
 it('absent events and retrieval errors have clear independent states', async () => {
@@ -173,25 +172,31 @@ it.each(['invalid','2030-02-30','2030-99-01'])('invalid calendar date %s is disp
   open(<App/>,'/organizer/events/7');await screen.findByText('Incomplete event');
   expect(screen.getByText('Ramp')).toBeTruthy();expect(screen.getByText('No')).toBeTruthy();expect(screen.getAllByText('Not specified').length).toBeGreaterThan(5);
 });
-// Test case: Unmounts pending event details and checks late success/failure cannot reopen private content.
-it('late event details and errors after unmount do not restore a closed record', async () => {
-  for (const fail of [false,true]) {
-    let resolve,reject;api.get.mockImplementation(path=>path==='/auth/me'?Promise.resolve({user}):new Promise((done,bad)=>{resolve=done;reject=bad;}));
-    const view=open(<App/>,'/organizer/events/7');await screen.findByText('Loading event details...');view.unmount();
-    await act(async()=>fail?reject(new Error('Late error')):resolve({event:{name:'Late private record'}}));expect(screen.queryByText('Late private record')).toBeNull();
-  }
+// Test case: Switches from record 7 to record 8 while 7 is still loading; a late answer for 7 (success or failure) must not replace record 8.
+it.each([['success'],['failure']])('a late %s for a previously opened record does not replace the record now shown', async outcome => {
+  // Arrange: record 7 stays pending; record 8 answers immediately. The detail view stays mounted across the switch.
+  let navigate,settle7;
+  function Navigator(){navigate=useNavigate();return null;}
+  api.get.mockImplementation(path=>path==='/auth/me'?Promise.resolve({user})
+    :path==='/events/7'?new Promise((done,bad)=>{settle7={done,bad};}):Promise.resolve({event:{id:8,name:'Current record'}}));
+  localStorage.setItem('cs_token','test-session');
+  // Wrapped in ProtectedRoute exactly as App does, so the page renders only once the session is restored.
+  render(<MemoryRouter initialEntries={['/records/7']}><AuthProvider><Routes><Route path="/records/:id" element={<ProtectedRoute roles={[user.role]}><EventDetail/></ProtectedRoute>}/></Routes><Navigator/></AuthProvider></MemoryRouter>);
+  await screen.findByText('Loading event details...');
+  // Act
+  act(()=>navigate('/records/8'));
+  expect(await screen.findByRole('heading',{name:'Current record'})).toBeTruthy();
+  await act(async()=>outcome==='success'?settle7.done({event:{id:7,name:'Stale record'}}):settle7.bad(new Error('Late error')));
+  // Assert: record 8 is still shown, with no stale content or error.
+  expect(screen.getByRole('heading',{name:'Current record'})).toBeTruthy();
+  expect(screen.queryByText('Stale record')).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
 });
 // Test case: Returns absent/sparse registrations and checks empty-state and missing event/date labels.
 it('registration summaries support absent results and absent event metadata', async()=>{
   user={...user,role:'attendee'};api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{});open(<App/>,'/registrations');await screen.findByText('No registrations yet');cleanup();
   api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{registrations:[{id:1,event_id:17,status:'registered'}]});open(<App/>,'/registrations');
   expect(await screen.findByRole('heading',{name:'Event #17'})).toBeTruthy();expect(screen.getByText('Date not specified')).toBeTruthy();
-});
-// Test case: Unmounts pending registration requests and checks late success/failure does not restore the screen.
-it('late registration responses and errors are ignored after the screen is closed',async()=>{
-  user={...user,role:'attendee'};
-  for(const fail of [false,true]) {let resolve,reject;api.get.mockImplementation(path=>path==='/auth/me'?Promise.resolve({user}):new Promise((done,bad)=>{resolve=done;reject=bad;}));
-    const view=open(<App/>,'/registrations');await screen.findByText('Loading registrations...');view.unmount();await act(async()=>fail?reject(new Error('Late')):resolve({registrations:[]}));}
 });
 // Test case: Presses Tab/Shift+Tab/Escape and checks dialog focus wrapping, closure and restored page scrolling.
 it('dialog Tab and Shift+Tab wrap focus and closing restores scrolling',()=>{
@@ -214,11 +219,21 @@ it('login without audience and a superseded sign-in cannot restore the session',
   await act(async()=>{finish({token:'late',user});await expect(pending).rejects.toThrow('no longer active');});
   expect(localStorage.getItem('cs_token')).toBeNull();expect(api.post.mock.calls[0][1]).toEqual({email:'a@example.test',password:'password123'});
 });
-// Test case: Starts restoration then logs out before rejection and checks storage remains signed out.
+// Test case: An old stored session is still being checked when the user logs out and signs in again; the old check failing late must not sign out the new session.
 it('late rejected session restoration cannot clear a newer session',async()=>{
-  let auth,reject;function Probe(){auth=useAuth();return <span>{auth.user?.role||'Signed out'}</span>;}
-  localStorage.setItem('cs_token','old');api.get.mockImplementation(()=>new Promise((_,bad)=>{reject=bad;}));render(<AuthProvider><Probe/></AuthProvider>);
-  act(()=>auth.logout());await act(async()=>reject(new Error('Old session')));expect(localStorage.getItem('cs_token')).toBeNull();
+  // Arrange: restoring token "old" stays pending; the fresh sign-in returns token "new", which restores normally.
+  let auth,rejectOld;function Probe(){auth=useAuth();return <span>{auth.user?.role||'Signed out'}</span>;}
+  localStorage.setItem('cs_token','old');
+  api.get.mockImplementation((path,token)=>token==='old'?new Promise((_,bad)=>{rejectOld=bad;}):Promise.resolve({user}));
+  api.post.mockResolvedValue({token:'new',user});
+  render(<AuthProvider><Probe/></AuthProvider>);
+  // Act
+  act(()=>auth.logout());
+  await act(async()=>{await auth.login('a@example.test','password123');});
+  await act(async()=>rejectOld(new Error('Old session')));
+  // Assert: the new session is kept in storage and in state.
+  expect(localStorage.getItem('cs_token')).toBe('new');
+  expect(screen.getByText(user.role)).toBeTruthy();
 });
 // Test case: Logs out from an internal/legacy workspace and checks staff sign-in, readable role labels and token removal.
 it('internal logout returns to staff sign-in and unknown role labels remain readable',async()=>{
@@ -270,7 +285,9 @@ it.each([
     expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
-  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments'] : ['/auth/me']);
+  // No event or client data is requested; each staff workspace loads only its own queue or notifications.
+  expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
+    : role === 'technical_support' ? ['/auth/me','/notifications'] : ['/auth/me']);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
 });
 // Test case: Returns missing profile fields and checks unavailable labels without invented personal data.
@@ -356,12 +373,14 @@ it('AC3 - assigned Event Coordinator sees pending critical change details and th
   user = { id: 30, role: 'event_coordinator', full_name: 'Casey Coordinator' };
   api.get.mockImplementation(async path => path === '/auth/me' ? { user }
     : path === '/events' ? { events: [event] }
-      : path === '/events/change-requests' ? { changeRequests: [{ id: 501, event_id: 19, event_name: event.name, organiser_name: 'Avery', requested_changes: { expectedAttendance: 55 }, status: 'pending' }] }
+      : path === '/events/change-requests' ? { changeRequests: [{ id: 501, event_id: 19, event_name: event.name, organiser_name: 'Avery', requested_changes: { expectedAttendance: 55 }, status: 'pending',
+        changes: [{ field: 'expectedAttendance', label: 'Expected attendance', current: 40, requested: 55 }], arrangements: [] }] }
         : { event });
   open('/coordinator/dashboard');
   expect(await screen.findByRole('heading', { name: 'Critical change requests' })).toBeTruthy();
-  expect(await screen.findByText('Expected attendance:')).toBeTruthy();
-  expect(screen.getByText('55')).toBeTruthy();
+  // The change is shown as a Current vs Requested row (Change Request Review AC1).
+  const row = (await screen.findByRole('rowheader', { name: 'Expected attendance' })).closest('tr');
+  expect(within(row).getAllByRole('cell').map(cell => cell.textContent)).toEqual(['40', '55']);
   expect(screen.getByText('Pending review')).toBeTruthy();
   expect(screen.getByRole('link', { name: 'View confirmed event' }).getAttribute('href')).toBe('/events/19');
   expect(screen.getByRole('heading', { name: event.name })).toBeTruthy();

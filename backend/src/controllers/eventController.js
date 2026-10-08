@@ -3,6 +3,10 @@ const { validateAttachments, mergeAttachments } = require('../services/eventAtta
 // File: Validates and stores organiser event requests and re-exports completed role-scoped reads.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
+const db = require('../config/db');
+const notificationService = require('../services/notificationService');
+const { decideChangeRequest } = require('../services/changeRequestDecisions');
+const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements, changeLines } = require('../services/changeRequestReview');
 const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
 // Reuses the completed owner/assignment-scoped event read handlers.
 const { getEvent, listEvents } = require('./eventReadController');
@@ -94,10 +98,20 @@ const updateEventInformation = asyncHandler(async (req, res) => {
     if (!current.coordinator_id) {
       return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a critical change request.' });
     }
-    const changeRequest = await eventModel.createChangeRequest(id, req.user.id, current.coordinator_id, data);
-    if (!changeRequest) {
+    // The coordinator's notification lists each requested field against its current confirmed value (AC1/AC2).
+    const changes = describeChanges(current, data);
+    const notification = {
+      title: `New change request: ${current.name}`,
+      message: `The Event Organiser requested changes to ${current.name}.\n${changeLines(changes).join('\n')}`,
+      details: { changes },
+    };
+    const created = await eventModel.createChangeRequest(id, req.user.id, current.coordinator_id, data, notification);
+    if (!created) {
       return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The confirmed arrangements changed. Refresh the event and submit your change request again.' });
     }
+    // The coordinator's address is only used for delivery and is never returned to the organiser.
+    const { coordinator_email: coordinatorEmail, ...changeRequest } = created;
+    await notificationService.emailNotifications([{ email: coordinatorEmail, ...notification }]);
     return res.status(202).json({
       changeRequest,
       message: 'Change request submitted. The confirmed event information remains in effect, and the Event Coordinator has been notified.',
@@ -130,10 +144,19 @@ const updateEquipmentRequirements = asyncHandler(async (req, res) => {
   if (!current.coordinator_id) {
     return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a change request.' });
   }
-  const changeRequest = await eventModel.createEquipmentChangeRequest(id, req.user.id, current.coordinator_id, equipment.data);
-  if (!changeRequest) {
+  // Like other critical changes, the coordinator is notified of each changed equipment field (current vs requested).
+  const changes = describeChanges(current, equipment.data);
+  const notification = {
+    title: `New change request: ${current.name}`,
+    message: `The Event Organiser requested equipment changes to ${current.name}.\n${changeLines(changes).join('\n')}`,
+    details: { changes },
+  };
+  const created = await eventModel.createEquipmentChangeRequest(id, req.user.id, current.coordinator_id, equipment.data, notification);
+  if (!created) {
     return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The event arrangements changed. Refresh the event and try again.' });
   }
+  const { coordinator_email: coordinatorEmail, ...changeRequest } = created;
+  await notificationService.emailNotifications([{ email: coordinatorEmail, ...notification }]);
   return res.status(202).json({
     changeRequest,
     message: 'Change request submitted. The confirmed equipment arrangements remain in effect, and the Event Coordinator has been notified.',
@@ -141,9 +164,45 @@ const updateEquipmentRequirements = asyncHandler(async (req, res) => {
 });
 
 // GET /api/events/change-requests returns pending notifications scoped to the assigned coordinator.
+// Each request carries `changes` (current vs requested, AC1) and `arrangements`: bookings the change would affect if
+// approved, so the coordinator can weigh the impact on existing arrangements before deciding.
 const listChangeRequests = asyncHandler(async (req, res) => {
-  const changeRequests = await eventModel.listPendingChangeRequests(req.user.id);
+  const pending = await eventModel.listPendingChangeRequests(req.user.id);
+  const now = Date.now();
+  const changeRequests = await Promise.all(pending.map(async ({ event_record: eventRecord, ...request }) => {
+    const changes = describeChanges(eventRecord, request.requested_changes);
+    const changedFields = changes.map((change) => change.field);
+    const bookings = await eventModel.loadArrangements(db, request.event_id, changedFields.some((field) => TIME_FIELDS.includes(field)));
+    const arrangements = assessArrangements(applyToEvent(eventRecord, request.requested_changes), changedFields, bookings, now);
+    return { ...request, changes, arrangements };
+  }));
   return res.json({ changeRequests });
+});
+
+// POST /api/events/change-requests/:id/decision lets the assigned coordinator approve (apply) or reject a request (AC3).
+const decideChangeRequestHandler = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) return res.status(400).json({ message: 'Choose a valid change request.' });
+  const { decision, reason } = req.body;
+  if (!['approved', 'rejected'].includes(decision)) {
+    return res.status(400).json({ message: 'Choose to approve or reject the change request.' });
+  }
+  if (reason != null && (typeof reason !== 'string' || reason.length > 4000)) {
+    return res.status(400).json({ message: 'The reason must be text of at most 4000 characters.' });
+  }
+  try {
+    const result = await decideChangeRequest(Number(id), req.user.id, decision, reason?.trim() || null);
+    return res.json({
+      ...result,
+      message: decision === 'approved'
+        ? 'Change approved and applied. Relevant staff have been notified.'
+        : 'Change request rejected. The organiser has been notified.',
+    });
+  } catch (error) {
+    // Expected review outcomes (not found, already decided, unsupported) carry a status; anything else is a server error.
+    if (!error.status) throw error;
+    return res.status(error.status).json({ message: error.message, ...(error.code ? { code: error.code } : {}) });
+  }
 });
 
 const clarificationFields = new Set(['name', 'purpose', 'description', 'event_type', 'proposed_date',
@@ -259,4 +318,4 @@ const createEvent = asyncHandler(async (req, res) => {
   return res.status(201).json({ event, message: data.isDraft ? 'Draft saved.' : 'Event request submitted.' });
 });
 
-module.exports = { createEvent, updateEventInformation, updateEquipmentRequirements, listChangeRequests, createClarificationRequest, respondToClarification, listEvents, getEvent };
+module.exports = { createEvent, updateEventInformation, updateEquipmentRequirements, listChangeRequests, decideChangeRequest: decideChangeRequestHandler, createClarificationRequest, respondToClarification, listEvents, getEvent };
