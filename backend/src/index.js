@@ -27,6 +27,8 @@ app.get('/health', (req, res) => // Returns the API health response without quer
 // Feature Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/events', require('./routes/eventDecisionRoutes'));
+app.use('/api/safety', require('./routes/safetyRoutes'));
 app.use('/api/venues', venueRoutes);
 app.use('/api/registrations', require('./routes/registrationRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));

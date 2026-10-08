@@ -287,7 +287,7 @@ it.each([
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   // No event or client data is requested; each staff workspace loads only its own queue or notifications.
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications'] : ['/auth/me']);
+    : role === 'technical_support' ? ['/auth/me','/notifications'] : role === 'safety_officer' ? ['/auth/me','/safety/checks'] : ['/auth/me']);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
 });
 // Test case: Returns missing profile fields and checks unavailable labels without invented personal data.
