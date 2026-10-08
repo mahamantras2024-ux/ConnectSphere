@@ -1,4 +1,4 @@
-// File: Builds password-reset URLs and sends reset messages through encrypted Gmail SMTP.
+// File: Builds password-reset URLs and sends reset and notification messages through encrypted Gmail SMTP.
 const nodemailer = require('nodemailer');
 
 // Validates Gmail app-password settings and builds an encrypted transport using the authenticated sender.

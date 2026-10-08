@@ -260,8 +260,11 @@ test('event models scope coordinator lists and deny unsupported roles before any
 test('startup initializes tables and logs a failed database connection without crashing',async()=>{
  const queries=[];mock.method(console,'log',()=>{});mock.method(console,'error',()=>{});
  mock.method(db.pool,'query',async sql=>{queries.push(sql);return {rows:[]};});await db.connectDB();assert.equal(queries[0],'SELECT NOW()');assert.ok(queries.some(sql=>/CREATE TABLE IF NOT EXISTS users/.test(sql)));assert.ok(queries.some(sql=>/CREATE TABLE IF NOT EXISTS venues/.test(sql)));
- db.pool.emit('connect',{});db.pool.emit('error',new Error('Test idle error'));assert.ok(console.log.mock.callCount()>0);assert.ok(console.error.mock.callCount()>0);
- db.pool.query.mock.restore();mock.method(db.pool,'query',async()=>{throw new Error('Unavailable');});await db.connectDB();assert.ok(console.error.mock.callCount()>1);
+ // Counts are measured from just before each event, because connectDB() has already logged its own success message.
+ const logsBefore=console.log.mock.callCount(),errorsBefore=console.error.mock.callCount();
+ db.pool.emit('connect',{});assert.equal(console.log.mock.callCount(),logsBefore+1);assert.equal(console.log.mock.calls.at(-1).arguments[0],'PostgreSQL database connected via Pool.');
+ db.pool.emit('error',new Error('Test idle error'));assert.equal(console.error.mock.callCount(),errorsBefore+1);assert.match(console.error.mock.calls.at(-1).arguments[0],/Unexpected database error on idle client/);
+ db.pool.query.mock.restore();mock.method(db.pool,'query',async()=>{throw new Error('Unavailable');});await db.connectDB();assert.equal(console.error.mock.callCount(),errorsBefore+2);
 });
 // Test case: Calls health and unknown endpoints and checks JSON success/not-found responses.
 test('health and missing endpoints have clear JSON responses',async()=>{

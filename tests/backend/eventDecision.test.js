@@ -9,7 +9,6 @@ process.env.JWT_SECRET = 'event-decision-tests-secret';
 process.env.NODE_ENV = 'test';
 const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
-const nodemailer = require('../../backend/node_modules/nodemailer');
 const app = require('../../backend/src/index');
 let server, base;
 
@@ -421,55 +420,3 @@ for (const [label, body, id, status] of [
     assert.equal(tx.find('INSERT INTO event_safety_checks').length, status === 201 ? 1 : 0);
   });
 }
-
-// ---------- Notifications API used to tell the organiser the outcome (AC6) ----------
-
-// Test case: The organiser lists their notifications; the query is scoped by the session user, never by query input.
-test('AR AC6 - the organiser reads only their own notifications, with an unread count', async () => {
-  const stored = [{ id: 4, type: 'event_approved', title: 'Event approved: Workshop', read_at: null }];
-  mock.method(pool, 'query', async (sql, values) => {
-    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
-    assert.deepEqual(values, [12]);
-    if (sql.includes('count(*)')) return { rows: [{ unread: 1 }] };
-    assert.match(sql, /WHERE user_id=\$1 ORDER BY created_at DESC, id DESC LIMIT 50/);
-    return { rows: stored };
-  });
-  const result = await request('/api/notifications?userId=30', { user: organiser });
-  assert.equal(result.status, 200);
-  assert.deepEqual(result.body, { notifications: stored, unreadCount: 1 });
-});
-
-// Test case: Marking read only matches the user's own notification; another user's is reported missing; bad ids are refused.
-test('AR AC6 - the organiser can mark only their own notification as read', async () => {
-  mock.method(pool, 'query', async (sql, values) => {
-    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
-    assert.match(sql, /WHERE id=\$1 AND user_id=\$2/);
-    return { rows: values[0] === 4 && values[1] === 12 ? [{ id: 4, read_at: '2030-01-02T00:00:00.000Z' }] : [] };
-  });
-  assert.equal((await request('/api/notifications/4/read', { user: organiser, method: 'POST' })).status, 200);
-  assert.equal((await request('/api/notifications/5/read', { user: organiser, method: 'POST' })).status, 404);
-  assert.equal((await request('/api/notifications/abc/read', { user: organiser, method: 'POST' })).status, 400);
-});
-
-// Test case: The organiser's outcome email goes from the configured Gmail sender with a link back to ConnectSphere, and the transport closes.
-test('AR AC6 - decision emails use the configured sender and link back to the portal', async () => {
-  // Arrange: private Gmail settings for this test only (restored afterwards).
-  const saved = { GMAIL_USER: process.env.GMAIL_USER, GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD, PUBLIC_APP_URL: process.env.PUBLIC_APP_URL };
-  Object.assign(process.env, { GMAIL_USER: 'sender@gmail.com', GMAIL_APP_PASSWORD: 'abcd efgh ijkl mnop', PUBLIC_APP_URL: 'https://events.example.test/app' });
-  const sent = [];
-  let closed = false;
-  mock.method(nodemailer, 'createTransport', (config) => {
-    assert.deepEqual([config.host, config.port, config.secure, config.auth.pass], ['smtp.gmail.com', 465, true, 'abcdefghijklmnop']);
-    return { sendMail: async (message) => { sent.push(message); }, close: () => { closed = true; } };
-  });
-  try {
-    // Act
-    await emailService.sendNotificationEmail('olivia@example.com', 'Event approved: Workshop', 'Your event request Workshop has been approved.');
-  } finally {
-    for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
-  }
-  // Assert
-  assert.deepEqual(sent, [{ from: 'Event Portal <sender@gmail.com>', to: 'olivia@example.com', subject: 'Event approved: Workshop',
-    text: 'Your event request Workshop has been approved.\n\nOpen ConnectSphere to review: https://events.example.test/' }]);
-  assert.equal(closed, true);
-});

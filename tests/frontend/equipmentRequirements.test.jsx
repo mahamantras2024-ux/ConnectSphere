@@ -293,13 +293,17 @@ it('EQ AC3 - coordinators see requested equipment changes as readable items in t
   api.get.mockImplementation(async (path) => {
     if (path === '/auth/me') return { user };
     if (path === '/events') return { events: [] };
+    if (path === '/notifications') return { notifications: [], unreadCount: 0 };
+    // The review API describes each change; structured equipment values arrive as readable entries.
     return { changeRequests: [{ id: 7, event_id: 101, event_name: 'Community Workshop', organiser_name: 'Alice',
-      requested_changes: { equipmentItems: [{ item: 'Wireless microphone', quantity: 4 }], technicalSupportRequired: false } }] };
+      requested_changes: { equipmentItems: [{ item: 'Wireless microphone', quantity: 4 }], technicalSupportRequired: false },
+      changes: [{ field: 'equipmentItems', label: 'Equipment items', current: ['Wireless microphone × 2'], requested: ['Wireless microphone × 4'] },
+        { field: 'technicalSupportRequired', label: 'Technical support required', current: true, requested: false }], arrangements: [] }] };
   });
   open('/coordinator/dashboard');
-  const item = await screen.findByText('Equipment items:');
-  expect(item.parentElement.textContent).toBe('Equipment items: Wireless microphone × 4');
-  expect(screen.getByText('Technical support required:').parentElement.textContent).toBe('Technical support required: No');
+  const row = async (label) => within((await screen.findByRole('rowheader', { name: label })).closest('tr')).getAllByRole('cell').map((cell) => cell.textContent);
+  expect(await row('Equipment items')).toEqual(['Wireless microphone × 2', 'Wireless microphone × 4']);
+  expect(await row('Technical support required')).toEqual(['Yes', 'No']);
 });
 
 // Merge regression: new technical free-text questions retain the organiser's optional evidence policy.

@@ -355,6 +355,20 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .equipment-editor .equipment-fields legend + .field-help { margin-top: 0; }
 .event-request-form > .equipment-fields .field-help { margin-top: 0; }
 @media (max-width: 640px) { .equipment-row { grid-template-columns: minmax(0, 1fr) 90px; } .equipment-row-head span:last-child { display: none; } .equipment-remove { grid-column: 1 / -1; justify-self: start; padding: 0 0 6px; } }
+/* Change-request review: current vs requested comparison and arrangement warnings. */
+.change-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.change-table caption { text-align: left; font-weight: 600; padding-bottom: 6px; }
+.change-table th, .change-table td { padding: 6px 8px; border-bottom: 1px solid #eee3c4; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.change-table thead th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b6b5a; }
+/* Raised specificity: the generic `.change-request-card > div` row layout would otherwise squeeze the warning onto one line. */
+.change-request-card > .arrangement-warning { display: grid; gap: 6px; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
+/* In-app notifications shown on each role dashboard. */
+.notifications-panel { display: grid; gap: 12px; margin-bottom: 28px; }
+.notification-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.notification-item { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; background: white; }
+.notification-unread { border-color: #c9d79a; background: #fbfdf3; }
+.notification-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.notification-item .button-secondary { justify-self: start; }
 /* Event review decision: readiness checklist. */
 .decision-checklist { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .decision-checklist li { display: grid; grid-template-columns: minmax(150px, auto) auto 1fr; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }

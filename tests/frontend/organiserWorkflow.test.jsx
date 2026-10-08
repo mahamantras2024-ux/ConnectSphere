@@ -126,7 +126,8 @@ it('Workflow AC1 AC3 - submission preserves other drafts and completed history',
 });
 // AC5: a coordinator can read attachment details included in a pending critical change without rendering raw objects.
 it('Workflow AC5 - coordinator inbox renders proposed attachment names',async()=>{
- api.get.mockImplementation(async path=>path==='/auth/me'?{user:{id:4,role:'event_coordinator'}}:path==='/events'?{events:[]}:path==='/events/change-requests'?{changeRequests:[{id:1,event_id:1,event_name:'Workshop',requested_changes:{attachments:{purpose:{name:'plan.pdf',type:'application/pdf',size:5,data:btoa('%PDF-')}}}}]}:{event});
+ api.get.mockImplementation(async path=>path==='/auth/me'?{user:{id:4,role:'event_coordinator'}}:path==='/events'?{events:[]}:path==='/events/change-requests'?{changeRequests:[{id:1,event_id:1,event_name:'Workshop',requested_changes:{attachments:{purpose:{name:'plan.pdf',type:'application/pdf',size:5,data:btoa('%PDF-')}}},
+   arrangements:[],changes:[{field:'attachments',label:'Attachments',current:[],requested:['plan.pdf']}]}]}:path==='/notifications'?{notifications:[],unreadCount:0}:{event});
  open('/coordinator/dashboard');const download=await screen.findByRole('link',{name:'plan.pdf'});expect(download.getAttribute('href')).toBe(`data:application/pdf;base64,${btoa('%PDF-')}`);expect(download.getAttribute('download')).toBe('plan.pdf');
 });
 // AC4: navigating away while nested confirmation is open must not leave the page scroll-locked.

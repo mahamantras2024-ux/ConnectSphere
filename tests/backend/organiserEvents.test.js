@@ -6,6 +6,7 @@ const jwt = require('../../backend/node_modules/jsonwebtoken');
 process.env.JWT_SECRET = 'event-tests-secret';
 process.env.NODE_ENV = 'test';
 const { pool } = require('../../backend/src/config/db');
+const emailService = require('../../backend/src/services/emailService');
 const app = require('../../backend/src/index');
 let server, base;
 const organiser = { id: 12, email: 'alice@example.com', full_name: 'Alice', role: 'event_organiser', auth_version: 0 };
@@ -194,11 +195,13 @@ test('AC1 - unconfirmed venue allows an organiser to update critical event field
 test('AC2 - confirmed venue requires a change request for critical fields and saves non-critical fields', async () => {
   const updated = { ...details, programme_details: 'Updated agenda' };
   const pendingRequest = { id: 501, event_id: 101, organiser_id: 12, coordinator_id: 30, requested_changes: { name: 'Updated title' }, status: 'pending' };
+  // The coordinator email is only used for delivery; email itself is an external boundary.
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
   const query = mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
     if (sql.includes('INSERT INTO event_change_requests')) {
-      assert.deepEqual(values, ['101', 12, 30, JSON.stringify({ name: 'Updated title' })]);
-      return { rows: [pendingRequest] };
+      assert.deepEqual(values.slice(0, 4), ['101', 12, 30, JSON.stringify({ name: 'Updated title' })]);
+      return { rows: [{ ...pendingRequest, coordinator_email: 'chris@example.com' }] };
     }
     if (sql.includes('FROM events e')) return { rows: [{ ...details, coordinator_id: 30, venue_confirmed: true }] };
     assert.match(sql, /NOT EXISTS \(\s*SELECT 1 FROM venue_bookings/);
@@ -208,6 +211,7 @@ test('AC2 - confirmed venue requires a change request for critical fields and sa
   const blocked = await request('/api/events/101/non-critical', { method: 'PUT', body: { name: 'Updated title' } });
   assert.equal(blocked.status, 202);
   assert.equal(blocked.body.changeRequest.status, 'pending');
+  assert.equal(blocked.body.changeRequest.coordinator_email, undefined);
   assert.match(blocked.body.message, /confirmed event information remains in effect/);
   const saved = await request('/api/events/101/non-critical', { method: 'PUT', body: { programmeDetails: 'Updated agenda' } });
   assert.equal(saved.status, 200);
@@ -249,13 +253,15 @@ test('AC3 - pending critical changes are listed only for the assigned Event Coor
     requested_changes: { expectedAttendance: 55 }, status: 'pending' };
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
+    if (sql.includes('FROM venue_bookings vb JOIN venues')) return { rows: [] };
     assert.match(sql, /e\.coordinator_id=\$1 AND r\.status='pending'/);
     assert.deepEqual(values, [30]);
-    return { rows: [pending] };
+    return { rows: [{ ...pending, event_record: { expected_attendance: 40 } }] };
   });
   const result = await request('/api/events/change-requests', { user: coordinator });
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.changeRequests, [pending]);
+  assert.deepEqual(result.body.changeRequests, [{ ...pending,
+    changes: [{ field: 'expectedAttendance', label: 'Expected attendance', current: 40, requested: 55 }], arrangements: [] }]);
 });
 
 // Test case: AC1/AC2 - coordinator fields and question are stored on the event and directed to its organiser.
@@ -299,7 +305,8 @@ test('AC3/AC4/AC5 - organiser response is retained and clears clarification outs
       assert.deepEqual(values, ['101', '601', 12, responded.organiser_response]);
       return { rows: [responded] };
     }
-    assert.match(sql, /event_clarification_requests cr WHERE cr\.event_id=e\.id/);
+    // The outstanding flag is computed in SQL: only clarifications still pending may count, so a responded one clears it.
+    assert.match(sql, /EXISTS \(SELECT 1 FROM event_clarification_requests cr WHERE cr\.event_id=e\.id AND cr\.status='pending'\) AS clarification_outstanding/);
     return { rows: [{ ...details, clarification_outstanding: false, clarification_requests: [responded] }] };
   });
   const result = await request('/api/events/101/clarifications/601/respond', { method: 'POST', body: { response: responded.organiser_response } });

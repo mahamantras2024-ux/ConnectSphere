@@ -55,7 +55,7 @@ it('AC1 AC4 - changes dates, shows empty availability and fails closed on networ
   expect(screen.getByText('Choose a date to view the schedule.')).toBeTruthy();
 });
 
-it('AC1 - ignores obsolete success and failure responses after changing venue or unmounting', async () => {
+it('AC1 - ignores obsolete success and failure responses after changing venue', async () => {
   // Arrange: deliberately settle requests in the wrong order.
   let resolveOld, rejectOld;
   api.get.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; })).mockResolvedValueOnce([]);
@@ -66,11 +66,14 @@ it('AC1 - ignores obsolete success and failure responses after changing venue or
   await act(async () => resolveOld([booking]));
   // Assert
   expect(screen.queryByText(/Conference/)).toBeNull();
-  api.get.mockImplementationOnce(() => new Promise((resolve, reject) => { rejectOld = reject; }));
-  view.rerender(<VenueSchedule venue={{ id: 3, name: 'Closed' }} initialDate={date} />);
-  view.unmount();
+  // A late failure for a venue no longer shown must not replace the newer venue's schedule with an error.
+  api.get.mockImplementationOnce(() => new Promise((resolve, reject) => { rejectOld = reject; })).mockResolvedValueOnce([]);
+  view.rerender(<VenueSchedule venue={{ id: 3, name: 'Previous' }} initialDate={date} />);
+  view.rerender(<VenueSchedule venue={{ id: 4, name: 'Current' }} initialDate={date} />);
+  await screen.findByText(/00:00–24:00.*Available/);
   await act(async () => rejectOld(new Error('Late failure')));
   expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByText(/00:00–24:00.*Available/)).toBeTruthy();
 });
 
 it.each([

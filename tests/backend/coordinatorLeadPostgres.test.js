@@ -54,12 +54,12 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
       (2,'organiser@example.test','Organiser','event_organiser','{}',0),
       (3,'chris@example.test','Chris','event_coordinator','{}',0),(4,'sam@example.test','Sam','event_coordinator','{}',0),
       (5,'multi@example.test','Multi','safety_officer','{event_coordinator}',0);
-      CREATE TABLE venues(id INTEGER PRIMARY KEY,name TEXT,availability_status TEXT);
-      INSERT INTO venues VALUES (7,'Hall','Available')`);
+      CREATE TABLE venues(id INTEGER PRIMARY KEY,name TEXT,availability_status TEXT,capacity INTEGER,supported_layouts TEXT[]);
+      INSERT INTO venues VALUES (7,'Hall','Available',200,ARRAY['Theatre'])`);
     const client = await database.connect();
     try {
       for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql','migrations/004-event-equipment-requirements.sql',
-        'venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql']) {
+        'migrations/005-change-request-review.sql','venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql']) {
         await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db',name),'utf8'));
       }
     } finally { client.release(); }

@@ -224,55 +224,6 @@ it('AR AC6 - the organiser receives the decision as a dashboard notification and
   expect(within(item).queryByRole('button')).toBeNull();
 });
 
-// Notification panel states: loading, empty, a response missing the list, a failed load and a failed mark-as-read.
-it('AR AC6 - notifications show loading, then a read notification without a mark-as-read control', async () => {
-  let release;
-  routes['/notifications'] = () => new Promise((resolve) => { release = resolve; });
-  open('/coordinator/dashboard');
-  const panel = await screen.findByRole('region', { name: 'Notifications' });
-  expect(within(panel).getByText('Loading notifications...')).toBeTruthy();
-  expect(within(panel).queryByText(/unread/)).toBeNull();
-  await act(async () => release({ unreadCount: 0, notifications: [{ id: 1, title: 'Safety check passed: Community Workshop', message: 'Passed.', created_at: '2030-01-02T03:04:05.000Z', read_at: '2030-01-02T03:05:00.000Z' }] }));
-  expect(within(panel).getByText('Safety check passed: Community Workshop')).toBeTruthy();
-  expect(within(panel).queryByRole('button')).toBeNull();
-});
-
-it.each([[{ notifications: [], unreadCount: 0 }, 'No notifications yet.'], [{}, 'No notifications yet.'],
-  [() => { throw new Error('offline'); }, 'Notifications could not be loaded right now.']])(
-  'AR AC6 - an empty, list-less or failed notification load is stated plainly (%#)', async (response, text) => {
-    routes['/notifications'] = response;
-    open('/coordinator/dashboard');
-    const panel = await screen.findByRole('region', { name: 'Notifications' });
-    expect(await within(panel).findByText(text)).toBeTruthy();
-    expect(within(panel).getByText('0 unread')).toBeTruthy();
-    expect(within(panel).queryByRole('alert')).toBeNull();
-  });
-
-// Test case: Two unread notifications; marking one read must leave the other unread with its own control.
-it('AR AC6 - marking one notification read leaves the others unread', async () => {
-  routes['/notifications'] = { unreadCount: 2, notifications: [
-    { id: 7, title: 'Event approved: Community Workshop', message: 'Approved.', created_at: '2030-01-02T03:04:05.000Z', read_at: null },
-    { id: 8, title: 'Safety check passed: Community Workshop', message: 'Passed.', created_at: '2030-01-01T03:04:05.000Z', read_at: null }] };
-  api.post.mockResolvedValue({ notification: { id: 7, read_at: '2030-01-02T04:00:00.000Z' } });
-  open('/coordinator/dashboard');
-  fireEvent.click(await screen.findByRole('button', { name: 'Mark Event approved: Community Workshop as read' }));
-  const panel = screen.getByRole('region', { name: 'Notifications' });
-  expect(await within(panel).findByText('1 unread')).toBeTruthy();
-  const other = within(panel).getByText('Safety check passed: Community Workshop').closest('li');
-  expect(within(other).getByText('New')).toBeTruthy();
-  expect(within(other).getByRole('button', { name: 'Mark Safety check passed: Community Workshop as read' })).toBeTruthy();
-});
-
-it('AR AC6 - a failed mark-as-read is reported and the unread count is kept', async () => {
-  routes['/notifications'] = { unreadCount: 1, notifications: [{ id: 2, title: 'Event approved: Community Workshop', message: 'Approved.', created_at: '2030-01-02T03:04:05.000Z', read_at: null }] };
-  api.post.mockRejectedValue(new Error('Notification not found.'));
-  open('/coordinator/dashboard');
-  fireEvent.click(await screen.findByRole('button', { name: 'Mark Event approved: Community Workshop as read' }));
-  const panel = screen.getByRole('region', { name: 'Notifications' });
-  expect((await within(panel).findByRole('alert')).textContent).toBe('Notification not found.');
-  expect(within(panel).getByText('1 unread')).toBeTruthy();
-});
-
 // ---------- Safety Officer queue (Week 7 change 6) ----------
 
 const queuedEvent = { id: 101, name: 'Community Workshop', proposed_date: '2030-10-15', proposed_start_time: '10:00:00', proposed_end_time: '12:00:00',

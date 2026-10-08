@@ -41,6 +41,14 @@ node tests/run.cjs story delete-venue
 
 These select SCRUM-35 (update) or SCRUM-36 (delete/deactivate) AC-labelled cases in shared frontend and backend files. Shared permission, refresh and warning checks apply to both stories. Booking checks use proxy fixtures because the booking creation workflow is unfinished. The combined real-database lifecycle test remains in `node tests/run.cjs all` or `node tests/run.cjs integration`; adding `all` to these individual story commands does not select that combined test. Runner selection regression tests can be run with `node --test tests/runner.test.cjs`.
 
+## Test the Sprint 2 change-request review story
+
+```powershell
+node tests/run.cjs story change-request-review
+```
+
+Selects the API, review-rule unit and dashboard suites for viewing, notifying and processing change requests (`CR AC1`–`CR AC3` test names), plus the existing organiser change-request and coordinator inbox regressions. Database and Gmail boundaries are mocked; the decision transaction's real SQL is exercised only by `node tests/run.cjs all`, which loads migration 004.
+
 ## Live database setup
 
 The runner reads private backend/.env. The database account must be able to create/drop disposable schemas. Tests clean up their schemas and do not modify public application records. Missing database access makes live commands fail; a skipped local database test is not an integration pass. Tests replace email sends and do not email real people.

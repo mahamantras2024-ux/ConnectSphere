@@ -14,7 +14,7 @@ const emailService = require('../../backend/src/services/emailService');
 
 const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
   'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
-  'migrations/004-event-equipment-requirements.sql', 'migrations/006-event-decisions.sql'];
+  'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/006-event-decisions.sql'];
 const sqlFile = (file) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
 
 // Test case: Walks one event through safety review and decision and a second through rejection, checking every gate,
