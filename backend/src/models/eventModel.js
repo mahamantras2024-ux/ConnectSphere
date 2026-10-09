@@ -332,12 +332,14 @@ async function listEquipmentInventory() {
 }
 
 /**
- * Lists reviewed requests with equipment that still needs to be reserved.
+ * Lists reviewed requests with equipment that still needs reservation, including the event's full technical requirements.
  */
 async function listEquipmentReservationCandidates() {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
-      e.proposed_start_time, e.proposed_end_time, e.equipment_items,
+      e.proposed_start_time, e.proposed_end_time, e.equipment_items, e.equipment_notes,
+      e.technical_support_required, e.technical_support_details,
+      e.video_conferencing_required, e.technical_specifications,
       e.equipment_requirements_version AS request_version,
       review.outcome AS review_outcome, review.reason AS review_reason,
       venue.name AS venue_name, venue.location AS venue_location
@@ -763,12 +765,14 @@ async function listEquipmentInventory() {
 }
 
 /**
- * Lists reviewed requests with equipment that still needs to be reserved.
+ * Lists reviewed requests with equipment that still needs reservation, including the event's full technical requirements.
  */
 async function listEquipmentReservationCandidates() {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
-      e.proposed_start_time, e.proposed_end_time, e.equipment_items,
+      e.proposed_start_time, e.proposed_end_time, e.equipment_items, e.equipment_notes,
+      e.technical_support_required, e.technical_support_details,
+      e.video_conferencing_required, e.technical_specifications,
       e.equipment_requirements_version AS request_version,
       review.outcome AS review_outcome, review.reason AS review_reason,
       venue.name AS venue_name, venue.location AS venue_location

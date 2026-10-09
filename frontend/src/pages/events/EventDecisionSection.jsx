@@ -1,7 +1,7 @@
 // File: Shows an event's review outcome and lets the assigned Event Coordinator approve or reject it.
 import { useEffect, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 
 // Checklist labels for the server's readiness requirements (eventDecisionPolicy REQUIREMENTS).
 const REQUIREMENT_LABELS = {
@@ -62,7 +62,18 @@ export default function EventDecisionSection({ event, onDecided }) {
 
   const outcome = review?.outcome;
   return (
-    <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="decision-heading">
+    <section
+      className="ed-card"
+      style={{
+        backgroundColor: '#ffffff',
+        color: '#1c2530',
+        border: '1px solid #d9dee5',
+        borderRadius: '10px',
+        padding: '24px 28px',
+        marginBottom: '28px'
+      }}
+      aria-labelledby="decision-heading"
+    >
       <div className="section-heading">
         <h2 id="decision-heading">Review decision</h2>
         {review && <span className={`status-badge status-${outcome ? outcome.decision : 'under_review'}`}>{outcome ? (outcome.decision === 'approved' ? 'Approved' : 'Rejected') : 'Awaiting decision'}</span>}

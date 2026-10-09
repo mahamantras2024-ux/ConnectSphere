@@ -72,6 +72,9 @@ const STYLES = `
 .er-requested li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; }
 .er-requested li + li { border-top: 1px solid var(--er-line); }
 .er-qty { font-variant-numeric: tabular-nums; color: var(--er-muted); }
+.er-requirements { display: grid; grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr); gap: 8px 16px; margin: 12px 0 0; }
+.er-requirements dt { color: var(--er-muted); }
+.er-requirements dd { margin: 0; overflow-wrap: anywhere; }
 
 /* Additional equipment */
 .er-extra { display: grid; gap: 12px; border: 1px dashed var(--er-line); border-radius: var(--er-radius); padding: 16px; margin: 0; min-width: 0; }
@@ -177,6 +180,9 @@ function availabilityBadge(item) {
  * Lets staff allocate available stock quantities and confirms them atomically.
  * Full reviews require every itemized unit; staff-entered additions may be included when available.
  */
+/**
+ * Presents the reviewed event's complete equipment and technical requirements alongside its reservation controls.
+ */
 function ReservationCandidate({ request, token, onReserved }) {
   const [availability, setAvailability] = useState(null);
   const [selectedQuantities, setSelectedQuantities] = useState({});
@@ -184,6 +190,12 @@ function ReservationCandidate({ request, token, onReserved }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const equipmentItems = Array.isArray(request.equipment_items) ? request.equipment_items : [];
+  const equipmentNotes = request.equipment_notes?.trim() ? request.equipment_notes : null;
+  const technicalSupportDetails = request.technical_support_details?.trim() ? request.technical_support_details : null;
+  const technicalSpecifications = request.technical_specifications?.trim() ? request.technical_specifications : null;
+  const hasEquipmentDetails = equipmentItems.length > 0 || equipmentNotes || request.technical_support_required ||
+    technicalSupportDetails || request.video_conferencing_required || technicalSpecifications;
 
   async function checkAvailability() {
     setLoading(true);
@@ -306,18 +318,30 @@ function ReservationCandidate({ request, token, onReserved }) {
       </header>
 
       <div className="er-card-body">
-        {(request.equipment_items || []).length > 0 && (
-        <section>
-          <h4 className="er-sub">Equipment listed in the event request</h4>
-          <ul className="er-requested">
-            {(request.equipment_items || []).map(item => (
-              <li key={item.item}>
-                <span>{item.item}</span>
-                <span className="er-qty">Requested: {item.quantity}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {hasEquipmentDetails && (
+          <section>
+            <h4 className="er-sub">Equipment and technical requirements</h4>
+            {equipmentItems.length > 0 && (
+            <ul className="er-requested">
+              {equipmentItems.map((item, index) => (
+                <li key={`${item.item}-${index}`}>
+                  <span>{item.item}</span>
+                  <span className="er-qty">Requested: {item.quantity}</span>
+                </li>
+              ))}
+            </ul>
+            )}
+            {(equipmentNotes || request.technical_support_required || technicalSupportDetails ||
+              request.video_conferencing_required || technicalSpecifications) && (
+              <dl className="er-requirements">
+                {equipmentNotes && <><dt>Equipment notes</dt><dd>{equipmentNotes}</dd></>}
+                {request.technical_support_required && <><dt>Technical support</dt><dd>Required</dd></>}
+                {technicalSupportDetails && <><dt>Technical support details</dt><dd>{technicalSupportDetails}</dd></>}
+                {request.video_conferencing_required && <><dt>Video conferencing</dt><dd>Required</dd></>}
+                {technicalSpecifications && <><dt>Technical specifications</dt><dd>{technicalSpecifications}</dd></>}
+              </dl>
+            )}
+          </section>
         )}
 
         <fieldset className="er-extra">
@@ -395,7 +419,7 @@ function ReservationCandidate({ request, token, onReserved }) {
                         <label className="er-asset" key={asset.id}>
                           <span className="er-asset-info">
                             <span className="er-asset-code">{asset.asset_code} — {asset.name}</span>
-                            <span className="er-asset-spec">{asset.specification}</span>
+                            <span className="er-asset-spec">{asset.specification || 'Specification not recorded'}</span>
                           </span>
                           <span className="er-stepper">
                             <input
@@ -489,7 +513,10 @@ export default function EquipmentReservationSection({
                     <td>
                       <div className="er-chip-list">
                         {reservation.items.map(item => (
-                          <div className="er-chip" key={item.assetCode}>{item.assetCode} — {item.name} (×{item.quantity})</div>
+                          <div className="er-chip" key={item.assetCode}>
+                            {item.assetCode} — {item.name} (×{item.quantity})
+                            <span className="er-cell-sub">Specification: {item.specification || 'Not recorded'}</span>
+                          </div>
                         ))}
                       </div>
                     </td>

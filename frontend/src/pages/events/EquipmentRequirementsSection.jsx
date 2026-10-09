@@ -5,11 +5,22 @@ import ActionConfirmation from '../../components/ActionConfirmation';
 import EquipmentRequirementsFields from './EquipmentRequirementsFields';
 import { equipmentError, equipmentFromEvent, equipmentPayload, formatEquipmentItems } from './equipmentRequirements';
 
+// Same pencil as the rest of the event page. Card, field, badge and input styles (the "ed-" classes) come from EventDetail.
+const PencilIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <path d="M12 20h9" />
+    <path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" />
+  </svg>
+);
+
+const WIDE = { gridColumn: '1 / -1' };
+
 /**
  * Displays equipment items, support needs and technical specifications for an event.
- * Editing follows the rest of the event page: organisers get a ✎ control (✉ once Technical Support has confirmed
- * the arrangements) and "Save changes"/"Submit change request" with Cancel. After confirmation the edit becomes a
- * change request and the confirmed values stay on screen until the coordinator reviews it.
+ * Editing follows the rest of the event page: organisers get a pencil control (labelled "Request change" once
+ * Technical Support has confirmed the arrangements) and "Save changes"/"Submit change request" with Cancel. After
+ * confirmation the edit becomes a change request and the confirmed values stay on screen until the coordinator reviews it.
  * @param {object} props
  * @param {object} props.event the loaded event record.
  * @param {boolean} props.canEdit true for the owning organiser.
@@ -49,29 +60,28 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2" aria-labelledby="equipment-heading">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 id="equipment-heading" className="text-xl font-bold text-slate-900">Equipment &amp; Technical Support</h2>
+    <section className="event-attachments ed-card ed-span" aria-labelledby="equipment-heading">
+      <div className="ed-card-head">
+        <div className="ed-title-group">
+          <h2 id="equipment-heading" className="ed-card-title">Equipment &amp; Technical Support</h2>
           {canEdit && !draft && (
-            <button type="button" className={confirmed ? 'text-amber-800 hover:text-amber-950' : 'text-blue-700 hover:text-blue-900'}
-              aria-label={editLabel} title={editLabel}
-              onClick={() => { onMessage(''); setDraft(equipmentFromEvent(event)); }}>{confirmed ? '✉' : '✎'}</button>
+            <button type="button" className="ed-icon-btn" aria-label={editLabel} title={editLabel}
+              onClick={() => { onMessage(''); setDraft(equipmentFromEvent(event)); }}><PencilIcon /></button>
           )}
         </div>
-        <span className={`status-badge ${confirmed ? 'status-confirmed' : 'status-under_review'}`}>
+        <span className={`ed-badge ${confirmed ? 'ed-badge--ok' : 'ed-badge--warn'}`}>
           {confirmed ? 'Arrangements confirmed' : 'Awaiting technical arrangement'}
         </span>
       </div>
       {draft ? (
-        <form className="equipment-editor grid gap-4" onSubmit={(e) => {
+        <form className="ed-editor equipment-editor" style={{ maxWidth: 'none' }} onSubmit={(e) => {
           // Validate before review; the API runs only after the organiser explicitly confirms.
           e.preventDefault(); const problem = equipmentError(draft); setError(problem); if (!problem) setReviewing(true);
         }}>
-          {confirmed && <p className="text-sm text-slate-600">Arrangements are confirmed, so your edit is sent to the Event Coordinator as a change request. The confirmed details stay in effect until review.</p>}
+          {confirmed && <p className="ed-muted">Arrangements are confirmed, so your edit is sent to the Event Coordinator as a change request. The confirmed details stay in effect until review.</p>}
           <EquipmentRequirementsFields value={draft} onChange={setDraft} disabled={saving} />
-          {error && !reviewing && <p role="alert" className="error-text">{error}</p>}
-          <div className="flex gap-2">
+          {error && !reviewing && <p role="alert" className="ed-notice ed-notice--bad">{error}</p>}
+          <div className="ed-editor-actions">
             <button type="submit" className="button-primary" disabled={saving}>
               {saving ? 'Saving…' : confirmed ? 'Submit change request' : 'Save changes'}
             </button>
@@ -79,28 +89,26 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
           </div>
         </form>
       ) : (
-        <dl className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Equipment items</dt>
-            <dd className="mt-2 text-base font-medium text-slate-900">{formatEquipmentItems(event.equipment_items)}</dd>
+        <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 2 }}>
+          <div className="ed-field">
+            <dt>Equipment items</dt>
+            <dd>{formatEquipmentItems(event.equipment_items)}</dd>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Technical support</dt>
-            <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">
-              {event.technical_support_required ? `Required: ${event.technical_support_details}` : 'Not required'}
-            </dd>
+          <div className="ed-field">
+            <dt>Technical support</dt>
+            <dd>{event.technical_support_required ? `Required: ${event.technical_support_details}` : 'Not required'}</dd>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Video-conferencing / hybrid</dt>
-            <dd className="mt-2 text-base font-medium text-slate-900">{event.video_conferencing_required ? 'Required' : 'Not required'}</dd>
+          <div className="ed-field">
+            <dt>Video-conferencing / hybrid</dt>
+            <dd>{event.video_conferencing_required ? 'Required' : 'Not required'}</dd>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Special technical specifications</dt>
-            <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">{event.technical_specifications || 'Not specified'}</dd>
+          <div className="ed-field">
+            <dt>Special technical specifications</dt>
+            <dd>{event.technical_specifications || 'Not specified'}</dd>
           </div>
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 md:col-span-2">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Other equipment notes</dt>
-            <dd className="mt-2 whitespace-pre-wrap text-base font-medium text-slate-900">{children}</dd>
+          <div className="ed-field" style={WIDE}>
+            <dt>Other equipment notes</dt>
+            <dd>{children}</dd>
           </div>
         </dl>
       )}

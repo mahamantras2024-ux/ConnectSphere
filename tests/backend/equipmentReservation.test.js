@@ -20,6 +20,11 @@ const event = {
   proposed_start_time: '09:00:00',
   proposed_end_time: '12:00:00',
   equipment_items: [{ item: 'Projector', quantity: 2 }],
+  equipment_notes: 'Bring spare HDMI cables.',
+  technical_support_required: true,
+  technical_support_details: 'AV technician for setup.',
+  video_conferencing_required: true,
+  technical_specifications: 'Zoom for remote attendees.',
   request_version: 1,
   review_outcome: 'fully_fulfillable',
   venue_name: 'Innovation Hall',
@@ -85,7 +90,7 @@ test('AC1 - lists requests awaiting reservation and confirmed allocation audit d
     ...reservation,
     event_name: event.name,
     reserved_by_name: supportStaff.full_name,
-    items: [{ assetCode: 'PROJ-001', name: 'Projector', quantity: 2 }],
+    items: [{ assetCode: 'PROJ-001', name: 'Projector', specification: 'Full HD', quantity: 2 }],
   };
   const queries = [];
   mock.method(pool, 'query', async (sql, values) => {
@@ -105,11 +110,18 @@ test('AC1 - lists requests awaiting reservation and confirmed allocation audit d
   assert.match(candidateQuery.sql, /NOT EXISTS/i);
   assert.match(candidateQuery.sql, /proposed_end_time\s*>\s*LOCALTIME/i);
   assert.match(candidateQuery.sql, /review\.outcome IN \('fully_fulfillable', 'partially_fulfillable'\)/i);
+  for (const field of [
+    'equipment_items', 'equipment_notes', 'technical_support_required',
+    'technical_support_details', 'video_conferencing_required', 'technical_specifications',
+  ]) {
+    assert.match(candidateQuery.sql, new RegExp(`e\\.${field}`, 'i'));
+  }
   assert.doesNotMatch(candidateQuery.sql, /jsonb_array_length\s*\(\s*e\.equipment_items\s*\)\s*>\s*0/i);
   const auditQuery = queries.find(query => query.sql.includes('SELECT reservation.id'));
   assert.match(auditQuery.sql, /reservation\.reserved_by=\$1/i);
   assert.deepEqual(auditQuery.values, [supportStaff.id]);
   assert.match(auditQuery.sql, /AS reserved_by_name/i);
+  assert.match(auditQuery.sql, /inventory\.specification/i);
   assert.match(auditQuery.sql, /reserved_item\.quantity/i);
 });
 
