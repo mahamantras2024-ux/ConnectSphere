@@ -20,6 +20,9 @@ jobs:
     name: Test, coverage, and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-only-test-signing-secret
 
     steps:
       - name: Check out repository
