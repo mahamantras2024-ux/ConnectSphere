@@ -36,7 +36,10 @@ const inventory = [
 
 // AC1 - Without a selected date, the catalogue presents total stock rather than slot availability.
 it('AC1 - shows total quantity until a date is selected', () => {
-  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  render(<EquipmentInventorySection inventory={[
+    ...inventory,
+    { ...inventory[0], id: 4, asset_code: 'UNKNOWN-001', availabilities: null },
+  ]} error="" />);
   const table = getInventoryTable();
 
   expect(within(table).getByRole('columnheader', { name: 'ID' })).toBeTruthy();
@@ -77,19 +80,53 @@ it('AC3 - shows zero available when the selected date window is fully reserved',
   expect(within(table).getByRole('row', { name: /PROJ-001 Projector.*0$/ })).toBeTruthy();
 });
 
+// AC2 - partial time filters and reserved calendar windows retain truthful availability states.
+it('AC2 - handles one-sided time filters, empty calendar days, and non-booked unavailable windows', () => {
+  const edgeInventory = [{
+    ...inventory[0],
+    availabilities: [
+      ...inventory[0].availabilities,
+      { date: '2026-10-15', startTime: '10:00:00', endTime: '12:00:00', status: 'Maintenance', availableQuantity: 0 },
+    ],
+  }];
+  render(<EquipmentInventorySection inventory={edgeInventory} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), { target: { value: 'PROJ-001' } });
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '10:00' } });
+  expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '11:00' } });
+  expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '17:00' } });
+  expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '08:00' } });
+  expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '10:00' } });
+  expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
+  expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-15' } });
+  const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
+  expect(within(calendar).getByText(/Maintenance/)).toBeTruthy();
+});
+
 // AC2 - Searching by asset ID or name filters the table and reveals the separate calendar.
 it('AC2 - searches by ID or name and shows the matched asset calendar separately', () => {
-  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  render(<EquipmentInventorySection inventory={[
+    ...inventory,
+    { ...inventory[0], id: 3, asset_code: 'PROJ-002', availabilities: [{ ...inventory[0].availabilities[0], date: '2026-10-16' }] },
+  ]} error="" />);
   fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
-    target: { value: 'PROJ-001' },
+    target: { value: 'Projector' },
   });
 
   expect(getInventoryTable()).toBeTruthy();
   expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
   expect(screen.queryByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeNull();
   const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
-  expect(within(calendar).getByText(/09:00–17:00/)).toBeTruthy();
+  expect(within(calendar).getAllByText(/09:00–17:00/).length).toBeGreaterThan(0);
   expect(within(calendar).getByText('Town Hall')).toBeTruthy();
+  expect(within(calendar).getAllByText('—').length).toBeGreaterThan(0);
 });
 
 // AC3 - Date and time filters only retain an asset whose available window covers the requested range.
@@ -118,6 +155,8 @@ it('AC3 - filters by either time boundary and clears all inventory filters', () 
   fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '17:30' } });
   expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
   expect(screen.getByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
+  expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
 
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
   expect(getInventoryTable()).toBeTruthy();

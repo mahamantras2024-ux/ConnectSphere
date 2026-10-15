@@ -78,6 +78,27 @@ it('AC1 - displays event timing, venue, equipment quantities, and technical requ
   expect(api.get).toHaveBeenCalledWith('/events/equipment-requests', 'support-token');
 });
 
+// AC1 - missing date/time and notes use explicit fallbacks in the review card.
+it('AC1 - displays review fallbacks for partial event details', async () => {
+  api.get.mockImplementation(async path => {
+    if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/equipment-requests') return {
+      requests: [
+        { ...eventRequest, proposed_date: null, proposed_start_time: '09:00:00', proposed_end_time: null, equipment_items: [], equipment_notes: 'Additional cable' },
+        { ...eventRequest, id: 502, name: 'Evening Meetup', proposed_date: null, proposed_start_time: null, proposed_end_time: '12:00:00', equipment_items: [], equipment_notes: 'Additional cable' },
+      ],
+    };
+    if (path === '/events/equipment-inventory') return { inventory: [] };
+    if (path === '/events/equipment-reservations') return { requests: [], reservations: [] };
+    throw new Error(`Unexpected API route: ${path}`);
+  });
+  await openDashboard();
+  const card = await screen.findByRole('article', { name: 'Community Workshop' });
+  expect(within(card).getByText('Not provided')).toBeTruthy();
+  expect(within(card).getByText(/09:00.*Not provided/)).toBeTruthy();
+  expect(within(card).getByText('Requested equipment')).toBeTruthy();
+});
+
 // AC2/AC3/AC4: submit each permitted decision and remove it from the pending queue on success.
 it.each([
   ['fully fulfillable', 'fully_fulfillable', ''],
@@ -93,6 +114,7 @@ it.each([
 
   fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
   expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('status'));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome, ...(reason ? { reason } : {}), requestVersion: 1,
   }, 'support-token'));
@@ -230,6 +252,7 @@ it('AC4 - saves the review and immediately opens equipment reservation', async (
   fireEvent.change(within(card).getByLabelText('Fulfillment decision'), {
     target: { value: 'fully_fulfillable' },
   });
+
   expect(within(card).queryByRole('button', { name: 'Save review & go to equipment reservation' })).toBeNull();
   fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
 
@@ -239,6 +262,29 @@ it('AC4 - saves the review and immediately opens equipment reservation', async (
     outcome: 'fully_fulfillable',
     requestVersion: 1,
   }, 'support-token');
+});
+
+// AC5 - dashboard tabs support keyboard navigation and preserve the selected workspace.
+it('AC5 - moves between support tabs with arrow, Home, and End keys', async () => {
+  await openDashboard();
+  const reviewTab = screen.getByRole('tab', { name: 'Equipment request review' });
+  fireEvent.keyDown(reviewTab, { key: 'PageDown' });
+  fireEvent.keyDown(reviewTab, { key: 'ArrowRight' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
+  expect(screen.getByRole('tab', { name: 'Equipment info', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'End' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+});
+
+// AC5 - the reservation empty state returns staff to the review queue.
+it('AC5 - returns from the empty reservation state to equipment review', async () => {
+  await openDashboard();
+  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Go to equipment request review' }));
+  expect(screen.getByRole('tab', { name: 'Equipment request review', selected: true })).toBeTruthy();
 });
 
 // AC1 - A failing section remains independently visible when each dashboard data request errors.

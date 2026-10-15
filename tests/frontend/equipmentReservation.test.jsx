@@ -139,6 +139,104 @@ afterEach(() => {
   localStorage.clear();
 });
 
+// AC1 - Additional equipment rows can be added, edited, and removed before checking availability.
+it('AC1 - manages optional additional equipment rows without stale availability', async () => {
+  api.get.mockResolvedValue({ availability: { items: availableItems } });
+  render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Add additional equipment' }));
+  fireEvent.change(within(candidate).getByLabelText('Additional equipment name 2'), { target: { value: 'Audio Mixer' } });
+  fireEvent.change(within(candidate).getByLabelText('Additional equipment quantity 2'), { target: { value: '0' } });
+  expect(within(candidate).getByLabelText('Additional equipment quantity 2').value).toBe('1');
+  fireEvent.click(within(candidate).getAllByRole('button', { name: 'Remove additional equipment' })[1]);
+  expect(within(candidate).queryByLabelText('Additional equipment name 2')).toBeNull();
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+  expect(await within(candidate).findByLabelText('Quantity of PROJ-001 to reserve')).toBeTruthy();
+});
+
+// AC1 - Missing event timing and venue data remains explicit in the reservation candidate.
+it('AC1 - reports absent reservation metadata without inventing values', () => {
+  render(<EquipmentReservationSection requests={[{
+    ...request, proposed_date: null, proposed_start_time: null, proposed_end_time: null, venue_name: null, venue_location: null,
+  }]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+  expect(within(candidate).getByText('Not provided')).toBeTruthy();
+  expect(within(candidate).getByText('Not provided–Not provided')).toBeTruthy();
+  expect(within(candidate).getByText('Not confirmed')).toBeTruthy();
+});
+
+// AC2 - A zero selection is rejected before a reservation request can be sent.
+it('AC2 - requires a positive asset selection before reserving', async () => {
+  api.get.mockResolvedValue({ availability: { items: availableItems } });
+  render(<EquipmentReservationSection requests={[{ ...request, review_outcome: 'partially_fulfillable' }]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+  const quantity = await within(candidate).findByLabelText('Quantity of PROJ-001 to reserve');
+  fireEvent.change(quantity, { target: { value: '0' } });
+  fireEvent.submit(within(candidate).getByRole('button', { name: 'Confirm reservation' }).closest('form'));
+  expect((await within(candidate).findByRole('alert')).textContent).toContain('Select at least one available equipment quantity.');
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+// AC2 - fully fulfillable requests cannot be confirmed with missing requested units.
+it('AC2 - rejects an incomplete selection for a fully fulfillable request', async () => {
+  api.get.mockResolvedValue({ availability: { items: availableItems } });
+  render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+  const quantity = await within(candidate).findByLabelText('Quantity of PROJ-001 to reserve');
+  fireEvent.change(quantity, { target: { value: '0' } });
+  fireEvent.submit(within(candidate).getByRole('button', { name: 'Confirm reservation' }).closest('form'));
+  expect((await within(candidate).findByRole('alert')).textContent).toContain('requires every requested unit');
+  expect(api.post).not.toHaveBeenCalledWith('/events/501/equipment-reservations', expect.anything(), expect.anything());
+});
+
+// AC1 - incomplete request records and asset metadata render without unsafe assumptions.
+it('AC1 - handles missing request arrays and optional asset specifications', async () => {
+  const twoAssets = [{
+    ...availableItems[0],
+    availableAssets: [
+      { ...availableItems[0].availableAssets[0], specification: '' },
+      { id: 32, asset_code: 'PROJ-002', name: 'Projector', available_quantity: 1, specification: '' },
+    ],
+  }];
+  api.get.mockResolvedValue({ availability: { items: twoAssets } });
+  api.post.mockResolvedValue({ reservation: { id: 1 }, items: [] });
+  const onReserved = vi.fn();
+  render(<EquipmentReservationSection requests={[{ ...request, equipment_items: undefined }]} reservations={[]} token="staff-token" onReserved={onReserved} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+  const firstQuantity = await within(candidate).findByLabelText('Quantity of PROJ-001 to reserve');
+  expect(within(candidate).getAllByText('Specification not recorded')).toHaveLength(2);
+  fireEvent.change(firstQuantity, { target: { value: '2' } });
+  expect(firstQuantity.value).toBe('2');
+  expect(within(candidate).getByLabelText('Quantity of PROJ-002 to reserve')).toBeTruthy();
+  fireEvent.submit(within(candidate).getByRole('button', { name: 'Confirm reservation' }).closest('form'));
+  await waitFor(() => expect(onReserved).toHaveBeenCalled());
+});
+
+// AC2 - availability failures report a useful fallback even when the API error has no message.
+it('AC2 - reports an availability failure without an error message', async () => {
+  api.get.mockRejectedValue({});
+  render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+  expect((await within(candidate).findByRole('alert')).textContent).toBe('Unable to check equipment availability.');
+});
+
+// AC2 - reservation failures report a useful fallback when persistence rejects without a message.
+it('AC2 - reports a reservation failure without an error message', async () => {
+  api.get.mockResolvedValue({ availability: { items: availableItems } });
+  api.post.mockRejectedValue({});
+  render(<EquipmentReservationSection requests={[{ ...request, review_outcome: 'partially_fulfillable' }]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+  const quantity = await within(candidate).findByLabelText('Quantity of PROJ-001 to reserve');
+  fireEvent.change(quantity, { target: { value: '1' } });
+  fireEvent.submit(within(candidate).getByRole('button', { name: 'Confirm reservation' }).closest('form'));
+  expect((await within(candidate).findByRole('alert')).textContent).toBe('Unable to confirm this reservation.');
+});
+
 // Arrange a fully fulfillable review; Act check and reserve; Assert requested units and audit callback.
 it('AC1 AC2 - reserves the requested quantity after slot availability is confirmed', async () => {
   api.get.mockResolvedValue({ availability: { items: availableItems } });

@@ -738,7 +738,7 @@ export default function EventDetail() {
 
               <span>Registration required?</span>
 
-              <input type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
+              <input className="registration-required-checkbox" type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
 
                 onChange={(changeEvent) => setValue(changeEvent.target.checked)} />
 
@@ -792,7 +792,7 @@ export default function EventDetail() {
 
   const backLink = !location.state?.backgroundLocation && (
 
-    <Link className="button-link button-secondary detail-back ed-back"
+    <Link className="button-link button-secondary detail-back ed-back" aria-label="Back to Events"
 
       to={user.role === 'event_organiser' ? '/organizer/events' : user.role === 'event_coordinator_lead' ? '/coordinator-lead/dashboard' : '/events'}>
 

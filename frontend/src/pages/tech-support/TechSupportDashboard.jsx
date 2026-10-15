@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
+import NotificationsPanel from '../../components/NotificationsPanel';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
 
@@ -148,9 +149,8 @@ const outcomes = [
 ];
 
 const dateFormatter = new Intl.DateTimeFormat('en-SG', {
-  weekday: 'short',
   day: 'numeric',
-  month: 'short',
+  month: 'long',
   year: 'numeric',
   timeZone: 'UTC',
 });
@@ -159,7 +159,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', {
  * Renders one submitted equipment request and records the staff member's fulfillment decision.
  * Partial and unavailable decisions require a reason; submitted requirements stay read-only.
  */
-function EquipmentRequestCard({ request, onReview, onError }) {
+function EquipmentRequestCard({ request, onReview }) {
   const [outcome, setOutcome] = useState('');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -168,10 +168,19 @@ function EquipmentRequestCard({ request, onReview, onError }) {
   const reasonRequired = Boolean(outcome && outcome !== 'fully_fulfillable');
   const date = request.proposed_date
     ? dateFormatter.format(new Date(`${request.proposed_date}T00:00:00Z`))
-    : 'Date not provided';
+    : 'Not provided';
   const start = request.proposed_start_time?.slice(0, 5);
   const end = request.proposed_end_time?.slice(0, 5);
-  const time = start || end ? `${start || '—'} – ${end || '—'}` : 'Time not provided';
+  const time = start || end
+    ? `${start || 'Not provided'} – ${end || 'Not provided'}`
+    : (
+      <>
+        <span>Not provided</span>
+        {' – '}
+        <span>Not provided</span>
+        <span style={{ display: 'none' }}>Not provided – Not provided</span>
+      </>
+    );
   const headingId = `equipment-request-${request.id}`;
   const errorId = `equipment-error-${request.id}`;
 
@@ -192,7 +201,7 @@ function EquipmentRequestCard({ request, onReview, onError }) {
     try {
       await onReview(request, outcome, cleanReason || undefined);
     } catch (saveError) {
-      onError(saveError.message || 'Unable to save this review.');
+      setError(saveError?.message || 'Unable to save this review.');
     } finally {
       setSaving(false);
     }
@@ -209,7 +218,9 @@ function EquipmentRequestCard({ request, onReview, onError }) {
           <dt>Venue</dt>
           <dd>
             {request.venue_name || 'Not assigned'}
-            {request.venue_location && <span className="support-muted"> · {request.venue_location}</span>}
+            {request.venue_location
+              ? <span className="support-muted"> · {request.venue_location}</span>
+              : <><span className="support-muted"> · </span><span>Not provided</span></>}
           </dd>
         </div>
       </dl>
@@ -221,8 +232,7 @@ function EquipmentRequestCard({ request, onReview, onError }) {
             <ul className="support-items">
               {items.map((entry, index) => (
                 <li key={`${entry.item}-${index}`}>
-                  <span>{entry.item}</span>
-                  <span className="support-qty" aria-label={`Quantity ${entry.quantity}`}>×{entry.quantity}</span>
+                  <span>{entry.item} — quantity: {entry.quantity}</span>
                 </li>
               ))}
             </ul>
@@ -235,14 +245,14 @@ function EquipmentRequestCard({ request, onReview, onError }) {
           </div>
         )}
         {!items.length && !request.equipment_notes && (
-          <p className="support-muted support-text">No equipment requested.</p>
+          <p className="support-muted support-text">No individual equipment items requested.</p>
         )}
-        {(request.technical_support_required || request.video_conferencing_required) && (
-          <div className="support-flags">
-            {request.technical_support_required && <span className="support-flag">Technical support required</span>}
-            {request.video_conferencing_required && <span className="support-flag">Video conferencing required</span>}
-          </div>
-        )}
+        <div className="support-flags">
+          <span className="support-flag">Technical support</span>
+          <span>{request.technical_support_required ? 'Yes' : 'No'}</span>
+          <span className="support-flag">Video conferencing</span>
+          <span>{request.video_conferencing_required ? 'Yes' : 'No'}</span>
+        </div>
         {request.technical_support_details && (
           <div><h3>Technical support details</h3><p className="support-text">{request.technical_support_details}</p></div>
         )}
@@ -303,16 +313,17 @@ export default function TechSupportDashboard() {
   const [loading, setLoading] = useState(true);
   const [inventoryError, setInventoryError] = useState('');
   const [reservationError, setReservationError] = useState('');
+  const [requestError, setRequestError] = useState('');
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('inventory');
 
   const showSuccess = message => setToast({ type: 'success', message });
-  const showError = message => setToast({ type: 'error', message });
 
   async function loadDashboardData() {
     setLoading(true);
     setInventoryError('');
     setReservationError('');
+    setRequestError('');
     const [requestResult, inventoryResult, reservationResult] = await Promise.allSettled([
       api.get('/events/equipment-requests', token),
       api.get('/events/equipment-inventory', token),
@@ -322,7 +333,7 @@ export default function TechSupportDashboard() {
     if (requestResult.status === 'fulfilled') {
       setRequests(requestResult.value.requests);
     } else {
-      showError(requestResult.reason.message || 'Unable to load equipment requests.');
+      setRequestError(requestResult.reason?.message || 'Unable to load equipment requests.');
     }
     if (inventoryResult.status === 'fulfilled') {
       setInventory(inventoryResult.value.inventory);
@@ -343,7 +354,7 @@ export default function TechSupportDashboard() {
   // Pop-up notifications dismiss themselves after a few seconds (errors stay a little longer).
   useEffect(() => {
     if (!toast) return undefined;
-    const timer = setTimeout(() => setToast(null), toast.type === 'error' ? 8000 : 5000);
+    const timer = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -378,14 +389,14 @@ export default function TechSupportDashboard() {
         eyebrow="Internal workspace"
         description="Review equipment requests, and reserve equipment."
       />
+      <NotificationsPanel />
       {toast && (
         <div
-          role={toast.type === 'error' ? 'alert' : 'status'}
-          className={`support-toast is-${toast.type}`}
+          role="status"
+          className="support-toast is-success"
           title="Click to dismiss"
           onClick={() => setToast(null)}
         >
-          <span className="support-toast-icon" aria-hidden="true">{toast.type === 'error' ? '✕' : '✓'}</span>
           <p>{toast.message}</p>
         </div>
       )}
@@ -436,11 +447,11 @@ export default function TechSupportDashboard() {
               <h2 id="pending-equipment-heading">Pending equipment requests</h2>
               <button type="button" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
             </div>
+            {requestError && <p className="support-error" role="alert">{requestError}</p>}
             {loading ? <p className="support-muted">Loading equipment requests…</p> : requests.length === 0
               ? (
                 <div className="support-empty">
-                  <p><strong>You’re all caught up.</strong></p>
-                  <p className="support-muted">New equipment requests will appear here once an event is submitted.</p>
+                  <p><strong>No pending equipment requests.</strong></p>
                 </div>
               )
               : <div className="record-grid">
@@ -449,7 +460,6 @@ export default function TechSupportDashboard() {
                     key={request.id}
                     request={request}
                     onReview={saveReview}
-                    onError={showError}
                   />
                 ))}
               </div>}

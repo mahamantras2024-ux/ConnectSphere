@@ -1,6 +1,10 @@
 // File: Displays the fixed asset catalogue and a separate calendar for searched equipment.
 import { useState } from 'react';
 
+const formatDate = value => new Intl.DateTimeFormat('en-SG', {
+  day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${value}T00:00:00Z`));
+
 // Reserved slots are shown in neutral grey; the "· Reserved" text keeps the status readable without colour.
 const CALENDAR_STYLES = `
 .equipment-calendar-window.is-reserved {
@@ -17,11 +21,6 @@ const CALENDAR_STYLES = `
   }
 }
 `;
-
-const formatDate = value => value
-  ? new Intl.DateTimeFormat('en-SG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-    .format(new Date(`${value}T00:00:00Z`))
-  : 'Not provided';
 
 function matchesFilters(window, date, fromTime, toTime) {
   if (date && window.date !== date) return false;
@@ -82,7 +81,6 @@ export default function EquipmentInventorySection({ inventory, error }) {
 
   // A date without a complete time range may match several windows, so report the best slot as an upper bound.
   function getAvailableQuantity(item) {
-    if (!dateFilter) return null;
     const matchingWindows = getAvailabilityWindows(item).filter(window => (
       matchesFilters(window, dateFilter, fromTime, toTime)
     ));
@@ -186,7 +184,7 @@ export default function EquipmentInventorySection({ inventory, error }) {
                 <h3 id="equipment-calendar-heading">Availability calendar</h3>
               </div>
               <div className="equipment-inventory-table-wrap">
-                <table className="equipment-inventory-table equipment-availability-calendar">
+                <table className="equipment-inventory-table equipment-availability-calendar" aria-label="Equipment availability calendar">
                   <thead>
                     <tr>
                       <th scope="col">ID</th>

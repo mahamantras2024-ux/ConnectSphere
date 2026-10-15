@@ -153,7 +153,7 @@ const formatDate = value => value
     .format(new Date(`${value}T00:00:00Z`))
   : 'Not provided';
 const formatTime = value => value?.slice(0, 5) || 'Not provided';
-const sentenceCase = value => { const text = String(value).replaceAll('_', ' '); return text.charAt(0).toUpperCase() + text.slice(1); };
+const sentenceCase = value => String(value).replaceAll('_', ' ');
 const normaliseItemName = value => String(value).trim().toLocaleLowerCase();
 
 function containsRequestedQuantities(items, selectedSelections) {
@@ -312,9 +312,11 @@ function ReservationCandidate({ request, token, onReserved }) {
           <dt>Venue</dt>
           <dd>{request.venue_name || 'Not confirmed'}{request.venue_location ? `, ${request.venue_location}` : ''}</dd>
           <dt>Review status</dt>
-          <dd>{sentenceCase(request.review_outcome)}</dd>
+          <dd>
+            Review: {sentenceCase(request.review_outcome)}
+            {request.review_reason && ` — ${request.review_reason}`}
+          </dd>
         </dl>
-        {request.review_reason && <p className="er-review-note">Review note: {request.review_reason}</p>}
       </header>
 
       <div className="er-card-body">
@@ -397,10 +399,8 @@ function ReservationCandidate({ request, token, onReserved }) {
                 <fieldset className="er-item" key={item.item}>
                   <legend>
                     <span className="er-item-head">
-                      <span className="er-item-name">{item.item}</span>
-                      <span>
-                        <span className="er-item-count">{item.availableQuantity} of {item.requestedQuantity} requested available </span>
-                        <span className={`er-badge ${badge.tone}`}>{badge.label}</span>
+                      <span className="er-item-name">
+                        {item.item}: {item.availableQuantity} of {item.requestedQuantity} requested available — {badge.label}
                       </span>
                     </span>
                   </legend>
@@ -446,7 +446,7 @@ function ReservationCandidate({ request, token, onReserved }) {
             <div className="er-actions">
               {request.review_outcome === 'fully_fulfillable' && !meetsFullRequest &&
                 <p className="er-status" role="status">Select all requested units before confirming this full reservation.</p>}
-              <button type="submit" className="er-btn" disabled={saving || loading || !canReserve}>
+              <button type="submit" className="er-btn" aria-label="Confirm reservation" disabled={saving || loading || !canReserve}>
                 {saving ? 'Reserving…' : totalSelected ? `Confirm reservation (${totalSelected} ${totalSelected === 1 ? 'unit' : 'units'})` : 'Confirm reservation'}
               </button>
               <button type="button" className="er-btn er-btn--quiet" onClick={checkAvailability} disabled={saving || loading}>Refresh availability</button>
@@ -468,7 +468,7 @@ export default function EquipmentReservationSection({
     <div className="er-root">
       <style>{STYLES}</style>
       <section className="er-section" aria-labelledby="equipment-reservation-heading">
-        <h2 className="er-section-title" id="equipment-reservation-heading">Equipment Reservation</h2> 
+        <h2 className="er-section-title" id="equipment-reservation-heading">Equipment availability and reservation</h2>
         <br></br>
         {error && <p className="er-error" role="alert">{error}</p>}
         {requests.length === 0 ? (
@@ -505,10 +505,7 @@ export default function EquipmentReservationSection({
                 {reservations.map(reservation => (
                   <tr key={reservation.id}>
                     <th scope="row">{reservation.event_name}</th>
-                    <td>
-                      {formatDate(reservation.event_date)}
-                      <span className="er-cell-sub">{formatTime(reservation.start_time)}–{formatTime(reservation.end_time)}</span>
-                    </td>
+                    <td><span>{formatDate(reservation.event_date)} {formatTime(reservation.start_time)}–{formatTime(reservation.end_time)}</span></td>
                     <td>{reservation.venue_name || 'Venue not confirmed'}</td>
                     <td>
                       <div className="er-chip-list">
