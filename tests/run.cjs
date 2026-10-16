@@ -21,7 +21,9 @@ const stories = {
   // Sprint 2 event workflow:
   'change-request-review': ['changeRequestReview','changeRequestReview.unit','changeRequestReviewPostgres','organiserEvents','sharedUiRegressions'],
   // Approve/reject decisions, Operational Safety Checks and the organiser's outcome notification.
-  'event-decision': ['eventDecision','eventDecisionPolicy.unit','eventDecisionPostgres','organiserEvents','sharedUiRegressions']
+  'event-decision': ['eventDecision','eventDecisionPolicy.unit','eventDecisionPostgres','organiserEvents','sharedUiRegressions'],
+  // Operational Feasibility Check: Safety Officer facts, change requests that reopen planning stages, and re-checks.
+  'operational-safety-check': ['operationalSafetyCheck','eventDecision','eventDecisionPolicy.unit','eventDecisionPostgres','venueValidation','createVenue-backend','venueManagement']
 };
 const storyIndex = options.indexOf('story');
 const storyName = storyIndex < 0 ? null : options[storyIndex + 1];

@@ -248,10 +248,11 @@ it('AR AC1 - the Safety Officer sees each ready event with the facts the safety 
   const panel = await openSafety({ events: [queuedEvent, sparseEvent] });
   await within(panel).findByText('Community Workshop', { selector: 'strong' });
   expect(within(panel).getByText('2 ready')).toBeTruthy();
-  expect(facts(card(panel, 'Community Workshop'))).toEqual({ 'Date and time': '2030-10-15, 10:00–12:00', 'Expected attendance': '80', Venue: 'Hall A (capacity 100)',
+  // The six Week 7 facts; the Operational Feasibility Check facts are covered in operationalSafetyCheck.test.jsx.
+  expect(facts(card(panel, 'Community Workshop'))).toMatchObject({ 'Date and time': '2030-10-15, 10:00–12:00', 'Expected attendance': '80', Venue: 'Hall A (capacity 100)',
     Layout: 'Theatre', Accessibility: 'Ramp, Hearing loop', Equipment: 'Projector × 1; On-site technical support; Video-conferencing / hybrid; Spare batteries' });
   expect(within(card(panel, 'Community Workshop')).getByText('Last check: Changes requested')).toBeTruthy();
-  expect(facts(card(panel, 'Sparse Talk'))).toEqual({ 'Date and time': 'Not specified, 09:00–?', 'Expected attendance': 'Not specified', Venue: 'Room B (capacity 20)',
+  expect(facts(card(panel, 'Sparse Talk'))).toMatchObject({ 'Date and time': 'Not specified, 09:00–?', 'Expected attendance': 'Not specified', Venue: 'Room B (capacity 20)',
     Layout: 'Not specified', Accessibility: 'None recorded', Equipment: 'None requested' });
   expect(within(card(panel, 'Sparse Talk')).getByText('Not yet checked')).toBeTruthy();
 });

@@ -38,10 +38,11 @@ async function updateVenue(req,res) {
   }
   const result=await client.query(`UPDATE venues SET name=$1,location=$2,capacity=$3,supported_layouts=$4,
    accessibility_features=$5,facilities=$6,operating_hours=$7,availability_status=$8,pricing=$9,mrt=$10,image=$11,
-   setup_minutes=$12,turnaround_minutes=$13,latitude=$14,longitude=$15,mrt_distance_m=$16,revision=revision+1
+   setup_minutes=$12,turnaround_minutes=$13,latitude=$14,longitude=$15,mrt_distance_m=$16,revision=revision+1,
+   emergency_access=$18,known_restrictions=$19
    WHERE id=$17 RETURNING *`,[data.name,data.location,data.capacity,data.supportedLayouts,data.accessibilityFeatures,data.facilities,
    data.operatingHours,data.availabilityStatus,data.pricing,data.mrt,data.image||null,data.setupMinutes,data.turnaroundMinutes,
-   data.latitude??null,data.longitude??null,data.mrtDistanceM,venue.id]);
+   data.latitude??null,data.longitude??null,data.mrtDistanceM,venue.id,data.emergencyAccess,data.knownRestrictions]);
   await client.query('COMMIT');return res.json({message:'Venue updated.',venue:result.rows[0]});
  } catch {if(client)await client.query('ROLLBACK').catch(()=>{});return res.status(500).json({message:'Unable to update the venue. Please try again.'});}
  finally {client?.release();}

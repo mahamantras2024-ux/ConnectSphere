@@ -141,3 +141,47 @@ for (const [label, changes, expected] of [
     assert.equal(evaluateSafetyReview({ ...ready, ...changes })?.code ?? null, expected);
   });
 }
+
+// ---------- Operational Feasibility Check (OFC) ----------
+const { SAFETY_CHANGE_AREAS, resolutionBlocker } = require('../../backend/src/services/eventDecisionPolicy');
+
+// Test case: The three stages a Safety Officer can reopen, and what proves each is complete, are pinned (AC3).
+test('OFC AC3 - each reopenable planning stage is completed by its own arrangement requirement', () => {
+  assert.deepEqual(SAFETY_CHANGE_AREAS, { venue: 'venueConfirmed', technical: 'technicalConfirmed', event_details: 'clarificationsResolved' });
+});
+
+// AC4 boundary on the number of stages still open: zero allows the re-check, one or more refuses it.
+for (const [open, expected] of [[[], null], [['venue'], 'SAFETY_CHANGES_OUTSTANDING'], [['venue', 'event_details'], 'SAFETY_CHANGES_OUTSTANDING']]) {
+  // Test case: A safety review with this many open stages.
+  test(`OFC AC4 - a safety review with ${open.length} open stage(s) is ${expected ? 'refused' : 'allowed'}`, () => {
+    assert.equal(evaluateSafetyReview({ ...ready, safety_changes_open: open })?.code ?? null, expected);
+  });
+}
+// Test case: Open stages are reported before the arrangement checks, so the officer is told why the event left the queue.
+test('OFC AC4 - outstanding safety changes are reported before an unconfirmed venue', () => {
+  assert.equal(evaluateSafetyReview({ ...ready, safety_changes_open: ['venue'], bookings: [] }).code, 'SAFETY_CHANGES_OUTSTANDING');
+});
+
+// Completing a reopened stage needs that stage's arrangement to be in place again (AC3/AC4).
+for (const [label, area, changes, expected] of [
+  ['a stage that was not reopened', 'venue', { safety_changes_open: ['event_details'] }, 'SAFETY_CHANGE_NOT_OPEN'],
+  ['the venue stage with a confirmed venue', 'venue', { safety_changes_open: ['venue'] }, null],
+  ['the venue stage with no confirmed venue', 'venue', { safety_changes_open: ['venue'], bookings: [] }, 'VENUE_NOT_CONFIRMED'],
+  ['the technical stage before Technical Support re-confirms', 'technical', { safety_changes_open: ['technical'], technical_support_required: true }, 'TECHNICAL_NOT_CONFIRMED'],
+  ['the technical stage after Technical Support re-confirms', 'technical', { safety_changes_open: ['technical'], technical_support_required: true, equipment_confirmed_at: '2030-01-02T00:00:00Z' }, null],
+  ['the event-details stage while a clarification is owed', 'event_details', { safety_changes_open: ['event_details'], pending_clarifications: 1 }, 'CLARIFICATION_OUTSTANDING'],
+  ['the event-details stage with nothing owed', 'event_details', { safety_changes_open: ['event_details'] }, null],
+]) {
+  // Test case: One stage-completion attempt.
+  test(`OFC AC3 - completing ${label} is ${expected ? `refused (${expected})` : 'allowed'}`, () => {
+    assert.equal(resolutionBlocker(area, { ...ready, ...changes })?.code ?? null, expected);
+  });
+}
+
+// Test case: Completing every stage is not enough to proceed; only a new passed check allows approval (AC4/AC5).
+test('OFC AC4/AC5 - after the requested changes are complete, approval still waits for a new passed safety check', () => {
+  const changed = { ...ready, safety_changes_open: [], latest_safety_check: { outcome: 'changes_requested' } };
+  assert.equal(evaluateSafetyReview(changed), null);
+  assert.equal(codeFor('approved', changed), 'SAFETY_CHANGES_REQUESTED');
+  assert.equal(codeFor('approved', { ...changed, latest_safety_check: { outcome: 'approved' } }), null);
+});
