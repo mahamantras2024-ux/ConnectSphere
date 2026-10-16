@@ -248,6 +248,9 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       'migrations/003-event-clarifications.sql',
       'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql',
       'migrations/005-change-request-review.sql',
+      // Same order as backend/src/db/migrateExternalEvents.js, so this schema matches production.
+      'migrations/005-technical-support-reviews.sql', 'migrations/006-event-decisions.sql',
+      'migrations/006-equipment-inventory-reservations.sql', 'migrations/007-equipment-stock-quantities.sql',
       'venueManagementSchema.sql'
     ]) {
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');

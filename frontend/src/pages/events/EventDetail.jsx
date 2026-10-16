@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
+import VenueSuitabilitySection from './VenueSuitabilitySection';
 
 
 
@@ -925,6 +926,8 @@ export default function EventDetail() {
       )}
 
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
+      {/* Check Venue Suitability: only the assigned coordinator (the API scopes it) compares venues for this event. */}
+      {user.role === 'event_coordinator' && <VenueSuitabilitySection eventId={event.id} token={token} />}
 
 
 
