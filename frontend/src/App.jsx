@@ -15,6 +15,7 @@ import EventForm from './pages/events/EventForm';
 import EventList from './pages/events/EventList';
 
 import AttendeeDashboard from './pages/attendee/AttendeeDashboard.jsx';
+import AttendeeEventDetails from './pages/attendee/AttendeeEventDetails.jsx';
 import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
@@ -66,6 +67,8 @@ export default function App() {
             path="/attendee/dashboard"
             element={<ProtectedRoute roles={['attendee']} loginPath="/external/login"><AttendeeDashboard /></ProtectedRoute>}
           />
+
+          <Route path="/attendee/events/:id" element={<ProtectedRoute roles={['attendee']} loginPath="/external/login"><AttendeeEventDetails /></ProtectedRoute>} />
 
           <Route
             path="/tech-support/dashboard"
