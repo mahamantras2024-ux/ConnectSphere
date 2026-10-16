@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
+import VenueBookingDecisions from './VenueBookingDecisions';
 
 
 
@@ -925,6 +926,8 @@ export default function EventDetail() {
       )}
 
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
+
+      {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} />}
 
 
 

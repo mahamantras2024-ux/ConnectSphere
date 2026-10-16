@@ -223,16 +223,18 @@ for (const [name, expires, expected] of [
 }
 
 for (const [decision, persisted] of [['approved', 'approved'], ['rejected', 'rejected']]) {
-  test(`AC7 - Venue Staff can mark an active request ${decision}`, async () => {
+  test(`AC3 AC7 - Venue Staff can mark an active request ${decision}`, async () => {
     // Arrange: this live hold is the request being decided, not a conflicting second request.
     fixture.role = 'venue_staff';
     fixture.bookings = [{ ...hold, hold_expires_at: new Date(now + 1).toISOString() }];
     // Act
-    const response = await request('/7/requests/20/decision', { decision }, 'PUT');
+    const reason = decision === 'rejected' ? 'The venue is undergoing maintenance.' : undefined;
+    const response = await request('/7/requests/20/decision', { decision, ...(reason ? { reason } : {}) }, 'PUT');
     // Assert: approval must ignore its own hold; rejection must persist a nonblocking status.
     assert.equal(response.status, 200);
     assert.equal(response.body.request.status, persisted);
     assert.equal(fixture.writes.at(-1).changes.status, persisted);
+    assert.equal(fixture.writes.at(-1).changes.decision_notes, reason || null);
   });
 }
 

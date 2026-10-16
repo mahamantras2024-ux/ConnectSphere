@@ -6,6 +6,7 @@ const eventReadController = require('../controllers/eventReadController');
 const technicalSupportController = require('../controllers/technicalSupportController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
+const venueBookingDecisions = require('../controllers/venueBookingDecisionController');
 
 router.use(requireAuth);
 const lead = require('../controllers/coordinatorLeadController');
@@ -21,6 +22,7 @@ router.put('/:id/non-critical', requireRole('event_organiser'), eventController.
 router.put('/:id/equipment', requireRole('event_organiser'), eventController.updateEquipmentRequirements);
 router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);
 router.post('/change-requests/:id/decision', requireRole('event_coordinator'), eventController.decideChangeRequest);
+router.get('/:id/venue-bookings', requireRole('event_coordinator'), venueBookingDecisions.listEventVenueBookings);
 router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);
 router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_organiser'), eventController.respondToClarification);
 

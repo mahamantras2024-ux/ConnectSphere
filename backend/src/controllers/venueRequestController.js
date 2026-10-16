@@ -8,7 +8,7 @@ async function createRequest(req, res) {
 
 /** Records a staff approval/rejection; the service owns atomic validation and persistence. */
 async function decideRequest(req, res) {
-  const request = await decideVenueRequest(req.params.id, req.params.requestId, req.body.decision, req.user.id);
+  const request = await decideVenueRequest(req.params.id, req.params.requestId, req.body.decision, req.user.id, req.body.reason);
   return res.json({ request });
 }
 
