@@ -4,6 +4,7 @@ const router = express.Router();
 const eventController = require('../controllers/eventController');
 const eventReadController = require('../controllers/eventReadController');
 const attendeeEventController = require('../controllers/attendeeEventController');
+const eventRegistrationController = require('../controllers/eventRegistrationController');
 const technicalSupportController = require('../controllers/technicalSupportController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
@@ -25,6 +26,7 @@ router.get('/change-requests', requireRole('event_coordinator'), eventController
 router.post('/change-requests/:id/decision', requireRole('event_coordinator'), eventController.decideChangeRequest);
 router.get('/published', requireRole('attendee'), asyncHandler(attendeeEventController.listPublished));
 router.get('/published/:id', requireRole('attendee'), asyncHandler(attendeeEventController.getPublished));
+router.get('/:id/registrations', requireRole('event_organiser'), asyncHandler(eventRegistrationController.getEventRegistrations));
 router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);
 router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_organiser'), eventController.respondToClarification);
 

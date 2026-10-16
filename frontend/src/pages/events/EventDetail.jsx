@@ -1122,6 +1122,12 @@ export default function EventDetail() {
 
           </dl>
 
+          {user.role === 'event_organiser' && (
+            <Link className="button-link button-secondary" to={`/organizer/events/${id}/registrations`}>
+              View registration details
+            </Link>
+          )}
+
         </section>
 
       </div>

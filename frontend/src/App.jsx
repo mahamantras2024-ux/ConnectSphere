@@ -17,6 +17,7 @@ import EventList from './pages/events/EventList';
 import AttendeeDashboard from './pages/attendee/AttendeeDashboard.jsx';
 import AttendeeEventDetails from './pages/attendee/AttendeeEventDetails.jsx';
 import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
+import EventRegistrationDetails from './pages/event-organiser/EventRegistrationDetails.jsx';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import VenueDashboard from './pages/venue/VenueDashboard';
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/external/reset-password" element={<PasswordReset reset />} />
           <Route path="/organizer/events" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventList /></ProtectedRoute>} />
           <Route path="/organizer/events/new" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventForm /></ProtectedRoute>} />
+          <Route path="/organizer/events/:id/registrations" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventRegistrationDetails /></ProtectedRoute>} />
           <Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventDetail /></ProtectedRoute>} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
