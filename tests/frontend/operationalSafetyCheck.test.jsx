@@ -107,11 +107,6 @@ it('OFC AC4 - a re-check shows the previous change request with its stages and n
   expect(facts(item)['Previous check']).toBe('Changes requested to Technical arrangements, Event details - Move the projector');
   expect(within(item).getByText('Last check: Changes requested')).toBeTruthy();
 });
-// Test case: An event stays queued after a passed check until the coordinator decides; a note-free pass reads simply "Passed".
-it('OFC AC1 - an earlier passed check without notes is shown as Passed', async () => {
-  const { item } = await openQueue([{ ...gala, latest_safety_check: { outcome: 'approved', notes: null, change_areas: [] } }]);
-  expect(facts(item)['Previous check']).toBe('Passed');
-});
 
 // ---------- AC2/AC3: requesting changes names the planning stages ----------
 

@@ -208,6 +208,25 @@ test('OFC AC4 - a new safety check is refused while requested changes are outsta
   assert.equal(tx.find('INSERT INTO event_safety_checks').length, 0);
 });
 
+// Test case: Once a check has passed or failed it is final: the event leaves the queue and another check is refused.
+for (const outcome of ['approved', 'rejected']) {
+  test(`OFC AC4/AC5 - after a ${outcome} check the event leaves the queue and no further check can be recorded`, async () => {
+    // Arrange: event 1 still needs its check; event 2 already has this outcome.
+    const candidate = (id, latest) => ({ id, name: `Event ${id}`, status: 'submitted', is_draft: false, equipment_items: [], technical_support_required: false,
+      video_conferencing_required: false, equipment_notes: null, equipment_confirmed_at: null, bookings: [{ status: 'approved' }], venues: [],
+      safety_changes_open: [], latest_safety_check: latest });
+    mockPool(safetyOfficer, () => ({ rows: [candidate(1, null), candidate(2, { outcome, notes: outcome === 'rejected' ? 'Unsafe' : null })] }));
+    // Act / Assert: the queue lists only the event still awaiting its check.
+    assert.deepEqual((await request('/api/safety/checks', { user: safetyOfficer })).body.events.map((event) => event.id), [1]);
+    mock.restoreAll();
+    mockPool(safetyOfficer);
+    const tx = mockTransaction({ ...readyContext, latest_safety_check: { outcome } });
+    const result = await recordCheck({ outcome: 'approved' });
+    assert.deepEqual([result.status, result.body.code], [409, 'SAFETY_CHECK_COMPLETE']);
+    assert.equal(tx.find('INSERT INTO event_safety_checks').length, 0);
+  });
+}
+
 // Test case: The assigned coordinator completes one stage; the other stays open.
 test('OFC AC3/AC4 - the assigned coordinator marks a completed stage and the rest stay open', async () => {
   // Arrange

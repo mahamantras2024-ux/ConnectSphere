@@ -229,7 +229,7 @@ it('AR AC6 - the organiser receives the decision as a dashboard notification and
 const queuedEvent = { id: 101, name: 'Community Workshop', proposed_date: '2030-10-15', proposed_start_time: '10:00:00', proposed_end_time: '12:00:00',
   expected_attendance: 80, room_layout_preference: 'Theatre', accessibility_requirements: ['Ramp', 'Hearing loop'],
   equipment_items: [{ item: 'Projector', quantity: 1 }], technical_support_required: true, video_conferencing_required: true, equipment_notes: ' Spare batteries ',
-  venues: [{ name: 'Hall A', capacity: 100 }], latest_safety_check: { outcome: 'changes_requested', notes: 'Widen aisles' } };
+  venues: [{ name: 'Hall A', capacity: 100 }], latest_safety_check: { outcome: 'changes_requested', notes: 'Widen aisles', change_areas: ['venue'] } };
 const sparseEvent = { id: 102, name: 'Sparse Talk', proposed_date: null, proposed_start_time: '09:00:00', proposed_end_time: null, expected_attendance: null,
   room_layout_preference: null, accessibility_requirements: [], equipment_items: [], technical_support_required: false, video_conferencing_required: false,
   equipment_notes: null, venues: [{ name: 'Room B', capacity: 20 }], latest_safety_check: null };

@@ -116,6 +116,9 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
 
       // ---------- AC1/AC4/AC5/AC6: after a passed check the coordinator approves; the outcome is stored and announced ----------
       assert.equal((await as('sam', 'POST', '/events/1/safety-checks', { outcome: 'approved' })).status, 201);
+      // OFC AC4/AC5: the passed check is final - the event leaves the queue before the coordinator decides, and cannot be re-checked.
+      assert.deepEqual((await as('sam', 'GET', '/safety/checks')).body.events, []);
+      assert.equal((await as('sam', 'POST', '/events/1/safety-checks', { outcome: 'rejected', notes: 'Second look' })).body.code, 'SAFETY_CHECK_COMPLETE');
       assert.equal((await as('cara', 'POST', '/events/1/decision', { decision: 'approved' })).status, 404);
       emails.length = 0;
       const approved = await as('chris', 'POST', '/events/1/decision', { decision: 'approved' });

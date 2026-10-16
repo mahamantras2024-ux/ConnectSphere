@@ -380,7 +380,7 @@ test('AR AC2 - a failed safety check is recorded with its notes for the coordina
 // (A change request also tells the organiser, so a failed check is the case with no recipient at all.)
 test('AR AC1 - a check on an unassigned event is recorded without a notification', async () => {
   mockAuth(safetyOfficer);
-  const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null } });
+  const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null, latest_safety_check: null } });
   const result = await recordCheck({ outcome: 'rejected', notes: 'Fire exit blocked' });
   assert.equal(result.status, 201);
   assert.equal(result.body.message, 'Safety check recorded.');
@@ -416,7 +416,7 @@ for (const [label, body, id, status] of [
   // Test case: Sends one boundary or malformed safety check.
   test(`AR AC2 - a safety check with ${label} is ${status === 201 ? 'accepted' : 'refused'}`, async () => {
     mockAuth(safetyOfficer);
-    const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null } });
+    const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null, latest_safety_check: null } });
     const result = await recordCheck(body, id);
     assert.equal(result.status, status);
     assert.equal(tx.find('INSERT INTO event_safety_checks').length, status === 201 ? 1 : 0);

@@ -16,6 +16,8 @@ const ready = Object.freeze({
   equipment_confirmed_at: null, latest_safety_check: { outcome: 'approved' }, now: NOW,
 });
 const codeFor = (decision, changes) => evaluateDecision(decision, { ...ready, ...changes })?.code ?? null;
+// The same event before its safety check: `ready` already has a passed check, so it is no longer due for review.
+const unchecked = Object.freeze({ ...ready, latest_safety_check: null });
 
 // Test case: With every requirement met, both decisions are allowed.
 test('AR AC1 - a request with confirmed arrangements and a passed safety check can be approved or rejected', () => {
@@ -138,7 +140,7 @@ for (const [label, changes, expected] of [
 ]) {
   // Test case: Applies the safety-review prerequisite to one situation.
   test(`AR AC1 - a safety review with ${label} is ${expected ? `refused (${expected})` : 'allowed'}`, () => {
-    assert.equal(evaluateSafetyReview({ ...ready, ...changes })?.code ?? null, expected);
+    assert.equal(evaluateSafetyReview({ ...unchecked, ...changes })?.code ?? null, expected);
   });
 }
 
@@ -154,12 +156,12 @@ test('OFC AC3 - each reopenable planning stage is completed by its own arrangeme
 for (const [open, expected] of [[[], null], [['venue'], 'SAFETY_CHANGES_OUTSTANDING'], [['venue', 'event_details'], 'SAFETY_CHANGES_OUTSTANDING']]) {
   // Test case: A safety review with this many open stages.
   test(`OFC AC4 - a safety review with ${open.length} open stage(s) is ${expected ? 'refused' : 'allowed'}`, () => {
-    assert.equal(evaluateSafetyReview({ ...ready, safety_changes_open: open })?.code ?? null, expected);
+    assert.equal(evaluateSafetyReview({ ...unchecked, safety_changes_open: open })?.code ?? null, expected);
   });
 }
 // Test case: Open stages are reported before the arrangement checks, so the officer is told why the event left the queue.
 test('OFC AC4 - outstanding safety changes are reported before an unconfirmed venue', () => {
-  assert.equal(evaluateSafetyReview({ ...ready, safety_changes_open: ['venue'], bookings: [] }).code, 'SAFETY_CHANGES_OUTSTANDING');
+  assert.equal(evaluateSafetyReview({ ...unchecked, safety_changes_open: ['venue'], bookings: [] }).code, 'SAFETY_CHANGES_OUTSTANDING');
 });
 
 // Completing a reopened stage needs that stage's arrangement to be in place again (AC3/AC4).
@@ -185,3 +187,16 @@ test('OFC AC4/AC5 - after the requested changes are complete, approval still wai
   assert.equal(codeFor('approved', changed), 'SAFETY_CHANGES_REQUESTED');
   assert.equal(codeFor('approved', { ...changed, latest_safety_check: { outcome: 'approved' } }), null);
 });
+
+// A check is due when none exists or as the re-check after changes; a passed or failed check is final (AC4/AC5).
+for (const [label, check, expected] of [
+  ['no check yet', null, null],
+  ['a change request (the re-check)', { outcome: 'changes_requested' }, null],
+  ['a passed check', { outcome: 'approved' }, 'SAFETY_CHECK_COMPLETE'],
+  ['a failed check', { outcome: 'rejected' }, 'SAFETY_CHECK_COMPLETE'],
+]) {
+  // Test case: Whether another safety review is due after this latest outcome.
+  test(`OFC AC4/AC5 - after ${label} another safety review is ${expected ? 'not due' : 'due'}`, () => {
+    assert.equal(evaluateSafetyReview({ ...unchecked, latest_safety_check: check })?.code ?? null, expected);
+  });
+}

@@ -42,7 +42,8 @@ function movementWindow(venue) {
 /**
  * Operational Feasibility Check AC1: attendance, venue capacity and layout, emergency access, accessibility, equipment
  * placement, crowd movement and known venue restrictions. The first six facts keep their earlier labels; venue facts
- * come from what Venue Staff recorded. A previous check is shown so a re-check knows what was asked for (AC4).
+ * come from what Venue Staff recorded. Only events still due a check are queued, so a previous check is always a change
+ * request (which the database requires to name its stages and notes); it is shown so the re-check knows what was asked (AC4).
  * @param {{ event: object }} props an event from GET /api/safety/checks.
  */
 export default function SafetyEventFacts({ event }) {
@@ -63,8 +64,7 @@ export default function SafetyEventFacts({ event }) {
     ['Known venue restrictions', perVenue(event.venues, (venue) => venue.known_restrictions)],
   ];
   if (previous) {
-    const stages = previous.change_areas?.length ? ` to ${previous.change_areas.map((area) => STAGE_LABELS[area]).join(', ')}` : '';
-    facts.push(['Previous check', `${LATEST_LABELS[previous.outcome]}${stages}${previous.notes ? ` - ${previous.notes}` : ''}`]);
+    facts.push(['Previous check', `${LATEST_LABELS[previous.outcome]} to ${previous.change_areas.map((area) => STAGE_LABELS[area]).join(', ')} - ${previous.notes}`]);
   }
   return (
     <dl className="detail-facts">
