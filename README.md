@@ -10,6 +10,18 @@ From the root, install with `npm ci --prefix backend` and `npm ci --prefix front
 
 Existing shared databases do not need seeding. Deliberate upgrades for an existing compatible database are the backend commands `migrate:external-events`, `setup:sprint-one`, and `setup:venue-management`, in that order. These additive upgrades are not a verified empty-database bootstrap. Internal accounts use `npm run provision:account --prefix backend`.
 
+## Quality checks
+
+The same checks used by CI are available from the repository root:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run lint` | Static JavaScript/JSX linting |
+| `npm run audit` | High-severity audit of production dependencies |
+| `npm run package` | Builds `artifacts/quackloan.zip` once and writes its CycloneDX file SBOM |
+| `npm run smoke` | Extracts the package and probes the API `/health` endpoint |
+| `npm run e2e` | Runs the Playwright browser checks against the production frontend preview |
+
 ## Folders
 
 | Folder | Purpose |
