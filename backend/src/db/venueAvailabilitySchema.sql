@@ -29,6 +29,9 @@ BEGIN
     ) OR EXISTS (
       SELECT 1 FROM venue_unavailability u WHERE u.venue_id=NEW.venue_id
         AND u.start_datetime < occupied_end AND u.end_datetime > occupied_start
+    ) OR EXISTS (
+      SELECT 1 FROM venue_schedule_periods s WHERE s.venue_id=NEW.venue_id AND s.status='unavailable'
+        AND s.start_datetime < occupied_end AND s.end_datetime > occupied_start
     ) THEN
       RAISE EXCEPTION 'The requested period is unavailable, including setup and turnaround.' USING ERRCODE='23P01';
     END IF;
@@ -54,4 +57,7 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS venue_unavailability_lock ON venue_unavailability;
 CREATE TRIGGER venue_unavailability_lock BEFORE INSERT OR UPDATE OR DELETE ON venue_unavailability FOR EACH ROW EXECUTE FUNCTION lock_venue_unavailability();
+-- Staff schedule writes share the same lock as booking approvals and legacy maintenance.
+DROP TRIGGER IF EXISTS venue_schedule_periods_lock ON venue_schedule_periods;
+CREATE TRIGGER venue_schedule_periods_lock BEFORE INSERT OR UPDATE OR DELETE ON venue_schedule_periods FOR EACH ROW EXECUTE FUNCTION lock_venue_unavailability();
 COMMIT;

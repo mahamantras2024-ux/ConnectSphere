@@ -45,9 +45,11 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_recent ON notifications(user_i
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 -- Widen the allowed types to include event decisions and safety checks; keeps every change-request type.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+-- Migrations re-run on every deploy, so this list must stay a superset of every later migration's types; otherwise a
+-- re-run fails on stored notifications of a newer type. equipment_status_changed is added by 013 (equipment status story).
 ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN ('change_request_submitted',
   'change_request_approved', 'change_request_rejected', 'event_details_changed',
-  'event_approved', 'event_rejected', 'safety_check_recorded'));
+  'event_approved', 'event_rejected', 'safety_check_recorded', 'equipment_status_changed'));
 
 -- Access goes through the API's per-user scoping, never Supabase's public roles.
 DO $$ BEGIN

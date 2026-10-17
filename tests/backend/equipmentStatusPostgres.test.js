@@ -99,7 +99,10 @@ test('ES AC1-AC3 - equipment request status, affected items and coordinator noti
       }
       await client.query("INSERT INTO notifications (user_id, type, title, message) VALUES (2, 'safety_check_recorded', 't', 'm')");
       await assert.rejects(client.query("INSERT INTO notifications (user_id, type, title, message) VALUES (2, 'unknown_type', 't', 'm')"), { code: '23514' });
-      // Re-running the migration keeps stored reviews.
+      // Re-running every migration keeps stored reviews. 006 runs before 013 on each deploy, so it must also allow the
+      // equipment_status_changed notifications stored above (regression: a re-run failed once one existed).
+      assert.ok((await client.query("SELECT count(*)::int AS n FROM notifications WHERE type = 'equipment_status_changed'")).rows[0].n > 0);
+      await client.query(sqlFile('migrations/006-event-decisions.sql'));
       await client.query(sqlFile('migrations/013-equipment-review-affected-items.sql'));
       assert.deepEqual((await client.query("SELECT affected_items FROM event_equipment_reviews WHERE outcome = 'partially_fulfillable'")).rows[0].affected_items,
         [{ key: 'equipment:0', availableQuantity: 2 }]);

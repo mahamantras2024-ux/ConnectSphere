@@ -4,11 +4,21 @@ export function isActiveHold(record, now) {
 }
 
 /** Splits a Singapore day into half-open intervals, expanding event buffers before clipping to midnight. */
-export function buildSchedule(date, records, { now = Date.now(), setupMinutes = 0, turnaroundMinutes = 0 } = {}) {
+export function buildSchedule(date, records, { now = Date.now(), setupMinutes = 0, turnaroundMinutes = 0, operatingHours } = {}) {
   const start = Date.parse(`${date}T00:00:00+08:00`);
   const end = start + 86400000;
-  const periods = records.map(record => {
-    const blocked = record.kind === 'unavailability' || ['approved', 'confirmed'].includes(record.status) || isActiveHold(record, now);
+  const hours = /^(\d{2}:\d{2}) - (\d{2}:\d{2})$/.exec(operatingHours || '');
+  const opening = hours ? start + (Number(hours[1].slice(0, 2)) * 60 + Number(hours[1].slice(3))) * 60000 : start;
+  const closing = hours ? start + (Number(hours[2].slice(0, 2)) * 60 + Number(hours[2].slice(3))) * 60000 : end;
+  // Closed hours are synthetic blockers; they need no stored rows and cannot be overridden by explicit availability.
+  const closed = hours ? [
+    { id: 'before-open', kind: 'closed', status: 'unavailable', label: 'Outside operating hours', start_datetime: new Date(start).toISOString(), end_datetime: new Date(opening).toISOString() },
+    { id: 'after-close', kind: 'closed', status: 'unavailable', label: 'Outside operating hours', start_datetime: new Date(closing).toISOString(), end_datetime: new Date(end).toISOString() },
+  ] : [];
+  const periods = [...records, ...closed].map(record => {
+    const blocked = record.kind === 'unavailability' || record.kind === 'closed' ||
+      (record.kind === 'schedule' && record.status === 'unavailable') ||
+      (record.kind === 'booking' && (['approved', 'confirmed'].includes(record.status) || isActiveHold(record, now)));
     const buffered = record.kind === 'booking' && blocked;
     // The API's snapshot takes precedence over potentially older catalogue settings. Maintenance is already a complete window.
     const setup = buffered ? (record.setup_minutes ?? setupMinutes) * 60000 : 0;

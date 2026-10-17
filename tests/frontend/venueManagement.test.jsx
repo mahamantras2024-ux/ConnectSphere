@@ -76,3 +76,36 @@ it('address search requires an action and result selection calculates MRT withou
  fireEvent.click(screen.getByRole('button',{name:'Search'}));fireEvent.click(await screen.findByRole('button',{name:'SMU, Singapore'}));
  expect(await screen.findByText('Bras Basah MRT')).toBeTruthy();expect(changed).toHaveBeenCalledWith(expect.objectContaining({latitude:1.296,mrt:{name:'Bras Basah MRT',distanceM:100}}));expect(screen.queryByRole('textbox',{name:/mrt/i})).toBeNull();
 });
+// Test case: Operational Feasibility Check AC1 - Venue Staff edit the safety facts; a cleared field is sent as "not recorded".
+it('OFC AC1 - the venue form prefills, saves and clears emergency access and known restrictions',async()=> {
+ // Arrange: an existing venue that already records both facts.
+ api.put.mockResolvedValue({venue});
+ render(<AddVenueModal venue={{...venue,emergency_access:'Exit A to Marina Road',known_restrictions:'No open flames'}} onClose={()=>{}} onAdd={()=>{}}/>);
+ expect(screen.getByLabelText('Emergency access').value).toBe('Exit A to Marina Road');
+ expect(screen.getByLabelText('Known restrictions').value).toBe('No open flames');
+ // Act: change one, blank the other.
+ fireEvent.change(screen.getByLabelText('Emergency access'),{target:{value:'  Exits A and B  '}});
+ fireEvent.change(screen.getByLabelText('Known restrictions'),{target:{value:'   '}});
+ fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
+ // Assert
+ await waitFor(()=>expect(api.put).toHaveBeenCalledWith('/venues/7',expect.objectContaining({emergencyAccess:'Exits A and B',knownRestrictions:null}),'staff-token'));
+});
+// Test case: Operational Feasibility Check AC1 - 2000 characters is the limit (2000 saves, 2001 is explained and not sent).
+it('OFC AC1 - the venue form accepts 2000 characters of safety information and refuses 2001',async()=> {
+ api.put.mockResolvedValue({venue});
+ render(<AddVenueModal venue={venue} onClose={()=>{}} onAdd={()=>{}}/>);
+ fireEvent.change(screen.getByLabelText(/^Known restrictions/),{target:{value:'x'.repeat(2001)}});
+ fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
+ expect(screen.getByText('Enter at most 2000 characters.')).toBeTruthy();
+ expect(screen.getByLabelText(/^Known restrictions/).getAttribute('aria-invalid')).toBe('true');
+ expect(api.put).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByLabelText(/^Known restrictions/),{target:{value:'x'.repeat(2000)}});
+ fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
+ await waitFor(()=>expect(api.put).toHaveBeenCalledWith('/venues/7',expect.objectContaining({knownRestrictions:'x'.repeat(2000)}),'staff-token'));
+});
+// Test case: Operational Feasibility Check AC1 - the venue profile shows recorded safety facts, or that one is not specified.
+it('OFC AC1 - venue profiles display emergency access and known restrictions or "Not specified"',async()=> {
+ render(<VenueDetail venue={{...venue,emergency_access:'Exit A to Marina Road'}} onClose={()=>{}}/>);
+ const shown=label=>screen.getByText(label,{selector:'dt'}).nextElementSibling.textContent;
+ expect([shown('Emergency access'),shown('Known restrictions')]).toEqual(['Exit A to Marina Road','Not specified']);
+});
