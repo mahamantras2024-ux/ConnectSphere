@@ -447,13 +447,14 @@ it('UI1 / Organiser AC4 - failed details retain a working close control and reve
   fireEvent.click(within(drawer).getByRole('button', { name: 'Close dialog' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
-// Test case: Opens attendee details from a personal registration and checks no additional event request is made.
-it('UI1 / External AC7-8 - attendee details use only personal registrations and close without another event request', async () => {
+// Test case: Opens attendee details from a personal registration and checks the drawer does not request event details.
+it('UI1 / External AC7-8 - attendee registration details stay personal while the dashboard loads its published catalogue', async () => {
   user.role = 'attendee'; open('/attendee/dashboard');
   const trigger = await screen.findByRole('button', { name: 'View registration' }); trigger.focus(); fireEvent.click(trigger);
   const drawer = screen.getByRole('dialog', { name: 'Registration details' });
   for (const text of ['Community afternoon', 'confirmed', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
-  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/registrations/mine']);
+  // Dashboard now loads the published-event catalogue; opening the personal drawer must not fetch another event record.
+  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/registrations/mine', '/events/published']);
   fireEvent.click(within(drawer).getByRole('button', { name: 'Back to list' }));
   expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(trigger);
   fireEvent.click(trigger); fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
