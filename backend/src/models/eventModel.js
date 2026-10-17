@@ -303,20 +303,7 @@ async function createEquipmentReview(eventId, data, reviewerId) {
 /** Lists seeded stock counts and availability windows with remaining units per slot. */
 async function listEquipmentInventory() {
   const result = await pool.query(`
-    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
-      stock.availability_status, stock.quantity,
-      COALESCE((
-        SELECT jsonb_agg(jsonb_build_object(
-          'id', history.id,
-          'status', history.status,
-          'note', history.note,
-          'changed_at', history.changed_at,
-          'changed_by_name', staff.full_name
-        ) ORDER BY history.changed_at, history.id)
-        FROM equipment_status_history history
-        LEFT JOIN users staff ON staff.id=history.changed_by
-        WHERE history.inventory_id=stock.id
-      ), '[]'::jsonb) AS status_history,
+    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
       COALESCE(jsonb_agg(jsonb_build_object(
         'date', availability.available_date::text,
         'startTime', availability.start_time::text,
@@ -461,8 +448,7 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
   const distinctRequestedItems = [...combinedRequests.values()];
   const names = distinctRequestedItems.map(entry => String(entry.item).trim().toLowerCase());
   const inventory = names.length ? (await pool.query(`
-    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
-      stock.availability_status, stock.quantity,
+    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
       GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity,
       availability.available_date::text AS available_date,
       availability.start_time::text AS available_start_time,
@@ -477,8 +463,7 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
         AND reservation.event_date=$2::date
         AND reservation.start_time < $4::time AND reservation.end_time > $3::time
     ) booked ON true
-    WHERE stock.status='operational' AND stock.availability_status='Available'
-      AND lower(trim(stock.name))=ANY($1::text[])
+    WHERE stock.status='operational' AND lower(trim(stock.name))=ANY($1::text[])
       AND availability.available_date=$2::date
       AND availability.start_time <= $3::time AND availability.end_time >= $4::time
       AND stock.quantity > COALESCE(booked.quantity, 0)
@@ -559,7 +544,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
     const inventory = ids.length ? (await client.query(`
       SELECT id, name, asset_code, specification, quantity
       FROM equipments
-      WHERE id=ANY($1::integer[]) AND status='operational' AND availability_status='Available'
+      WHERE id=ANY($1::integer[]) AND status='operational'
       ORDER BY id
       FOR UPDATE
     `, [ids])).rows : [];
@@ -616,7 +601,6 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
           AND reservation.start_time < $4::time AND reservation.end_time > $3::time
       ) booked ON true
       WHERE stock.id=ANY($1::integer[]) AND stock.status='operational'
-        AND stock.availability_status='Available'
         AND availability.available_date=$2::date
         AND availability.start_time <= $3::time AND availability.end_time >= $4::time
         AND stock.quantity - COALESCE(booked.quantity, 0) >=
@@ -755,20 +739,7 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
 /** Lists seeded stock counts and availability windows with remaining units per slot. */
 async function listEquipmentInventory() {
   const result = await pool.query(`
-    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
-      stock.availability_status, stock.quantity,
-      COALESCE((
-        SELECT jsonb_agg(jsonb_build_object(
-          'id', history.id,
-          'status', history.status,
-          'note', history.note,
-          'changed_at', history.changed_at,
-          'changed_by_name', staff.full_name
-        ) ORDER BY history.changed_at, history.id)
-        FROM equipment_status_history history
-        LEFT JOIN users staff ON staff.id=history.changed_by
-        WHERE history.inventory_id=stock.id
-      ), '[]'::jsonb) AS status_history,
+    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
       COALESCE(jsonb_agg(jsonb_build_object(
         'date', availability.available_date::text,
         'startTime', availability.start_time::text,
@@ -795,48 +766,6 @@ async function listEquipmentInventory() {
     ORDER BY stock.asset_code
   `);
   return result.rows;
-}
-
-/**
- * Atomically changes one Unavailable asset to Available and appends its staff resolution note.
- * Returns null if the asset is missing or another request has already changed its availability.
- */
-async function markEquipmentAvailable(inventoryId, resolutionNote, staffId) {
-  const client = await databasePool.connect();
-  try {
-    await client.query('BEGIN');
-    const updated = (await client.query(`
-      UPDATE equipments
-      SET availability_status='Available', status='operational', updated_at=now()
-      WHERE id=$1 AND availability_status='Unavailable'
-      RETURNING id, asset_code, name, specification, status, availability_status, quantity
-    `, [inventoryId])).rows[0];
-    if (!updated) {
-      await client.query('ROLLBACK');
-      return null;
-    }
-
-    // Persisting the note inside this transaction prevents an Available status without its audit explanation.
-    await client.query(`
-      INSERT INTO equipment_status_history (inventory_id, status, note, changed_by)
-      VALUES ($1, 'Available', $2, $3)
-    `, [inventoryId, resolutionNote, staffId]);
-    const statusHistory = await client.query(`
-      SELECT history.id, history.status, history.note, history.changed_at,
-        staff.full_name AS changed_by_name
-      FROM equipment_status_history history
-      LEFT JOIN users staff ON staff.id=history.changed_by
-      WHERE history.inventory_id=$1
-      ORDER BY history.changed_at, history.id
-    `, [inventoryId]);
-    await client.query('COMMIT');
-    return { ...updated, status_history: statusHistory.rows };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
 }
 
 /**
@@ -971,8 +900,7 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
         AND reservation.event_date=$2::date
         AND reservation.start_time < $4::time AND reservation.end_time > $3::time
     ) booked ON true
-    WHERE stock.status='operational' AND stock.availability_status='Available'
-      AND lower(trim(stock.name))=ANY($1::text[])
+    WHERE stock.status='operational' AND lower(trim(stock.name))=ANY($1::text[])
       AND availability.available_date=$2::date
       AND availability.start_time <= $3::time AND availability.end_time >= $4::time
       AND stock.quantity > COALESCE(booked.quantity, 0)
@@ -1053,7 +981,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
     const inventory = ids.length ? (await client.query(`
       SELECT id, name, asset_code, specification, quantity
       FROM equipments
-      WHERE id=ANY($1::integer[]) AND status='operational' AND availability_status='Available'
+      WHERE id=ANY($1::integer[]) AND status='operational'
       ORDER BY id
       FOR UPDATE
     `, [ids])).rows : [];
@@ -1110,7 +1038,6 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
           AND reservation.start_time < $4::time AND reservation.end_time > $3::time
       ) booked ON true
       WHERE stock.id=ANY($1::integer[]) AND stock.status='operational'
-        AND stock.availability_status='Available'
         AND availability.available_date=$2::date
         AND availability.start_time <= $3::time AND availability.end_time >= $4::time
         AND stock.quantity - COALESCE(booked.quantity, 0) >=
@@ -1227,7 +1154,6 @@ module.exports = {
   listPendingEquipmentRequests,
   createEquipmentReview,
   listEquipmentInventory,
-  markEquipmentAvailable,
   listEquipmentReservationCandidates,
   listActiveEquipmentReservations,
   getEquipmentReservationAvailability,
