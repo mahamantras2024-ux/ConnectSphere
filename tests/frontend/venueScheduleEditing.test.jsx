@@ -1,4 +1,5 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -15,6 +16,25 @@ const date = '2030-10-10';
 const venue = { id: 7, name: 'LazadaOne', operating_hours: '08:00 - 22:00', setup_minutes: 0, turnaround_minutes: 0 };
 const recorded = { id: 3, kind: 'schedule', status: 'unavailable', label: 'Cleaning',
   start_datetime: `${date}T10:00:00+08:00`, end_datetime: `${date}T11:00:00+08:00` };
+
+it('AC9 - an unavailable block fills its timeline row vertically', async () => {
+  // Arrange: apply the real production stylesheet because jsdom does not load Vite CSS automatically.
+  const style = document.createElement('style');
+  style.textContent = readFileSync('src/index.css', 'utf8');
+  document.head.append(style);
+  try {
+    api.get.mockResolvedValue([recorded]);
+    render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
+    // Act: inspect the same unavailability block that staff can drag.
+    const block = await screen.findByLabelText('Cleaning 10:00–11:00');
+    // Assert: inset positioning would leave the bar floating inside the row again.
+    expect(getComputedStyle(block).top).toBe('0px');
+    expect(getComputedStyle(block).bottom).toBe('0px');
+    expect(getComputedStyle(block).height).not.toMatch(/^\d+px$/);
+  } finally {
+    style.remove();
+  }
+});
 
 it('AC7 AC10 - the timeline owns editing and shows a saved unavailability reason on its block', async () => {
   // Arrange: staff open a day without recorded closures; no separate agenda or time-entry form is needed.
@@ -116,19 +136,52 @@ it('AC1 AC10 - dragging across the row creates an unavailable block that staff c
     { date, periods: [{ status: 'unavailable', start: '10:00', end: '11:00', label: '' }] }, 'staff'));
 });
 
-it('AC10 - drag endpoints snap just below, at and above the 15-minute midpoint', async () => {
-  // Arrange: x=440 marks 11:00 on the 960px day row; x=445 is halfway to the next 15-minute slot.
+it('AC10 - drag endpoints snap just below, at and above the 30-minute midpoint', async () => {
+  // Arrange: x=440 marks 11:00 on the 960px day row; x=450 is halfway to the next 30-minute slot.
   api.get.mockResolvedValue([]);
   render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
   const row = await screen.findByRole('row', { name: /LazadaOne timeline/i });
   // Act / Assert: below midpoint rounds down, midpoint and above round up.
-  for (const [x, end] of [[444, '11:00'], [445, '11:15'], [446, '11:15']]) {
+  for (const [x, end] of [[449, '11:00'], [450, '11:30'], [451, '11:30']]) {
     fireEvent.pointerDown(row, { clientX: 400, pointerId: x });
     fireEvent.pointerMove(row, { clientX: x, pointerId: x });
     fireEvent.pointerUp(row, { clientX: x, pointerId: x });
     expect(screen.getByLabelText(`unavailable 10:00–${end}`)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Delete unavailable period' }));
   }
+});
+
+it('AC10 AC11 - a click creates at least 30 minutes and resizing never shrinks below one step', async () => {
+  // Arrange: a one-point gesture must produce a usable half-hour block.
+  api.get.mockResolvedValue([]);
+  render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
+  const row = await screen.findByRole('row', { name: /LazadaOne timeline/i });
+  // Act / Assert: creation and right-edge resizing both respect the same minimum duration.
+  fireEvent.pointerDown(row, { clientX: 400, pointerId: 1 });
+  fireEvent.pointerUp(row, { clientX: 400, pointerId: 1 });
+  const block = screen.getByLabelText('unavailable 10:00–10:30');
+  fireEvent.pointerDown(block.querySelector('[data-edge="right"]'), { clientX: 420, pointerId: 2 });
+  fireEvent.pointerMove(row, { clientX: 400, pointerId: 2 });
+  fireEvent.pointerUp(row, { clientX: 400, pointerId: 2 });
+  expect(screen.getByLabelText('unavailable 10:00–10:30')).toBeVisible();
+});
+
+it('AC11 - moving and resizing an existing block follows 30-minute steps', async () => {
+  // Arrange: a stored one-hour closure can be moved or adjusted without entering clock text.
+  api.get.mockResolvedValue([recorded]);
+  render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
+  const row = await screen.findByRole('row', { name: /LazadaOne timeline/i });
+  const block = await screen.findByLabelText('Cleaning 10:00–11:00');
+  // Act: 20 pixels on the 960-pixel day row is one half-hour step.
+  fireEvent.pointerDown(block, { clientX: 400, pointerId: 1 });
+  fireEvent.pointerMove(row, { clientX: 420, pointerId: 1 });
+  fireEvent.pointerUp(row, { clientX: 420, pointerId: 1 });
+  const moved = screen.getByLabelText('Cleaning 10:30–11:30');
+  fireEvent.pointerDown(moved.querySelector('[data-edge="right"]'), { clientX: 460, pointerId: 2 });
+  fireEvent.pointerMove(row, { clientX: 480, pointerId: 2 });
+  fireEvent.pointerUp(row, { clientX: 480, pointerId: 2 });
+  // Assert: both transformations land on adjacent half-hour boundaries.
+  expect(screen.getByLabelText('Cleaning 10:30–12:00')).toBeVisible();
 });
 
 it('AC2 AC11 - existing blocks can be moved resized and deleted before replacement save', async () => {
@@ -163,7 +216,7 @@ it('AC4 AC5 AC6 - invalid edits show errors and confirmed booking conflicts list
   await screen.findByRole('row', { name: /LazadaOne timeline/i });
   // Act / Assert: a drag starting before opening cannot be saved.
   const row = screen.getByRole('row', { name: /LazadaOne timeline/i });
-  fireEvent.pointerDown(row, { clientX: 310, pointerId: 1 });
+  fireEvent.pointerDown(row, { clientX: 300, pointerId: 1 });
   fireEvent.pointerMove(row, { clientX: 360, pointerId: 1 });
   fireEvent.pointerUp(row, { clientX: 360, pointerId: 1 });
   fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));

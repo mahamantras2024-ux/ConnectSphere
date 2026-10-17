@@ -258,13 +258,15 @@ h2, h3 { font-weight: 700; }
 .venue-timeline-tick:first-child {transform:none;}
 .venue-timeline-tick:last-child {transform:translateX(-100%);}
 .venue-timeline-heading {font-weight:700;font-size:13px;margin:12px 18px 5px;}
-.venue-timeline-row {height:82px;border:1px solid #b9c8aa;border-radius:5px;touch-action:none;cursor:crosshair;background:repeating-linear-gradient(to right,#e9eee4 0 1px,transparent 1px 16.6667%),#f8fbf6;}
+/* Half-hour guides match the drag snap; the stronger four-hour guides align with axis labels. */
+.venue-timeline-row {height:82px;border:1px solid #b9c8aa;border-radius:5px;touch-action:none;cursor:crosshair;background:repeating-linear-gradient(to right,#e9eee4 0 1px,transparent 1px 16.6667%),repeating-linear-gradient(to right,#edf1ea 0 1px,transparent 1px 2.083333%),#f8fbf6;}
 .venue-timeline-segment {position:absolute;top:0;bottom:0;pointer-events:none;}
 .venue-timeline-segment.available {background:#d7eadb66;}
 .venue-timeline-segment.blocked {background:#efd8c266;}
 .venue-timeline-closed {position:absolute;top:0;bottom:0;background:#e5e2dcaa;pointer-events:none;}
-.venue-timeline-locked {position:absolute;top:48px;height:25px;background:#7e6a58;color:#fff;font-size:10px;padding:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
-.venue-timeline-block {position:absolute;top:6px;height:36px;display:flex;align-items:center;justify-content:space-between;border-radius:5px;border:1px solid #375d2c;color:#fff;cursor:grab;overflow:visible;}
+.venue-timeline-locked {position:absolute;z-index:2;top:48px;height:25px;background:#7e6a58;color:#fff;font-size:10px;padding:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
+/* Full-row schedule blocks preserve the booking overlay above them when periods intersect. */
+.venue-timeline-block {position:absolute;z-index:1;top:0;bottom:0;display:flex;align-items:center;justify-content:space-between;border-radius:5px;border:1px solid #375d2c;color:#fff;cursor:grab;overflow:visible;}
 .venue-timeline-block.available {background:#2b704b;}
 .venue-timeline-block.unavailable {background:#a05b24;}
 .venue-timeline-block-label {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;pointer-events:none;}

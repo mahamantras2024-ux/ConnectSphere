@@ -1,13 +1,15 @@
 import { useRef, useState } from 'react';
 import { buildSchedule, isActiveHold, scheduleTime } from './schedule';
 
+const SNAP_MINUTES = 30;
+
 /** Converts a venue-local time to the fixed day-axis position used by drag and resize. */
 function toMinutes(time) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return NaN;
   return Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
 }
 
-/** Keeps all timeline interactions on 15-minute steps while retaining 24:00 as a visual endpoint. */
+/** Formats half-hour timeline positions while retaining 24:00 as a visual endpoint. */
 function timeLabel(minutes) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
@@ -43,7 +45,8 @@ export default function VenueTimeline({ venueName, periods, records, date, opera
   function pointerMinute(event) {
     const rect = rowRef.current?.getBoundingClientRect();
     const width = rect?.width || 960;
-    return Math.max(0, Math.min(1440, Math.round(((event.clientX - (rect?.left || 0)) / width * 1440) / 15) * 15));
+    // Every drag gesture uses the same half-hour grid, including moves and both resize handles.
+    return Math.max(0, Math.min(1440, Math.round(((event.clientX - (rect?.left || 0)) / width * 1440) / SNAP_MINUTES) * SNAP_MINUTES));
   }
 
   /** Derives a draft without committing it so cancelling a drag leaves saved periods untouched. */
@@ -52,14 +55,14 @@ export default function VenueTimeline({ venueName, periods, records, date, opera
     const { type, original, origin, id } = drag.current;
     if (type === 'create') return { id: 'preview', status: 'unavailable', label: '',
       start: timeLabel(Math.min(origin, current)),
-      end: timeLabel(Math.max(origin + (current === origin ? 15 : 0), current)) };
+      end: timeLabel(Math.max(origin + (current === origin ? SNAP_MINUTES : 0), current)) };
     const start = toMinutes(original.start), end = toMinutes(original.end);
     if (type === 'move') {
       const change = Math.max(-start, Math.min(1440 - end, current - origin));
       return { ...original, id, start: timeLabel(start + change), end: timeLabel(end + change) };
     }
-    if (type === 'left') return { ...original, id, start: timeLabel(Math.min(end - 15, current)) };
-    return { ...original, id, end: timeLabel(Math.max(start + 15, current)) };
+    if (type === 'left') return { ...original, id, start: timeLabel(Math.min(end - SNAP_MINUTES, current)) };
+    return { ...original, id, end: timeLabel(Math.max(start + SNAP_MINUTES, current)) };
   }
 
   /** Starts a new block on empty space or selects the move/resize gesture on an existing block. */
