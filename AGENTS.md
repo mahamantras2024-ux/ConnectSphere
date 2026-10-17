@@ -35,6 +35,16 @@
 - For tests, use an AC-linked descriptive name and make the Arrange, Act, and Assert phases obvious through comments or clear spacing. Add a brief explanation when the scenario, boundary value, expected result, or mock is not immediately self-evident.
 - In every pull request or completion report, include a **Test Verification Record** containing: the user story and ACs covered; the test file and test names; the distinct happy, error, and boundary cases covered; confirmation that each test was inspected rather than merely run; why each assertion would fail for a plausible defect; coverage results; and any uncovered code with its reason.
 
+# TESTING AND DOCUMENTATION RULES
+- **Automated Test Documentation (CSV):** Whenever you generate testing code, create a pull request, or provide a completion report, you MUST automatically output the testing documentation as two raw CSV code blocks. Do not generate qualitative markdown summaries; output ONLY the CSV blocks with these exact headers:
+  1. **Test Case Specifications (CSV):** "Story/AC", "Sprint", "Test Case ID", "User Story", "Acceptance Criteria", "Test Scenario", "Pre-Conditions", "Test Steps", "Test Data", "Expected Results", "Test File", "Test Details"
+  2. **Test Execution Record (CSV):** "Story / AC Ref", "File", "Execution Date", "Status", "Failure Log"
+
+  **Generation Rules:**
+  - Wrap any strings containing commas or line breaks in double quotes.
+  - In the "Test Scenario" and "Test Details" columns, explicitly note the distinct happy, error, and boundary cases covered.
+  - In the "Failure Log" or "Test Details" columns, briefly note any uncovered code, the reason it was skipped, or why a plausible defect would cause the assertion to fail.
+
 ## Architecture and Style
 
 - Write clean, modular JavaScript and React code with clear ownership and single-purpose components, hooks, and utilities.
