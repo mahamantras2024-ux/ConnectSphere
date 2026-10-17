@@ -33,6 +33,7 @@ beforeEach(() => {
     if (path === '/auth/me') return { user };
     if (path === '/events') return { events: [event] };
     if (path === '/events/101') return { event };
+    if (path === '/venues') return [{ id: 7, name: 'Hall North' }];
     throw new Error('Event not found.');
   });
 });
@@ -91,6 +92,25 @@ it('assigned coordinator opens dashboard events and sees every submitted require
   expect(await screen.findByRole('heading',{name:event.name})).toBeTruthy();
   for(const value of [event.purpose,'15/10/2026','09:00:00','12:00:00','40',event.programme_details,event.room_layout_preference,'Wheelchair access, Hearing loop',event.equipment_notes,'Yes','35',event.special_arrangements])expect(screen.getAllByText(value).length).toBeGreaterThan(0);
   expect(screen.getByRole('dialog', {name:'Event details'})).toBeTruthy();expect(api.get).toHaveBeenCalledWith('/events/101','organiser-token');
+});
+
+it('SCRUM-45 AC1 AC2 AC3 - assigned coordinator can submit the event period as a venue booking request', async () => {
+  // Arrange: the coordinator opens an assigned event and receives one selectable venue.
+  user = { ...user, role: 'event_coordinator' };
+  open('/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  expect(await screen.findByLabelText('Venue')).toBeTruthy();
+
+  // Act: submit the prefilled event date and time to the coordinator's selected venue.
+  fireEvent.click(screen.getByRole('button', { name: 'Request venue' }));
+
+  // Assert: the request section is reachable from event details and sends the correct event, venue and period.
+  expect(await screen.findByText('Venue request submitted.')).toBeTruthy();
+  expect(api.post).toHaveBeenCalledWith('/venues/7/requests', {
+    eventId: 101,
+    startDatetime: '2026-10-15T09:00:00+08:00',
+    endDatetime: '2026-10-15T12:00:00+08:00',
+  }, 'organiser-token');
 });
 // Test case: Opens a sparse coordinator record and checks unavailable labels for missing fields.
 it('coordinator records with missing submitted information identify it as unavailable',async()=>{
