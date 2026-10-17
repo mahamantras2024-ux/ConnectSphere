@@ -115,7 +115,8 @@ it('AC2 - accepts a fresh event that has no previously assigned support staff', 
   expect(onSaved).toHaveBeenCalledWith([{ id: 41, full_name: 'Taylor Support', email: 'taylor@example.com' }]);
 });
 
-it('AC2 - updates the coordinator dashboard when a support team assignment is saved', async () => {
+// AC2: Saving one assignment must preserve other event cards while replacing the selected event's team.
+it('AC2 - updates the assigned event and preserves unrelated dashboard events', async () => {
   useAuth.mockReturnValue({ token: 'coordinator-token', user: { id: 9, role: 'event_coordinator' } });
   api.get.mockImplementation(async endpoint => {
     if (endpoint === '/events') {
@@ -126,6 +127,11 @@ it('AC2 - updates the coordinator dashboard when a support team assignment is sa
           status: 'approved',
           technical_support_required: true,
           technical_support_staff: [{ id: 41, full_name: 'Taylor Support' }],
+        }, {
+          id: 8,
+          name: 'Other Coordinator Event',
+          status: 'pending',
+          technical_support_required: false,
         }],
       };
     }
@@ -152,6 +158,7 @@ it('AC2 - updates the coordinator dashboard when a support team assignment is sa
     { staffIds: [41, 42] }, 'coordinator-token'));
   expect(screen.getByRole('button', { name: 'Assignment saved' }).disabled).toBe(true);
   expect(screen.getByText('Taylor Support')).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Other Coordinator Event' })).toBeTruthy();
 });
 
 it('AC3 - shows the support staff error and hides the assignment controls when the roster fails', async () => {
@@ -230,30 +237,49 @@ it('AC1 - shows the loading and empty support-event states', async () => {
   await waitFor(() => expect(screen.getByText('No assigned events yet.')).toBeTruthy());
 });
 
+// AC1: An API response without an events array is an empty assignment list, not a render failure.
+it('AC1 - shows the empty state when the support response omits events', async () => {
+  api.get.mockResolvedValue({});
+
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  expect(await screen.findByText('No assigned events yet.')).toBeTruthy();
+});
+
 it('AC1 - renders the alternate equipment and venue fallbacks for assigned events', async () => {
   api.get.mockResolvedValue({
-    events: [{
-      id: 8,
-      name: 'Community Workshop',
-      status: 'approved',
-      purpose: 'Community support session',
-      proposed_date: null,
-      proposed_start_time: null,
-      proposed_end_time: null,
-      venue_name: 'Innovation Hall',
-      venue_location: '',
-      equipment_items: [],
-      equipment_notes: 'Bring the portable projector setup.',
-      technical_support_details: 'Bring a backup HDMI cable.',
-    }],
+    events: [
+      {
+        id: 8,
+        name: 'Community Workshop',
+        status: 'approved',
+        purpose: 'Community support session',
+        proposed_date: null,
+        proposed_start_time: null,
+        proposed_end_time: null,
+        venue_name: 'Innovation Hall',
+        venue_location: '',
+        equipment_items: [],
+        equipment_notes: 'Bring the portable projector setup.',
+        technical_support_details: 'Bring a backup HDMI cable.',
+      },
+      {
+        id: 9,
+        name: null,
+        equipment_items: [],
+      },
+    ],
   });
 
   render(<OnSiteSupportSection token="staff-token" />);
 
-  expect(await screen.findByText('Not specified')).toBeTruthy();
-  expect(screen.getByText('Innovation Hall')).toBeTruthy();
-  expect(screen.getByText('Bring the portable projector setup.')).toBeTruthy();
-  expect(screen.getByText('Bring a backup HDMI cable.')).toBeTruthy();
+  const eventCard = await screen.findByRole('article', { name: 'Community Workshop' });
+  expect(within(eventCard).getByText('Not specified')).toBeTruthy();
+  expect(within(eventCard).getByText('Innovation Hall')).toBeTruthy();
+  expect(within(eventCard).getByText('Bring the portable projector setup.')).toBeTruthy();
+  expect(within(eventCard).getByText('Bring a backup HDMI cable.')).toBeTruthy();
+  const unnamedEvent = screen.getByRole('article', { name: 'Untitled Event' });
+  expect(within(unnamedEvent).getByText('No equipment details provided.')).toBeTruthy();
 });
 
 it('AC1 - reports when the staff support roster cannot be loaded', async () => {
