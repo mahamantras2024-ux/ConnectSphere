@@ -427,21 +427,6 @@ export default function TechSupportDashboard() {
     await loadDashboardData();
   }
 
-  /** Persists the repair reason, then replaces the inventory row so reservation views use its new status. */
-  async function repairEquipment(item, resolutionNote) {
-    const result = await api.put(
-      `/events/equipment-inventory/${item.id}/repair`,
-      { resolutionNote },
-      token,
-    );
-    const repairedEquipment = { ...item, ...result.equipment };
-    // Updating the shared inventory state makes the repaired asset immediately eligible in downstream views.
-    setInventory(current => current.map(currentItem => (
-      currentItem.id === item.id ? repairedEquipment : currentItem
-    )));
-    return repairedEquipment;
-  }
-
   async function handleReservationConfirmed(reservation) {
     await loadDashboardData();
     showSuccess(`Equipment reservation confirmed for ${reservation.event_name}.`);
@@ -509,11 +494,7 @@ export default function TechSupportDashboard() {
       </div>
       {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
-          <EquipmentInventorySection
-            inventory={inventory}
-            error={inventoryError}
-            onRepairEquipment={repairEquipment}
-          />
+          <EquipmentInventorySection inventory={inventory} error={inventoryError} />
         </div>
       )}
       {activeTab === 'review' && (
