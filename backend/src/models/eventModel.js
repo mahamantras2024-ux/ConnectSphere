@@ -20,7 +20,11 @@ async function listForOrganiser(organiserId) {
 async function listForCoordinator(coordinatorId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.purpose, e.status, e.organiser_id, e.coordinator_id, e.created_at, e.updated_at,
-      EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding
+      EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding,
+      e.technical_support_required,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('id', u.id, 'full_name', u.full_name) ORDER BY u.full_name)
+        FROM event_technical_support_assignments a JOIN users u ON u.id=a.staff_id
+        WHERE a.event_id=e.id), '[]'::jsonb) AS technical_support_staff
     FROM events e
     WHERE coordinator_id = $1
     ORDER BY e.created_at DESC
