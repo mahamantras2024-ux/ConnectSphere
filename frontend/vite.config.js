@@ -11,4 +11,7 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  esbuild: {
+    jsxInject: "import React from 'react'",
+  },
 });
