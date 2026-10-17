@@ -5,6 +5,7 @@ const eventController = require('../controllers/eventController');
 const eventReadController = require('../controllers/eventReadController');
 const attendeeEventController = require('../controllers/attendeeEventController');
 const eventRegistrationController = require('../controllers/eventRegistrationController');
+const eventCancellationController = require('../controllers/eventCancellationController');
 const technicalSupportController = require('../controllers/technicalSupportController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
@@ -29,6 +30,7 @@ router.get('/:id/venue-bookings', requireRole('event_coordinator'), venueBooking
 router.get('/published', requireRole('attendee'), asyncHandler(attendeeEventController.listPublished));
 router.get('/published/:id', requireRole('attendee'), asyncHandler(attendeeEventController.getPublished));
 router.get('/:id/registrations', requireRole('event_organiser'), asyncHandler(eventRegistrationController.getEventRegistrations));
+router.post('/:id/cancel', requireRole('event_organiser', 'event_coordinator'), eventCancellationController.postCancellation);
 router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);
 router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_organiser'), eventController.respondToClarification);
 
