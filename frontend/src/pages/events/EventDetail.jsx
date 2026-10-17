@@ -15,6 +15,12 @@ import { useAuth } from '../../context/AuthContext';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
+import EquipmentStatusSection from './EquipmentStatusSection';
+import VenueBookingDecisions from './VenueBookingDecisions';
+import VenueBookingRequest from './VenueBookingRequest';
+import VenueSuitabilitySection from './VenueSuitabilitySection';
+
+import CancelEventAction from './CancelEventAction';
 
 
 
@@ -925,6 +931,18 @@ export default function EventDetail() {
       )}
 
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
+      {/* Check Venue Suitability: only the assigned coordinator (the API scopes it) compares venues for this event. */}
+      {user.role === 'event_coordinator' && <VenueSuitabilitySection eventId={event.id} token={token} />}
+
+      {user.role === 'event_coordinator' && <VenueBookingRequest event={event} token={token} />}
+
+      {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} />}
+      {/* Tracks Equipment Request Status: the assigned coordinator (the API scopes it) monitors the technical arrangements. */}
+      {user.role === 'event_coordinator' && <EquipmentStatusSection eventId={event.id} token={token} />}
+
+      <CancelEventAction event={event} user={user} token={token}
+        onCancelled={(cancelledEvent) => setEvent((current) => ({ ...current, ...cancelledEvent }))}
+        onMessage={setSaveMessage} />
 
 
 
@@ -1121,6 +1139,12 @@ export default function EventDetail() {
             <Field label="Coordinator">{fieldValue(event.coordinator_name)}</Field>
 
           </dl>
+
+          {user.role === 'event_organiser' && (
+            <Link className="button-link button-secondary" to={`/organizer/events/${id}/registrations`}>
+              View registration details
+            </Link>
+          )}
 
         </section>
 

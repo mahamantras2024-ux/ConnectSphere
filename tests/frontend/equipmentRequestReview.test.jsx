@@ -111,12 +111,15 @@ it.each([
   const reasonInput = within(card).getByLabelText(/Reason/);
   if (reason) fireEvent.change(reasonInput, { target: { value: reason } });
   if (outcome !== 'fully_fulfillable') expect(reasonInput.required).toBe(true);
+  // A partial decision names the affected item (Tracks Equipment Request Status AC3).
+  if (outcome === 'partially_fulfillable') fireEvent.click(within(card).getByRole('checkbox', { name: /microphone/i }));
 
   fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
   expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
   fireEvent.click(screen.getByRole('status'));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome, ...(reason ? { reason } : {}), requestVersion: 1,
+    ...(outcome === 'partially_fulfillable' ? { affectedItems: [{ key: 'equipment:0' }] } : {}),
   }, 'support-token'));
   expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
   const reservationPanel = screen.getByRole('tabpanel', { name: 'Equipment reservation' });

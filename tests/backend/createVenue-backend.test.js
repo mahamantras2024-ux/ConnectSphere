@@ -161,3 +161,20 @@ test('US1 - [400 Bad Request] Reject venue creation when required fields are mis
   assert.equal(res.status, 400);
   assert.match(res.body.message, /required/i);
 });
+// Test case: Operational Feasibility Check AC1 - the venue's emergency access and known restrictions are saved on creation.
+test('OFC AC1 - Venue Staff save emergency access and known restrictions with a new venue', async () => {
+  // Arrange: the two safety facts are the last two insert parameters (after the MRT distance).
+  let insert;
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [{ ...user, auth_version: 0 }] };
+    insert = { sql, values };
+    return { rows: [{ id: 3, emergency_access: values[16], known_restrictions: values[17] }] };
+  });
+  // Act
+  const result = await apiRequest('/api/venues', { method: 'POST', authorization: `Bearer ${generateToken()}`,
+    body: { ...sampleVenue, emergencyAccess: ' Two exits to Marina Road ', knownRestrictions: 'No open flames' } });
+  // Assert
+  assert.equal(result.status, 201);
+  assert.match(insert.sql, /mrt_distance_m,\s+emergency_access, known_restrictions\s+\)/);
+  assert.deepEqual(insert.values.slice(16), ['Two exits to Marina Road', 'No open flames']);
+});

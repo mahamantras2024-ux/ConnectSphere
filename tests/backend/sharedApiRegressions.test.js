@@ -18,8 +18,9 @@ const { pool } = require('../../backend/src/config/db');
 const app = require('../../backend/src/index');
 let server, base, account;
 before(async () => {
-  // Starts the HTTP fixture with a multi-role, hashed-password account.
-  account = { id: 81, email: 'staff@example.test', full_name: 'Test Staff', password_hash: await bcrypt.hash('password123', 10), role: 'venue_staff', roles: ['venue_staff', 'event_coordinator', 'attendee'], auth_version: 2 };
+  // Starts the HTTP fixture with a multi-role, hashed-password account. Only external accounts may hold several roles;
+  // internal staff accounts hold exactly one (staff login story AC1, covered in staffRoleAccess.test.js).
+  account = { id: 81, email: 'member@example.test', full_name: 'Test Member', password_hash: await bcrypt.hash('password123', 10), role: 'event_organiser', roles: ['event_organiser', 'attendee'], auth_version: 2 };
   server = app.listen(0, '127.0.0.1'); await new Promise(resolve =>
       // Handles this operation using the surrounding screen or request state.
       server.once('listening', resolve)); base = `http://127.0.0.1:${server.address().port}`;
@@ -38,19 +39,26 @@ async function request(path, body, token) {
   return { status: response.status, body: await response.json() };
 }
 // Signs a session using one provisioned active role and the current revocation version.
-function token(role = 'venue_staff', authVersion = 2) { return jwt.sign({ sub: 81, email: account.email, activeRole: role, authVersion }, process.env.JWT_SECRET); }
+function token(role = 'event_organiser', authVersion = 2) { return jwt.sign({ sub: 81, email: account.email, activeRole: role, authVersion }, process.env.JWT_SECRET); }
 // Test case: Logs in with different audiences/grants and checks the selected role belongs to the account and requested audience.
 test('Internal AC2 / External AC5 - login verifies credentials and selects a provisioned role in the requested audience', async () => {
-  // Verifies staff/external separation for a multi-role account and avoids credential disclosure.
+  // Verifies the primary role is selected, staff sign-in refuses an external account, and credentials are not disclosed.
   mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
       { rows: [account] }));
-  for (const [audience, expected] of [['internal','venue_staff'],['external','attendee']]) {
-    const result = await request('/api/auth/login', { email: ' STAFF@example.test ', password: 'password123', audience });
+  for (const [audience, expected] of [[undefined,'event_organiser'],['external','event_organiser']]) {
+    const result = await request('/api/auth/login', { email: ' MEMBER@example.test ', password: 'password123', audience });
     assert.equal(result.status, 200); assert.equal(result.body.user.role, expected);
     assert.equal(jwt.verify(result.body.token, process.env.JWT_SECRET).activeRole, expected);
     assert.deepEqual(result.body.user,{id:account.id,email:account.email,full_name:account.full_name,role:expected,roles:account.roles});
   }
+  // A legacy primary role that is no longer recognised falls back to the account's first provisioned role.
+  pool.query.mock.restore(); mock.method(pool, 'query', async () => ({ rows: [{ ...account, role: 'legacy_user', roles: ['attendee'] }] }));
+  const legacy=await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'external' });
+  assert.equal(legacy.status,200);assert.equal(legacy.body.user.role,'attendee');assert.deepEqual(legacy.body.user.roles,['attendee']);
+  pool.query.mock.restore(); mock.method(pool, 'query', async () => ({ rows: [account] }));
+  const staffLogin=await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'internal' });
+  assert.equal(staffLogin.status,401);assert.deepEqual(staffLogin.body,{message:'Invalid email or password.'});
   const wrong=await request('/api/auth/login', { email: account.email, password: 'wrong-password' });
   assert.equal(wrong.status,401);assert.deepEqual(wrong.body,{message:'Invalid email or password.'});
   assert.equal((await request('/api/auth/login', { email: '', password: 'password123' })).status, 400);
@@ -67,7 +75,7 @@ test('Internal AC5 / External AC5 - invalid credentials, unavailable database, a
   pool.query.mock.restore(); mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
       { rows: [{ ...account, roles: [] }] }));
-  assert.equal((await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'external' })).status, 401);
+  assert.equal((await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'internal' })).status, 401);
   pool.query.mock.restore(); mock.method(console, 'error', () => {
       // Handles this operation using the surrounding screen or request state.
       }); mock.method(pool, 'query', async () => {
@@ -82,11 +90,12 @@ test('Role switching enhancement AC1 / Internal AC4 - role switching cannot gran
   mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.
       { rows: [account] }));
-  const changed = await request('/api/auth/switch-role', { role: 'event_coordinator' }, token());
-  assert.equal(changed.status, 200); assert.equal(changed.body.user.role, 'event_coordinator');
+  const changed = await request('/api/auth/switch-role', { role: 'attendee' }, token());
+  assert.equal(changed.status, 200); assert.equal(changed.body.user.role, 'attendee');
   const me = await request('/api/auth/me', null, changed.body.token);
-  assert.equal(me.status, 200); assert.equal(me.body.user.role, 'event_coordinator');
+  assert.equal(me.status, 200); assert.equal(me.body.user.role, 'attendee');
   assert.equal((await request('/api/auth/switch-role', { role: 'safety_officer' }, token())).status, 403);
+  assert.equal((await request('/api/auth/switch-role', { role: 'event_coordinator' }, token())).status, 403);
   assert.equal((await request('/api/auth/switch-role', { role: '__proto__' }, token())).status, 403);
   assert.equal((await request('/api/auth/switch-role', { role: 'attendee' })).status, 401);
 });
@@ -97,7 +106,7 @@ test('Internal AC4 / External AC8 - revoked roles, deleted accounts, malformed J
       // Handles this operation using the surrounding screen or request state.
       { rows: [account] }));
   assert.equal((await request('/api/events', null, token('safety_officer'))).status, 401);
-  assert.equal((await request('/api/events', null, token('event_coordinator', 1))).status, 401);
+  assert.equal((await request('/api/events', null, token('event_organiser', 1))).status, 401);
   assert.equal((await request('/api/events', null, 'not-a-token')).status, 401);
   pool.query.mock.restore(); mock.method(pool, 'query', async () => (
       // Handles this operation using the surrounding screen or request state.

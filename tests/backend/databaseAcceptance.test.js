@@ -32,10 +32,12 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     await client.query(`SET search_path TO ${schema}`);
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255), role VARCHAR(50), organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[], accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql']) {
+    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/009-internal-single-role.sql', 'migrations/010-venue-safety-facts.sql']) {
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
     }
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     const app = require('../../backend/src/index');
     server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
@@ -157,7 +159,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
 const { provisionAccount } = require('../../backend/src/db/provisionAccount');
-// Test case: Uses real isolated records to check role switching, venue buffers, attendee-only registration reads and access rejection after role revocation.
+// Test case: Uses real isolated records to check single-role staff accounts, external role switching, venue buffers, attendee-only registration reads and access rejection after role revocation.
 test('Sprint 1 persists roles, venue buffers and personal registrations in real PostgreSQL', { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
   // Uses a unique schema so no live account, event, venue or registration is modified.
   const schema = `cs_sprint_one_${crypto.randomBytes(8).toString('hex')}`;
@@ -174,32 +176,58 @@ test('Sprint 1 persists roles, venue buffers and personal registrations in real 
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/005-change-request-review.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/sprintOneSchema.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/venueManagementSchema.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/009-internal-single-role.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/010-venue-safety-facts.sql'), 'utf8'));
     mock.method(pool, 'query', (sql, values) =>
       // Handles this operation using the surrounding screen or request state.
       client.query(sql, values));
-    const account = await provisionAccount({ email: 'multi@example.test', fullName: 'Test User', password: 'password123', roles: ['venue_staff', 'attendee', 'event_coordinator_lead', 'safety_officer'] });
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
+    // Staff login story AC1: a staff account holding several roles is refused and nothing is stored.
+    await assert.rejects(provisionAccount({ email: 'multi@example.test', fullName: 'Test User', password: 'password123', roles: ['venue_staff', 'attendee', 'event_coordinator_lead', 'safety_officer'] }),
+      { message: 'Internal staff accounts must have exactly one internal role.' });
+    assert.equal((await client.query("SELECT count(*)::integer AS n FROM users WHERE email='multi@example.test'")).rows[0].n, 0);
+    const staff = await provisionAccount({ email: 'staff@example.test', fullName: 'Venue Staff', password: 'password123', roles: ['venue_staff'] });
+    const safetyOfficer = await provisionAccount({ email: 'safety@example.test', fullName: 'Safety Officer', password: 'Safe1234', roles: ['safety_officer'] });
+    const account = await provisionAccount({ email: 'member@example.test', fullName: 'Test User', password: 'password123', roles: ['event_organiser', 'attendee'] });
     const other = await provisionAccount({ email: 'other@example.test', fullName: 'Other User', password: 'password123', roles: ['attendee'] });
+    // Migration 009 enforces the same rule in the database, so a direct edit cannot give staff a second role.
+    for (const extra of ['event_coordinator', 'attendee']) {
+      await assert.rejects(client.query('UPDATE users SET roles = array_append(roles, $2) WHERE id=$1', [staff.id, extra]), { code: '23514' });
+    }
+    await assert.rejects(client.query("UPDATE users SET role='attendee', roles='{attendee,safety_officer}' WHERE id=$1", [safetyOfficer.id]), { code: '23514' });
     const app = require('../../backend/src/index'); server = app.listen(0, '127.0.0.1'); await new Promise(resolve =>
       // Handles this operation using the surrounding screen or request state.
       server.once('listening', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     // Exercises the local HTTP API backed by the isolated real database connection.
     async function request(url, body, token) { const res = await fetch(base + url, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: res.status, body: await res.json() }; }
-    const login = await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'internal' });
-    assert.equal(login.status, 200);
+    const login = await request('/api/auth/login', { email: staff.email, password: 'password123', audience: 'internal' });
+    assert.equal(login.status, 200); assert.deepEqual(login.body.user.roles, ['venue_staff']);
     const created = await request('/api/venues', { name: 'Real Test Hall', location: 'Marina', capacity: 80, facilities: ['Wi-Fi'], accessibilityFeatures: ['Ramp'], supportedLayouts: ['Theatre'], operatingHours: '09:00 - 18:00', setupMinutes: 30, turnaroundMinutes: 45 }, login.body.token);
     assert.equal(created.status, 201); assert.equal(created.body.venue.setup_minutes, 30); assert.equal(created.body.venue.turnaround_minutes, 45);
     const catalogue = await request('/api/venues'); assert.equal(catalogue.body[0].name, 'Real Test Hall');
+    assert.equal((await request('/api/auth/switch-role', { role: 'attendee' }, login.body.token)).status, 403);
+    // A Safety Officer signs in against the stored bcrypt hash and cannot use event or venue APIs.
+    const wrong = await request('/api/auth/login', { email: safetyOfficer.email, password: 'Safe12345', audience: 'internal' });
+    assert.deepEqual([wrong.status, wrong.body], [401, { message: 'Invalid email or password.' }]);
+    const safety = await request('/api/auth/login', { email: safetyOfficer.email, password: 'Safe1234', audience: 'internal' });
+    assert.deepEqual([safety.status, safety.body.user.role, safety.body.user.roles], [200, 'safety_officer', ['safety_officer']]);
+    assert.equal((await request('/api/events', null, safety.body.token)).status, 403);
+    assert.equal((await request('/api/venues', { name: 'Forbidden Hall' }, safety.body.token)).status, 403);
+    // External accounts keep their existing rule: Organiser and Attendee together, switching between them.
+    const member = await request('/api/auth/login', { email: account.email, password: 'password123', audience: 'external' });
+    assert.equal(member.status, 200); assert.equal(member.body.user.role, 'event_organiser');
     const event = await client.query("INSERT INTO events (organiser_id, name) VALUES ($1, 'Private Workshop') RETURNING id", [account.id]);
     await client.query("INSERT INTO registrations (event_id, attendee_id, status) VALUES ($1,$2,'registered'),($1,$3,'waitlisted')", [event.rows[0].id, account.id, other.id]);
-    const switched = await request('/api/auth/switch-role', { role: 'attendee' }, login.body.token); assert.equal(switched.status, 200);
+    const switched = await request('/api/auth/switch-role', { role: 'attendee' }, member.body.token); assert.equal(switched.status, 200);
     const mine = await request('/api/registrations/mine?attendee_id=' + other.id, null, switched.body.token);
     assert.equal(mine.status, 200); assert.equal(mine.body.registrations.length, 1); assert.equal(mine.body.registrations[0].status, 'registered');
     assert.equal((await request('/api/venues', { name: 'Forbidden Hall' }, switched.body.token)).status, 403);
-    const safety = await request('/api/auth/switch-role', { role: 'safety_officer' }, switched.body.token); assert.equal(safety.status, 200);
-    assert.equal((await request('/api/auth/me', null, safety.body.token)).body.user.role, 'safety_officer');
-    await client.query("UPDATE users SET roles = array_remove(roles, 'safety_officer') WHERE id=$1", [account.id]);
-    assert.equal((await request('/api/auth/me', null, safety.body.token)).status, 401);
+    assert.equal((await request('/api/auth/switch-role', { role: 'safety_officer' }, switched.body.token)).status, 403);
+    // Removing a role in the database ends sessions that use it.
+    await client.query("UPDATE users SET roles = array_remove(roles, 'attendee') WHERE id=$1", [account.id]);
+    assert.equal((await request('/api/auth/me', null, switched.body.token)).status, 401);
     const verified = await client.query(`SELECT count(*)::integer AS n FROM ${schema}.venues`); assert.equal(verified.rows[0].n, 1);
   } finally {
     mock.restoreAll(); if (server) await new Promise(resolve =>
@@ -248,7 +276,11 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       'migrations/003-event-clarifications.sql',
       'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql',
       'migrations/005-change-request-review.sql',
-      'venueManagementSchema.sql'
+      // Same order as backend/src/db/migrateExternalEvents.js, so this schema matches production.
+      'migrations/005-technical-support-reviews.sql', 'migrations/006-event-decisions.sql',
+      'migrations/006-equipment-inventory-reservations.sql', 'migrations/007-equipment-stock-quantities.sql',
+      'migrations/009-internal-single-role.sql',
+      'venueManagementSchema.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql'
     ]) {
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
       await client.query(migration);
@@ -258,6 +290,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
 
       // Handles this operation using the surrounding screen or request state.
       client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     const app = require('../../backend/src/index');
     await new Promise((resolve, reject) => {
       // Starts a local test HTTP server and resolves/rejects on startup.
