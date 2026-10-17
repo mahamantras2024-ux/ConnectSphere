@@ -19,6 +19,8 @@ npm-debug.log*
 
 # Regenerated test coverage reports
 coverage/
+artifacts/
+test-results/
 
 # OS/editor cruft
 .DS_Store
