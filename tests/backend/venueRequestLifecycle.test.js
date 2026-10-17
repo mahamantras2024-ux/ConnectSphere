@@ -123,6 +123,26 @@ test('AC7 - submission immediately persists a pending request with a 24-hour hol
   assert.equal(Date.parse(response.body.request.hold_expires_at), Date.parse(saved.hold_expires_at));
 });
 
+test('AC1 AC2 - a confirmed booking at the selected venue and overlapping period blocks the request', async () => {
+  // Arrange: a confirmed booking overlaps the candidate after the venue's setup and turnaround buffers.
+  fixture.bookings = [{ ...hold, id: 30, status: 'confirmed', start_datetime: at('09:45:00'), end_datetime: at('10:30:00') }];
+  // Act
+  const response = await request('/7/requests', requestBody);
+  // Assert: a conflict is returned before any pending request or temporary hold is written.
+  assert.equal(response.status, 409);
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('AC4 - a confirmed booking whose buffered period ends exactly at the candidate boundary is not a conflict', async () => {
+  // Arrange: the earlier booking's 15-minute turnaround ends at 09:30, when this request's setup begins.
+  fixture.bookings = [{ ...hold, id: 30, status: 'confirmed', start_datetime: at('08:00:00'), end_datetime: at('09:15:00') }];
+  // Act
+  const response = await request('/7/requests', requestBody);
+  // Assert: adjacent half-open periods can both be requested without a false conflict.
+  assert.equal(response.status, 201);
+  assert.equal(fixture.writes.filter(write => write.operation === 'insert').length, 1);
+});
+
 for (const [name, body, authenticated, role, status] of [
   ['missing authentication', requestBody, false, 'event_coordinator', 401],
   ['wrong requesting role', requestBody, true, 'attendee', 403],
@@ -223,16 +243,18 @@ for (const [name, expires, expected] of [
 }
 
 for (const [decision, persisted] of [['approved', 'approved'], ['rejected', 'rejected']]) {
-  test(`AC7 - Venue Staff can mark an active request ${decision}`, async () => {
+  test(`AC3 AC7 - Venue Staff can mark an active request ${decision}`, async () => {
     // Arrange: this live hold is the request being decided, not a conflicting second request.
     fixture.role = 'venue_staff';
     fixture.bookings = [{ ...hold, hold_expires_at: new Date(now + 1).toISOString() }];
     // Act
-    const response = await request('/7/requests/20/decision', { decision }, 'PUT');
+    const reason = decision === 'rejected' ? 'The venue is undergoing maintenance.' : undefined;
+    const response = await request('/7/requests/20/decision', { decision, ...(reason ? { reason } : {}) }, 'PUT');
     // Assert: approval must ignore its own hold; rejection must persist a nonblocking status.
     assert.equal(response.status, 200);
     assert.equal(response.body.request.status, persisted);
     assert.equal(fixture.writes.at(-1).changes.status, persisted);
+    assert.equal(fixture.writes.at(-1).changes.decision_notes, reason || null);
   });
 }
 

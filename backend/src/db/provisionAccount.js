@@ -2,18 +2,18 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const { pool } = require('../config/db');
-const { allRoles } = require('../auth/roles');
+const { roleSetError } = require('../auth/roles');
 // Validates account identity and roles, hashes credentials, and refuses duplicate-account overwrites.
 async function provisionAccount({ email, fullName, password, roles, organisationName = null }) {
   if (typeof email !== 'string' || email.trim().length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
     typeof fullName !== 'string' || !fullName.trim() || fullName.length > 255 ||
     typeof password !== 'string' || password.trim().length < 8 || Buffer.byteLength(password, 'utf8') > 72 ||
-    !Array.isArray(roles) || !roles.length || roles.some(role =>
-      // Handles this operation using the surrounding screen or request state.
-      !allRoles.includes(role)) ||
     (organisationName !== null && (typeof organisationName !== 'string' || organisationName.length > 255))) {
     throw new Error('Provide a valid email, name, password, and at least one recognised role.');
   }
+  // Staff accounts are tied to exactly one internal role; refused before anything is written.
+  const roleError = roleSetError(roles);
+  if (roleError) throw new Error(roleError);
   const allowed = [...new Set(roles)];
   const result = await pool.query(`INSERT INTO users (email, full_name, password_hash, role, roles, organisation_name)
     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, email, full_name, role, roles`,

@@ -26,10 +26,10 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // pg keeps the password non-enumerable; preserve it explicitly without logging credentials.
     database = new Pool({ ...pool.options, password: pool.options.password, options: `-c search_path=${schema}`, application_name: schema, max: 10 });
     await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT, role TEXT, auth_version INTEGER DEFAULT 0, roles TEXT[] DEFAULT '{}');
-      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id));
-      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT);
+      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id), name TEXT);
+      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00');
       INSERT INTO users(id,role) VALUES (1,'event_coordinator'),(2,'venue_staff');
-      INSERT INTO events VALUES (3,1),(4,1);
+      INSERT INTO events(id,coordinator_id,name) VALUES (3,1,'Gala'),(4,1,'Workshop');
       INSERT INTO venues VALUES (7,'Hall A','Available'),(8,'Hall B','Available')`);
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
@@ -57,9 +57,9 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
 
   beforeEach(async () => {
     // Test data is isolated even between cases; catalogue status must never become a venue-wide hold.
-    await database.query('TRUNCATE venue_bookings, venue_unavailability RESTART IDENTITY');
+    await database.query('TRUNCATE venue_bookings, venue_unavailability, venue_schedule_periods RESTART IDENTITY');
     writerPids.clear();
-    await database.query('UPDATE venues SET setup_minutes=30, turnaround_minutes=15 WHERE id=7');
+    await database.query("UPDATE venues SET is_active=true, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
   });
 
   after(async () => {
@@ -225,5 +225,43 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     await assert.rejects(database.query("INSERT INTO venue_bookings(venue_id,event_id,requested_by,start_datetime,end_datetime,status) VALUES (7,3,1,$1,$2,'approved')", [at('10:00'), at('11:00')]), { code: '23514' });
     assert.equal((await request('/7/requests', body)).status, 404);
     assert.equal((await database.query('SELECT count(*)::integer AS n FROM venue_bookings')).rows[0].n, 0);
+  });
+
+  test('Schedule AC1 AC2 AC6 AC7 - saved day replaces prior periods and both roles see booking-safe results', async () => {
+    // Arrange: staff write one unavailable period for Hall A in the real database.
+    const first = await request('/7/schedule', { date, periods: [{ status: 'unavailable', start: '12:00', end: '13:00' }] }, 'PUT', 2);
+    assert.equal(first.status, 200);
+    // Act: a later day save replaces it with an explicitly available period.
+    const replacement = await request('/7/schedule', { date, periods: [{ status: 'available', start: '12:00', end: '13:00' }] }, 'PUT', 2);
+    const staffView = await request(`/7/schedule?date=${date}`, undefined, 'GET', 2);
+    const coordinatorView = await request(`/7/schedule?date=${date}`, undefined, 'GET', 1);
+    // Assert: replacement and venue scoping come from persisted SQL rows, not an in-memory route mock.
+    assert.equal(replacement.status, 200);
+    assert.deepEqual(staffView.body.map(item => item.status), ['available']);
+    assert.deepEqual(coordinatorView.body.map(item => item.status), ['available']);
+    assert.deepEqual((await request(`/8/schedule?date=${date}`, undefined, 'GET')).body, []);
+    // A confirmed booking then prevents a closure, preserving the saved available row.
+    await database.query("INSERT INTO venue_bookings(venue_id,event_id,requested_by,start_datetime,end_datetime,status) VALUES (7,3,1,$1,$2,'approved')", [at('10:00'), at('11:00')]);
+    const conflict = await request('/7/schedule', { date, periods: [{ status: 'unavailable', start: '10:30', end: '11:30' }] }, 'PUT', 2);
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.body.affectedBookings.length, 1);
+    assert.deepEqual((await database.query('SELECT status FROM venue_schedule_periods')).rows, [{ status: 'available' }]);
+  });
+
+  test('Schedule AC3 AC6 AC7 - saved closures block requests, late approvals and direct database bookings', async () => {
+    // Arrange: a pending request exists before staff close its time; AC6 protects confirmed bookings only.
+    const pending = await request('/7/requests', { ...body, startDatetime: at('12:15'), endDatetime: at('12:45') });
+    assert.equal(pending.status, 201);
+    // Act: the persisted closure must affect both API paths and the PostgreSQL booking guard.
+    const saved = await request('/7/schedule', { date, periods: [{ status: 'unavailable', start: '12:00', end: '13:00' }] }, 'PUT', 2);
+    const newRequest = await request('/7/requests', { ...body, eventId: 4, startDatetime: at('12:30'), endDatetime: at('12:45') });
+    const approval = await request(`/7/requests/${pending.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2);
+    const direct = "INSERT INTO venue_bookings(venue_id,event_id,requested_by,start_datetime,end_datetime,status) VALUES (7,4,1,$1,$2,'approved')";
+    // Assert: no available mark or stale pending hold overrides the unavailable period.
+    assert.equal(saved.status, 200);
+    assert.equal(newRequest.status, 409);
+    assert.equal(approval.status, 409);
+    await assert.rejects(database.query(direct, [at('12:30'), at('12:45')]), { code: '23P01' });
+    assert.deepEqual((await database.query('SELECT status FROM venue_bookings')).rows, [{ status: 'pending' }]);
   });
 });

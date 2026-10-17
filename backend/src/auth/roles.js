@@ -15,4 +15,22 @@ function audienceRoles(user, audience) {
       // Keeps entries that meet the required field or access condition.
       allowed.includes(role));
 }
-module.exports = { externalRoles, internalRoles, allRoles, accountRoles, audienceRoles };
+/**
+ * Returns why a set of roles cannot be provisioned, or null when it is valid.
+ * Internal staff accounts are tied to exactly one internal role (staff login story, AC1): an account holding an
+ * internal role may hold no other role, internal or external. External accounts keep their existing rule and may
+ * combine Event Organiser and Attendee. Repeated entries count once.
+ * @param {unknown} roles requested role names.
+ * @returns {string|null} a message for the person provisioning the account, or null.
+ */
+function roleSetError(roles) {
+  if (!Array.isArray(roles) || !roles.length || roles.some((role) => !allRoles.includes(role))) {
+    return 'Provide a valid set of recognised roles.';
+  }
+  const unique = [...new Set(roles)];
+  if (unique.some((role) => internalRoles.includes(role)) && unique.length !== 1) {
+    return 'Internal staff accounts must have exactly one internal role.';
+  }
+  return null;
+}
+module.exports = { externalRoles, internalRoles, allRoles, accountRoles, audienceRoles, roleSetError };
