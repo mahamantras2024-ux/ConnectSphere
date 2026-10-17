@@ -106,6 +106,18 @@ it('ES AC3 - an earlier partial review shows how many items were affected and wh
     .toBe('Request version 1: Partially available (1 Jan 2030, 11:00 am), 2 item(s) affected - Short of cables');
 });
 
+// Test case: A partial review from before affected items were tracked says so, instead of listing items as available.
+it('ES AC3 - an older partial review without affected items shows them as not recorded and explains why', async () => {
+  status = { ...partialView, history: [], items: partialView.items.map((item) => ({ ...item, status: 'not_recorded', availableQuantity: null })) };
+  open('/events/101');
+  const section = await panel();
+  expect(await within(section).findByText('Partially available', { selector: '.status-badge' })).toBeTruthy();
+  expect(itemRows(section)).toEqual([
+    ['Microphone × 4', 'Not recorded', 'decision-unmet'], ['Projector × 1', 'Not recorded', 'decision-unmet'], ['On-site technical support', 'Not recorded', 'decision-unmet'],
+  ]);
+  expect(within(section).getByRole('note').textContent).toBe('This review was recorded before affected items were tracked, so it does not say which items are affected. Use the reason above or ask Technical Support.');
+});
+
 // Test case: Nothing technical requested is stated plainly.
 it('ES AC1 - an event without equipment requests says none were requested', async () => {
   status = { status: 'not_requested', version: 1, review: null, items: [], history: [] };

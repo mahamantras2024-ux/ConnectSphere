@@ -33,6 +33,8 @@ function statusOf(items, review) {
 /**
  * Each requested item's own status for the coordinator (AC1/AC3). Only a partial review distinguishes items: the
  * ticked ones are "affected" (with how many can still be provided, when Technical Support said so), the rest available.
+ * A partial review with no affected items predates migration 013 (new ones must name at least one), so which items it
+ * concerned was never recorded: its items are "not_recorded" rather than wrongly reported as available.
  */
 function itemStatuses(items, review) {
   const affected = new Map((review?.affected_items || []).map((entry) => [entry.key, entry]));
@@ -40,6 +42,7 @@ function itemStatuses(items, review) {
     if (!review) return { ...item, status: 'pending', availableQuantity: null };
     if (review.outcome === 'fully_fulfillable') return { ...item, status: 'available', availableQuantity: null };
     if (review.outcome === 'not_fulfillable') return { ...item, status: 'unavailable', availableQuantity: null };
+    if (!affected.size) return { ...item, status: 'not_recorded', availableQuantity: null };
     const entry = affected.get(item.key);
     return entry ? { ...item, status: 'affected', availableQuantity: entry.availableQuantity ?? null } : { ...item, status: 'available', availableQuantity: null };
   });

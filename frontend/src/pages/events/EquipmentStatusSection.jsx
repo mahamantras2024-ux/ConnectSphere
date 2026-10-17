@@ -8,7 +8,9 @@ const STATUS_LABELS = {
 };
 // Reuses the existing status badge colours: grey not requested/pending, green confirmed, amber partial, red unavailable.
 const STATUS_BADGES = { not_requested: 'status-draft', pending: 'status-draft', confirmed: 'status-approved', partially_available: 'status-under_review', unavailable: 'status-rejected' };
-const ITEM_LABELS = { pending: 'Awaiting review', available: 'Available', affected: 'Affected', unavailable: 'Unavailable' };
+const ITEM_LABELS = { pending: 'Awaiting review', available: 'Available', affected: 'Affected', unavailable: 'Unavailable', not_recorded: 'Not recorded' };
+// Item statuses that need the coordinator's attention (highlighted like other unmet arrangements).
+const NEEDS_ATTENTION = ['affected', 'unavailable', 'not_recorded'];
 
 /** Displays a stored timestamp in Singapore time, matching how event times are entered. */
 function formatTime(value) {
@@ -46,6 +48,8 @@ export default function EquipmentStatusSection({ eventId, token }) {
   }, [eventId, token]);
 
   const affected = view?.items.filter((item) => item.status === 'affected') || [];
+  // A partial review from before item-level details were kept: the server reports its items as not recorded.
+  const legacyPartial = view?.items.some((item) => item.status === 'not_recorded');
   return (
     <section className="ed-card ed-span" aria-labelledby="equipment-status-heading">
       <div className="section-heading">
@@ -65,9 +69,14 @@ export default function EquipmentStatusSection({ eventId, token }) {
                 Arrange alternatives or inform the organiser: {affected.map((item) => itemName(item)).join(', ')} cannot be fully provided.
               </p>
             )}
+            {legacyPartial && (
+              <p role="note" className="equipment-affected">
+                This review was recorded before affected items were tracked, so it does not say which items are affected. Use the reason above or ask Technical Support.
+              </p>
+            )}
             <ul aria-label="Requested equipment and technical support" className="decision-checklist">
               {view.items.map((item) => (
-                <li key={item.key} className={item.status === 'affected' || item.status === 'unavailable' ? 'decision-unmet' : 'decision-met'}>
+                <li key={item.key} className={NEEDS_ATTENTION.includes(item.status) ? 'decision-unmet' : 'decision-met'}>
                   <strong>{itemName(item)}</strong><span>{itemStatusText(item)}</span>
                 </li>
               ))}

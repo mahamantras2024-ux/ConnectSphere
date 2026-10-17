@@ -78,3 +78,11 @@ test('ES AC2/AC3 - affected items are summarised for the notification', () => {
   assert.deepEqual(affectedSummary(items, [{ key: 'equipment:0', availableQuantity: 2 }, { key: 'technical_support' }]),
     ['Microphone × 4 (2 available)', 'On-site technical support']);
 });
+
+// Test case: A partial review recorded before migration 013 has no affected items, so none can be named: every item is
+// "not recorded" rather than reported available (new partial reviews must name at least one item).
+test('ES AC3 - an older partial review without affected items reports its items as not recorded, never available', () => {
+  const statuses = itemStatuses(items, review('partially_fulfillable', []));
+  assert.deepEqual([...new Set(statuses.map((item) => item.status))], ['not_recorded']);
+  assert.equal(statusOf(items, review('partially_fulfillable', [])), 'partially_available');
+});
