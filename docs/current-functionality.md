@@ -8,7 +8,7 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 | --- | --- |
 | Create venue records | Venue Staff-only creation, required-field validation, positive whole capacity, valid operating times and persisted catalogue entries. |
 | View venue records | Full recorded details, explicit missing-data labels and useful unavailable/retrieval errors. |
-| Internal staff login | Private provisioning, hashed credentials, correct role dashboards, protected routes and assignment-scoped data. Sprint 1 tests use single-role staff. Technical Support displays actual account details. |
+| Internal staff login | Private provisioning, hashed credentials, correct role dashboards, protected routes and assignment-scoped data. Each staff account holds exactly one internal role, enforced by provisioning and the `users_internal_single_role` constraint (migration 009). The Safety Officer dashboard shows only the safety-check queue. Technical Support displays actual account details. |
 | External registration/login | Attendee/organiser signup, confirmation and validation, duplicate prevention, secure login, correct dashboards and private attendee registration summaries. |
 | Organiser event information | Own event lists and full submitted details; other organisers' records remain private, including those in the same organisation. |
 | Coordinator event information | Assigned event lists and full submitted details; unassigned records remain private. |
@@ -16,7 +16,7 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 ## Completed enhancements outside that baseline
 
 - Password reset with expiring single-use links and invalidation of old sessions. Encrypted Gmail SMTP connection and sender authentication were verified without sending email; inbox delivery remains unverified.
-- Server-validated switching between provisioned roles; Safety Officer account dashboard.
+- Server-validated switching between provisioned roles, for external accounts only (Event Organiser + Attendee); staff accounts have one role and no switcher. Safety Officer account dashboard.
 - [Coordinator Lead queue and assignments](coordinator-lead.md): review active submitted events, manually assign/reassign one coordinator, retain venue arrangements, transfer outstanding work and show organiser email to authorised reviewers.
 - Organiser event request creation and draft/submitted persistence.
 - Venue editing with booking-impact warnings, exact-change confirmation and stale-update protection.
