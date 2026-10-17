@@ -16,7 +16,7 @@ vi.mock('../../frontend/src/pages/venues/VenueMap',()=>({default:({onPick})=><bu
 const venue={id:7,name:'Test hall',location:'Existing address',capacity:100,facilities:['Wi-Fi'],supported_layouts:['Theatre'],accessibility_features:['Ramp'],operating_hours:'08:00 - 22:00',availability_status:'Available',revision:0};
 beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue([venue]);});
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();});
-it('Schedule AC8 - the sole rightmost View details action opens only the selected staff venue schedule',async()=>{
+it('Schedule AC8 - View details keeps the selected schedule hidden until View schedule is pressed',async()=>{
  // Arrange: venue 7 is the selected catalogue card; schedule reads are scoped to its ID.
  api.get.mockImplementation(async path=>path==='/venues'?[venue,{...venue,id:8,name:'Other hall'}]:[]);
  render(<VenueList/>);
@@ -26,8 +26,13 @@ it('Schedule AC8 - the sole rightmost View details action opens only the selecte
  expect(within(cards[0]).queryByRole('button',{name:'View schedule'})).toBeNull();
  expect(within(cards[1]).queryByRole('button',{name:'View schedule'})).toBeNull();
  expect(detailsAction.parentElement.lastElementChild).toBe(detailsAction);
- // Act: opening details for the first venue keeps the existing schedule shortcut.
+ // Act: opening details for the first venue shows its profile only.
  fireEvent.click(detailsAction);
+ // Assert: the schedule has neither rendered nor requested data before the drawer action.
+ expect(screen.queryByRole('heading',{name:'Test hall schedule'})).toBeNull();
+ expect(api.get.mock.calls.some(([path])=>path.includes('/schedule'))).toBe(false);
+ // Act: the explicit drawer action reveals the selected venue's schedule.
+ fireEvent.click(screen.getByRole('button',{name:'View schedule'}));
  // Assert: the selected venue's schedule opens, without showing another venue's schedule.
  expect(await screen.findByRole('heading',{name:'Test hall schedule'})).toBeTruthy();
  expect(screen.queryByRole('heading',{name:'Other hall schedule'})).toBeNull();

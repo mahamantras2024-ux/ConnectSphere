@@ -10,9 +10,10 @@ import {formatHourlyRate} from './hourlyRate';
 function list(value) { return Array.isArray(value) && value.length ? value.join(', ') : typeof value === 'string' && value.trim() ? value : 'Not specified'; }
 // Distinguishes an explicitly recorded zero-minute duration from missing legacy timing information.
 function minutes(value) { return value == null ? 'Not specified' : `${value} minutes`; }
-// Renders venue details and the embedded map, and lists bookings that prevent deactivation.
-export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canManage=false, canViewSchedule=canManage, initialScheduleOpen=false, token }) {
-  const [showSchedule, setShowSchedule] = useState(initialScheduleOpen);
+// Renders venue details and map, with schedule loading only after an explicit request.
+export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canManage=false, canViewSchedule=canManage, token }) {
+  // Keep the schedule unmounted until the visitor explicitly asks for it; that also defers its API request.
+  const [showSchedule, setShowSchedule] = useState(false);
   const [removing,setRemoving]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[blocked,setBlocked]=useState([]);
   const saving=useRef(false);
   // Removes the venue from active catalogues while showing server-verified blocking bookings.
