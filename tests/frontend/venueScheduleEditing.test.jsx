@@ -16,6 +16,77 @@ const venue = { id: 7, name: 'LazadaOne', operating_hours: '08:00 - 22:00', setu
 const recorded = { id: 3, kind: 'schedule', status: 'unavailable', label: 'Cleaning',
   start_datetime: `${date}T10:00:00+08:00`, end_datetime: `${date}T11:00:00+08:00` };
 
+it('AC7 AC10 - the timeline owns editing and shows a saved unavailability reason on its block', async () => {
+  // Arrange: staff open a day without recorded closures; no separate agenda or time-entry form is needed.
+  api.get.mockResolvedValue([]);
+  api.put.mockResolvedValue({});
+  render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
+  const row = await screen.findByRole('row', { name: /LazadaOne timeline/i });
+  expect(screen.queryByRole('list', { name: 'Daily availability' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Mark on timeline')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('New period start')).not.toBeInTheDocument();
+  // Act: drag an unavailable block, write its short reason in the timeline, and save.
+  fireEvent.pointerDown(row, { clientX: 400, pointerId: 1 });
+  fireEvent.pointerMove(row, { clientX: 440, pointerId: 1 });
+  fireEvent.pointerUp(row, { clientX: 440, pointerId: 1 });
+  fireEvent.change(screen.getByLabelText('Reason unavailable'), { target: { value: 'Floor cleaning' } });
+  expect(screen.getByLabelText('Floor cleaning 10:00–11:00')).toHaveTextContent('Floor cleaning');
+  fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+  // Assert: a label kept only in the input or omitted from persistence would fail.
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/7/schedule',
+    { date, periods: [{ status: 'unavailable', start: '10:00', end: '11:00', label: 'Floor cleaning' }] }, 'staff'));
+});
+
+it.each([
+  ['missing status', { status: '' }, 'needs a status'],
+  ['reversed times', { start_datetime: `${date}T11:00:00+08:00`, end_datetime: `${date}T10:00:00+08:00` }, 'must end later'],
+])('AC5 - a loaded period with %s cannot be resaved', async (_, change, expected) => {
+  // Arrange: legacy or damaged data is still rejected before it can be republished.
+  api.get.mockResolvedValue([{ ...recorded, ...change }]);
+  render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
+  // Act
+  await screen.findByRole('row', { name: /LazadaOne timeline/i });
+  fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+  // Assert
+  expect(screen.getByRole('alert')).toHaveTextContent(expected);
+  expect(api.put).not.toHaveBeenCalled();
+});
+
+it('AC5 - a drag ending at the visual 24:00 boundary cannot save an invalid clock time', async () => {
+  // Arrange: 24:00 is shown on the axis but is not an accepted persisted HH:mm value.
+  api.get.mockResolvedValue([]);
+  render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
+  const row = await screen.findByRole('row', { name: /LazadaOne timeline/i });
+  // Act
+  fireEvent.pointerDown(row, { clientX: 940, pointerId: 1 });
+  fireEvent.pointerMove(row, { clientX: 960, pointerId: 1 });
+  fireEvent.pointerUp(row, { clientX: 960, pointerId: 1 });
+  fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+  // Assert: the out-of-day draft is not sent to PostgreSQL.
+  expect(screen.getByRole('alert')).toHaveTextContent('must end later');
+  expect(api.put).not.toHaveBeenCalled();
+});
+
+it('AC10 AC11 - existing blocks can be selected by click or keyboard to edit their reasons', async () => {
+  // Arrange: two descriptions make an incorrect block selection observable.
+  api.get.mockResolvedValue([recorded, { ...recorded, id: 4, label: 'Painting',
+    start_datetime: `${date}T13:00:00+08:00`, end_datetime: `${date}T14:00:00+08:00` }]);
+  render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
+  const first = await screen.findByLabelText('Cleaning 10:00–11:00');
+  const second = screen.getByLabelText('Painting 13:00–14:00');
+  // Act / Assert: unrelated keys do not switch blocks; Enter and Space do.
+  fireEvent.click(first);
+  expect(screen.getByLabelText('Reason unavailable')).toHaveValue('Cleaning');
+  fireEvent.keyDown(second, { key: 'Escape' });
+  expect(screen.getByLabelText('Reason unavailable')).toHaveValue('Cleaning');
+  fireEvent.keyDown(second, { key: 'Enter' });
+  expect(screen.getByLabelText('Reason unavailable')).toHaveValue('Painting');
+  fireEvent.keyDown(first, { key: ' ' });
+  fireEvent.change(screen.getByLabelText('Reason unavailable'), { target: { value: 'Floor cleaning' } });
+  expect(screen.getByLabelText('Floor cleaning 10:00–11:00')).toHaveAttribute('title', 'Floor cleaning 10:00–11:00');
+  expect(screen.getByLabelText('Painting 13:00–14:00')).toBeVisible();
+});
+
 it('AC3 AC7 AC9 - shows a venue row on a horizontal day axis and closes time outside operating hours', async () => {
   // Arrange: an empty day has no explicit periods.
   api.get.mockResolvedValue([]);
@@ -23,9 +94,9 @@ it('AC3 AC7 AC9 - shows a venue row on a horizontal day axis and closes time out
   render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
   // Assert: the selected venue is the only row; closed time is never displayed as available.
   expect(await screen.findByRole('row', { name: /LazadaOne timeline/i })).toBeVisible();
-  expect(screen.getByText(/00:00–08:00.*Unavailable/)).toBeVisible();
-  expect(screen.getByText(/08:00–22:00.*Available/)).toBeVisible();
-  expect(screen.getByText(/22:00–24:00.*Unavailable/)).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /00:00–08:00.*Unavailable/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /08:00–22:00.*Available/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /22:00–24:00.*Unavailable/ })).toBeVisible();
   expect(screen.getByText('08:00', { selector: '.venue-timeline-tick' })).toBeVisible();
 });
 
@@ -90,39 +161,37 @@ it('AC4 AC5 AC6 - invalid edits show errors and confirmed booking conflicts list
       start_datetime: `${date}T10:00:00+08:00`, end_datetime: `${date}T11:00:00+08:00` }] } });
   render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
   await screen.findByRole('row', { name: /LazadaOne timeline/i });
-  // Act / Assert: an outside opening-minute attempt cannot be saved.
-  fireEvent.change(screen.getByLabelText('New period start'), { target: { value: '07:59' } });
-  fireEvent.change(screen.getByLabelText('New period end'), { target: { value: '09:00' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Add period' }));
+  // Act / Assert: a drag starting before opening cannot be saved.
+  const row = screen.getByRole('row', { name: /LazadaOne timeline/i });
+  fireEvent.pointerDown(row, { clientX: 310, pointerId: 1 });
+  fireEvent.pointerMove(row, { clientX: 360, pointerId: 1 });
+  fireEvent.pointerUp(row, { clientX: 360, pointerId: 1 });
   fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('08:00–22:00');
   expect(api.put).not.toHaveBeenCalled();
-  // Act: correct the period and submit; the server still has the final booking decision.
-  fireEvent.change(screen.getByLabelText('Period 1 start'), { target: { value: '10:00' } });
-  fireEvent.change(screen.getByLabelText('Period 1 end'), { target: { value: '11:00' } });
+  // Act: replace it with an in-hours closure; the server has the final booking decision.
+  fireEvent.click(screen.getByRole('button', { name: 'Delete unavailable period' }));
+  fireEvent.pointerDown(row, { clientX: 400, pointerId: 2 });
+  fireEvent.pointerMove(row, { clientX: 440, pointerId: 2 });
+  fireEvent.pointerUp(row, { clientX: 440, pointerId: 2 });
   fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
   // Assert: the booking's identity is visible and the change is unsaved.
   expect(await screen.findByText('Gala')).toBeVisible();
 });
 
-it('AC4 AC5 - missing date hours times and overlapping edits show the relevant error before persistence', async () => {
+it('AC4 AC5 - missing date and overlapping timeline edits show errors before persistence', async () => {
   // Arrange: staff start with a recorded operating window and an empty selected day.
   api.get.mockResolvedValue([]);
   render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
   await screen.findByRole('row', { name: /LazadaOne timeline/i });
-  // Act / Assert: a period without required times cannot be saved.
-  fireEvent.click(screen.getByRole('button', { name: 'Add period' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('start time and end time');
-  fireEvent.change(screen.getByLabelText('Period 1 start'), { target: { value: '10:00' } });
-  fireEvent.change(screen.getByLabelText('Period 1 end'), { target: { value: '10:00' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
-  expect(screen.getByRole('alert')).toHaveTextContent('later than it starts');
-  // Add a second period that overlaps the first after correcting its end.
-  fireEvent.change(screen.getByLabelText('Period 1 end'), { target: { value: '11:00' } });
-  fireEvent.change(screen.getByLabelText('New period start'), { target: { value: '10:30' } });
-  fireEvent.change(screen.getByLabelText('New period end'), { target: { value: '12:00' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Add period' }));
+  // Act / Assert: a second drag crossing the first block must not be persisted.
+  const row = screen.getByRole('row', { name: /LazadaOne timeline/i });
+  fireEvent.pointerDown(row, { clientX: 400, pointerId: 1 });
+  fireEvent.pointerMove(row, { clientX: 440, pointerId: 1 });
+  fireEvent.pointerUp(row, { clientX: 440, pointerId: 1 });
+  fireEvent.pointerDown(row, { clientX: 360, pointerId: 2 });
+  fireEvent.pointerMove(row, { clientX: 420, pointerId: 2 });
+  fireEvent.pointerUp(row, { clientX: 420, pointerId: 2 });
   fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
   expect(screen.getByRole('alert')).toHaveTextContent('cannot overlap');
   expect(api.put).not.toHaveBeenCalled();
@@ -132,20 +201,19 @@ it('AC4 AC5 - missing date hours times and overlapping edits show the relevant e
   expect(screen.getByRole('alert')).toHaveTextContent('Choose a schedule date');
 });
 
-it('AC1 AC7 AC10 - available marks and descriptions survive the save payload while generic failures remain visible', async () => {
+it('AC1 AC7 AC10 - selected blocks support availability overrides and descriptions through save failures', async () => {
   // Arrange: a fresh day supports explicit available records even though open hours default available.
   api.get.mockResolvedValue([]);
   api.put.mockRejectedValueOnce({}).mockResolvedValueOnce({});
   render(<VenueSchedule venue={venue} token="staff" canEdit initialDate={date} />);
   await screen.findByRole('row', { name: /LazadaOne timeline/i });
-  // Act: use accessible controls as a precise alternative to dragging.
-  fireEvent.change(screen.getByLabelText('Mark on timeline'), { target: { value: 'available' } });
-  fireEvent.change(screen.getByLabelText('New period start'), { target: { value: '08:00' } });
-  fireEvent.change(screen.getByLabelText('New period end'), { target: { value: '09:00' } });
+  // Act: drag a block, then change its status and description within the timeline.
+  const row = screen.getByRole('row', { name: /LazadaOne timeline/i });
+  fireEvent.pointerDown(row, { clientX: 320, pointerId: 1 });
+  fireEvent.pointerMove(row, { clientX: 360, pointerId: 1 });
+  fireEvent.pointerUp(row, { clientX: 360, pointerId: 1 });
+  fireEvent.change(screen.getByLabelText('Period availability'), { target: { value: 'available' } });
   fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Open house' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Add period' }));
-  fireEvent.change(screen.getByLabelText('Period 1 status'), { target: { value: 'unavailable' } });
-  fireEvent.change(screen.getByLabelText('Period 1 status'), { target: { value: 'available' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
   // Assert: transport failure does not claim a saved schedule or discard the draft.
   expect(await screen.findByRole('alert')).toHaveTextContent('Unable to save the schedule');
@@ -183,10 +251,14 @@ it('AC2 AC11 - left resizing and editing one of two saved blocks retains the oth
   expect(capture).toHaveBeenCalledOnce();
   expect(screen.getByLabelText(/Cleaning 09:30–11:00/)).toBeVisible();
   expect(screen.getByLabelText(/unavailable 13:00–14:00/)).toBeVisible();
-  // Act: changing the first block through the precise inputs must not alter the second.
-  fireEvent.change(screen.getByLabelText('Period 1 status'), { target: { value: 'available' } });
-  fireEvent.change(screen.getByLabelText('Period 1 start'), { target: { value: '09:00' } });
-  fireEvent.change(screen.getByLabelText('Period 1 end'), { target: { value: '11:30' } });
+  // Act: the selected block status and further handle drags must not alter its neighbor.
+  fireEvent.change(screen.getByLabelText('Period availability'), { target: { value: 'available' } });
+  fireEvent.pointerDown(screen.getByLabelText(/Cleaning 09:30–11:00/).querySelector('[data-edge="left"]'), { clientX: 380, pointerId: 3 });
+  fireEvent.pointerMove(row, { clientX: 360, pointerId: 3 });
+  fireEvent.pointerUp(row, { clientX: 360, pointerId: 3 });
+  fireEvent.pointerDown(screen.getByLabelText(/Cleaning 09:00–11:00/).querySelector('[data-edge="right"]'), { clientX: 440, pointerId: 4 });
+  fireEvent.pointerMove(row, { clientX: 460, pointerId: 4 });
+  fireEvent.pointerUp(row, { clientX: 460, pointerId: 4 });
   fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
   // Assert: both statuses and the exact edited time reach the replacement API.
   await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/7/schedule', { date, periods: [

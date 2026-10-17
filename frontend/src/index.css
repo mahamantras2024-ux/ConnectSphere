@@ -259,6 +259,9 @@ h2, h3 { font-weight: 700; }
 .venue-timeline-tick:last-child {transform:translateX(-100%);}
 .venue-timeline-heading {font-weight:700;font-size:13px;margin:12px 18px 5px;}
 .venue-timeline-row {height:82px;border:1px solid #b9c8aa;border-radius:5px;touch-action:none;cursor:crosshair;background:repeating-linear-gradient(to right,#e9eee4 0 1px,transparent 1px 16.6667%),#f8fbf6;}
+.venue-timeline-segment {position:absolute;top:0;bottom:0;pointer-events:none;}
+.venue-timeline-segment.available {background:#d7eadb66;}
+.venue-timeline-segment.blocked {background:#efd8c266;}
 .venue-timeline-closed {position:absolute;top:0;bottom:0;background:#e5e2dcaa;pointer-events:none;}
 .venue-timeline-locked {position:absolute;top:48px;height:25px;background:#7e6a58;color:#fff;font-size:10px;padding:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
 .venue-timeline-block {position:absolute;top:6px;height:36px;display:flex;align-items:center;justify-content:space-between;border-radius:5px;border:1px solid #375d2c;color:#fff;cursor:grab;overflow:visible;}
@@ -267,12 +270,11 @@ h2, h3 { font-weight: 700; }
 .venue-timeline-block-label {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;pointer-events:none;}
 .venue-timeline-handle {height:100%;width:8px;min-width:8px;cursor:ew-resize;background:#ffffff55;}
 .venue-timeline-block button {position:absolute;top:-12px;right:-9px;min-width:20px;width:20px;height:20px;padding:0;border-radius:50%;font-size:14px;background:#fff;color:#7d2e20;border:1px solid #7d2e20;line-height:1;}
-.venue-schedule-editor {border-top:1px solid var(--border);padding-top:16px;}
-.venue-schedule-editor p {font-size:12px;color:var(--muted);}
-.venue-schedule-add,.venue-schedule-period {display:flex;flex-wrap:wrap;gap:9px;align-items:end;margin:10px 0;}
-.venue-schedule-add label,.venue-schedule-period label {display:flex;flex-direction:column;gap:4px;font-size:11px;min-width:95px;}
-.venue-schedule-add input,.venue-schedule-add select,.venue-schedule-period input,.venue-schedule-period select {width:100%;min-height:32px;padding:5px;border:1px solid var(--border);border-radius:5px;}
-.venue-schedule-period {padding:9px;background:#f5f7ef;border-radius:6px;}
+.venue-timeline-selection {display:flex;align-items:end;flex-wrap:wrap;gap:12px;margin:14px 18px 4px;padding:12px;background:#f5f7ef;border-radius:6px;font-size:12px;}
+.venue-timeline-selection label {display:flex;flex-direction:column;gap:4px;font-size:11px;}
+.venue-timeline-selection input,.venue-timeline-selection select {min-height:34px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;}
+.venue-timeline-selection input {min-width:230px;}
+.venue-schedule-actions {margin:14px 0 4px;}
 .button-danger {background:#fff2ee;color:#942b20;border:1px solid #efb6aa;}
 .button-danger:hover {background:#942b20;color:white;}
 .venue-map {height:280px;width:100%;border-radius:14px;overflow:hidden;border:1px solid #424f1930;z-index:0;font-family:inherit;}
