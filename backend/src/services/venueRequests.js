@@ -70,8 +70,11 @@ async function createVenueRequest(venueId, body, userId) {
 }
 
 /** Applies an explicit staff decision; even a late approval must recheck current blockers without relying on the old hold. */
-async function decideVenueRequest(venueId, requestId, decision, userId) {
+async function decideVenueRequest(venueId, requestId, decision, userId, reason) {
   if (!validId(venueId) || !validId(requestId) || !['approved', 'rejected'].includes(decision)) throw reject(400, 'Choose a valid request and approval or rejection decision.');
+  if (reason != null && typeof reason !== 'string') throw reject(400, 'The decision reason must be text.');
+  // Rejection notes explain why the booking was declined; approvals never retain an irrelevant reason.
+  const decisionNotes = decision === 'rejected' ? reason?.trim() || null : null;
   return withVenue(Number(venueId), async (client, venue) => {
     const request = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
     if (!request) throw reject(404, 'Venue request not found.');
@@ -80,8 +83,8 @@ async function decideVenueRequest(venueId, requestId, decision, userId) {
       const periods = await recordedPeriods(client, venue.id);
       if (hasConflict(request, periods, venue, Date.now(), request.id)) throw reject(409, 'The requested period is no longer available.');
     }
-    return (await client.query(`UPDATE venue_bookings SET status=$1, decision_by=$2, updated_at=$3
-      WHERE id=$4 AND venue_id=$5 RETURNING *`, [decision, userId, new Date(Date.now()).toISOString(), request.id, venue.id])).rows[0];
+    return (await client.query(`UPDATE venue_bookings SET status=$1, decision_by=$2, updated_at=$3, decision_notes=$4
+      WHERE id=$5 AND venue_id=$6 RETURNING *`, [decision, userId, new Date(Date.now()).toISOString(), decisionNotes, request.id, venue.id])).rows[0];
   });
 }
 

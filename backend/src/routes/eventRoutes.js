@@ -8,6 +8,7 @@ const eventRegistrationController = require('../controllers/eventRegistrationCon
 const technicalSupportController = require('../controllers/technicalSupportController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
+const venueBookingDecisions = require('../controllers/venueBookingDecisionController');
 const asyncHandler = require('../utils/asyncHandler');
 
 router.use(requireAuth);
@@ -24,6 +25,7 @@ router.put('/:id/non-critical', requireRole('event_organiser'), eventController.
 router.put('/:id/equipment', requireRole('event_organiser'), eventController.updateEquipmentRequirements);
 router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);
 router.post('/change-requests/:id/decision', requireRole('event_coordinator'), eventController.decideChangeRequest);
+router.get('/:id/venue-bookings', requireRole('event_coordinator'), venueBookingDecisions.listEventVenueBookings);
 router.get('/published', requireRole('attendee'), asyncHandler(attendeeEventController.listPublished));
 router.get('/published/:id', requireRole('attendee'), asyncHandler(attendeeEventController.getPublished));
 router.get('/:id/registrations', requireRole('event_organiser'), asyncHandler(eventRegistrationController.getEventRegistrations));
