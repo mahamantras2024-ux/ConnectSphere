@@ -16,13 +16,19 @@ vi.mock('../../frontend/src/pages/venues/VenueMap',()=>({default:({onPick})=><bu
 const venue={id:7,name:'Test hall',location:'Existing address',capacity:100,facilities:['Wi-Fi'],supported_layouts:['Theatre'],accessibility_features:['Ramp'],operating_hours:'08:00 - 22:00',availability_status:'Available',revision:0};
 beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue([venue]);});
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();});
-it('Schedule AC8 - card schedule action opens only the selected venue for staff',async()=>{
+it('Schedule AC8 - the sole rightmost View details action opens only the selected staff venue schedule',async()=>{
  // Arrange: venue 7 is the selected catalogue card; schedule reads are scoped to its ID.
  api.get.mockImplementation(async path=>path==='/venues'?[venue,{...venue,id:8,name:'Other hall'}]:[]);
  render(<VenueList/>);
- // Act
- fireEvent.click((await screen.findAllByRole('button',{name:'View schedule'}))[0]);
- // Assert: the direct action does not open another venue's schedule.
+ const cards=await screen.findAllByRole('article');
+ const detailsAction=within(cards[0]).getByRole('button',{name:/View details/});
+ // Assert: each card has one navigation action, placed after its rate at the footer's far edge.
+ expect(within(cards[0]).queryByRole('button',{name:'View schedule'})).toBeNull();
+ expect(within(cards[1]).queryByRole('button',{name:'View schedule'})).toBeNull();
+ expect(detailsAction.parentElement.lastElementChild).toBe(detailsAction);
+ // Act: opening details for the first venue keeps the existing schedule shortcut.
+ fireEvent.click(detailsAction);
+ // Assert: the selected venue's schedule opens, without showing another venue's schedule.
  expect(await screen.findByRole('heading',{name:'Test hall schedule'})).toBeTruthy();
  expect(screen.queryByRole('heading',{name:'Other hall schedule'})).toBeNull();
  expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/^\/venues\/7\/schedule\?date=/),'staff');

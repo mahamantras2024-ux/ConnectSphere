@@ -42,7 +42,7 @@ export default function VenueList() {
       <div className="venue-card-body"><span className="record-number">VENUE / {String(venue.id).padStart(3, '0')}</span><h3>{venue.name}</h3><p>{venue.location || 'Location not specified'}</p><div className="venue-facts"><span>{venue.capacity ?? '—'} Guests</span><span>{venue.operating_hours || venue.operatingHours || 'Hours not specified'}</span></div><div className="venue-card-footer"><span>{formatHourlyRate(venue.pricing)}</span><button className="text-button" onClick={() =>
       // Handles this control action and updates the screen state.
       {setSelected(venue);setOpenSchedule(user?.role==='venue_staff');}}>View details <span aria-hidden="true">↗</span></button>
-      {user?.role==='venue_staff' && <button className="text-button" onClick={()=>{setSelected(venue);setOpenSchedule(true);}}>View schedule</button>}</div></div>
+      </div></div>
     </article>)}</div>}{selected && <VenueDetail venue={selected} onClose={() =>
       // Handles this control action and updates the screen state.
       {setSelected(null);setOpenSchedule(false);}} initialScheduleOpen={openSchedule} canManage={user?.role==='venue_staff'} canViewSchedule={['venue_staff','event_coordinator'].includes(user?.role)} token={token} onEdit={record=>{setSelected(null);setEditing(record);}} onRemoved={id=>{setVenues(current=>current.filter(v=>v.id!==id));setNotice('Venue deactivated. Historical bookings are preserved.');setVersion(current=>current+1);}} />}
