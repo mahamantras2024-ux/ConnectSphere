@@ -32,6 +32,9 @@ function matchesFilters(window, date, fromTime, toTime) {
 }
 
 const getAvailabilityWindows = item => Array.isArray(item.availabilities) ? item.availabilities : [];
+// Legacy stock health values map onto explicit availability until a record is transitioned by staff.
+const getAvailabilityStatus = item => item.availability_status ||
+  (item.status && item.status !== 'operational' ? 'Unavailable' : 'Available');
 
 // A window is reserved when it is not open and is tied to a reservation (status says so, or an event holds it).
 const isReservedWindow = window => window.status !== 'Available' &&
@@ -42,11 +45,15 @@ const isReservedWindow = window => window.status !== 'Available' &&
  * Availability range filters show only assets whose available window covers the full range.
  * Available quantities are date-specific and show the best matching window unless a full range is set.
  */
-export default function EquipmentInventorySection({ inventory, error }) {
+export default function EquipmentInventorySection({ inventory, error, onRepairEquipment }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
+  const [repairingEquipmentId, setRepairingEquipmentId] = useState(null);
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [repairError, setRepairError] = useState('');
+  const [repairSaving, setRepairSaving] = useState(false);
   const hasAvailabilityFilter = Boolean(dateFilter || fromTime || toTime);
   const hasFilter = Boolean(searchTerm.trim() || hasAvailabilityFilter);
   const invalidTimeRange = Boolean(fromTime && toTime && fromTime >= toTime);
@@ -92,6 +99,31 @@ export default function EquipmentInventorySection({ inventory, error }) {
     setDateFilter('');
     setFromTime('');
     setToTime('');
+  }
+
+  /**
+   * Requires a non-empty explanation before requesting the Unavailable-to-Available transition.
+   */
+  async function submitRepair(event, item) {
+    event.preventDefault();
+    const cleanNote = resolutionNote.trim();
+    if (!cleanNote) {
+      // A whitespace-only reason would leave the equipment history without an auditable resolution.
+      setRepairError('Enter a brief resolution note before marking equipment available.');
+      return;
+    }
+
+    setRepairError('');
+    setRepairSaving(true);
+    try {
+      await onRepairEquipment(item, cleanNote);
+      setRepairingEquipmentId(null);
+      setResolutionNote('');
+    } catch (saveError) {
+      setRepairError(saveError?.message || 'Unable to update equipment status.');
+    } finally {
+      setRepairSaving(false);
+    }
   }
 
   return (
@@ -160,7 +192,9 @@ export default function EquipmentInventorySection({ inventory, error }) {
                   <th scope="col">ID</th>
                   <th scope="col">Name</th>
                   <th scope="col">Specifications</th>
+                  <th scope="col">Status</th>
                   <th scope="col">{dateFilter ? 'Available quantity' : 'Total quantity'}</th>
+                  <th scope="col">Status history</th>
                 </tr>
               </thead>
               <tbody>
@@ -169,9 +203,58 @@ export default function EquipmentInventorySection({ inventory, error }) {
                     <th scope="row">{item.asset_code}</th>
                     <td>{item.name}</td>
                     <td>{item.specification}</td>
+                    <td>
+                      <span>{getAvailabilityStatus(item)}</span>
+                      {onRepairEquipment && getAvailabilityStatus(item) === 'Unavailable' && (
+                        repairingEquipmentId === item.id ? (
+                          <form onSubmit={event => submitRepair(event, item)} noValidate>
+                            <label>
+                              Resolution note
+                              <textarea
+                                aria-label="Resolution note"
+                                value={resolutionNote}
+                                onChange={event => {
+                                  setResolutionNote(event.target.value);
+                                  setRepairError('');
+                                }}
+                                maxLength={500}
+                                required
+                              />
+                            </label>
+                            {repairError && <p role="alert">{repairError}</p>}
+                            <button type="submit" disabled={repairSaving}>
+                              {repairSaving ? 'Saving repair…' : 'Mark Available'}
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRepairingEquipmentId(item.id);
+                              setResolutionNote('');
+                              setRepairError('');
+                            }}
+                          >
+                            Mark Available
+                          </button>
+                        )
+                      )}
+                    </td>
                     <td>{dateFilter
                       ? `${fromTime && toTime ? '' : 'Up to '}${getAvailableQuantity(item)}`
                       : item.quantity}</td>
+                    <td>
+                      {item.status_history?.length ? (
+                        <ul aria-label={`Status history for ${item.asset_code}`}>
+                          {item.status_history.map(entry => (
+                            <li key={entry.id}>
+                              <span>{entry.status}: {entry.note}</span>
+                              {entry.changed_by_name && <span> — {entry.changed_by_name}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : 'No status history'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

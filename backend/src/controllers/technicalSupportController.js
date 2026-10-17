@@ -6,6 +6,7 @@ const equipmentStatusService = require('../services/equipmentStatusService');
 const outcomes = new Set(['fully_fulfillable', 'partially_fulfillable', 'not_fulfillable']);
 const MAX_REASON_LENGTH = 10000;
 const MAX_MANUAL_EQUIPMENT_ITEMS = 50;
+const MAX_REPAIR_NOTE_LENGTH = 500;
 
 /** Validates staff-entered equipment names and quantities before querying stock. */
 function validateAdditionalItems(items) {
@@ -91,6 +92,32 @@ const listEquipmentInventory = asyncHandler(async (req, res) => {
   return res.status(200).json({ inventory });
 });
 
+/** Marks an unavailable asset available only when staff provide a short auditable repair resolution. */
+const repairEquipment = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) > 2147483647) {
+    return res.status(400).json({ message: 'Choose valid equipment to repair.' });
+  }
+
+  const input = req.body;
+  const resolutionNote = typeof input?.resolutionNote === 'string' ? input.resolutionNote.trim() : '';
+  if (!input || typeof input !== 'object' || Array.isArray(input) ||
+      Object.keys(input).some(key => key !== 'resolutionNote') ||
+      !resolutionNote || resolutionNote.length > MAX_REPAIR_NOTE_LENGTH) {
+    return res.status(400).json({
+      message: `Enter a resolution note of 1 to ${MAX_REPAIR_NOTE_LENGTH} characters.`,
+    });
+  }
+
+  const equipment = await eventModel.markEquipmentAvailable(Number(id), resolutionNote, req.user.id);
+  if (!equipment) {
+    return res.status(409).json({
+      message: 'This equipment is no longer unavailable. Refresh the inventory before trying again.',
+    });
+  }
+  return res.status(200).json({ equipment, message: 'Equipment marked Available.' });
+});
+
 /**
  * Returns reviewed equipment requests awaiting reservation and upcoming reserved allocations.
  */
@@ -150,6 +177,7 @@ module.exports = {
   listEquipmentRequests,
   reviewEquipmentRequest,
   listEquipmentInventory,
+  repairEquipment,
   listEquipmentReservations,
   checkEquipmentAvailability,
   reserveEquipment,

@@ -10,6 +10,11 @@ function getInventoryTable() {
   return within(screen.getByRole('region', { name: 'Equipment inventory' })).getAllByRole('table')[0];
 }
 
+// Locates an asset without coupling status and history assertions to the full row's accessible name.
+function getAssetRow(assetCode) {
+  return within(getInventoryTable()).getByRole('row', { name: new RegExp(assetCode) });
+}
+
 const inventory = [
   {
     id: 1,
@@ -45,9 +50,26 @@ it('AC1 - shows total quantity until a date is selected', () => {
   expect(within(table).getByRole('columnheader', { name: 'ID' })).toBeTruthy();
   expect(within(table).getByRole('columnheader', { name: 'Total quantity' })).toBeTruthy();
   expect(within(table).queryByRole('columnheader', { name: 'Available quantity' })).toBeNull();
-  expect(within(table).getByRole('row', { name: /PROJ-001 Projector Full HD 1080p, 4,000 lumens, HDMI 3/ })).toBeTruthy();
+  const projectorRow = getAssetRow('PROJ-001');
+  expect(projectorRow).toBeTruthy();
+  expect(within(projectorRow).getAllByRole('cell')[3].textContent).toBe('3');
   expect(within(table).queryByText('12 October 2026')).toBeNull();
   expect(screen.queryByRole('heading', { name: 'Availability calendar' })).toBeNull();
+});
+
+// AC1 - Legacy maintenance records without the new availability field remain visibly unavailable.
+it('AC1 - maps legacy maintenance status to Unavailable', () => {
+  // Arrange
+  render(<EquipmentInventorySection
+    inventory={[{ ...inventory[0], status: 'maintenance' }]}
+    error=""
+  />);
+
+  // Act
+  const row = getAssetRow('PROJ-001');
+
+  // Assert: dropping this fallback would present unrepaired legacy stock as available.
+  expect(within(row).getAllByRole('cell')[2].textContent).toBe('Unavailable');
 });
 
 // AC2 - Availability is deducted for reservations overlapping the chosen date and time.
@@ -59,7 +81,7 @@ it('AC2 - shows the remaining quantity for a selected date and time range', () =
 
   const table = getInventoryTable();
   expect(within(table).getByRole('columnheader', { name: 'Available quantity' })).toBeTruthy();
-  expect(within(table).getByRole('row', { name: /PROJ-001 Projector.*1$/ })).toBeTruthy();
+  expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('1');
 });
 
 // AC2 - A date without a full time range reports the highest matching availability as an upper bound.
@@ -67,8 +89,7 @@ it('AC2 - labels date-only availability as an upper bound', () => {
   render(<EquipmentInventorySection inventory={inventory} error="" />);
   fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-12' } });
 
-  const table = getInventoryTable();
-  expect(within(table).getByRole('row', { name: /PROJ-001 Projector.*Up to 1$/ })).toBeTruthy();
+  expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('Up to 1');
 });
 
 // AC3 - Fully reserved equipment remains visible with zero available for its selected slot.
@@ -76,8 +97,7 @@ it('AC3 - shows zero available when the selected date window is fully reserved',
   render(<EquipmentInventorySection inventory={inventory} error="" />);
   fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-14' } });
 
-  const table = getInventoryTable();
-  expect(within(table).getByRole('row', { name: /PROJ-001 Projector.*0$/ })).toBeTruthy();
+  expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('Up to 0');
 });
 
 // AC2 - partial time filters and reserved calendar windows retain truthful availability states.

@@ -37,6 +37,7 @@ router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_o
 router.get('/equipment-requests', requireRole('technical_support'), technicalSupportController.listEquipmentRequests);
 router.post('/:id/equipment-reviews', requireRole('technical_support'), technicalSupportController.reviewEquipmentRequest);
 router.get('/equipment-inventory', requireRole('technical_support'), technicalSupportController.listEquipmentInventory);
+router.put('/equipment-inventory/:id/repair', requireRole('technical_support'), technicalSupportController.repairEquipment);
 router.get('/equipment-reservations', requireRole('technical_support'), technicalSupportController.listEquipmentReservations);
 router.get('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
 router.post('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
