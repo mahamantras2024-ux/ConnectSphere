@@ -9,17 +9,17 @@ const migration = fs.readFileSync(
   'utf8',
 );
 
-// Migration compatibility - Existing equipment status notifications must survive the widened type constraint.
-test('Migration compatibility - preserves equipment_status_changed notifications', () => {
+// Migration compatibility - Existing stored types and all current application types must survive reruns.
+test('Migration compatibility - preserves stored and supported notification types', () => {
   // Arrange
-  const constraint = migration.match(/ADD CONSTRAINT notifications_type_check CHECK \(type IN \(([\s\S]*?)\)\);/);
-  assert.ok(constraint, 'The migration must define the notification type constraint.');
+  const typeList = migration.match(/ARRAY\[([\s\S]*?)\]::text\[\]/);
+  assert.ok(typeList, 'The migration must retain an explicit list of supported notification types.');
 
   // Act
-  const acceptedTypes = [...constraint[1].matchAll(/'([^']+)'/g)].map(([, type]) => type);
+  const supportedTypes = [...typeList[1].matchAll(/'([^']+)'/g)].map(([, type]) => type);
 
-  // Assert: a plausible type omitted from the constraint makes the upgrade fail when its row exists.
-  assert.deepEqual(acceptedTypes, [
+  // Assert: data already stored is unioned into the allowed set before PostgreSQL validates the new constraint.
+  assert.deepEqual(supportedTypes, [
     'change_request_submitted',
     'change_request_approved',
     'change_request_rejected',
@@ -27,6 +27,9 @@ test('Migration compatibility - preserves equipment_status_changed notifications
     'event_approved',
     'event_rejected',
     'safety_check_recorded',
+    'event_cancelled',
     'equipment_status_changed',
   ]);
+  assert.match(migration, /SELECT DISTINCT type FROM notifications/i);
+  assert.match(migration, /EXECUTE format\([\s\S]*ADD CONSTRAINT notifications_type_check/i);
 });
