@@ -1,6 +1,8 @@
 // File: Exercises repair status validation, transactional audit writes, reservation eligibility, and history output.
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const jwt = require('../../backend/node_modules/jsonwebtoken');
 process.env.JWT_SECRET = 'technical-support-repair-tests-secret';
 process.env.NODE_ENV = 'test';
@@ -56,6 +58,20 @@ afterEach(() => mock.restoreAll());
 after(async () => {
   if (server?.listening) await new Promise(resolve => server.close(resolve));
   await pool.end();
+});
+
+// AC4 - Repair history is backend-only so direct browser roles cannot bypass the authorised API.
+test('AC4 - enables RLS and revokes anon and authenticated access to repair history', () => {
+  // Arrange
+  const migration = fs.readFileSync(
+    path.join(__dirname, '../../backend/src/db/migrations/012-equipment-repair-history.sql'),
+    'utf8',
+  );
+
+  // Act and assert: each database permission change must appear in the migration.
+  assert.match(migration, /ALTER TABLE equipment_status_history ENABLE ROW LEVEL SECURITY;/i);
+  assert.match(migration, /REVOKE ALL ON equipment_status_history FROM anon;/i);
+  assert.match(migration, /REVOKE ALL ON equipment_status_history FROM authenticated;/i);
 });
 
 // Replaces only the database boundary while keeping the real authenticated route and model code.

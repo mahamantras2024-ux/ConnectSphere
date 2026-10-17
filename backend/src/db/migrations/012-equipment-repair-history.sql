@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS equipment_status_history (
   changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Repair history is accessed through the authorised API, not directly by browser roles.
+ALTER TABLE equipment_status_history ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN REVOKE ALL ON equipment_status_history FROM anon; END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN REVOKE ALL ON equipment_status_history FROM authenticated; END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS equipment_status_history_inventory_idx
   ON equipment_status_history(inventory_id, changed_at, id);
 

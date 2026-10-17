@@ -17,6 +17,8 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/005-technical-support-reviews.sql'), 'utf8'));
     // 006 runs after 005: it widens the notification types that the change-request migration created.
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/006-event-decisions.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/012-event-cancellation-notifications.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/013-equipment-review-affected-items.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/006-equipment-inventory-reservations.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/007-equipment-stock-quantities.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/009-internal-single-role.sql'), 'utf8'));
@@ -24,7 +26,7 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/010-venue-safety-facts.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/011-safety-change-stages.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/012-equipment-repair-history.sql'), 'utf8'));
-    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, change-request review and notifications, Technical Support reviews, event decisions, equipment reservations, equipment stock quantities, and equipment repair history are ready.');
+    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, change-request review and notifications, Technical Support reviews, event decisions, cancellation notifications, equipment reviews, equipment reservations, equipment stock quantities, venue safety, safety change stages, and equipment repair history are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
