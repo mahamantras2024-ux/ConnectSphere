@@ -8,7 +8,7 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 | --- | --- |
 | Create venue records | Venue Staff-only creation, required-field validation, positive whole capacity, valid operating times and persisted catalogue entries. |
 | View venue records | Full recorded details, explicit missing-data labels and useful unavailable/retrieval errors. |
-| Internal staff login | Private provisioning, hashed credentials, correct role dashboards, protected routes and assignment-scoped data. Sprint 1 tests use single-role staff. Technical Support displays actual account details. |
+| Internal staff login | Private provisioning, hashed credentials, correct role dashboards, protected routes and assignment-scoped data. Each staff account holds exactly one internal role, enforced by provisioning and the `users_internal_single_role` constraint (migration 009). The Safety Officer dashboard shows only the safety-check queue. Technical Support displays actual account details. |
 | External registration/login | Attendee/organiser signup, confirmation and validation, duplicate prevention, secure login, correct dashboards and private attendee registration summaries. |
 | Organiser event information | Own event lists and full submitted details; other organisers' records remain private, including those in the same organisation. |
 | Coordinator event information | Assigned event lists and full submitted details; unassigned records remain private. |
@@ -16,7 +16,7 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 ## Completed enhancements outside that baseline
 
 - Password reset with expiring single-use links and invalidation of old sessions. Encrypted Gmail SMTP connection and sender authentication were verified without sending email; inbox delivery remains unverified.
-- Server-validated switching between provisioned roles; Safety Officer account dashboard.
+- Server-validated switching between provisioned roles, for external accounts only (Event Organiser + Attendee); staff accounts have one role and no switcher. Safety Officer account dashboard.
 - [Coordinator Lead queue and assignments](coordinator-lead.md): review active submitted events, manually assign/reassign one coordinator, retain venue arrangements, transfer outstanding work and show organiser email to authorised reviewers.
 - Organiser event request creation and draft/submitted persistence.
 - Venue editing with booking-impact warnings, exact-change confirmation and stale-update protection.
@@ -35,7 +35,9 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 
 ## Event approval and rejection (Sprint 2)
 
-- The Safety Officer dashboard lists submitted events whose venue and technical arrangements are confirmed, with attendance, venue capacity, layout, accessibility and equipment. The officer records Approved, Rejected or Changes requested; notes are required unless approving. The assigned coordinator is notified.
+- The Safety Officer dashboard lists submitted events whose venue and technical arrangements are confirmed, with attendance and occupancy against venue capacity, requested and supported layouts, emergency access, accessibility (requested and available), equipment and its placement, crowd-movement timings (opening hours, setup, turnaround) and known venue restrictions. Venue Staff record emergency access and known restrictions on the venue form (optional, 2000 characters each). The officer records Approved, Rejected or Changes requested; notes are required unless approving. The assigned coordinator is notified.
+- **Changes requested** must name the planning stages to reopen: venue arrangements, technical arrangements (only when something technical was requested) and/or event details. The organiser is also notified. Reopening technical arrangements clears their confirmation and starts a new request version, so Technical Support re-reviews and the organiser may edit equipment. The event leaves the safety queue until the assigned coordinator marks every stage complete on the event page (each needs its arrangement confirmed again, or no clarification owed for event details); it then needs another safety check, and approval stays blocked until a check passes. Migrations `010-venue-safety-facts.sql` and `011-safety-change-stages.sql`.
+- **Venue suitability** (event page, assigned Event Coordinator only): every active venue is checked against the venue requirements the organiser specified. A venue appears suitable (highlighted) only if its capacity is at least the expected attendance, it lists the requested room layout, and it lists every accessibility need; each requirement shows the venue entry that matched or what is missing. Matching is word-based: every word of the organiser's requirement must appear in one venue entry, ignoring case, punctuation and a plural "s" ("Hall" matches "Conference hall"). Placeholder entries such as "NA" are ignored, and unknown attendance is shown as not checked.
 - On the event page, the assigned coordinator sees a readiness checklist (clarifications, venue, technical arrangements, safety check). **Approve** needs every item complete and a passed safety check. **Reject** (optional reason) is allowed even when arrangements are not confirmed. An outstanding clarification blocks both.
 - The decision sets the event status to Approved/Rejected and keeps who decided, when and why on the event record. The organiser is notified in-app and by email, and sees the outcome on the event page.
 - The rules live in `backend/src/services/eventDecisionPolicy.js` (`DECISION_REQUIREMENTS`). Change those lists when the customer clarifies the rejection rule.

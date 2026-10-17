@@ -16,6 +16,7 @@ import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
+import VenueSuitabilitySection from './VenueSuitabilitySection';
 
 
 
@@ -926,6 +927,8 @@ export default function EventDetail() {
       )}
 
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
+      {/* Check Venue Suitability: only the assigned coordinator (the API scopes it) compares venues for this event. */}
+      {user.role === 'event_coordinator' && <VenueSuitabilitySection eventId={event.id} token={token} />}
 
       {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} />}
 
@@ -1124,6 +1127,12 @@ export default function EventDetail() {
             <Field label="Coordinator">{fieldValue(event.coordinator_name)}</Field>
 
           </dl>
+
+          {user.role === 'event_organiser' && (
+            <Link className="button-link button-secondary" to={`/organizer/events/${id}/registrations`}>
+              View registration details
+            </Link>
+          )}
 
         </section>
 

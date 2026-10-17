@@ -3,10 +3,13 @@ const express = require('express');
 const router = express.Router();
 const eventController = require('../controllers/eventController');
 const eventReadController = require('../controllers/eventReadController');
+const attendeeEventController = require('../controllers/attendeeEventController');
+const eventRegistrationController = require('../controllers/eventRegistrationController');
 const technicalSupportController = require('../controllers/technicalSupportController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 const venueBookingDecisions = require('../controllers/venueBookingDecisionController');
+const asyncHandler = require('../utils/asyncHandler');
 
 router.use(requireAuth);
 const lead = require('../controllers/coordinatorLeadController');
@@ -23,6 +26,9 @@ router.put('/:id/equipment', requireRole('event_organiser'), eventController.upd
 router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);
 router.post('/change-requests/:id/decision', requireRole('event_coordinator'), eventController.decideChangeRequest);
 router.get('/:id/venue-bookings', requireRole('event_coordinator'), venueBookingDecisions.listEventVenueBookings);
+router.get('/published', requireRole('attendee'), asyncHandler(attendeeEventController.listPublished));
+router.get('/published/:id', requireRole('attendee'), asyncHandler(attendeeEventController.getPublished));
+router.get('/:id/registrations', requireRole('event_organiser'), asyncHandler(eventRegistrationController.getEventRegistrations));
 router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);
 router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_organiser'), eventController.respondToClarification);
 

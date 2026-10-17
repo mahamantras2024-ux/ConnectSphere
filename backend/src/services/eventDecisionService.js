@@ -2,7 +2,10 @@
 const { pool } = require('../config/db');
 const eventDecisionModel = require('../models/eventDecisionModel');
 const notificationService = require('./notificationService');
-const { evaluateDecision, evaluateSafetyReview } = require('./eventDecisionPolicy');
+const { evaluateDecision, evaluateSafetyReview, needsTechnicalArrangements, resolutionBlocker } = require('./eventDecisionPolicy');
+
+/** Plain-language names of the planning stages a Safety Officer can reopen, used in notifications. */
+const STAGE_LABELS = { venue: 'venue arrangements', technical: 'technical arrangements', event_details: 'event details' };
 
 /** Builds an expected business-rule failure carrying an HTTP status and machine-readable code. */
 function failure(status, message, code) { return Object.assign(new Error(message), { status, code }); }
@@ -65,24 +68,64 @@ async function decideEvent(eventId, coordinatorId, decision, reason) {
 
 /**
  * Records a Safety Officer's Operational Safety Check (Week 7 change 6) once venue and technical arrangements are
- * confirmed, and tells the assigned coordinator so they know whether the event can now be approved.
+ * confirmed and no earlier requested change is outstanding, and tells the assigned coordinator the outcome.
+ * A change request (Operational Feasibility Check AC3) also reopens the named planning stages in the same transaction
+ * and tells the organiser what must change, so the event cannot be checked again until those stages are complete (AC4).
+ * @param {number} eventId validated event id.
+ * @param {number} safetyOfficerId authenticated Safety Officer.
+ * @param {'approved'|'rejected'|'changes_requested'} outcome the check's result.
+ * @param {string|null} notes trimmed notes (required by the controller unless approving).
+ * @param {string[]} changeAreas validated stages to reopen; empty unless changes are requested.
  */
-async function recordSafetyCheck(eventId, safetyOfficerId, outcome, notes) {
+async function recordSafetyCheck(eventId, safetyOfficerId, outcome, notes, changeAreas = []) {
   return inTransaction(async (client) => {
     const context = await eventDecisionModel.loadDecisionContext(client, eventId, { lock: true });
     if (!context) throw failure(404, 'Event not found.');
     const blocked = evaluateSafetyReview({ ...context, now: Date.now() });
     if (blocked) throw failure(409, blocked.message, blocked.code);
-    const safetyCheck = await eventDecisionModel.insertSafetyCheck(client, eventId, safetyOfficerId, outcome, notes);
+    // Technical Support only reviews events that asked for something technical, so that stage could never be completed.
+    if (changeAreas.includes('technical') && !needsTechnicalArrangements(context)) {
+      throw failure(409, 'This event requested no equipment or technical support; ask for event detail changes instead.', 'TECHNICAL_NOT_REQUESTED');
+    }
+    const safetyCheck = await eventDecisionModel.insertSafetyCheck(client, eventId, safetyOfficerId, outcome, notes, changeAreas);
+    if (changeAreas.length) await eventDecisionModel.reopenStages(client, eventId, changeAreas);
     const label = { approved: 'passed', rejected: 'failed', changes_requested: 'needs changes' }[outcome];
-    const stored = context.coordinator_id ? await notificationService.insertNotifications(client, [{
+    const stages = changeAreas.map((area) => STAGE_LABELS[area]).join(', ');
+    const stageLine = stages ? `\nChanges needed to: ${stages}.` : '';
+    const notesLine = notes ? `\nNotes: ${notes}` : '';
+    const notifications = context.coordinator_id ? [{
       userId: context.coordinator_id, eventId: context.id, changeRequestId: null, type: 'safety_check_recorded',
       title: `Safety check ${label}: ${context.name}`,
-      message: `The Safety Officer recorded the operational safety check for ${context.name}: ${label}.${notes ? `\nNotes: ${notes}` : ''}`,
-      details: { outcome, notes },
-    }]) : [];
+      message: `The Safety Officer recorded the operational safety check for ${context.name}: ${label}.${stageLine}${notesLine}`,
+      details: { outcome, notes, changeAreas },
+    }] : [];
+    // The organiser must make event-detail and equipment changes, so they are told whenever changes are requested.
+    if (outcome === 'changes_requested') {
+      notifications.push({
+        userId: context.organiser_id, eventId: context.id, changeRequestId: null, type: 'safety_check_recorded',
+        title: `Changes needed for your event: ${context.name}`,
+        message: `The Safety Officer requested changes to ${context.name} before it can proceed.${stageLine}${notesLine}`,
+        details: { outcome, notes, changeAreas },
+      });
+    }
+    const stored = notifications.length ? await notificationService.insertNotifications(client, notifications) : [];
     return { safetyCheck, notifiedCoordinator: Boolean(context.coordinator_id), stored };
   });
 }
 
-module.exports = { decideEvent, recordSafetyCheck };
+/**
+ * Marks one stage reopened by the Safety Officer as complete, for the event's assigned coordinator only (AC3/AC4).
+ * The stage's own requirement must be met again (e.g. the venue re-confirmed), checked inside the row lock.
+ * @returns {Promise<{ open: string[] }>} the stages still waiting; when empty the event is back in the safety queue.
+ */
+async function resolveSafetyChange(eventId, coordinatorId, area) {
+  return inTransaction(async (client) => {
+    const context = await eventDecisionModel.loadDecisionContext(client, eventId, { coordinatorId, lock: true });
+    if (!context) throw failure(404, 'Event not found.');
+    const blocked = resolutionBlocker(area, { ...context, now: Date.now() });
+    if (blocked) throw failure(409, blocked.message, blocked.code);
+    return { open: await eventDecisionModel.resolveStage(client, eventId, area), stored: [] };
+  });
+}
+
+module.exports = { decideEvent, recordSafetyCheck, resolveSafetyChange };

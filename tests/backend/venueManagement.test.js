@@ -80,3 +80,10 @@ test('[SCRUM-35 AC1; SCRUM-36 AC1] - catalogue streams receive database invalida
  const update=new TextDecoder().decode((await reader.read()).value);assert.equal(update,'data: changed\n\n');assert.doesNotMatch(update,/booking|event_name|email/);
  abort.abort();await reader.cancel().catch(()=>{});
 });
+// Test case: Operational Feasibility Check AC1 - editing a venue saves its safety facts, and clearing one stores "not recorded".
+test('OFC AC1 - venue updates save emergency access and clear known restrictions', async () => {
+ const response = await request('PUT', { ...payload, emergencyAccess: 'Exit via the loading bay', knownRestrictions: '  ' });
+ assert.equal(response.status, 200);
+ assert.match(writes[0].sql, /emergency_access=\$18,known_restrictions=\$19\s+WHERE id=\$17/);
+ assert.deepEqual(writes[0].values.slice(16), [1, 'Exit via the loading bay', null]);
+});

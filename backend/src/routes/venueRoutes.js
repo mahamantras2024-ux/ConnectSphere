@@ -62,9 +62,10 @@ router.post('/', requireAuth, requireRole('venue_staff'), async (req, res) => {
       INSERT INTO venues (
         name, location, capacity, supported_layouts,
         accessibility_features, facilities, operating_hours,
-        availability_status, pricing, mrt, image, setup_minutes, turnaround_minutes, latitude, longitude, mrt_distance_m
+        availability_status, pricing, mrt, image, setup_minutes, turnaround_minutes, latitude, longitude, mrt_distance_m,
+        emergency_access, known_restrictions
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING *;
     `;
 
@@ -82,6 +83,7 @@ router.post('/', requireAuth, requireRole('venue_staff'), async (req, res) => {
       image || null,
       setupMinutes, turnaroundMinutes, data.latitude ?? null, data.longitude ?? null,
       data.latitude == null ? null : nearestMrt(data.latitude,data.longitude).distanceM,
+      data.emergencyAccess, data.knownRestrictions,
     ];
 
     const result = await pool.query(insertQuery, values);
