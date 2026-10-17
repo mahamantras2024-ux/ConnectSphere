@@ -15,7 +15,9 @@ const emailService = require('../../backend/src/services/emailService');
 const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
   'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
   'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/005-technical-support-reviews.sql',
-  'migrations/006-event-decisions.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql'];
+  'migrations/006-event-decisions.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql',
+  // Technical Support reviews store affected items (equipment status story), so the review table needs migration 013.
+  'migrations/013-equipment-review-affected-items.sql'];
 const sqlFile = (file) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
 
 // Test case: Walks one event through safety review and decision and a second through rejection, checking every gate,
@@ -84,7 +86,9 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       // ---------- OFC AC2/AC3: the Safety Officer requests changes to the technical arrangements ----------
       assert.equal((await as('sam', 'POST', '/events/1/safety-checks', { outcome: 'changes_requested', notes: 'Widen the fire exit route' })).status, 400);
       assert.equal((await as('sam', 'POST', '/events/1/safety-checks', { outcome: 'changes_requested', notes: 'Move the projector off the exit route', changeAreas: ['technical'] })).status, 201);
-      assert.deepEqual((await notes('chris')).map((note) => [note.type, note.title]), [['safety_check_recorded', 'Safety check needs changes: Workshop']]);
+      // The coordinator first heard that Technical Support confirmed the equipment (equipment status story), then the safety result.
+      assert.deepEqual((await notes('chris')).map((note) => [note.type, note.title]), [
+        ['equipment_status_changed', 'Equipment request confirmed: Workshop'], ['safety_check_recorded', 'Safety check needs changes: Workshop']]);
       assert.deepEqual((await notes('olivia')).map((note) => note.title), ['Changes needed for your event: Workshop']);
       // The technical stage is reopened: confirmation cleared and a new request version for Technical Support.
       assert.deepEqual((await client.query('SELECT safety_changes_open, equipment_confirmed_at, equipment_requirements_version FROM events WHERE id = 1')).rows[0],
