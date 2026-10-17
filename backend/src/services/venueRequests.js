@@ -44,7 +44,10 @@ async function recordedPeriods(client, venueId) {
     FROM venue_bookings WHERE venue_id=$1
     UNION ALL
     SELECT id, 'unavailability' AS kind, 'unavailable' AS status, start_datetime, end_datetime, NULL::timestamptz AS hold_expires_at
-    FROM venue_unavailability WHERE venue_id=$1`, [venueId])).rows;
+    FROM venue_unavailability WHERE venue_id=$1
+    UNION ALL
+    SELECT id, 'unavailability' AS kind, 'unavailable' AS status, start_datetime, end_datetime, NULL::timestamptz AS hold_expires_at
+    FROM venue_schedule_periods WHERE venue_id=$1 AND status='unavailable'`, [venueId])).rows;
 }
 
 /** Creates an assignment-authorized hold after locking the venue and checking the full occupied window. */

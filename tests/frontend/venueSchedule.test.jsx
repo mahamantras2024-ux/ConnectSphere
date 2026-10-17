@@ -31,11 +31,11 @@ it('AC2 AC3 AC4 - shows booking times, other unavailable periods and available g
   api.get.mockResolvedValue([booking, maintenance]);
   render(<VenueSchedule venue={{ id: 7, name: 'Hall A' }} token="staff" initialDate={date} />);
   // Act: wait for the selected day's records.
-  await screen.findByText(/Conference/);
-  // Assert: textual labels make availability understandable without relying on colour.
-  expect(screen.getByText(/Conference/).closest('li')).toHaveTextContent(/10:00–11:00.*Unavailable.*Confirmed booking.*Conference/);
-  expect(screen.getByText(/Maintenance/).closest('li')).toHaveTextContent(/12:00–13:00.*Unavailable.*Other unavailable.*Maintenance/);
-  expect(screen.getByText(/11:00–12:00.*Available/)).toBeTruthy();
+  await screen.findByRole('gridcell', { name: /Confirmed booking.*Conference/ });
+  // Assert: timeline segments announce statuses and reasons without relying on colour.
+  expect(screen.getByRole('gridcell', { name: /10:00–11:00.*Unavailable.*Confirmed booking.*Conference/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /12:00–13:00.*Unavailable.*Other unavailable.*Maintenance/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /11:00–12:00.*Available/ })).toBeVisible();
 });
 
 it('AC1 AC4 - changes dates, shows empty availability and fails closed on network errors', async () => {
@@ -43,14 +43,14 @@ it('AC1 AC4 - changes dates, shows empty availability and fails closed on networ
   api.get.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('Offline')).mockResolvedValueOnce([booking]);
   render(<VenueSchedule venue={{ id: 7, name: 'Hall' }} initialDate={date} />);
   expect(screen.getByRole('status').textContent).toBe('Loading schedule…');
-  expect(await screen.findByText(/00:00–24:00.*Available/)).toBeTruthy();
+  expect(await screen.findByRole('gridcell', { name: /00:00–24:00.*Available/ })).toBeVisible();
   // Act
   fireEvent.change(screen.getByLabelText('Schedule date'), { target: { value: '2030-10-11' } });
   // Assert: a failed request must not leave yesterday's availability visible.
   expect((await screen.findByRole('alert')).textContent).toContain('Offline');
-  expect(screen.queryByText(/00:00–24:00.*Available/)).toBeNull();
+  expect(screen.queryByRole('gridcell', { name: /00:00–24:00.*Available/ })).toBeNull();
   fireEvent.change(screen.getByLabelText('Schedule date'), { target: { value: date } });
-  await screen.findByText(/Conference/);
+  await screen.findByRole('gridcell', { name: /Confirmed booking.*Conference/ });
   fireEvent.change(screen.getByLabelText('Schedule date'), { target: { value: '' } });
   expect(screen.getByText('Choose a date to view the schedule.')).toBeTruthy();
 });
@@ -62,18 +62,18 @@ it('AC1 - ignores obsolete success and failure responses after changing venue', 
   const view = render(<VenueSchedule venue={{ id: 1, name: 'Old' }} initialDate={date} />);
   // Act
   view.rerender(<VenueSchedule venue={{ id: 2, name: 'New' }} initialDate={date} />);
-  await screen.findByText(/00:00–24:00.*Available/);
+  await screen.findByRole('gridcell', { name: /00:00–24:00.*Available/ });
   await act(async () => resolveOld([booking]));
   // Assert
-  expect(screen.queryByText(/Conference/)).toBeNull();
+  expect(screen.queryByRole('gridcell', { name: /Confirmed booking.*Conference/ })).toBeNull();
   // A late failure for a venue no longer shown must not replace the newer venue's schedule with an error.
   api.get.mockImplementationOnce(() => new Promise((resolve, reject) => { rejectOld = reject; })).mockResolvedValueOnce([]);
   view.rerender(<VenueSchedule venue={{ id: 3, name: 'Previous' }} initialDate={date} />);
   view.rerender(<VenueSchedule venue={{ id: 4, name: 'Current' }} initialDate={date} />);
-  await screen.findByText(/00:00–24:00.*Available/);
+  await screen.findByRole('gridcell', { name: /00:00–24:00.*Available/ });
   await act(async () => rejectOld(new Error('Late failure')));
   expect(screen.queryByRole('alert')).toBeNull();
-  expect(screen.getByText(/00:00–24:00.*Available/)).toBeTruthy();
+  expect(screen.getByRole('gridcell', { name: /00:00–24:00.*Available/ })).toBeVisible();
 });
 
 it.each([
@@ -110,9 +110,9 @@ it('AC2 AC5 - refreshing a pending booking after confirmation makes its period u
   // Arrange: confirmation occurs at the network boundary between the two reads.
   api.get.mockResolvedValueOnce([{ ...booking, status: 'pending' }]).mockResolvedValueOnce([{ ...booking, status: 'confirmed' }]);
   render(<VenueSchedule venue={{ id: 7, name: 'Hall' }} initialDate={date} />);
-  expect((await screen.findByText(/Booking \(pending\)/)).closest('li').textContent).toMatch(/10:00–11:00 · Available/);
+  expect(await screen.findByRole('gridcell', { name: /10:00–11:00.*Available.*Booking \(pending\)/ })).toBeVisible();
   // Act
   fireEvent.click(screen.getByRole('button', { name: 'Refresh schedule' }));
   // Assert: verifies the same interval changes classification, not just its label.
-  expect((await screen.findByText(/Confirmed booking: Conference/)).closest('li').textContent).toMatch(/10:00–11:00 · Unavailable/);
+  expect(await screen.findByRole('gridcell', { name: /10:00–11:00.*Unavailable.*Confirmed booking: Conference/ })).toBeVisible();
 });

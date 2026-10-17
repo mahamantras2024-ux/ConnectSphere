@@ -100,11 +100,14 @@ it('VS AC4 - when every venue matches there is no "Not suitable" list', async ()
 // Section states: loading, no active venues, failed load and an unexpected response.
 it('VS AC1 - the section distinguishes loading, no venues, a failed load and an unusable response', async () => {
   let release;
-  suitability = () => new Promise((resolve) => { release = resolve; });
+  // Create the pending response before rendering so the resolver is ready even if the request starts later.
+  const suitabilityPromise = new Promise((resolve) => { release = resolve; });
+  suitability = () => suitabilityPromise;
   open('/events/101');
   let panel = await section();
   expect(within(panel).getByText('Loading venue suitability...')).toBeTruthy();
-  await act(async () => release({ ...view, venues: [] }));
+  await waitFor(() => expect(typeof release).toBe('function'));
+  await act(async () => { release({ ...view, venues: [] }); });
   expect(within(panel).getByText('No active venues are in the catalogue.')).toBeTruthy();
   cleanup();
   suitability = () => { throw new Error('Unable to load venues.'); };
