@@ -325,6 +325,9 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .change-request-card { display: grid; gap: 10px; padding: 16px; border: 1px solid #ead9aa; border-radius: 10px; background: #fffef8; }
 .change-request-card > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .change-request-card ul { display: grid; gap: 4px; margin: 0; padding-left: 20px; }
+/* Check Venue Suitability: venues matching every organiser requirement are highlighted; the others are muted. */
+.change-request-card.venue-match { border-color: #9cc48a; border-left: 6px solid #4f8a35; background: #f4faf0; }
+.change-request-card.venue-mismatch { border-color: #e2d6d6; background: #fdfafa; }
 .detail-note { color: var(--muted); font-size: 13px; }
 .event-request-form { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 980px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 24px #30391c06; }
 .event-request-form label:has(textarea), .event-request-form label:has(input[type='checkbox']), .event-request-form > .error-text, .event-request-form > .form-actions { grid-column: 1 / -1; }
