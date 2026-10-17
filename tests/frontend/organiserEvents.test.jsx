@@ -65,6 +65,24 @@ it('AC2 - non-organisers do not receive event edit controls', async () => {
   expect(api.put).not.toHaveBeenCalled();
 });
 
+it('SCRUM-90 AC4 AC5 - organiser cancellation updates the event status on the detail page', async () => {
+  // Arrange: the event is published and owned by the signed-in organiser.
+  const confirmedEvent = { ...event, status: 'approved', is_draft: false, coordinator_id: 30 };
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user }
+    : path === '/events/101' ? { event: confirmedEvent } : { event: confirmedEvent });
+  api.post.mockResolvedValue({ event: { id: 101, name: confirmedEvent.name, status: 'cancelled' },
+    message: 'Event cancelled. Active attendees have been notified.' });
+  // Act: confirm cancellation from the existing event details page.
+  open('/organizer/events/101');
+  fireEvent.click(await screen.findByRole('button', { name: 'Cancel event' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+  // Assert: the detail view reflects the committed status and confirms notification delivery.
+  expect(await screen.findByRole('status')).toBeTruthy();
+  expect(await screen.findByText('Event cancelled. Active attendees have been notified.')).toBeTruthy();
+  expect(screen.getByText('Cancelled')).toBeTruthy();
+  expect(api.post).toHaveBeenCalledWith('/events/101/cancel', {}, 'organiser-token');
+});
+
 // Test case: Opens an assigned event through the coordinator dashboard and checks every submitted requirement in its drawer.
 it('assigned coordinator opens dashboard events and sees every submitted requirement',async()=>{
   // Verifies the coordinator's own navigation and complete record rather than relying on organiser rendering alone.
