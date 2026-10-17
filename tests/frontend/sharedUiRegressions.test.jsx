@@ -454,7 +454,7 @@ it('UI1 / External AC7-8 - attendee registration details stay personal while the
   const drawer = screen.getByRole('dialog', { name: 'Registration details' });
   for (const text of ['Community afternoon', 'confirmed', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
   // Dashboard now loads the published-event catalogue; opening the personal drawer must not fetch another event record.
-  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/registrations/mine', '/events/published']);
+  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/notifications', '/registrations/mine', '/events/published']);
   fireEvent.click(within(drawer).getByRole('button', { name: 'Back to list' }));
   expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(trigger);
   fireEvent.click(trigger); fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));

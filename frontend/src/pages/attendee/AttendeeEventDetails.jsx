@@ -3,6 +3,9 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
+const publicStatusLabels = { confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
+const publicStatusClasses = { confirmed: 'status-confirmed', completed: 'status-completed', cancelled: 'status-cancelled' };
+
 /** Formats stored 24-hour times without timezone conversion, preserving the event's local schedule. */
 function formatEventTime(start, end) {
   const formattedStart = typeof start === 'string' ? start.slice(0, 5) : '';
@@ -10,7 +13,7 @@ function formatEventTime(start, end) {
   return formattedStart && formattedEnd ? `${formattedStart}–${formattedEnd}` : [formattedStart, formattedEnd].filter(Boolean).join('–') || 'Time not specified';
 }
 
-/** Loads fresh public details for one published event and shows its attendee preparation information. */
+/** Loads fresh attendee-safe details and status for a public event or the attendee's own terminal event. */
 export default function AttendeeEventDetails() {
   const { id } = useParams();
   const { token } = useAuth();
@@ -41,6 +44,9 @@ export default function AttendeeEventDetails() {
     <main className="page">
       <Link className="button-link button-secondary" to="/attendee/dashboard">Back to events</Link>
       <article className="record-card">
+        <span className={`status-badge ${publicStatusClasses[event.status] || 'status-unknown'}`}>
+          {publicStatusLabels[event.status] || 'Status unavailable'}
+        </span>
         <h1>{event.name}</h1>
         <dl className="detail-facts">
           <div><dt>Date</dt><dd>{event.proposed_date || 'Date not specified'}</dd></div>
