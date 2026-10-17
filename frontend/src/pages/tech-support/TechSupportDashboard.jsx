@@ -1,11 +1,12 @@
 // File: Displays the Technical Support dashboard and its authenticated pending equipment-review queue.
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import NotificationsPanel from '../../components/NotificationsPanel';
 import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
+import OnSiteSupportSection from './OnSiteSupportSection';
 
 // Styles for the equipment request review cards only; tabs and other sections keep their existing styling.
 const dashboardStyles = `
@@ -390,6 +391,7 @@ export default function TechSupportDashboard() {
         description="Review equipment requests, and reserve equipment."
       />
       <NotificationsPanel />
+      <OnSiteSupportSection token={token} />
       {toast && (
         <div
           role="status"
@@ -400,52 +402,64 @@ export default function TechSupportDashboard() {
           <p>{toast.message}</p>
         </div>
       )}
-      <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            id={`support-tab-${tab.id}`}
-            aria-selected={activeTab === tab.id}
-            aria-controls={`support-panel-${tab.id}`}
-            tabIndex={activeTab === tab.id ? 0 : -1}
-            className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
-            onClick={() => setActiveTab(tab.id)}
-            onKeyDown={event => {
-              const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
-              const nextIndex = event.key === 'ArrowRight'
-                ? (currentIndex + 1) % tabs.length
-                : event.key === 'ArrowLeft'
-                  ? (currentIndex - 1 + tabs.length) % tabs.length
-                  : event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : -1;
-              if (nextIndex >= 0) {
-                event.preventDefault();
-                const nextTab = tabs[nextIndex];
-                setActiveTab(nextTab.id);
-                document.getElementById(`support-tab-${nextTab.id}`)?.focus();
-              }
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      {activeTab === 'inventory' && (
+      <div className="support-management-workspace">
+        <div className="onsite-support-heading support-workspace-heading">
+          <div>
+            <h2>Equipment management</h2>
+          </div>
+        </div>
+        <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`support-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`support-panel-${tab.id}`}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
+              onClick={() => setActiveTab(tab.id)}
+              onKeyDown={event => {
+                const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
+                const nextIndex = event.key === 'ArrowRight'
+                  ? (currentIndex + 1) % tabs.length
+                  : event.key === 'ArrowLeft'
+                    ? (currentIndex - 1 + tabs.length) % tabs.length
+                    : event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? tabs.length - 1
+                        : -1;
+                if (nextIndex >= 0) {
+                  event.preventDefault();
+                  const nextTab = tabs[nextIndex];
+                  setActiveTab(nextTab.id);
+                  document.getElementById(`support-tab-${nextTab.id}`)?.focus();
+                }
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
           <EquipmentInventorySection inventory={inventory} error={inventoryError} />
         </div>
-      )}
-      {activeTab === 'review' && (
+        )}
+        {activeTab === 'review' && (
         <div role="tabpanel" id="support-panel-review" aria-labelledby="support-tab-review">
-          <section aria-labelledby="pending-equipment-heading">
-            <div className="section-heading">
-              <h2 id="pending-equipment-heading">Pending equipment requests</h2>
-              <button type="button" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
+          <section className="onsite-support-section equipment-review-section" aria-labelledby="pending-equipment-heading">
+            <div className="onsite-support-heading">
+              <div>
+                <h2 id="pending-equipment-heading">Pending equipment requests</h2>
+                <p className="onsite-support-description">Review equipment requirements and record what can be fulfilled.</p>
+              </div>
+              <div className="equipment-review-actions">
+                <span className="badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
+                <button type="button" className="button-secondary" onClick={loadDashboardData} disabled={loading}>Refresh</button>
+              </div>
             </div>
             {requestError && <p className="support-error" role="alert">{requestError}</p>}
             {loading ? <p className="support-muted">Loading equipment requests…</p> : requests.length === 0
@@ -465,8 +479,8 @@ export default function TechSupportDashboard() {
               </div>}
           </section>
         </div>
-      )}
-      {activeTab === 'reservations' && (
+        )}
+        {activeTab === 'reservations' && (
         <div role="tabpanel" id="support-panel-reservations" aria-labelledby="support-tab-reservations">
           <EquipmentReservationSection
             requests={reservationRequests}
@@ -477,7 +491,8 @@ export default function TechSupportDashboard() {
             onGoToReviews={() => setActiveTab('review')}
           />
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

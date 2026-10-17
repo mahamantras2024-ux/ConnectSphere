@@ -4,10 +4,14 @@ const router = express.Router();
 const eventController = require('../controllers/eventController');
 const eventReadController = require('../controllers/eventReadController');
 const technicalSupportController = require('../controllers/technicalSupportController');
+const technicalSupportAssignmentController = require('../controllers/technicalSupportAssignmentController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 
 router.use(requireAuth);
+router.get('/technical-support-staff', requireRole('event_coordinator'), technicalSupportAssignmentController.listStaff);
+router.get('/on-site-support', requireRole('technical_support'), technicalSupportAssignmentController.listAssigned);
+router.put('/:id/technical-support-assignment', requireRole('event_coordinator'), technicalSupportAssignmentController.assign);
 const lead = require('../controllers/coordinatorLeadController');
 router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
 router.put('/:id/assignment', requireRole('event_coordinator_lead'), lead.assign);
