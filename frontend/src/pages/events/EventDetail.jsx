@@ -19,6 +19,8 @@ import EquipmentStatusSection from './EquipmentStatusSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 import VenueSuitabilitySection from './VenueSuitabilitySection';
 
+import CancelEventAction from './CancelEventAction';
+
 
 
 // Scoped styles (everything is prefixed "ed-" so nothing clashes with existing global classes).
@@ -934,6 +936,10 @@ export default function EventDetail() {
       {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} />}
       {/* Tracks Equipment Request Status: the assigned coordinator (the API scopes it) monitors the technical arrangements. */}
       {user.role === 'event_coordinator' && <EquipmentStatusSection eventId={event.id} token={token} />}
+
+      <CancelEventAction event={event} user={user} token={token}
+        onCancelled={(cancelledEvent) => setEvent((current) => ({ ...current, ...cancelledEvent }))}
+        onMessage={setSaveMessage} />
 
 
 

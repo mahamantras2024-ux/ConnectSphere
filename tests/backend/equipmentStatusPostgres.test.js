@@ -15,7 +15,7 @@ const sqlFile = (name) => fs.readFileSync(path.join(__dirname, '../../backend/sr
 const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
   'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
   'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/005-technical-support-reviews.sql',
-  'migrations/006-event-decisions.sql', 'migrations/013-equipment-review-affected-items.sql'];
+  'migrations/006-event-decisions.sql', 'migrations/012-event-cancellation-notifications.sql', 'migrations/013-equipment-review-affected-items.sql'];
 
 // Test case: Pending -> partially available (affected items) -> organiser edit -> pending -> confirmed -> approved change -> pending.
 test('ES AC1-AC3 - equipment request status, affected items and coordinator notifications follow the real workflow in PostgreSQL',
@@ -102,8 +102,13 @@ test('ES AC1-AC3 - equipment request status, affected items and coordinator noti
       // Re-running every migration keeps stored reviews. 006 runs before 013 on each deploy, so it must also allow the
       // equipment_status_changed notifications stored above (regression: a re-run failed once one existed).
       assert.ok((await client.query("SELECT count(*)::int AS n FROM notifications WHERE type = 'equipment_status_changed'")).rows[0].n > 0);
-      await client.query(sqlFile('migrations/006-event-decisions.sql'));
-      await client.query(sqlFile('migrations/013-equipment-review-affected-items.sql'));
+      // The attendee story's event_cancelled type (migration 012) is stored too: every migration that redefines the type
+      // list must keep both, in whichever order they re-run.
+      await client.query("INSERT INTO notifications (user_id, type, title, message) VALUES (1, 'event_cancelled', 't', 'm')");
+      for (const file of ['006-event-decisions', '012-event-cancellation-notifications', '013-equipment-review-affected-items', '006-event-decisions']) {
+        await client.query(sqlFile(`migrations/${file}.sql`));
+      }
+      await client.query("INSERT INTO notifications (user_id, type, title, message) VALUES (1, 'event_cancelled', 't', 'm'), (2, 'equipment_status_changed', 't', 'm')");
       assert.deepEqual((await client.query("SELECT affected_items FROM event_equipment_reviews WHERE outcome = 'partially_fulfillable'")).rows[0].affected_items,
         [{ key: 'equipment:0', availableQuantity: 2 }]);
     } finally {

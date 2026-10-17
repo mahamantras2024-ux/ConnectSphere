@@ -23,9 +23,10 @@ async function migrate() {
     // Operational Feasibility Check: venue safety facts and the planning stages a Safety Officer reopens.
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/010-venue-safety-facts.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/011-safety-change-stages.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/012-event-cancellation-notifications.sql'), 'utf8'));
     // Tracks Equipment Request Status: affected items on partial reviews and the coordinator notification type.
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/013-equipment-review-affected-items.sql'), 'utf8'));
-    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, change-request review and notifications, Technical Support reviews, event decisions, equipment reservations, and equipment stock quantities are ready.');
+    console.log('External event fields, attendee event statuses and cancellation notifications, event change requests, clarifications, attachments, equipment requirements and reservations, review workflows, stock quantities, and equipment request statuses are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
