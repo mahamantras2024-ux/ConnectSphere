@@ -448,19 +448,6 @@ export default function TechSupportDashboard() {
     showSuccess(`Equipment reservation confirmed for ${reservation.event_name}.`);
   }
 
-  async function repairEquipment(item, resolutionNote) {
-    const result = await api.put(
-      `/events/equipment-inventory/${item.id}/repair`,
-      { resolutionNote },
-      token,
-    );
-    const repairedEquipment = { ...item, ...result.equipment };
-    setInventory(current => current.map(currentItem => (
-      currentItem.id === item.id ? repairedEquipment : currentItem
-    )));
-    return repairedEquipment;
-  }
-
   const tabs = [
     { id: 'inventory', label: 'Equipment info' },
     { id: 'review', label: 'Equipment request review' },

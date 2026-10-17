@@ -1,12 +1,19 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
+import { useAuth } from '../../frontend/src/context/AuthContext';
 import { api } from '../../frontend/src/api/client';
+import EventList from '../../frontend/src/pages/events/EventList';
 import TechnicalSupportAssignment from '../../frontend/src/pages/coordinator/TechnicalSupportAssignment';
 import OnSiteSupportSection from '../../frontend/src/pages/tech-support/OnSiteSupportSection';
 
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
-afterEach(cleanup);
+vi.mock('../../frontend/src/context/AuthContext', () => ({ useAuth: vi.fn() }));
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 const staff = [
   { id: 41, full_name: 'Taylor Support', email: 'taylor@example.com' },
@@ -63,4 +70,123 @@ it('AC3 - reports assignment changes that fail', async () => {
   render(<TechnicalSupportAssignment event={event} token="coordinator-token" staff={staff} onSaved={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Assign staff' }));
   expect((await screen.findByRole('alert')).textContent.includes('Assignment changed. Refresh and try again.')).toBe(true);
+});
+
+it('AC2 - shows the empty roster state when no Technical Support Staff are available', () => {
+  render(<TechnicalSupportAssignment event={event} token="coordinator-token" staff={[]} onSaved={vi.fn()} />);
+
+  expect(screen.getByText('No Technical Support Staff are available.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Assign staff' })).toBeNull();
+});
+
+it('AC2 - updates the coordinator dashboard when a support team assignment is saved', async () => {
+  useAuth.mockReturnValue({ token: 'coordinator-token', user: { id: 9, role: 'event_coordinator' } });
+  api.get.mockImplementation(async endpoint => {
+    if (endpoint === '/events') {
+      return {
+        events: [{
+          id: 7,
+          name: 'Community Workshop',
+          status: 'approved',
+          technical_support_required: true,
+          technical_support_staff: [{ id: 41, full_name: 'Taylor Support' }],
+        }],
+      };
+    }
+    if (endpoint === '/events/technical-support-staff') {
+      return { staff };
+    }
+    if (endpoint === '/notifications') {
+      return { notifications: [] };
+    }
+    if (endpoint === '/events/change-requests') {
+      return { changeRequests: [] };
+    }
+    throw new Error(`Unexpected GET ${endpoint}`);
+  });
+  api.put.mockResolvedValue({ message: 'Saved' });
+
+  render(<MemoryRouter><EventList dashboard /></MemoryRouter>);
+
+  const morgan = await screen.findByLabelText(/Morgan Support/);
+  fireEvent.click(morgan);
+  fireEvent.click(screen.getByRole('button', { name: 'Assign staff' }));
+
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/7/technical-support-assignment',
+    { staffIds: [41, 42] }, 'coordinator-token'));
+  expect(screen.getByRole('button', { name: 'Assignment saved' }).disabled).toBe(true);
+  expect(screen.getByText('Taylor Support')).toBeTruthy();
+});
+
+it('AC3 - shows a support staff roster error without rendering a stale assignment form', async () => {
+  useAuth.mockReturnValue({ token: 'coordinator-token', user: { id: 9, role: 'event_coordinator' } });
+  api.get.mockImplementation(async endpoint => {
+    if (endpoint === '/events') {
+      return {
+        events: [{
+          id: 7,
+          name: 'Community Workshop',
+          status: 'approved',
+          technical_support_required: true,
+          technical_support_staff: [],
+        }],
+      };
+    }
+    if (endpoint === '/events/technical-support-staff') {
+      throw new Error('Support staff roster unavailable.');
+    }
+    if (endpoint === '/notifications') {
+      return { notifications: [] };
+    }
+    if (endpoint === '/events/change-requests') {
+      return { changeRequests: [] };
+    }
+    throw new Error(`Unexpected GET ${endpoint}`);
+  });
+
+  render(<MemoryRouter><EventList dashboard /></MemoryRouter>);
+
+  expect(await screen.findByText('Support staff roster unavailable.')).toBeTruthy();
+});
+
+it('AC1 - shows the loading and empty support-event states', async () => {
+  let resolveRequest;
+  api.get.mockImplementation(() => new Promise(resolve => {
+    resolveRequest = resolve;
+  }));
+
+  render(<OnSiteSupportSection token="staff-token" />);
+  expect(screen.getByRole('status').textContent).toContain('Loading support assignments...');
+
+  resolveRequest({ events: [] });
+  await waitFor(() => expect(screen.getByText('No assigned events yet.')).toBeTruthy());
+});
+
+it('AC1 - shows equipment notes when no individual items are assigned', async () => {
+  api.get.mockResolvedValue({
+    events: [{
+      id: 8,
+      name: 'Community Workshop',
+      status: 'approved',
+      purpose: 'Community support session',
+      proposed_date: '2026-10-12',
+      proposed_start_time: '09:00:00',
+      proposed_end_time: '12:00:00',
+      venue_name: 'Innovation Hall',
+      venue_location: 'Level 3',
+      equipment_items: [],
+      technical_support_details: 'Bring a backup HDMI cable.',
+    }],
+  });
+
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  expect(await screen.findByText('Bring a backup HDMI cable.')).toBeTruthy();
+});
+
+it('AC1 - reports when the staff support roster cannot be loaded', async () => {
+  api.get.mockRejectedValue(new Error('Support assignments are unavailable.'));
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  expect((await screen.findByRole('alert')).textContent).toBe('Support assignments are unavailable.');
 });
