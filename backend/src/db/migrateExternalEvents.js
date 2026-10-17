@@ -19,6 +19,7 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/006-event-decisions.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/006-equipment-inventory-reservations.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/007-equipment-stock-quantities.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/009-internal-single-role.sql'), 'utf8'));
     // Operational Feasibility Check: venue safety facts and the planning stages a Safety Officer reopens.
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/010-venue-safety-facts.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/011-safety-change-stages.sql'), 'utf8'));

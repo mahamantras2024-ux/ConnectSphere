@@ -10,6 +10,8 @@ const stories = {
   'create-venue': ['createVenue-backend','venueValidation','createVenue','venueInteractions'],
   'view-venue': ['viewVenue-backend','venueInteractions','hourlyRate'],
   'internal-login': ['login','sharedApiRegressions','sharedUiRegressions'],
+  // Staff login and role-based access: one internal role per account, own dashboard only (Safety Officer RBAC story).
+  'staff-role-access': ['staffRoleAccess','login','sharedApiRegressions','sharedUiRegressions','coordinatorLeadPostgres'],
   'external-auth': ['login','externalRegistration','ExternalRegister','PasswordReset','externalPasswordReset','sharedApiRegressions','sharedUiRegressions'],
   'organiser-events': ['organiserEvents','registrationModels','sharedUiRegressions'],
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
