@@ -11,8 +11,8 @@ function list(value) { return Array.isArray(value) && value.length ? value.join(
 // Distinguishes an explicitly recorded zero-minute duration from missing legacy timing information.
 function minutes(value) { return value == null ? 'Not specified' : `${value} minutes`; }
 // Renders venue details and the embedded map, and lists bookings that prevent deactivation.
-export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canManage=false, canViewSchedule=canManage, token }) {
-  const [showSchedule, setShowSchedule] = useState(false);
+export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canManage=false, canViewSchedule=canManage, initialScheduleOpen=false, token }) {
+  const [showSchedule, setShowSchedule] = useState(initialScheduleOpen);
   const [removing,setRemoving]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[blocked,setBlocked]=useState([]);
   const saving=useRef(false);
   // Removes the venue from active catalogues while showing server-verified blocking bookings.
@@ -40,6 +40,6 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
     {removing && <section className="booking-warning"><h3>Remove this venue from the catalogue?</h3><p>Deactivating hides it from searches and preserves historical bookings. Upcoming bookings must be resolved first.</p>{error && <p role="alert" className="error-message">{error}</p>}<BookingImpactList bookings={blocked}/><div className="venue-record-actions"><button className="button-danger" disabled={busy} onClick={deactivate}>{busy?'Checking bookings…':'Confirm deactivation'}</button><button className="button-secondary" disabled={busy} onClick={()=>{setRemoving(false);setError('');setBlocked([]);}}>Keep venue</button></div></section>}
     {/* Viewing a schedule never grants venue editing or removal permissions. */}
     {canViewSchedule && <button className="schedule-action" type="button" onClick={() => setShowSchedule(true)}>View schedule</button>}
-    {canViewSchedule && showSchedule && <VenueSchedule venue={venue} token={token} />}
+    {canViewSchedule && showSchedule && <VenueSchedule venue={venue} token={token} canEdit={canManage} />}
   </div></Modal>;
 }

@@ -16,6 +16,17 @@ vi.mock('../../frontend/src/pages/venues/VenueMap',()=>({default:({onPick})=><bu
 const venue={id:7,name:'Test hall',location:'Existing address',capacity:100,facilities:['Wi-Fi'],supported_layouts:['Theatre'],accessibility_features:['Ramp'],operating_hours:'08:00 - 22:00',availability_status:'Available',revision:0};
 beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue([venue]);});
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();});
+it('Schedule AC8 - card schedule action opens only the selected venue for staff',async()=>{
+ // Arrange: venue 7 is the selected catalogue card; schedule reads are scoped to its ID.
+ api.get.mockImplementation(async path=>path==='/venues'?[venue,{...venue,id:8,name:'Other hall'}]:[]);
+ render(<VenueList/>);
+ // Act
+ fireEvent.click((await screen.findAllByRole('button',{name:'View schedule'}))[0]);
+ // Assert: the direct action does not open another venue's schedule.
+ expect(await screen.findByRole('heading',{name:'Test hall schedule'})).toBeTruthy();
+ expect(screen.queryByRole('heading',{name:'Other hall schedule'})).toBeNull();
+ expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/^\/venues\/7\/schedule\?date=/),'staff');
+});
 // Test case: Returns wrapped/sparse venues and settles requests after unmount, checking unavailable labels and ignored late data.
 it('handles object catalogues and missing details without fictional values',async()=>{
  api.get.mockResolvedValue({venues:[{id:7,name:'Sparse venue'}]});render(<VenueList/>);

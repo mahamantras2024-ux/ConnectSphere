@@ -10,9 +10,10 @@ const { catalogueStream } = require('../services/venueCatalogueStream');
 const { validateCoordinates, nearestMrt, geocode } = require('../services/venueLocation');
 const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
-const { venueSchedule } = require('../controllers/venueScheduleController');
+const { venueSchedule, saveVenueSchedule } = require('../controllers/venueScheduleController');
 const { createRequest, decideRequest } = require('../controllers/venueRequestController');
 router.get('/:id/schedule', requireAuth, requireRole('venue_staff', 'event_coordinator'), asyncHandler(venueSchedule));
+router.put('/:id/schedule', requireAuth, requireRole('venue_staff'), asyncHandler(saveVenueSchedule));
 router.post('/:id/requests', requireAuth, requireRole('event_coordinator'), asyncHandler(createRequest));
 router.put('/:id/requests/:requestId/decision', requireAuth, requireRole('venue_staff'), asyncHandler(decideRequest));
 // Bounds staff address lookups and nearest-station requests while protecting the public provider.
