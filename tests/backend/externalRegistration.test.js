@@ -69,10 +69,10 @@ test('private onboarding hashes passwords, normalises identity, and persists pro
 
     assert.match(sql, /INSERT INTO users/); assert.equal(values[0], 'new@example.com');
     assert.equal(await bcrypt.compare('password123', values[2]), true);
-    assert.deepEqual(values[4], ['event_coordinator', 'venue_staff']);
+    assert.deepEqual([values[3], values[4]], ['event_organiser', ['event_organiser', 'attendee']]);
     return { rows: [{ id: 42, role: values[3], roles: values[4] }] };
   });
-  const user = await provisionAccount({ email: ' NEW@example.com ', fullName: 'New User', password: 'password123', roles: ['event_coordinator','venue_staff','venue_staff'] });
+  const user = await provisionAccount({ email: ' NEW@example.com ', fullName: 'New User', password: 'password123', roles: ['event_organiser','attendee','attendee'] });
   assert.equal(user.id, 42); assert.equal(user.password_hash, undefined);
 });
 // Test case: Tries invalid identity, passwords and roles during private onboarding and checks failure before persistence.

@@ -2,6 +2,11 @@
   "name": "connectsphere",
   "private": true,
   "scripts": {
+    "lint": "eslint .",
+    "audit": "npm audit --audit-level=high --omit=dev && npm audit --audit-level=high --omit=dev --prefix backend && npm audit --audit-level=high --omit=dev --prefix frontend",
+    "package": "npm run build --prefix frontend && node scripts/package.cjs",
+    "smoke": "node scripts/smoke.cjs",
+    "e2e": "playwright test",
     "test": "node tests/run.cjs",
     "test:all": "node tests/run.cjs all",
     "test:backend": "node tests/run.cjs backend",
@@ -11,5 +16,13 @@
     "test:coverage:sprint-one": "node tests/run.cjs coverage sprint-one",
     "test:coverage:sprint-one:all": "node tests/run.cjs coverage sprint-one all",
     "test:coverage:integration": "node tests/run.cjs coverage integration"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "adm-zip": "^0.6.1",
+    "archiver": "^8.0.0",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0"
   }
 }
