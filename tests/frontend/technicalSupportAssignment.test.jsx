@@ -64,6 +64,30 @@ it('AC1 - displays assigned event date time venue and equipment', async () => {
   expect(within(card).getByText('Qty. 2')).toBeTruthy();
 });
 
+it('AC1 - uses the fallback labels when event facts are missing', async () => {
+  api.get.mockResolvedValue({
+    events: [{
+      id: 10,
+      name: 'Last Minute Session',
+      status: null,
+      proposed_date: null,
+      proposed_start_time: null,
+      proposed_end_time: null,
+      venue_name: 'TBD',
+      venue_location: null,
+      equipment_items: [{ item: 'Audio mixer', quantity: 1 }],
+    }],
+  });
+
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  const card = await screen.findByRole('article', { name: 'Last Minute Session' });
+  expect(within(card).getByText('Assigned')).toBeTruthy();
+  expect(within(card).getByText('Not specified')).toBeTruthy();
+  expect(within(card).getByText('TBD')).toBeTruthy();
+  expect(within(card).getByText('Audio mixer')).toBeTruthy();
+});
+
 // AC3: a failed assignment is visible and does not claim that the team was saved.
 it('AC3 - reports assignment changes that fail', async () => {
   api.put.mockRejectedValue(new Error('Assignment changed. Refresh and try again.'));
@@ -77,6 +101,18 @@ it('AC2 - shows the empty roster state when no Technical Support Staff are avail
 
   expect(screen.getByText('No Technical Support Staff are available.')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Assign staff' })).toBeNull();
+});
+
+it('AC2 - accepts a fresh event that has no previously assigned support staff', async () => {
+  const onSaved = vi.fn();
+  api.put.mockResolvedValue({ message: 'Saved' });
+  render(<TechnicalSupportAssignment event={{ id: 9, name: 'New Event', technical_support_required: true }} token="coordinator-token" staff={staff} onSaved={onSaved} />);
+
+  fireEvent.click(screen.getByLabelText(/Taylor Support/));
+  fireEvent.click(screen.getByRole('button', { name: 'Assign staff' }));
+
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/9/technical-support-assignment', { staffIds: [41] }, 'coordinator-token'));
+  expect(onSaved).toHaveBeenCalledWith([{ id: 41, full_name: 'Taylor Support', email: 'taylor@example.com' }]);
 });
 
 it('AC2 - updates the coordinator dashboard when a support team assignment is saved', async () => {
@@ -116,6 +152,38 @@ it('AC2 - updates the coordinator dashboard when a support team assignment is sa
     { staffIds: [41, 42] }, 'coordinator-token'));
   expect(screen.getByRole('button', { name: 'Assignment saved' }).disabled).toBe(true);
   expect(screen.getByText('Taylor Support')).toBeTruthy();
+});
+
+it('AC3 - shows the support staff error and hides the assignment controls when the roster fails', async () => {
+  useAuth.mockReturnValue({ token: 'coordinator-token', user: { id: 9, role: 'event_coordinator' } });
+  api.get.mockImplementation(async endpoint => {
+    if (endpoint === '/events') {
+      return {
+        events: [{
+          id: 7,
+          name: 'Community Workshop',
+          status: 'approved',
+          technical_support_required: true,
+          technical_support_staff: [{ id: 41, full_name: 'Taylor Support' }],
+        }],
+      };
+    }
+    if (endpoint === '/events/technical-support-staff') {
+      throw new Error('Support staff roster unavailable.');
+    }
+    if (endpoint === '/notifications') {
+      return { notifications: [] };
+    }
+    if (endpoint === '/events/change-requests') {
+      return { changeRequests: [] };
+    }
+    throw new Error(`Unexpected GET ${endpoint}`);
+  });
+
+  render(<MemoryRouter><EventList dashboard /></MemoryRouter>);
+
+  expect(await screen.findByText('Support staff roster unavailable.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Assign staff' })).toBeNull();
 });
 
 it('AC3 - shows a support staff roster error without rendering a stale assignment form', async () => {
@@ -162,26 +230,30 @@ it('AC1 - shows the loading and empty support-event states', async () => {
   await waitFor(() => expect(screen.getByText('No assigned events yet.')).toBeTruthy());
 });
 
-it('AC1 - shows equipment notes when no individual items are assigned', async () => {
+it('AC1 - renders the alternate equipment and venue fallbacks for assigned events', async () => {
   api.get.mockResolvedValue({
     events: [{
       id: 8,
       name: 'Community Workshop',
       status: 'approved',
       purpose: 'Community support session',
-      proposed_date: '2026-10-12',
-      proposed_start_time: '09:00:00',
-      proposed_end_time: '12:00:00',
+      proposed_date: null,
+      proposed_start_time: null,
+      proposed_end_time: null,
       venue_name: 'Innovation Hall',
-      venue_location: 'Level 3',
+      venue_location: '',
       equipment_items: [],
+      equipment_notes: 'Bring the portable projector setup.',
       technical_support_details: 'Bring a backup HDMI cable.',
     }],
   });
 
   render(<OnSiteSupportSection token="staff-token" />);
 
-  expect(await screen.findByText('Bring a backup HDMI cable.')).toBeTruthy();
+  expect(await screen.findByText('Not specified')).toBeTruthy();
+  expect(screen.getByText('Innovation Hall')).toBeTruthy();
+  expect(screen.getByText('Bring the portable projector setup.')).toBeTruthy();
+  expect(screen.getByText('Bring a backup HDMI cable.')).toBeTruthy();
 });
 
 it('AC1 - reports when the staff support roster cannot be loaded', async () => {
