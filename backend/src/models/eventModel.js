@@ -649,6 +649,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
 
 /**
  * Lists upcoming active equipment requests that have not been reviewed at their current version.
+ * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
  * @returns {Promise<Array<object>>} event, venue, and organiser-submitted technical requirements.
  */
 async function listPendingEquipmentRequests() {
@@ -667,7 +668,7 @@ async function listPendingEquipmentRequests() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND (
@@ -693,7 +694,8 @@ async function listPendingEquipmentRequests() {
  * @param {object} data decision, optional reason, and the version shown to the reviewer.
  * @param {number} reviewerId authenticated Technical Support user identifier.
  * @param {{ query: Function }} [db] pool or transaction client (the review and its coordinator notification commit together).
- * @returns {Promise<object|null>} saved audit entry, or null when the request is no longer eligible.
+ * @returns {Promise<object|null>} saved audit entry, or null when the request is no longer eligible (including an
+ *   event with no assigned Event Coordinator yet).
  */
 async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
   const result = await db.query(`
@@ -701,7 +703,7 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
       SELECT e.id, e.equipment_requirements_version
       FROM events e
       WHERE e.id=$1 AND e.equipment_requirements_version=$5
-        AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+        AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND (
@@ -768,6 +770,7 @@ async function listEquipmentInventory() {
 
 /**
  * Lists reviewed requests with equipment that still needs reservation, including the event's full technical requirements.
+ * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
  */
 async function listEquipmentReservationCandidates() {
   const result = await pool.query(`
@@ -788,7 +791,7 @@ async function listEquipmentReservationCandidates() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
@@ -833,7 +836,7 @@ async function listActiveEquipmentReservations(staffId) {
 
 /**
  * Finds matching operational assets for itemized requests and optional staff-entered equipment.
- * @param {number} eventId event with a current equipment review.
+ * @param {number} eventId event with a current equipment review and an assigned Event Coordinator.
  * @param {Array<{item:string,quantity:number}>} additionalItems equipment extracted from other request text.
  * @returns {Promise<object|null>} requested names, quantities and matching available assets.
  */
@@ -861,7 +864,7 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.id=$1 AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+    WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
@@ -925,7 +928,7 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
 
 /**
  * Confirms selected assets atomically, locking assets in a stable order to prevent overbooking.
- * @param {number} eventId event with a current full/partial fulfillment review.
+ * @param {number} eventId event with a current full/partial fulfillment review and an assigned Event Coordinator.
  * @param {Array<{inventoryId:number,quantity:number}>} stock lines and unit quantities to reserve.
  * @param {number} staffId authenticated Technical Support staff member.
  * @param {Array<{item:string,quantity:number}>} additionalItems manually identified equipment.
@@ -952,7 +955,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
         ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
         LIMIT 1
       ) venue ON true
-      WHERE e.id=$1 AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+      WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
