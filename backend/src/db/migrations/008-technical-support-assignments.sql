@@ -26,5 +26,19 @@ UPDATE notifications SET title = COALESCE(title, 'Notification') WHERE title IS 
 ALTER TABLE notifications ALTER COLUMN title SET NOT NULL;
 
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN ('change_request_submitted',
+  'change_request_approved', 'change_request_rejected', 'event_details_changed',
+  'event_approved', 'event_rejected', 'safety_check_recorded',
+  'technical_support_assigned', 'technical_support_unassigned'));
+
+ALTER TABLE event_technical_support_assignments ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL ON event_technical_support_assignments FROM anon;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    REVOKE ALL ON event_technical_support_assignments FROM authenticated;
+  END IF;
+END $$;
 
 COMMIT;

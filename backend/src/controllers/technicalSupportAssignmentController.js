@@ -6,7 +6,7 @@ const validId = value => Number.isInteger(value) && value > 0 && value <= 214748
 
 async function eventSummary(client, eventId) {
   return (await client.query(`
-    SELECT e.id, e.name, e.status, e.technical_support_required, e.proposed_date::text AS proposed_date, e.proposed_start_time,
+    SELECT e.id, e.name, e.coordinator_id, e.status, e.technical_support_required, e.proposed_date::text AS proposed_date, e.proposed_start_time,
       e.proposed_end_time, e.equipment_items, e.equipment_notes,
       COALESCE((SELECT jsonb_build_object('name', v.name, 'location', v.location)
         FROM venue_bookings vb JOIN venues v ON v.id=vb.venue_id
@@ -38,6 +38,10 @@ const assign = asyncHandler(async (req, res) => {
     const event = await eventSummary(client, eventId);
     if (!event || !event.technical_support_required || ['draft', 'cancelled', 'completed', 'rejected'].includes(event.status)) {
       await client.query('ROLLBACK'); return res.status(404).json({ message: 'Active event not found.' });
+    }
+    if (event.coordinator_id !== req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ message: 'Only the assigned Event Coordinator can change Technical Support assignments.' });
     }
     const eligible = (await client.query(`SELECT id FROM users WHERE id=ANY($1::int[])
       AND (role='technical_support' OR COALESCE(to_jsonb(users)->'roles','[]'::jsonb) ? 'technical_support')`, [staffIds])).rows;

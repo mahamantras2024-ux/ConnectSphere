@@ -445,7 +445,10 @@ export default function TechSupportDashboard() {
         </div>
         {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
-          <EquipmentInventorySection inventory={inventory} error={inventoryError} />
+          <EquipmentInventorySection
+            inventory={inventory}
+            error={inventoryError}
+          />
         </div>
         )}
         {activeTab === 'review' && (
@@ -458,7 +461,7 @@ export default function TechSupportDashboard() {
               </div>
               <div className="equipment-review-actions">
                 <span className="badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
-                <button type="button" className="button-secondary" onClick={loadDashboardData} disabled={loading}>Refresh</button>
+                <button type="button" className="button-secondary" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
               </div>
             </div>
             {requestError && <p className="support-error" role="alert">{requestError}</p>}
