@@ -24,6 +24,8 @@ const stories = {
   'change-request-review': ['changeRequestReview','changeRequestReview.unit','changeRequestReviewPostgres','organiserEvents','sharedUiRegressions'],
   // Approve/reject decisions, Operational Safety Checks and the organiser's outcome notification.
   'event-decision': ['eventDecision','eventDecisionPolicy.unit','eventDecisionPostgres','organiserEvents','sharedUiRegressions'],
+  // Operational Feasibility Check: Safety Officer facts, change requests that reopen planning stages, and re-checks.
+  'operational-safety-check': ['operationalSafetyCheck','eventDecision','eventDecisionPolicy.unit','eventDecisionPostgres','venueValidation','createVenue-backend','venueManagement'],
   // Check Venue Suitability: capacity/facility rules, the coordinator API and the event-page section.
   'venue-suitability': ['venueSuitability','venueSuitability.unit','venueSuitabilityPostgres','organiserEvents','sharedUiRegressions']
 };

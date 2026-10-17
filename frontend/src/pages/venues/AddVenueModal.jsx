@@ -16,7 +16,7 @@ const fields = [
 // Validates the complete venue form and saves only after any server-calculated booking warning is acknowledged.
 export default function AddVenueModal({ onClose, onAdd, venue }) {
   const { token } = useAuth();
-  const [data, setData] = useState({ name: venue?.name||'', location: venue?.location||'', capacity: String(venue?.capacity??''), supportedLayouts: (venue?.supported_layouts||[]).join(', '), facilities: (venue?.facilities||[]).join(', '), accessibilityFeatures: (venue?.accessibility_features||[]).join(', '), price: hourlyRateValue(venue?.pricing), availabilityStatus:venue?.availability_status||'Available', openTime: venue?.operating_hours?.split(' - ')[0]||'08:00', closeTime: venue?.operating_hours?.split(' - ')[1]||'22:00', setupMinutes: String(venue?.setup_minutes??0), turnaroundMinutes: String(venue?.turnaround_minutes??0) });
+  const [data, setData] = useState({ name: venue?.name||'', location: venue?.location||'', capacity: String(venue?.capacity??''), supportedLayouts: (venue?.supported_layouts||[]).join(', '), facilities: (venue?.facilities||[]).join(', '), accessibilityFeatures: (venue?.accessibility_features||[]).join(', '), price: hourlyRateValue(venue?.pricing), availabilityStatus:venue?.availability_status||'Available', openTime: venue?.operating_hours?.split(' - ')[0]||'08:00', closeTime: venue?.operating_hours?.split(' - ')[1]||'22:00', setupMinutes: String(venue?.setup_minutes??0), turnaroundMinutes: String(venue?.turnaround_minutes??0), emergencyAccess: venue?.emergency_access||'', knownRestrictions: venue?.known_restrictions||'' });
   const [location,setLocation]=useState({location:venue?.location||'',latitude:venue?.latitude??null,longitude:venue?.longitude??null,mrt:venue?.mrt?{name:venue.mrt,distanceM:venue.mrt_distance_m}:null});
   const [mapBusy,setMapBusy]=useState(false),[warning,setWarning]=useState(null);
   const [image, setImage] = useState(venue?.image||''), [errors, setErrors] = useState({}), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -58,6 +58,8 @@ export default function AddVenueModal({ onClose, onAdd, venue }) {
     if (!data.openTime || !data.closeTime || data.openTime >= data.closeTime) invalid.hours = 'Opening time must be before closing time.';
     if (data.price.trim() && !/^\d+(?:\.\d{1,2})?$/.test(data.price.trim())) invalid.price='Enter a non-negative hourly rate with up to two decimal places.';
     if (Number(data.price)>99999999.99) invalid.price='Hourly rate must be no greater than $99,999,999.99.';
+    // Operational Feasibility Check AC1: the server stores at most 2000 characters of each safety fact.
+    for (const key of ['emergencyAccess', 'knownRestrictions']) if (data[key].trim().length > 2000) invalid[key] = 'Enter at most 2000 characters.';
     if (!location.location || (!venue && location.latitude==null)) invalid.location='Select the venue location from a search result or the map.';
     setErrors(invalid); setError(''); if (Object.keys(invalid).length) return;
     saving.current = true; setBusy(true);
@@ -74,6 +76,7 @@ export default function AddVenueModal({ onClose, onAdd, venue }) {
       value.trim()).filter(Boolean),
         operatingHours: `${data.openTime} - ${data.closeTime}`, setupMinutes: Number(data.setupMinutes), turnaroundMinutes: Number(data.turnaroundMinutes),
         pricing: data.price.trim() || null, image: image || null, availabilityStatus: data.availabilityStatus,
+        emergencyAccess: data.emergencyAccess.trim() || null, knownRestrictions: data.knownRestrictions.trim() || null,
         ...(venue?{revision:venue.revision,confirmationToken}:{}) };
       const result = venue ? await api.put(`/venues/${venue.id}`,payload,token) : await api.post('/venues',payload,token);
       onAdd?.(result.venue || result); onClose();
@@ -103,6 +106,13 @@ export default function AddVenueModal({ onClose, onAdd, venue }) {
       // Handles this control action and updates the screen state.
       change('turnaroundMinutes', event.target.value)} />{errors.turnaroundMinutes && <span className="error-text">{errors.turnaroundMinutes}</span>}</label>
     </div>{errors.hours && <p className="error-text">{errors.hours}</p>}<p className="field-help">Setup and turnaround record the time needed before and after an event. Booking checks are handled in the booking workflow.</p></div>
+    {/* Optional facts the Safety Officer reviews in the Operational Safety Check (AC1). */}
+    <div className="form-section"><h3>Safety information <span className="muted">Optional</span></h3><div className="form-grid">
+      {[['emergencyAccess', 'Emergency access', 'Exits, assembly points and emergency vehicle access'], ['knownRestrictions', 'Known restrictions', 'For example: no open flames, floor load limits, noise curfew']].map(([key, label, placeholder]) =>
+        <label className="field" key={key} htmlFor={`venue-${key}`}>{label}<textarea id={`venue-${key}`} rows={3} maxLength={2000} placeholder={placeholder} value={data[key]}
+          onChange={event => change(key, event.target.value)} aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `error-${key}` : undefined} />
+          {errors[key] && <span className="error-text" id={`error-${key}`}>{errors[key]}</span>}</label>)}
+    </div></div>
     <div className="form-section"><h3>Additional details <span className="muted">Optional</span></h3><div className="form-grid">
       <label className="field">Hourly rate (SGD / hr)<input type="number" min="0" max="99999999.99" step="0.01" placeholder="Hourly rate (e.g. 500)" value={data.price} onChange={event =>
       // Handles this control action and updates the screen state.
