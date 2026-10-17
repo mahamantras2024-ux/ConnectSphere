@@ -276,7 +276,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       'migrations/005-technical-support-reviews.sql', 'migrations/006-event-decisions.sql',
       'migrations/006-equipment-inventory-reservations.sql', 'migrations/007-equipment-stock-quantities.sql',
       'migrations/009-internal-single-role.sql',
-      'venueManagementSchema.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql'
+      'venueManagementSchema.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql',
+      'migrations/012-equipment-repair-history.sql', 'migrations/013-equipment-reservation-release-audit.sql'
     ]) {
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
       await client.query(migration);

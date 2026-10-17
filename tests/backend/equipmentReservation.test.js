@@ -118,8 +118,9 @@ test('AC1 - lists requests awaiting reservation and confirmed allocation audit d
   }
   assert.doesNotMatch(candidateQuery.sql, /jsonb_array_length\s*\(\s*e\.equipment_items\s*\)\s*>\s*0/i);
   const auditQuery = queries.find(query => query.sql.includes('SELECT reservation.id'));
-  assert.match(auditQuery.sql, /reservation\.reserved_by=\$1/i);
-  assert.deepEqual(auditQuery.values, [supportStaff.id]);
+  assert.match(auditQuery.sql, /reservation\.status='reserved'/i);
+  assert.match(auditQuery.sql, /reservation\.released_at/i);
+  assert.equal(auditQuery.values, undefined);
   assert.match(auditQuery.sql, /AS reserved_by_name/i);
   assert.match(auditQuery.sql, /inventory\.specification/i);
   assert.match(auditQuery.sql, /reserved_item\.quantity/i);
@@ -225,4 +226,208 @@ test('AC2 - rejects an empty selection without opening a reservation transaction
   assert.equal(result.status, 400);
   assert.match(result.body.message, /valid equipment assets/i);
   assert.equal(connect.mock.callCount(), 0);
+});
+
+// Arrange an active reservation and a transaction that records the authenticated staff member.
+// Act through the real role-protected release endpoint.
+// Assert the reservation is marked released with an actor and database timestamp before commit.
+test('AC1 - releases an active event reservation for the authenticated Technical Support staff member', async () => {
+  const releasedAt = '2026-10-17T11:00:00.000Z';
+  const releasedReservation = {
+    ...reservation,
+    event_name: event.name,
+    status: 'cancelled',
+    released_by: supportStaff.id,
+    released_by_name: supportStaff.full_name,
+    released_at: releasedAt,
+  };
+  const calls = [];
+  const client = {
+    query: async (sql, values) => {
+      calls.push({ sql, values });
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
+      if (sql.includes('UPDATE event_equipment_reservations')) return { rows: [releasedReservation] };
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+  mock.method(pool, 'query', async () => ({ rows: [supportStaff] }));
+  mock.method(pool, 'connect', async () => client);
+
+  const result = await request('/api/events/equipment-reservations/901', { method: 'DELETE' });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.reservation.released_by, supportStaff.id);
+  assert.equal(result.body.reservation.released_at, releasedAt);
+  const releaseQuery = calls.find(call => call.sql.includes('UPDATE event_equipment_reservations'));
+  assert.deepEqual(releaseQuery.values, [901, supportStaff.id]);
+  assert.match(releaseQuery.sql, /status\s*=\s*'reserved'/i);
+  assert.match(releaseQuery.sql, /released_by\s*=\s*\$2/i);
+  assert.match(releaseQuery.sql, /released_at\s*=\s*now\(\)/i);
+  assert.match(releaseQuery.sql, /event_record\.status='cancelled'/i);
+  assert.match(releaseQuery.sql, /event_record\.proposed_date IS DISTINCT FROM allocation\.event_date/i);
+  assert.equal(calls.at(-1).sql, 'COMMIT');
+});
+
+// A conditional update is the oracle: repeating a release cannot overwrite its original audit entry.
+// Arrange an already-released row so the atomic update matches nothing.
+// Act by issuing the release endpoint again.
+// Assert the API reports a conflict and the transaction rolls back.
+test('AC1 - rejects a repeated release without changing the original release audit', async () => {
+  const calls = [];
+  const client = {
+    query: async (sql) => {
+      calls.push(sql);
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+  mock.method(pool, 'query', async () => ({ rows: [supportStaff] }));
+  mock.method(pool, 'connect', async () => client);
+
+  const result = await request('/api/events/equipment-reservations/901', { method: 'DELETE' });
+
+  assert.equal(result.status, 409);
+  assert.match(result.body.message, /no longer active|already released/i);
+  assert.equal(calls.at(-1), 'ROLLBACK');
+});
+
+// The guarded update must exclude active allocations whose event has not changed.
+// Arrange a still-matching event allocation, represented by an update that affects no rows.
+// Act through the release endpoint.
+// Assert the API returns a conflict and the query checks cancellation or schedule drift.
+test('AC1 - refuses to release an active reservation when the event is unchanged', async () => {
+  const calls = [];
+  const client = {
+    query: async (sql) => {
+      calls.push(sql);
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+  mock.method(pool, 'query', async () => ({ rows: [supportStaff] }));
+  mock.method(pool, 'connect', async () => client);
+
+  const result = await request('/api/events/equipment-reservations/901', { method: 'DELETE' });
+
+  assert.equal(result.status, 409);
+  assert.match(result.body.message, /no longer active/i);
+  const releaseQuery = calls.find(sql => sql.includes('UPDATE event_equipment_reservations'));
+  assert.match(releaseQuery, /event_record\.status='cancelled'/i);
+  assert.match(releaseQuery, /event_record\.proposed_start_time IS DISTINCT FROM allocation\.start_time/i);
+  assert.equal(calls.at(-1), 'ROLLBACK');
+});
+
+// Persistence errors must roll the transaction back and reach the API error middleware.
+// Arrange a database failure after the release transaction begins.
+// Act through the authenticated release endpoint.
+// Assert the write is rolled back and the request does not look successful.
+test('AC1 - reports a release persistence failure after rolling back', async () => {
+  const calls = [];
+  const client = {
+    query: async (sql) => {
+      calls.push(sql);
+      if (sql.includes('UPDATE event_equipment_reservations')) {
+        throw new Error('Reservation release storage failure.');
+      }
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+  mock.method(pool, 'query', async () => ({ rows: [supportStaff] }));
+  mock.method(pool, 'connect', async () => client);
+  mock.method(console, 'error', () => {});
+
+  const result = await request('/api/events/equipment-reservations/901', { method: 'DELETE' });
+
+  assert.equal(result.status, 500);
+  assert.match(result.body.message, /release storage failure/i);
+  assert.equal(calls.at(-1), 'ROLLBACK');
+});
+
+// Invalid identifiers are rejected before a transaction can modify any reservation.
+// Arrange a valid Technical Support session and guard against database acquisition.
+// Act with a zero identifier that is not a reservation key.
+// Assert a client error is returned and no release transaction is opened.
+test('AC1 - rejects a malformed reservation identifier before opening a release transaction', async () => {
+  const connect = mock.method(pool, 'connect', async () => {
+    assert.fail('Malformed reservation IDs must be rejected before acquiring a database connection.');
+  });
+  mock.method(pool, 'query', async () => ({ rows: [supportStaff] }));
+
+  const result = await request('/api/events/equipment-reservations/0', { method: 'DELETE' });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.message, /valid equipment reservation/i);
+  assert.equal(connect.mock.callCount(), 0);
+});
+
+// A faulty availability query that counts cancelled rows will subtract stock that has been released.
+// Arrange a reviewed replacement event and a matching operational asset with post-release stock.
+// Act by checking availability through the real Technical Support endpoint.
+// Assert both the visible quantity and the active-only reservation predicate.
+test('AC2 - counts released inventory as available for a later event time slot', async () => {
+  const availableAsset = {
+    id: 31,
+    asset_code: 'PROJ-001',
+    name: 'Projector',
+    specification: 'Full HD',
+    status: 'operational',
+    quantity: 2,
+    available_quantity: 2,
+    available_date: event.proposed_date,
+    available_start_time: '09:00:00',
+    available_end_time: '12:00:00',
+  };
+  const queries = [];
+  mock.method(pool, 'query', async (sql) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    queries.push(sql);
+    if (sql.includes('SELECT e.id, e.name, e.proposed_date')) {
+      return { rows: [{ ...event, already_reserved: false }] };
+    }
+    if (sql.includes('FROM equipments stock')) return { rows: [availableAsset] };
+    return { rows: [] };
+  });
+
+  const result = await request('/api/events/501/equipment-availability');
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.availability.items[0].availableQuantity, 2);
+  const stockQuery = queries.find(sql => sql.includes('FROM equipments stock'));
+  assert.match(stockQuery, /reservation\.status\s*=\s*'reserved'/i);
+  assert.match(stockQuery, /reservation\.event_date\s*=\s*\$2::date/i);
+});
+
+// Released records must remain discoverable to Technical Support after they stop blocking stock.
+// Arrange a released reservation with its audit identity and timestamp.
+// Act by loading the reservation workspace.
+// Assert the API returns the audit fields and that active allocations from all staff remain visible.
+test('AC3 - retains released reservation audit details in the Technical Support reservation list', async () => {
+  const releasedAudit = {
+    ...reservation,
+    event_name: event.name,
+    status: 'cancelled',
+    released_by: supportStaff.id,
+    released_by_name: supportStaff.full_name,
+    released_at: '2026-10-17T11:00:00.000Z',
+    items: [{ assetCode: 'PROJ-001', name: 'Projector', specification: 'Full HD', quantity: 1 }],
+  };
+  const queries = [];
+  mock.method(pool, 'query', async (sql) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    queries.push(sql);
+    if (sql.includes('JOIN event_equipment_reviews review')) return { rows: [] };
+    return { rows: [releasedAudit] };
+  });
+
+  const result = await request('/api/events/equipment-reservations');
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.reservations, [releasedAudit]);
+  const reservationQuery = queries.find(sql => sql.includes('SELECT reservation.id'));
+  assert.match(reservationQuery, /reservation\.released_by/i);
+  assert.match(reservationQuery, /reservation\.released_at/i);
+  assert.match(reservationQuery, /released_by_name/i);
+  assert.doesNotMatch(reservationQuery, /reservation\.reserved_by\s*=\s*\$1/i);
 });

@@ -136,6 +136,7 @@ const STYLES = `
 .er-table .er-cell-sub { display: block; color: var(--er-muted); font-size: .85rem; }
 .er-chip-list { display: grid; gap: 4px; }
 .er-chip { font-size: .85rem; }
+.er-release-action { white-space: nowrap; }
 
 @media (prefers-reduced-motion: no-preference) {
   .er-btn { transition: filter .15s; }
@@ -462,8 +463,24 @@ function ReservationCandidate({ request, token, onReserved }) {
  * Presents reviewed requests awaiting asset allocation and confirmed reservation audit details.
  */
 export default function EquipmentReservationSection({
-  requests, reservations, token, onReserved, error, onGoToReviews,
+  requests, reservations, token, onReserved, onRelease, error, onGoToReviews,
 }) {
+  const [releasingReservationId, setReleasingReservationId] = useState(null);
+  const [releaseError, setReleaseError] = useState('');
+
+  /** Prevents duplicate releases and keeps API failures visible beside the reservation list. */
+  async function releaseReservation(reservation) {
+    setReleasingReservationId(reservation.id);
+    setReleaseError('');
+    try {
+      await onRelease(reservation);
+    } catch (requestError) {
+      setReleaseError(requestError.message || 'Unable to release this equipment reservation.');
+    } finally {
+      setReleasingReservationId(null);
+    }
+  }
+
   return (
     <div className="er-root">
       <style>{STYLES}</style>
@@ -489,6 +506,7 @@ export default function EquipmentReservationSection({
       <section className="er-section" aria-labelledby="confirmed-reservations-heading">
         <h2 className="er-section-title" id="confirmed-reservations-heading">Equipment Reservations</h2>
         {error && reservations.length === 0 && <p className="er-error">Reservations could not be loaded.</p>}
+        {releaseError && <p className="er-error" role="alert">{releaseError}</p>}
         {reservations.length === 0 ? <p className="er-section-hint">No upcoming equipment reservations.</p> : (
           <div className="er-table-wrap">
             <table className="er-table">
@@ -498,7 +516,9 @@ export default function EquipmentReservationSection({
                   <th scope="col">Date and time</th>
                   <th scope="col">Venue</th>
                   <th scope="col">Equipment</th>
+                  <th scope="col">Reservation status</th>
                   <th scope="col">Reserved at</th>
+                  <th scope="col">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -517,7 +537,38 @@ export default function EquipmentReservationSection({
                         ))}
                       </div>
                     </td>
+                    <td>
+                      {reservation.status === 'cancelled'
+                        ? reservation.released_by_name && reservation.released_at ? 'Released' : 'Cancelled'
+                        : 'Reserved'}
+                      {reservation.status === 'cancelled' && reservation.released_by_name && reservation.released_at && (
+                        <span className="er-cell-sub">
+                          Released by {reservation.released_by_name} on {new Date(reservation.released_at).toLocaleString()}
+                        </span>
+                      )}
+                      {reservation.status === 'reserved' && (
+                        <span className="er-cell-sub">
+                          Event {reservation.event_schedule_changed
+                            ? 'postponed or rescheduled'
+                            : sentenceCase(reservation.event_status)}
+                        </span>
+                      )}
+                    </td>
                     <td>{new Date(reservation.reserved_at).toLocaleString()}</td>
+                    <td>
+                      {reservation.status === 'reserved' &&
+                        (reservation.event_status === 'cancelled' || reservation.event_schedule_changed) && (
+                        <button
+                          type="button"
+                          className="er-btn er-btn--quiet er-release-action"
+                          aria-label={`Release reservation for ${reservation.event_name}`}
+                          onClick={() => releaseReservation(reservation)}
+                          disabled={releasingReservationId !== null}
+                        >
+                          {releasingReservationId === reservation.id ? 'Releasing…' : 'Release'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

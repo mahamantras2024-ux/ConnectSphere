@@ -390,6 +390,13 @@ export default function TechSupportDashboard() {
     showSuccess(`Equipment reservation confirmed for ${reservation.event_name}.`);
   }
 
+  /** Releases an allocation, then reloads reservations so newly available time slots and audit details stay in sync. */
+  async function releaseReservation(reservation) {
+    await api.delete(`/events/equipment-reservations/${reservation.id}`, token);
+    await loadDashboardData();
+    showSuccess(`Equipment reservation released for ${reservation.event_name}.`);
+  }
+
   const tabs = [
     { id: 'inventory', label: 'Equipment info' },
     { id: 'review', label: 'Equipment request review' },
@@ -402,7 +409,7 @@ export default function TechSupportDashboard() {
       <PageIntro
         title="Technical Support Dashboard"
         eyebrow="Internal workspace"
-        description="Review equipment requests, and reserve equipment."
+        description="Review equipment requests, reserve equipment, and release allocations when events change."
       />
       <NotificationsPanel />
       {toast && (
@@ -492,6 +499,7 @@ export default function TechSupportDashboard() {
             reservations={reservations}
             token={token}
             onReserved={handleReservationConfirmed}
+            onRelease={releaseReservation}
             error={reservationError}
             onGoToReviews={() => setActiveTab('review')}
           />

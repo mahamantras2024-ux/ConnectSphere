@@ -24,7 +24,8 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/010-venue-safety-facts.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/011-safety-change-stages.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/012-equipment-repair-history.sql'), 'utf8'));
-    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, change-request review and notifications, Technical Support reviews, event decisions, equipment reservations, equipment stock quantities, and equipment repair history are ready.');
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/013-equipment-reservation-release-audit.sql'), 'utf8'));
+    console.log('External event fields, password-reset support, event change requests and clarifications, attachments, equipment requirements, change-request review and notifications, Technical Support reviews, event decisions, equipment reservations, equipment stock quantities, equipment repair history, and reservation release audit are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

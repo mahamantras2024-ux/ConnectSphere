@@ -410,6 +410,57 @@ async function listActiveEquipmentReservations(staffId) {
 }
 
 /**
+ * Releases an active reservation only after its event is cancelled or rescheduled, recording actor/time atomically.
+ * The conditional update makes repeated or ineligible requests harmless and preserves the first release audit.
+ * @param {number} reservationId active reservation to release.
+ * @param {number} staffId authenticated Technical Support staff member.
+ * @returns {Promise<object|null>} released reservation and audit details, or null if it is no longer active.
+ */
+async function releaseEquipmentReservation(reservationId, staffId) {
+  const client = await databasePool.connect();
+  try {
+    await client.query('BEGIN');
+    const reservation = (await client.query(`
+      WITH released AS (
+        UPDATE event_equipment_reservations AS allocation
+        SET status='cancelled', released_by=$2, released_at=now()
+        FROM events event_record
+        WHERE allocation.id=$1 AND allocation.status='reserved'
+          AND event_record.id=allocation.event_id
+          AND (
+            event_record.status='cancelled'
+            OR (event_record.proposed_date IS NOT NULL AND (
+              event_record.proposed_date IS DISTINCT FROM allocation.event_date
+              OR event_record.proposed_start_time IS DISTINCT FROM allocation.start_time
+              OR event_record.proposed_end_time IS DISTINCT FROM allocation.end_time
+            ))
+          )
+        RETURNING allocation.id, allocation.event_id, allocation.request_version,
+          allocation.event_date::text AS event_date, allocation.start_time,
+          allocation.end_time, allocation.venue_name, allocation.venue_location,
+          allocation.status, allocation.reserved_by, allocation.reserved_at,
+          allocation.released_by, allocation.released_at
+      )
+      SELECT released.*, e.name AS event_name, releaser.full_name AS released_by_name
+      FROM released
+      JOIN events e ON e.id=released.event_id
+      JOIN users releaser ON releaser.id=released.released_by
+    `, [reservationId, staffId])).rows[0];
+    if (!reservation) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    await client.query('COMMIT');
+    return reservation;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Finds matching operational assets for itemized requests and optional staff-entered equipment.
  * @param {number} eventId event with a current equipment review.
  * @param {Array<{item:string,quantity:number}>} additionalItems equipment extracted from other request text.
@@ -873,14 +924,22 @@ async function listEquipmentReservationCandidates() {
 }
 
 /**
- * Lists upcoming reservations with their item quantities and audit details.
+ * Lists actionable active allocations and retained releases with their event and audit details.
+ * Old event slots remain actionable after cancellation or a changed schedule, even when that original date passed.
  */
-async function listActiveEquipmentReservations(staffId) {
+async function listActiveEquipmentReservations() {
   const result = await pool.query(`
     SELECT reservation.id, reservation.event_id, e.name AS event_name,
+      e.status AS event_status,
+      (e.proposed_date IS NOT NULL AND (
+        e.proposed_date IS DISTINCT FROM reservation.event_date
+        OR e.proposed_start_time IS DISTINCT FROM reservation.start_time
+        OR e.proposed_end_time IS DISTINCT FROM reservation.end_time
+      )) AS event_schedule_changed,
       reservation.event_date::text AS event_date, reservation.start_time,
       reservation.end_time, reservation.venue_name, reservation.venue_location,
-      reservation.reserved_at, staff.full_name AS reserved_by_name,
+      reservation.status, reservation.reserved_at, staff.full_name AS reserved_by_name,
+      reservation.released_by, releaser.full_name AS released_by_name, reservation.released_at,
       COALESCE(jsonb_agg(jsonb_build_object(
         'assetCode', inventory.asset_code, 'name', inventory.name,
         'specification', inventory.specification, 'quantity', reserved_item.quantity
@@ -888,15 +947,25 @@ async function listActiveEquipmentReservations(staffId) {
     FROM event_equipment_reservations reservation
     JOIN events e ON e.id=reservation.event_id
     JOIN users staff ON staff.id=reservation.reserved_by
+    LEFT JOIN users releaser ON releaser.id=reservation.released_by
     LEFT JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
     LEFT JOIN equipments inventory ON inventory.id=reserved_item.inventory_id
-    WHERE reservation.reserved_by=$1 AND reservation.status='reserved' AND (
-      reservation.event_date > CURRENT_DATE
-      OR (reservation.event_date=CURRENT_DATE AND reservation.end_time > LOCALTIME)
-    )
-    GROUP BY reservation.id, e.name, staff.full_name
-    ORDER BY reservation.event_date, reservation.start_time, reservation.id
-  `, [staffId]);
+    -- A cancellation or changed event slot still holds stock until staff explicitly release it.
+    WHERE (reservation.status='reserved' AND (
+        reservation.event_date > CURRENT_DATE
+        OR (reservation.event_date=CURRENT_DATE AND reservation.end_time > LOCALTIME)
+        OR e.status='cancelled'
+        OR (e.proposed_date IS NOT NULL AND (
+          e.proposed_date IS DISTINCT FROM reservation.event_date
+          OR e.proposed_start_time IS DISTINCT FROM reservation.start_time
+          OR e.proposed_end_time IS DISTINCT FROM reservation.end_time
+        ))
+      )) OR reservation.status='cancelled'
+    GROUP BY reservation.id, e.name, e.status, e.proposed_date,
+      e.proposed_start_time, e.proposed_end_time, staff.full_name, releaser.full_name
+    ORDER BY CASE WHEN reservation.status='reserved' THEN 0 ELSE 1 END,
+      reservation.event_date, reservation.start_time, reservation.id
+  `);
   return result.rows;
 }
 
@@ -962,6 +1031,7 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
       SELECT sum(reserved_item.quantity)::integer AS quantity
       FROM event_equipment_reservations reservation
       JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
+      -- Released rows remain in the audit list but no longer reserve stock for future checks.
       WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
         AND reservation.event_date=$2::date
         AND reservation.start_time < $4::time AND reservation.end_time > $3::time
@@ -1225,6 +1295,7 @@ module.exports = {
   markEquipmentAvailable,
   listEquipmentReservationCandidates,
   listActiveEquipmentReservations,
+  releaseEquipmentReservation,
   getEquipmentReservationAvailability,
   createEquipmentReservation,
   createClarificationRequest,
