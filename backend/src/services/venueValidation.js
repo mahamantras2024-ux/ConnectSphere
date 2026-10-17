@@ -34,6 +34,11 @@ function validateVenue(input = {}) {
     if (input[field] != null && (typeof input[field] !== 'string' || input[field].length > 255)) throw new Error(`${field} must be text of at most 255 characters.`);
     data[field] = input[field]?.trim() || null;
   }
+  // Operational Feasibility Check AC1: optional safety facts for the Safety Officer; blank means "not recorded".
+  for (const field of ['emergencyAccess', 'knownRestrictions']) {
+    if (input[field] != null && (typeof input[field] !== 'string' || input[field].trim().length > 2000)) throw new Error(`${field} must be text of at most 2000 characters.`);
+    data[field] = input[field]?.trim() || null;
+  }
   // Persists an optional canonical hourly amount instead of accepting ambiguous descriptive pricing.
   data.pricing=null;
   if(input.pricing!=null && input.pricing!=='') {

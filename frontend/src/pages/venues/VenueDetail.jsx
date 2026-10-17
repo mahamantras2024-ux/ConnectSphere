@@ -27,7 +27,9 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
     ['Facilities', list(venue.facilities)], ['Accessibility', list(venue.accessibility_features || venue.accessibilityFeatures)],
     ['Supported room layouts', list(venue.supported_layouts || venue.supportedLayouts)], ['Operating hours', venue.operating_hours || venue.operatingHours],
     ['Current availability', venue.availability_status || venue.availabilityStatus], ['Setup time', minutes(venue.setup_minutes ?? venue.setupMinutes)],
-    ['Turnaround time', minutes(venue.turnaround_minutes ?? venue.turnaroundMinutes)], ['Nearest MRT', venue.mrt || venue.mrtInfo], ['Hourly rate', formatHourlyRate(venue.pricing ?? venue.price)]];
+    ['Turnaround time', minutes(venue.turnaround_minutes ?? venue.turnaroundMinutes)], ['Nearest MRT', venue.mrt || venue.mrtInfo], ['Hourly rate', formatHourlyRate(venue.pricing ?? venue.price)],
+    // Safety facts recorded by Venue Staff for the Operational Safety Check.
+    ['Emergency access', venue.emergency_access], ['Known restrictions', venue.known_restrictions]];
   return <Modal title="Venue Details" onClose={busy?()=>{}:onClose} drawer><div className="venue-profile"><div className="profile-banner">{venue.image ? <img src={venue.image} alt={venue.name} /> : <span className="profile-pattern" aria-hidden="true">▧</span>}<div><p className="eyebrow">A space for your next event</p><h2>{venue.name}</h2></div></div>
     <dl className="detail-grid">{values.map(([label, value]) =>
       // Converts each record into its displayed or submitted representation.

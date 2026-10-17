@@ -14,8 +14,23 @@ const DECISION_REQUIREMENTS = {
 /** Statuses in which a request is still awaiting the coordinator's decision. */
 const DECIDABLE_STATUSES = ['submitted', 'under_review', 'planning'];
 
-/** Requirements the Safety Officer needs before reviewing (Week 7: the check follows confirmed venue and technical arrangements). */
-const SAFETY_REVIEW_REQUIREMENTS = ['venueConfirmed', 'technicalConfirmed'];
+/**
+ * Requirements the Safety Officer needs before reviewing (Week 7: the check follows confirmed venue and technical
+ * arrangements). Operational Feasibility Check AC3/AC4: stages reopened by a change request must be completed first,
+ * so the re-check looks at the changed event rather than the one that was sent back. Once a check has passed or failed
+ * the event's check is complete (AC5: it proceeds, or the coordinator rejects it), so it is not reviewed again.
+ */
+const SAFETY_REVIEW_REQUIREMENTS = ['safetyChangesResolved', 'venueConfirmed', 'technicalConfirmed', 'safetyCheckDue'];
+
+/**
+ * Planning stages a Safety Officer can send an event back to (AC3), each with the requirement that shows its changes
+ * are complete. Venue and technical stages are complete once re-confirmed; event details once no clarification is owed.
+ */
+const SAFETY_CHANGE_AREAS = {
+  venue: 'venueConfirmed',
+  technical: 'technicalConfirmed',
+  event_details: 'clarificationsResolved',
+};
 
 /** True when a booking still occupies the venue as a decided or undecided arrangement (not rejected/cancelled/expired). */
 function isLiveBooking(booking, now) {
@@ -72,6 +87,33 @@ const REQUIREMENTS = {
   },
 };
 
+/**
+ * Stages still waiting for changes requested by the Safety Officer. Kept out of REQUIREMENTS so the coordinator's
+ * readiness checklist is unchanged; approval stays blocked anyway because the latest check is "changes requested".
+ */
+const SAFETY_REVIEW_RULES = {
+  safetyChangesResolved: (context) => (context.safety_changes_open?.length
+    ? { met: false, code: 'SAFETY_CHANGES_OUTSTANDING', message: 'Changes requested by the Safety Officer have not been completed yet.' }
+    : { met: true, code: 'SAFETY_CHANGES_COMPLETE', message: 'No requested safety changes are outstanding.' }),
+  // A check is due when none exists yet, or as the re-check after a change request (AC4).
+  safetyCheckDue: (context) => (['approved', 'rejected'].includes(context.latest_safety_check?.outcome)
+    ? { met: false, code: 'SAFETY_CHECK_COMPLETE', message: 'The operational safety check for this event has already been recorded.' }
+    : { met: true, code: 'SAFETY_CHECK_DUE', message: 'An operational safety check is due.' }),
+};
+
+/**
+ * Returns why a reopened stage cannot be marked complete yet, or null when it can (AC3/AC4).
+ * @param {'venue'|'technical'|'event_details'} area the stage the coordinator is completing.
+ * @param {object} context decision context (see REQUIREMENTS), including `safety_changes_open`.
+ */
+function resolutionBlocker(area, context) {
+  if (!context.safety_changes_open?.includes(area)) {
+    return { code: 'SAFETY_CHANGE_NOT_OPEN', message: 'The Safety Officer has not requested changes to this stage.' };
+  }
+  const result = REQUIREMENTS[SAFETY_CHANGE_AREAS[area]](context);
+  return result.met ? null : { code: result.code, message: result.message };
+}
+
 /** Returns every requirement's current state for the coordinator's readiness checklist, in a stable order. */
 function readiness(context) {
   return Object.entries(REQUIREMENTS).map(([name, check]) => ({ name, ...check(context) }));
@@ -101,13 +143,13 @@ function evaluateSafetyReview(context) {
     return { code: 'NOT_REVIEWABLE', message: 'Only submitted events awaiting a decision can be safety checked.' };
   }
   for (const name of SAFETY_REVIEW_REQUIREMENTS) {
-    const result = REQUIREMENTS[name](context);
+    const result = (SAFETY_REVIEW_RULES[name] || REQUIREMENTS[name])(context);
     if (!result.met) return { code: result.code, message: result.message };
   }
   return null;
 }
 
 module.exports = {
-  DECISION_REQUIREMENTS, DECIDABLE_STATUSES, SAFETY_REVIEW_REQUIREMENTS, REQUIREMENTS,
-  isLiveBooking, needsTechnicalArrangements, readiness, evaluateDecision, evaluateSafetyReview,
+  DECISION_REQUIREMENTS, DECIDABLE_STATUSES, SAFETY_REVIEW_REQUIREMENTS, SAFETY_CHANGE_AREAS, REQUIREMENTS,
+  isLiveBooking, needsTechnicalArrangements, readiness, evaluateDecision, evaluateSafetyReview, resolutionBlocker,
 };

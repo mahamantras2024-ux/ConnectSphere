@@ -357,7 +357,8 @@ test('AR AC1 - the Safety Officer records a passed check and the coordinator is 
   const result = await recordCheck({ outcome: 'approved' });
   assert.equal(result.status, 201);
   assert.equal(result.body.message, 'Safety check recorded. The Event Coordinator has been notified.');
-  assert.deepEqual(tx.find('INSERT INTO event_safety_checks')[0].values, [101, 50, 'approved', null]);
+  // The fifth value is the planning stages reopened; an approval reopens none.
+  assert.deepEqual(tx.find('INSERT INTO event_safety_checks')[0].values, [101, 50, 'approved', null, []]);
   assert.match(tx.find('AS pending_clarifications')[0].sql, /WHERE e\.id = \$1 FOR UPDATE OF e/);
   const [userIds, , , types, titles, messages] = tx.find('INSERT INTO notifications')[0].values;
   assert.deepEqual([userIds, types, titles], [[30], ['safety_check_recorded'], ['Safety check passed: Workshop']]);
@@ -371,15 +372,16 @@ test('AR AC2 - a failed safety check is recorded with its notes for the coordina
   const tx = mockTransaction({ context: { ...readyContext, latest_safety_check: null } });
   mock.method(emailService, 'sendNotificationEmail', async () => {});
   assert.equal((await recordCheck({ outcome: 'rejected', notes: '  Fire exit blocked  ' })).status, 201);
-  assert.deepEqual(tx.find('INSERT INTO event_safety_checks')[0].values, [101, 50, 'rejected', 'Fire exit blocked']);
+  assert.deepEqual(tx.find('INSERT INTO event_safety_checks')[0].values, [101, 50, 'rejected', 'Fire exit blocked', []]);
   assert.equal(tx.find('INSERT INTO notifications')[0].values[5][0], 'The Safety Officer recorded the operational safety check for Workshop: failed.\nNotes: Fire exit blocked');
 });
 
 // Test case: An event without a coordinator still gets its check; there is nobody to notify.
+// (A change request also tells the organiser, so a failed check is the case with no recipient at all.)
 test('AR AC1 - a check on an unassigned event is recorded without a notification', async () => {
   mockAuth(safetyOfficer);
-  const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null } });
-  const result = await recordCheck({ outcome: 'changes_requested', notes: 'Widen the aisles' });
+  const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null, latest_safety_check: null } });
+  const result = await recordCheck({ outcome: 'rejected', notes: 'Fire exit blocked' });
   assert.equal(result.status, 201);
   assert.equal(result.body.message, 'Safety check recorded.');
   assert.equal(tx.find('INSERT INTO notifications').length, 0);
@@ -406,7 +408,7 @@ for (const [label, context, status, code] of [
 
 // Safety-check input rules: notes explain a failure or change request; 4000 characters at most.
 for (const [label, body, id, status] of [
-  ['a rejection without notes', { outcome: 'rejected' }, 101, 400], ['a change request with blank notes', { outcome: 'changes_requested', notes: '   ' }, 101, 400],
+  ['a rejection without notes', { outcome: 'rejected' }, 101, 400], ['a change request with blank notes', { outcome: 'changes_requested', notes: '   ', changeAreas: ['venue'] }, 101, 400],
   ['4001-character notes', { outcome: 'approved', notes: 'x'.repeat(4001) }, 101, 400], ['numeric notes', { outcome: 'approved', notes: 5 }, 101, 400],
   ['an unknown outcome', { outcome: 'passed' }, 101, 400], ['event id 0', { outcome: 'approved' }, '0', 400],
   ['4000-character notes on a rejection', { outcome: 'rejected', notes: 'x'.repeat(4000) }, 101, 201],
@@ -414,7 +416,7 @@ for (const [label, body, id, status] of [
   // Test case: Sends one boundary or malformed safety check.
   test(`AR AC2 - a safety check with ${label} is ${status === 201 ? 'accepted' : 'refused'}`, async () => {
     mockAuth(safetyOfficer);
-    const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null } });
+    const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null, latest_safety_check: null } });
     const result = await recordCheck(body, id);
     assert.equal(result.status, status);
     assert.equal(tx.find('INSERT INTO event_safety_checks').length, status === 201 ? 1 : 0);
