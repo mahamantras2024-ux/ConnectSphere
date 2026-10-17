@@ -202,8 +202,9 @@ async function userIdsWithRole(db, role) {
 
 // Replaces an owned event's equipment requirements before confirmation and advances its reviewable version.
 // The confirmation check lives in the UPDATE so a confirmation committed mid-edit cannot be overwritten.
-async function updateEquipment(id, organiserId, data) {
-  const result = await pool.query(`
+// `db` may be a transaction client so a status-change notification commits with the edit.
+async function updateEquipment(id, organiserId, data, db = pool) {
+  const result = await db.query(`
     UPDATE events SET equipment_items=$3::jsonb, technical_support_required=$4, technical_support_details=$5,
       video_conferencing_required=$6, technical_specifications=$7,
       equipment_requirements_version=equipment_requirements_version+1, updated_at=now()
@@ -691,10 +692,11 @@ async function listPendingEquipmentRequests() {
  * @param {number} eventId submitted event identifier.
  * @param {object} data decision, optional reason, and the version shown to the reviewer.
  * @param {number} reviewerId authenticated Technical Support user identifier.
+ * @param {{ query: Function }} [db] pool or transaction client (the review and its coordinator notification commit together).
  * @returns {Promise<object|null>} saved audit entry, or null when the request is no longer eligible.
  */
-async function createEquipmentReview(eventId, data, reviewerId) {
-  const result = await pool.query(`
+async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
+  const result = await db.query(`
     WITH target AS (
       SELECT e.id, e.equipment_requirements_version
       FROM events e
@@ -715,20 +717,20 @@ async function createEquipmentReview(eventId, data, reviewerId) {
         )
       FOR UPDATE
     ), saved_review AS (
-      INSERT INTO event_equipment_reviews (event_id, request_version, outcome, reason, reviewed_by)
-      SELECT id, equipment_requirements_version, $2, $3, $4 FROM target
+      INSERT INTO event_equipment_reviews (event_id, request_version, outcome, reason, reviewed_by, affected_items)
+      SELECT id, equipment_requirements_version, $2, $3, $4, $6::jsonb FROM target
       ON CONFLICT (event_id, request_version) DO NOTHING
-      RETURNING id, event_id, request_version, outcome, reason, reviewed_by, reviewed_at
+      RETURNING id, event_id, request_version, outcome, reason, reviewed_by, reviewed_at, affected_items
     ), confirmed AS (
       UPDATE events e SET equipment_confirmed_at=now()
       FROM saved_review r
       WHERE e.id=r.event_id AND r.outcome='fully_fulfillable'
       RETURNING e.id
     )
-    SELECT r.id, r.event_id, r.request_version, r.outcome, r.reason, r.reviewed_by, r.reviewed_at
+    SELECT r.id, r.event_id, r.request_version, r.outcome, r.reason, r.reviewed_by, r.reviewed_at, r.affected_items
     FROM saved_review r
     LEFT JOIN confirmed c ON c.id=r.event_id
-  `, [eventId, data.outcome, data.reason, reviewerId, data.requestVersion]);
+  `, [eventId, data.outcome, data.reason, reviewerId, data.requestVersion, JSON.stringify(data.affectedItems || [])]);
   return result.rows[0] || null;
 }
 

@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
+import EquipmentStatusSection from './EquipmentStatusSection';
 
 
 
@@ -925,6 +926,8 @@ export default function EventDetail() {
       )}
 
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
+      {/* Tracks Equipment Request Status: the assigned coordinator (the API scopes it) monitors the technical arrangements. */}
+      {user.role === 'event_coordinator' && <EquipmentStatusSection eventId={event.id} token={token} />}
 
 
 

@@ -1,6 +1,7 @@
 // File: Lists pending equipment requests and records Technical Support decisions with reviewer audit data.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
+const equipmentStatusService = require('../services/equipmentStatusService');
 
 const outcomes = new Set(['fully_fulfillable', 'partially_fulfillable', 'not_fulfillable']);
 const MAX_REASON_LENGTH = 10000;
@@ -35,7 +36,8 @@ const listEquipmentRequests = asyncHandler(async (req, res) => {
 });
 
 /**
- * Validates and records one fulfillment decision against the exact request version in the queue.
+ * Validates and records one fulfillment decision against the exact request version in the queue, and notifies the
+ * event's coordinator of the new status (Tracks Equipment Request Status AC2).
  */
 const reviewEquipmentRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -45,7 +47,7 @@ const reviewEquipmentRequest = asyncHandler(async (req, res) => {
 
   const input = req.body;
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).some(key => !['outcome', 'reason', 'requestVersion'].includes(key)) ||
+      Object.keys(input).some(key => !['outcome', 'reason', 'requestVersion', 'affectedItems'].includes(key)) ||
       !outcomes.has(input.outcome) || !Number.isInteger(input.requestVersion) ||
       input.requestVersion < 1 || input.requestVersion > 2147483647) {
     return res.status(400).json({ message: 'Choose a valid review outcome and request version.' });
@@ -59,15 +61,28 @@ const reviewEquipmentRequest = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'A reason is required when the request is not fully fulfillable.' });
   }
 
-  const review = await eventModel.createEquipmentReview(Number(id), {
-    outcome: input.outcome,
-    reason,
-    requestVersion: input.requestVersion,
-  }, req.user.id);
-  if (!review) {
+  // Affected items belong only to partial reviews (Tracks Equipment Request Status AC3); the service checks them
+  // against the exact request version.
+  if (input.outcome !== 'partially_fulfillable' && input.affectedItems !== undefined) {
+    return res.status(400).json({ message: 'Affected items can only be chosen for a partially fulfillable request.' });
+  }
+
+  let result;
+  try {
+    result = await equipmentStatusService.recordReview(Number(id), req.user.id, {
+      outcome: input.outcome, reason, requestVersion: input.requestVersion, affectedItems: input.affectedItems,
+    });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    throw error;
+  }
+  if (!result.review) {
     return res.status(409).json({ message: 'This request changed or is no longer pending. Refresh the request queue.' });
   }
-  return res.status(201).json({ review, message: 'Review saved.' });
+  return res.status(201).json({
+    review: result.review,
+    message: result.notifiedCoordinator ? 'Review saved. The Event Coordinator has been notified.' : 'Review saved.',
+  });
 });
 
 /** Lists the read-only seeded asset catalogue and its availability windows. */

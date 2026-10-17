@@ -1,0 +1,18 @@
+-- File: Tracks Equipment Request Status - the items a partial Technical Support review cannot fully provide, and the
+-- coordinator notification type for equipment status changes. Additive and idempotent: safe to re-run.
+-- Requires 005-technical-support-reviews.sql and 006-event-decisions.sql (notification types).
+BEGIN;
+-- AC3: [{ "key": "equipment:0", "availableQuantity": 2 }, ...] - keys identify items within the reviewed request version.
+ALTER TABLE event_equipment_reviews ADD COLUMN IF NOT EXISTS affected_items JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE event_equipment_reviews DROP CONSTRAINT IF EXISTS event_equipment_reviews_affected_items_rule;
+ALTER TABLE event_equipment_reviews ADD CONSTRAINT event_equipment_reviews_affected_items_rule CHECK (
+  jsonb_typeof(affected_items) = 'array'
+  AND (CASE WHEN outcome = 'partially_fulfillable' THEN jsonb_array_length(affected_items) >= 1
+            ELSE jsonb_array_length(affected_items) = 0 END));
+
+-- AC2: keeps every existing notification type and adds equipment status changes.
+ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN ('change_request_submitted',
+  'change_request_approved', 'change_request_rejected', 'event_details_changed',
+  'event_approved', 'event_rejected', 'safety_check_recorded', 'equipment_status_changed'));
+COMMIT;

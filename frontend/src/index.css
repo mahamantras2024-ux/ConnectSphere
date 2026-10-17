@@ -399,6 +399,8 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .decision-checklist { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .decision-checklist li { display: grid; grid-template-columns: minmax(150px, auto) auto 1fr; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
 .decision-checklist .decision-unmet { border-color: #f0c36d; background: #fffaf0; }
+/* Tracks Equipment Request Status: the items a partial review cannot fully provide (AC3). */
+.equipment-affected { margin: 0; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
 .status-approved { background: #e3efd9; color: #2f5a1f; }
 .status-changes_requested { background: #faeae7; color: #98453b; }
 /* Safety Officer queue. */

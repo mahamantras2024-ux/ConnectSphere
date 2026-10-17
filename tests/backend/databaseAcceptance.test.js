@@ -36,6 +36,8 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
     }
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     const app = require('../../backend/src/index');
     server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
@@ -177,6 +179,8 @@ test('Sprint 1 persists roles, venue buffers and personal registrations in real 
     mock.method(pool, 'query', (sql, values) =>
       // Handles this operation using the surrounding screen or request state.
       client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     const account = await provisionAccount({ email: 'multi@example.test', fullName: 'Test User', password: 'password123', roles: ['venue_staff', 'attendee', 'event_coordinator_lead', 'safety_officer'] });
     const other = await provisionAccount({ email: 'other@example.test', fullName: 'Other User', password: 'password123', roles: ['attendee'] });
     const app = require('../../backend/src/index'); server = app.listen(0, '127.0.0.1'); await new Promise(resolve =>
@@ -248,6 +252,9 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       'migrations/003-event-clarifications.sql',
       'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql',
       'migrations/005-change-request-review.sql',
+      // Same order as backend/src/db/migrateExternalEvents.js, so this schema matches production.
+      'migrations/005-technical-support-reviews.sql', 'migrations/006-event-decisions.sql',
+      'migrations/006-equipment-inventory-reservations.sql', 'migrations/007-equipment-stock-quantities.sql',
       'venueManagementSchema.sql'
     ]) {
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
@@ -258,6 +265,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
 
       // Handles this operation using the surrounding screen or request state.
       client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     const app = require('../../backend/src/index');
     await new Promise((resolve, reject) => {
       // Starts a local test HTTP server and resolves/rejects on startup.

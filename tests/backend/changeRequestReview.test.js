@@ -443,3 +443,36 @@ test('CR AC2 - an equipment change request notifies the assigned coordinator', a
   assert.deepEqual(send.mock.calls.map((call) => call.arguments), [['chris@example.com', title, message]]);
   assert.equal(result.body.changeRequest.coordinator_email, undefined);
 });
+
+// ---------- Integration with Tracks Equipment Request Status ----------
+
+// Test case: Approved equipment changes have not been reviewed, so the request returns to Technical Support as pending.
+test('ES AC1 - approving an equipment change clears the confirmation and starts a new request version for review', async () => {
+  mockAuth();
+  const equipmentRequest = { ...pendingRequest, requested_changes: { equipmentItems: [{ item: 'Projector', quantity: 2 }] } };
+  const tx = mockTransaction({ lockedRequest: equipmentRequest, bookings: [] });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+  assert.equal((await decide({ decision: 'approved' })).status, 200);
+  // The reset follows the applied change, in the same transaction, for this event only.
+  const updates = tx.find('UPDATE events SET');
+  assert.equal(updates.length, 2);
+  assert.match(updates[1].sql, /equipment_confirmed_at = NULL,\s+equipment_requirements_version = equipment_requirements_version \+ 1 WHERE id = \$1/);
+  assert.deepEqual(updates[1].values, [101]);
+  assert.equal(tx.statements.at(-1).sql, 'COMMIT');
+});
+// Test case: Changes that do not touch equipment leave its confirmed status alone.
+test('ES AC1 - approving a change without equipment fields leaves the equipment request unchanged', async () => {
+  mockAuth();
+  const tx = mockTransaction({ bookings: [] });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+  assert.equal((await decide({ decision: 'approved' })).status, 200);
+  assert.equal(tx.find('equipment_requirements_version').length, 0);
+});
+// Test case: Rejected equipment changes are not applied, so nothing is reset.
+test('ES AC1 - rejecting an equipment change leaves the equipment request unchanged', async () => {
+  mockAuth();
+  const tx = mockTransaction({ lockedRequest: { ...pendingRequest, requested_changes: { technicalSupportRequired: true } }, bookings: [] });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+  assert.equal((await decide({ decision: 'rejected', reason: 'Not needed' })).status, 200);
+  assert.equal(tx.find('UPDATE events SET').length, 0);
+});
