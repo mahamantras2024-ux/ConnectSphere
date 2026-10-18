@@ -1,4 +1,5 @@
 // File: Validates and normalises venue catalogue fields before persistence.
+const {validateEmergencyDocuments}=require('./venueEmergencyDocuments');
 // Rejects incomplete or malformed venue records and returns a normalised insert payload.
 function validateVenue(input = {}) {
   // Whitelists persisted fields so confirmation tokens and arbitrary client fields cannot affect hashes.
@@ -34,7 +35,7 @@ function validateVenue(input = {}) {
     if (input[field] != null && (typeof input[field] !== 'string' || input[field].length > 255)) throw new Error(`${field} must be text of at most 255 characters.`);
     data[field] = input[field]?.trim() || null;
   }
-  // Operational Feasibility Check AC1: optional safety facts for the Safety Officer; blank means "not recorded".
+  // SCRUM-98 AC1/AC2 / OFC AC1: optional narrative safety facts retain internal line breaks; trim only outer whitespace.
   for (const field of ['emergencyAccess', 'knownRestrictions']) {
     if (input[field] != null && (typeof input[field] !== 'string' || input[field].trim().length > 2000)) throw new Error(`${field} must be text of at most 2000 characters.`);
     data[field] = input[field]?.trim() || null;
@@ -48,6 +49,7 @@ function validateVenue(input = {}) {
   if (input.availabilityStatus != null && !['Available', 'Unavailable', 'Maintenance'].includes(input.availabilityStatus)) throw new Error('Choose a recognised availability status.');
   if (input.image != null && (typeof input.image !== 'string' || input.image.length > 7_000_000 ||
       !/^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|https?:\/\/[^\s]+)$/.test(input.image))) throw new Error('Choose a valid PNG, JPEG or WEBP image.');
+  data.emergencyDocuments=validateEmergencyDocuments(input.emergencyDocuments);
   return data;
 }
 module.exports = { validateVenue };

@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
 // Maps Sprint 1 stories and Sprint 2 venue/event stories to their regression suites.
 const stories = {
+  // Sprint 3 SCRUM-98 reuses the existing create/validation guards instead of duplicating persistence or authorization tests.
+  'venue-emergency-access': ['venueEmergencyAccess','createVenue-backend','venueValidation','venueEmergencyDocuments','venueManagement','migrateExternalEvents','operationalSafetyCheck'],
   // Sprint 1:
   'create-venue': ['createVenue-backend','venueValidation','createVenue','venueInteractions'],
   'view-venue': ['viewVenue-backend','venueInteractions','hourlyRate'],

@@ -19,7 +19,8 @@
     "seed:equipment-reservation-release": "node src/db/seedEquipmentReservationRelease.js",
     "test:venue-availability:integration": "RUN_VENUE_AVAILABILITY_DB=1 node --test ../tests/backend/venueAvailabilityPostgres.test.js",
     "provision:account": "node src/db/provisionAccount.js",
-    "test:integration": "node ../tests/run.cjs integration"
+    "test:integration": "node ../tests/run.cjs integration",
+    "migrate:venue-emergency-documents": "node src/db/migrateExternalEvents.js --venue-emergency-documents"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

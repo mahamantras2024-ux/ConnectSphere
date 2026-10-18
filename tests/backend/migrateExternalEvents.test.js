@@ -3,11 +3,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
-const { migrate } = require('../../backend/src/db/migrateExternalEvents');
+const { migrate, migrateVenueEmergencyDocuments } = require('../../backend/src/db/migrateExternalEvents');
 
 afterEach(() => mock.restoreAll());
 
-test('migration runner preserves cancellation and equipment-review migrations before appending repair history', async () => {
+test('SCRUM-98 upload AC - migration runner preserves cancellation and equipment-review migrations before appending repair history', async () => {
   // Arrange: replace only the PostgreSQL connection so calls are recorded without a database.
   const queries = [];
   const client = {
@@ -36,5 +36,24 @@ test('migration runner preserves cancellation and equipment-review migrations be
   assert.notEqual(repairHistoryIndex, -1, 'repair-history migration must run');
   assert.ok(cancellationIndex < equipmentReviewIndex, 'cancellation must precede equipment review');
   assert.ok(equipmentReviewIndex < repairHistoryIndex, 'repair history must be appended after equipment review');
-  assert.equal(repairHistoryIndex, queries.length - 1, 'repair history must be the final migration');
+  const documentsIndex=queries.indexOf(migrationSql('20261018021358_venue_emergency_information.sql'));
+  assert.ok(documentsIndex>repairHistoryIndex,'SCRUM-98 upload AC: append emergency documents without losing older migrations');
+  assert.equal(documentsIndex,queries.length-1);
+  assert.match(queries[documentsIndex],/ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
+  assert.match(queries[documentsIndex],/octet_length/);
+});
+
+// Upload AC: upgrading an existing venue catalogue must not replay unrelated seed/demo migrations.
+test('SCRUM-98 upload AC - document-only migration runs exactly one upgrade and releases the connection',async()=>{
+  const queries=[];let released=false;
+  mock.method(pool,'connect',async()=>({query:async sql=>{queries.push(sql);},release:()=>{released=true;}}));
+  await migrateVenueEmergencyDocuments();
+  assert.equal(queries.length,1);assert.match(queries[0],/ADD COLUMN IF NOT EXISTS emergency_documents/);
+  assert.doesNotMatch(queries[0],/INSERT INTO equipment/);assert.equal(released,true);
+});
+test('SCRUM-98 upload AC - migration failures roll back and release the connection',async()=>{
+  const queries=[];let released=false;
+  mock.method(pool,'connect',async()=>({query:async sql=>{queries.push(sql);if(sql!=='ROLLBACK')throw new Error('Migration failed');},release:()=>{released=true;}}));
+  await assert.rejects(migrateVenueEmergencyDocuments(),/Migration failed/);
+  assert.equal(queries.at(-1),'ROLLBACK');assert.equal(released,true);
 });
