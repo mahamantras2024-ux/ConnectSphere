@@ -3,11 +3,33 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
-const { migrate, migrateVenueEmergencyDocuments } = require('../../backend/src/db/migrateExternalEvents');
+const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration } = require('../../backend/src/db/migrateExternalEvents');
 
 afterEach(() => mock.restoreAll());
 
-test('SCRUM-98 upload AC - migration runner preserves existing migrations before appending venue documents', async () => {
+test('Register AC3 - standalone upgrade applies only the registration schema and releases its connection', async () => {
+  // Arrange: the PostgreSQL boundary records exactly which schema upgrade would run.
+  const queries = []; let released = false;
+  mock.method(pool, 'connect', async () => ({ query: async sql => { queries.push(sql); }, release: () => { released = true; } }));
+  // Act
+  await migrateAttendeeRegistration();
+  // Assert: upgrading registration never seeds or replays equipment migrations.
+  assert.equal(queries.length, 1);
+  assert.match(queries[0], /ADD COLUMN IF NOT EXISTS registration_deadline/);
+  assert.doesNotMatch(queries[0], /INSERT INTO/);
+  assert.equal(released, true);
+});
+test('Register AC3 - a registration migration failure rolls back and releases its connection', async () => {
+  const queries = []; let released = false;
+  mock.method(pool, 'connect', async () => ({ query: async sql => {
+    queries.push(sql); if (sql !== 'ROLLBACK') throw new Error('Upgrade unavailable');
+  }, release: () => { released = true; } }));
+  await assert.rejects(migrateAttendeeRegistration(), /Upgrade unavailable/);
+  assert.equal(queries.at(-1), 'ROLLBACK');
+  assert.equal(released, true);
+});
+
+test('SCRUM-98 upload AC / Register AC3 - migration runner preserves existing upgrades before appending registration', async () => {
   // Arrange: replace only the PostgreSQL connection so calls are recorded without a database.
   const queries = [];
   const client = {
@@ -32,7 +54,7 @@ test('SCRUM-98 upload AC - migration runner preserves existing migrations before
   const reservationUnavailabilityIndex = queries.indexOf(migrationSql('014-equipment-reservation-unavailability.sql'));
   const documentsIndex = queries.indexOf(migrationSql('20261018021358_venue_emergency_information.sql'));
 
-  // Assert: the feature migrations retain their order and the new document upgrade remains last.
+  // Assert: the feature migrations retain their order and registration follows the existing document upgrade.
   assert.notEqual(cancellationIndex, -1, 'cancellation migration must run');
   assert.notEqual(equipmentReviewIndex, -1, 'equipment-review migration must run');
   assert.notEqual(repairHistoryIndex, -1, 'repair-history migration must run');
@@ -42,7 +64,10 @@ test('SCRUM-98 upload AC - migration runner preserves existing migrations before
   assert.ok(equipmentReviewIndex < repairHistoryIndex, 'repair history must follow equipment review');
   assert.ok(repairHistoryIndex < reservationUnavailabilityIndex, 'reservation issues must follow repair history');
   assert.ok(reservationUnavailabilityIndex < documentsIndex, 'venue documents must follow reservation issues');
-  assert.equal(documentsIndex, queries.length - 1, 'venue documents must be the final migration');
+  // Register AC3: both stories' upgrades must run before the new registration fields are appended.
+  const registrationIndex = queries.indexOf(migrationSql('015-attendee-registration.sql'));
+  assert.ok(documentsIndex < registrationIndex, 'registration must follow venue documents');
+  assert.equal(registrationIndex, queries.length - 1, 'registration must be the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import AttendeeRegistration from '../registrations/AttendeeRegistration';
 
 const publicStatusLabels = { confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
 const publicStatusClasses = { confirmed: 'status-confirmed', completed: 'status-completed', cancelled: 'status-cancelled' };
@@ -63,6 +64,8 @@ export default function AttendeeEventDetails() {
           <div><dt>Additional information</dt><dd>{attendeeInformation || 'No additional attendee information provided.'}</dd></div>
         </dl>
       </section>
+      {/* Registration is an explicit event requirement; attending an open event must not imply signing up. */}
+      {event.registration_required === true && <AttendeeRegistration key={id} eventId={id} />}
     </main>
   );
 }

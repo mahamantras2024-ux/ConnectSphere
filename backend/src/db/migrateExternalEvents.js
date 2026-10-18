@@ -20,6 +20,13 @@ async function migrateVenueEmergencyDocuments() {
     client.release();
   }
 }
+/** Applies only registration fields/indexes; existing installations need not replay historical migrations. */
+async function migrateAttendeeRegistration() {
+  const client = await pool.connect();
+  try { await client.query(fs.readFileSync(path.join(__dirname, 'migrations/015-attendee-registration.sql'), 'utf8')); }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
 // Applies the additive migration on one connection, rolls back errors, and releases the connection.
 async function migrate() {
   const client = await pool.connect();
@@ -47,20 +54,20 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/012-equipment-repair-history.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/014-equipment-reservation-unavailability.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/20261018021358_venue_emergency_information.sql'), 'utf8'));
-    console.log('External event, equipment reservation and repair, venue safety, and emergency-document migrations are ready.');
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/015-attendee-registration.sql'), 'utf8'));
+    console.log('External event, equipment reservation and repair, venue safety, emergency-document and attendee-registration migrations are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally { client.release(); }
 }
 if (require.main === module) {
-  const operation = process.argv.includes('--venue-emergency-documents')
-    ? migrateVenueEmergencyDocuments
-    : migrate;
+  const operation = process.argv.includes('--attendee-registration') ? migrateAttendeeRegistration
+    : process.argv.includes('--venue-emergency-documents') ? migrateVenueEmergencyDocuments : migrate;
   operation().catch((error) => {
     // Reports an operation failure and sets a failing exit status when appropriate.
     console.error(error.message);
     process.exitCode = 1;
   }).finally(() => pool.end());
 }
-module.exports = { migrate, migrateVenueEmergencyDocuments };
+module.exports = { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration };
