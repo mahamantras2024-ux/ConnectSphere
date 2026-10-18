@@ -93,9 +93,11 @@ CREATE TABLE IF NOT EXISTS event_equipment_reservations (
   status VARCHAR(20) NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved', 'cancelled')),
   reserved_by INTEGER NOT NULL REFERENCES users(id),
   reserved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (end_time > start_time),
-  UNIQUE (event_id, request_version)
+  CHECK (end_time > start_time)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS event_equipment_reservations_active_event_request_version_key
+  ON event_equipment_reservations(event_id, request_version)
+  WHERE status = 'reserved';
 
 CREATE TABLE IF NOT EXISTS event_equipment_reservation_items (
   reservation_id INTEGER NOT NULL REFERENCES event_equipment_reservations(id) ON DELETE CASCADE,

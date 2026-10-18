@@ -129,12 +129,12 @@ it('ES AC1 - an event without equipment requests says none were requested', asyn
 
 // Panel states: loading, a failed load and an unusable response never break the event page.
 it('ES AC1 - the panel distinguishes loading, a failed load and an unusable response', async () => {
-  let release;
-  status = () => new Promise((resolve) => { release = resolve; });
+  let resolver;
+  status = () => new Promise((resolve) => { resolver = resolve; });
   open('/events/101');
   const section = await panel();
   expect(within(section).getByText('Loading equipment request status...')).toBeTruthy();
-  release(partialView);
+  resolver(partialView);
   expect(await within(section).findByText('Partially available', { selector: '.status-badge' })).toBeTruthy();
   cleanup();
   status = () => { throw new Error('Unable to load equipment status.'); };

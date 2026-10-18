@@ -136,6 +136,7 @@ const STYLES = `
 .er-table .er-cell-sub { display: block; color: var(--er-muted); font-size: .85rem; }
 .er-chip-list { display: grid; gap: 4px; }
 .er-chip { font-size: .85rem; }
+.er-release-action { white-space: nowrap; }
 
 @media (prefers-reduced-motion: no-preference) {
   .er-btn { transition: filter .15s; }
@@ -156,11 +157,85 @@ const formatTime = value => value?.slice(0, 5) || 'Not provided';
 const sentenceCase = value => String(value).replaceAll('_', ' ');
 const normaliseItemName = value => String(value).trim().toLocaleLowerCase();
 
+/**
+ * Merges API aliases into one equipment-type result and counts each available asset once.
+ */
+function groupAvailabilityItems(items) {
+  const canonicalNames = new Map();
+  for (const item of items) {
+    const itemName = item.availableAssets[0]?.name || item.canonicalItem || item.item;
+    const aliases = [item.item, ...(item.requestAliases || [])];
+    const hasCanonicalEvidence = Boolean(item.canonicalItem || item.availableAssets.length);
+    for (const alias of aliases) {
+      const key = normaliseItemName(alias);
+      if (hasCanonicalEvidence || !canonicalNames.has(key)) canonicalNames.set(key, itemName);
+    }
+    for (const asset of item.availableAssets) {
+      canonicalNames.set(normaliseItemName(asset.asset_code), itemName);
+      canonicalNames.set(normaliseItemName(asset.name), itemName);
+    }
+  }
+  const groupedItems = new Map();
+  for (const item of items) {
+    // The prepass always registers each row label and lets category evidence resolve matching asset codes.
+    const itemName = canonicalNames.get(normaliseItemName(item.item));
+    const key = normaliseItemName(itemName);
+    const group = groupedItems.get(key) || {
+      item: itemName,
+      requestedQuantitiesByAlias: new Map(),
+      requestAliases: new Set(),
+      assets: new Map(),
+    };
+    const alias = normaliseItemName(item.item);
+    group.requestedQuantitiesByAlias.set(
+      alias,
+      (group.requestedQuantitiesByAlias.get(alias) || 0) + item.requestedQuantity,
+    );
+    for (const alias of item.requestAliases || [item.item]) {
+      group.requestAliases.add(normaliseItemName(alias));
+    }
+    group.requestAliases.add(normaliseItemName(item.item));
+    for (const asset of item.availableAssets) {
+      group.assets.set(asset.id, asset);
+    }
+    groupedItems.set(key, group);
+  }
+  return [...groupedItems.values()].map(group => {
+    const availableAssets = [...group.assets.values()].filter(asset => Number(asset.available_quantity) > 0);
+    return {
+      item: group.item,
+      requestedQuantity: Math.max(...group.requestedQuantitiesByAlias.values()),
+      requestAliases: [...group.requestAliases],
+      availableAssets,
+      availableQuantity: availableAssets.reduce((total, asset) => total + Number(asset.available_quantity), 0),
+    };
+  });
+}
+
+/**
+ * Matches reviewed request labels to the canonical availability types, leaving staff-added rows optional.
+ */
+function canonicaliseRequestedItems(requestedItems, availabilityItems) {
+  const requestedByAlias = new Map();
+  for (const item of requestedItems) {
+    const alias = normaliseItemName(item.item);
+    requestedByAlias.set(alias, (requestedByAlias.get(alias) || 0) + (item.requestedQuantity ?? item.quantity));
+  }
+  const requestedByType = new Map();
+  for (const [alias, quantity] of requestedByAlias) {
+    const match = availabilityItems.find(item => item.requestAliases.includes(alias));
+    const type = normaliseItemName(match?.item || alias);
+    // Separate category and asset-code labels are aliases for one type-level requirement, not extra units.
+    requestedByType.set(type, Math.max(requestedByType.get(type) || 0, quantity));
+  }
+  return [...requestedByType].map(([item, requestedQuantity]) => ({ item, requestedQuantity }));
+}
+
 function containsRequestedQuantities(items, selectedSelections) {
   const requestedCounts = new Map();
   for (const item of items) {
     const key = normaliseItemName(item.item);
-    requestedCounts.set(key, (requestedCounts.get(key) || 0) + (item.requestedQuantity ?? item.quantity));
+    requestedCounts.set(key, item.requestedQuantity);
   }
   const selectedCounts = new Map();
   for (const { asset, quantity } of selectedSelections) {
@@ -210,10 +285,14 @@ function ReservationCandidate({ request, token, onReserved }) {
       const data = enteredItems.length
         ? await api.post(path, { additionalItems: enteredItems }, token)
         : await api.get(path, token);
-      setAvailability(data.availability);
+      const checkedAvailability = {
+        ...data.availability,
+        items: groupAvailabilityItems(data.availability.items),
+      };
+      setAvailability(checkedAvailability);
       const defaults = {};
       if (request.review_outcome === 'fully_fulfillable') {
-        for (const item of data.availability.items) {
+        for (const item of checkedAvailability.items) {
           let remaining = item.requestedQuantity;
           for (const asset of item.availableAssets) {
             const quantity = Math.min(remaining, asset.available_quantity);
@@ -257,7 +336,8 @@ function ReservationCandidate({ request, token, onReserved }) {
     const selectedSelections = availability.items.flatMap(item => item.availableAssets)
       .map(asset => ({ asset, quantity: Number(selectedQuantities[asset.id]) || 0 }))
       .filter(selection => selection.quantity > 0);
-    const fulfillsAllRequests = containsRequestedQuantities(request.equipment_items || [], selectedSelections);
+    const requiredItems = canonicaliseRequestedItems(request.equipment_items || [], availability.items);
+    const fulfillsAllRequests = containsRequestedQuantities(requiredItems, selectedSelections);
     if (request.review_outcome === 'fully_fulfillable' && !fulfillsAllRequests) {
       setError('A fully fulfillable request requires every requested unit to be selected.');
       return;
@@ -295,7 +375,10 @@ function ReservationCandidate({ request, token, onReserved }) {
       .filter(selection => selection.quantity > 0)
     : [];
   const meetsFullRequest = availability &&
-    containsRequestedQuantities(request.equipment_items || [], selectedSelections);
+    containsRequestedQuantities(
+      canonicaliseRequestedItems(request.equipment_items || [], availability.items),
+      selectedSelections,
+    );
   const canReserve = selectedSelections.length > 0 &&
     (request.review_outcome !== 'fully_fulfillable' || meetsFullRequest);
   const totalSelected = selectedSelections.reduce((sum, { quantity }) => sum + quantity, 0);
@@ -462,8 +545,24 @@ function ReservationCandidate({ request, token, onReserved }) {
  * Presents reviewed requests awaiting asset allocation and confirmed reservation audit details.
  */
 export default function EquipmentReservationSection({
-  requests, reservations, token, onReserved, error, onGoToReviews,
+  requests, reservations, token, onReserved, onRelease, error, onGoToReviews,
 }) {
+  const [releasingReservationId, setReleasingReservationId] = useState(null);
+  const [releaseError, setReleaseError] = useState('');
+
+  /** Prevents duplicate releases and keeps API failures visible beside the reservation list. */
+  async function releaseReservation(reservation) {
+    setReleasingReservationId(reservation.id);
+    setReleaseError('');
+    try {
+      await onRelease(reservation);
+    } catch (requestError) {
+      setReleaseError(requestError.message || 'Unable to release this equipment reservation.');
+    } finally {
+      setReleasingReservationId(null);
+    }
+  }
+
   return (
     <div className="er-root">
       <style>{STYLES}</style>
@@ -489,6 +588,7 @@ export default function EquipmentReservationSection({
       <section className="er-section" aria-labelledby="confirmed-reservations-heading">
         <h2 className="er-section-title" id="confirmed-reservations-heading">Equipment Reservations</h2>
         {error && reservations.length === 0 && <p className="er-error">Reservations could not be loaded.</p>}
+        {releaseError && <p className="er-error" role="alert">{releaseError}</p>}
         {reservations.length === 0 ? <p className="er-section-hint">No upcoming equipment reservations.</p> : (
           <div className="er-table-wrap">
             <table className="er-table">
@@ -498,7 +598,9 @@ export default function EquipmentReservationSection({
                   <th scope="col">Date and time</th>
                   <th scope="col">Venue</th>
                   <th scope="col">Equipment</th>
+                  <th scope="col">Reservation status</th>
                   <th scope="col">Reserved at</th>
+                  <th scope="col">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -517,7 +619,38 @@ export default function EquipmentReservationSection({
                         ))}
                       </div>
                     </td>
+                    <td>
+                      {reservation.status === 'cancelled'
+                        ? reservation.released_by_name && reservation.released_at ? 'Released' : 'Cancelled'
+                        : 'Reserved'}
+                      {reservation.status === 'cancelled' && reservation.released_by_name && reservation.released_at && (
+                        <span className="er-cell-sub">
+                          Released by {reservation.released_by_name} on {new Date(reservation.released_at).toLocaleString()}
+                        </span>
+                      )}
+                      {reservation.status === 'reserved' && (
+                        <span className="er-cell-sub">
+                          Event {reservation.event_schedule_changed
+                            ? 'postponed or rescheduled'
+                            : sentenceCase(reservation.event_status)}
+                        </span>
+                      )}
+                    </td>
                     <td>{new Date(reservation.reserved_at).toLocaleString()}</td>
+                    <td>
+                      {reservation.status === 'reserved' &&
+                        (reservation.event_status === 'cancelled' || reservation.event_schedule_changed) && (
+                        <button
+                          type="button"
+                          className="er-btn er-btn--quiet er-release-action"
+                          aria-label={`Release reservation for ${reservation.event_name}`}
+                          onClick={() => releaseReservation(reservation)}
+                          disabled={releasingReservationId !== null}
+                        >
+                          {releasingReservationId === reservation.id ? 'Releasing…' : 'Release'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

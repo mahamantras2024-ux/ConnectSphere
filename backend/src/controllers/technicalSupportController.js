@@ -124,9 +124,27 @@ const repairEquipment = asyncHandler(async (req, res) => {
 const listEquipmentReservations = asyncHandler(async (req, res) => {
   const [requests, reservations] = await Promise.all([
     eventModel.listEquipmentReservationCandidates(),
-    eventModel.listActiveEquipmentReservations(req.user.id),
+    eventModel.listActiveEquipmentReservations(),
   ]);
   return res.status(200).json({ requests, reservations });
+});
+
+/**
+ * Releases one active reservation and returns the staff/time audit written by the database.
+ */
+const releaseEquipmentReservation = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) > 2147483647) {
+    return res.status(400).json({ message: 'Choose a valid equipment reservation.' });
+  }
+
+  const reservation = await eventModel.releaseEquipmentReservation(Number(id), req.user.id);
+  if (!reservation) {
+    return res.status(409).json({
+      message: 'This equipment reservation is not releasable or is no longer active. Refresh the reservation list.',
+    });
+  }
+  return res.status(200).json({ reservation, message: 'Equipment reservation released.' });
 });
 
 /**
@@ -179,6 +197,7 @@ module.exports = {
   listEquipmentInventory,
   repairEquipment,
   listEquipmentReservations,
+  releaseEquipmentReservation,
   checkEquipmentAvailability,
   reserveEquipment,
 };
