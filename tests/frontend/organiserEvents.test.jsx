@@ -128,14 +128,16 @@ it('SCRUM-90 AC4 AC5 - organiser cancellation updates the event status on the de
   expect(api.post).toHaveBeenCalledWith('/events/101/cancel', {}, 'organiser-token');
 });
 
-// Test case: Opens an assigned event through the coordinator dashboard and checks every submitted requirement in its drawer.
-it('assigned coordinator opens dashboard events and sees every submitted requirement',async()=>{
+// Test case: Opens an assigned event through the coordinator dashboard and checks every submitted requirement on its full page.
+it('Coordinator AC1 / Workspace AC1 - assigned coordinator opens dashboard events and sees every submitted requirement',async()=>{
   // Verifies the coordinator's own navigation and complete record rather than relying on organiser rendering alone.
   user={...user,role:'event_coordinator'};open('/coordinator/dashboard');
   expect(await screen.findByRole('heading',{name:'Event Coordinator Dashboard'})).toBeTruthy();fireEvent.click(await screen.findByRole('link',{name:'View details'}));
   expect(await screen.findByRole('heading',{name:event.name})).toBeTruthy();
-  for(const value of [event.purpose,'15/10/2026','09:00:00','12:00:00','40',event.programme_details,event.room_layout_preference,'Wheelchair access, Hearing loop',event.equipment_notes,'Yes','35',event.special_arrangements])expect(screen.getAllByText(value).length).toBeGreaterThan(0);
-  expect(screen.getByRole('dialog', {name:'Event details'})).toBeTruthy();expect(api.get).toHaveBeenCalledWith('/events/101','organiser-token');
+  for(const value of [event.purpose,'15/10/2026','09:00:00','12:00:00','40',event.programme_details,event.room_layout_preference,'Wheelchair access, Hearing loop','Yes','35',event.special_arrangements])expect(screen.getAllByText(value).some(node => !node.closest('[hidden]'))).toBe(true);
+  fireEvent.click(screen.getByRole('tab', {name:'Equipment'}));
+  expect(screen.getByText(event.equipment_notes).closest('[hidden]')).toBeNull();
+  expect(screen.queryByRole('dialog', {name:'Event details'})).toBeNull();expect(api.get).toHaveBeenCalledWith('/events/101','organiser-token');
 });
 
 it('SCRUM-45 AC1 AC2 AC3 / SCRUM-61 AC3 AC4 - assigned coordinator submits a request and immediately sees its status', async () => {
@@ -146,10 +148,13 @@ it('SCRUM-45 AC1 AC2 AC3 / SCRUM-61 AC3 AC4 - assigned coordinator submits a req
   // The history response changes only after the server accepts the request; a missing refresh leaves it empty.
   api.get.mockImplementation(async path => path === '/events/101/venue-bookings'
     ? { bookings: submitted ? [{ id: 21, venue_name: 'Hall North', status: 'pending' }] : [] }
-    : originalGet(path));
+    : path.startsWith('/venues/search?') ? [{ id: 7, name: 'Hall North' }] : originalGet(path));
   api.post.mockImplementation(async () => { submitted = true; return { request: { id: 21 } }; });
   open('/events/101');
   await screen.findByRole('heading', { name: event.name });
+  fireEvent.click(screen.getByRole('tab', { name: 'Venue requests' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Find a venue' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Request Hall North' }));
   expect(await screen.findByLabelText('Venue')).toBeTruthy();
 
   // Act: submit the prefilled event date and time to the coordinator's selected venue.
@@ -157,6 +162,7 @@ it('SCRUM-45 AC1 AC2 AC3 / SCRUM-61 AC3 AC4 - assigned coordinator submits a req
 
   // Assert: the request section is reachable from event details and sends the correct event, venue and period.
   expect(await screen.findByText('Venue request submitted.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('link', { name: 'View event requests' }));
   expect(await screen.findByRole('listitem', { name: 'Hall North Pending' })).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/venues/7/requests', expect.objectContaining({
     eventId: 101,
@@ -188,7 +194,7 @@ it('Organiser AC1 / UI navigation AC1 - the single My Events tab opens the works
   expect(screen.getByRole('button', { name: 'Edit Programme' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Edit Event name' })).toBeTruthy();
   expect(screen.queryByRole('textbox', { name: 'Edit Programme' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Back to list' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
 
@@ -224,7 +230,7 @@ it('AC1/AC2/AC3/AC5 - coordinator sends a field-specific clarification and event
   const clarificationRequest = { id: 601, information_needed: ['expected_attendance'], message: 'Please confirm the expected count.', status: 'pending' };
   api.post.mockResolvedValue({ clarificationRequest, message: 'Clarification request sent to the Event Organiser.' });
   open('/events/101');
-  await screen.findByRole('heading', { name: event.name });
+  await screen.findByRole('heading', { name: event.name });fireEvent.click(screen.getByRole('tab',{name:'Activity'}));
   fireEvent.click(screen.getByLabelText('Expected attendance'));
   fireEvent.change(screen.getByLabelText('What needs clarification?'), { target: { value: clarificationRequest.message } });
   fireEvent.click(screen.getByRole('button', { name: 'Send clarification request' }));
@@ -300,11 +306,11 @@ it('renders event text as text rather than executable markup', async () => {
   expect(screen.queryByRole('img')).toBeNull();
 });
 // Test case: Opens the coordinator detail URL and checks its fields and Back to Events destination.
-it('existing coordinator event-detail route still displays event information', async () => {
+it('Coordinator AC1 / Workspace AC1 - existing coordinator event-detail route still displays event information', async () => {
 
   user.role = 'event_coordinator'; open('/events/101');
   expect(await screen.findByRole('heading', { name: event.name })).toBeTruthy();
-  expect(screen.getByRole('link', { name: 'Back to Events' }).getAttribute('href')).toBe('/events');
+  expect(screen.getByRole('link', { name: 'Back to Assigned Events' }).getAttribute('href')).toBe('/coordinator/dashboard');
 });
 // Test case: Fills event requirements and checks submitted payload and navigation to the saved record.
 it('Workflow AC2 AC4 - event request form confirms all fields and navigates after success', async () => {
@@ -453,7 +459,7 @@ it('Event AC2 - slow saves prevent duplicate writes and surface a useful generic
 it('Clarification AC1 AC5 - validates selection prevents duplicates and reports failed sending',async()=>{
   user={...user,role:'event_coordinator'};
   let reject;api.post.mockImplementation(()=>new Promise((resolve,failure)=>{reject=failure;}));
-  open('/events/101');await screen.findByRole('heading',{name:event.name});
+  open('/events/101');await screen.findByRole('heading',{name:event.name});fireEvent.click(screen.getByRole('tab',{name:'Activity'}));
   const form=screen.getByRole('button',{name:'Send clarification request'}).closest('form');
   fireEvent.submit(form);expect(api.post).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText('Expected attendance'));fireEvent.click(screen.getByLabelText('Expected attendance'));
@@ -520,7 +526,7 @@ it('Clarification AC1 AC5 - coordinator adds a question alongside existing reque
   const old={id:601,information_needed:['purpose'],message:'Old question',status:'responded',organiser_response:'Answered'};
   api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{event:{...event,clarification_requests:[old]}});
   api.post.mockResolvedValue({clarificationRequest:{id:602,information_needed:['expected_attendance'],message:'New question',status:'pending'},message:'Sent'});
-  open('/events/101');await screen.findByRole('heading',{name:event.name});
+  open('/events/101');await screen.findByRole('heading',{name:event.name});fireEvent.click(screen.getByRole('tab',{name:'Activity'}));
   fireEvent.click(screen.getByLabelText('Expected attendance'));fireEvent.change(screen.getByLabelText('What needs clarification?'),{target:{value:'New question'}});
   fireEvent.click(screen.getByRole('button',{name:'Send clarification request'}));
   expect(await screen.findByText('New question')).toBeTruthy();expect(screen.getByText('Old question')).toBeTruthy();expect(screen.getByText('Answered')).toBeTruthy();
@@ -536,22 +542,22 @@ it('Organiser view AC4 - defensive API input with absent required name stays uns
 it('Clarification AC1 - first request initializes absent history',async()=>{
   user={...user,role:'event_coordinator'};
   api.post.mockResolvedValue({clarificationRequest:{id:601,information_needed:['purpose'],message:'First question',status:'pending'},message:'Sent'});
-  open('/events/101');await screen.findByRole('heading',{name:event.name});
+  open('/events/101');await screen.findByRole('heading',{name:event.name});fireEvent.click(screen.getByRole('tab',{name:'Activity'}));
   fireEvent.click(screen.getByLabelText('Purpose'));fireEvent.change(screen.getByLabelText('What needs clarification?'),{target:{value:'First question'}});
   fireEvent.click(screen.getByRole('button',{name:'Send clarification request'}));
   expect(await screen.findByText('First question')).toBeTruthy();
 });
 
-// Lead AC2/AC6: review uses the existing accessible detail drawer and closing returns to the lead queue.
-it('Lead AC2 AC6 - reviews a request in the existing drawer and returns to queue',async()=>{
+// Lead AC2/AC6: full-page review retains read-only details and Back returns to the lead queue.
+it('Lead AC2 AC6 - reviews a request on the full page and returns to queue',async()=>{
   user={...user,role:'event_coordinator_lead'};
   api.get.mockImplementation(async path=>path==='/auth/me'?{user}:path==='/events/assignments'?{events:[{...event,coordinator_id:null}],coordinators:[]}:{event});
   open('/coordinator-lead/dashboard');await screen.findByRole('link',{name:'View details'});
   fireEvent.click(screen.getByRole('link',{name:'View details'}));
-  expect(await screen.findByRole('dialog',{name:'Event details'})).toBeTruthy();
+  expect(screen.queryByRole('dialog',{name:'Event details'})).toBeNull();
   expect(await screen.findByRole('heading',{name:event.name})).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Edit Purpose'})).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'Close dialog'}));
+  fireEvent.click(screen.getByRole('link',{name:'Back to Events'}));
   expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
   expect(screen.queryByRole('dialog')).toBeNull();
 });

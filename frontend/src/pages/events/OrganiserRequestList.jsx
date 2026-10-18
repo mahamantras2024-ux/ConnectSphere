@@ -59,7 +59,7 @@ export default function OrganiserRequestList({ events, onChange, token }) {
             {event.clarification_outstanding && <span className="status-badge status-clarification_outstanding">Clarification outstanding</span>}
           </div>
           <div className="request-row-actions">
-            <Link className="button-link button-secondary" state={{ backgroundLocation: location }} to={`/organizer/events/${event.id}`}>View details</Link>
+            <Link className="button-link button-secondary" state={{ returnTo: location.pathname }} to={`/organizer/events/${event.id}`}>View details</Link>
             {isDraft(event) && <>
               <button disabled={busy} className="button-secondary" onClick={() => review(event, 'submit')}>Submit draft</button>
               <button disabled={busy} className="button-secondary" onClick={() => review(event, 'delete')}>Delete draft</button>

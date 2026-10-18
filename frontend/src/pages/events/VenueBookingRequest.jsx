@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 
 /** Lets the assigned coordinator request one venue period and revise the choices after an availability conflict. */
-export default function VenueBookingRequest({ event, token, onSubmitted }) {
+export default function VenueBookingRequest({ event, token, onSubmitted, initialVenueId }) {
   const [venues, setVenues] = useState([]);
   const [venueId, setVenueId] = useState('');
   const [date, setDate] = useState(event.proposed_date || '');
@@ -14,7 +14,7 @@ export default function VenueBookingRequest({ event, token, onSubmitted }) {
   const [capacity, setCapacity] = useState(event.expected_attendance || '');
   const [layout, setLayout] = useState(event.room_layout_preference || '');
   const [accessibility, setAccessibility] = useState((event.accessibility_requirements || []).join(', '));
-  const [facilities, setFacilities] = useState('');
+  const [facilities, setFacilities] = useState((event.required_facilities || []).join(', '));
   const [cancelOtherPending, setCancelOtherPending] = useState(false);
 
   useEffect(() => {
@@ -23,7 +23,10 @@ export default function VenueBookingRequest({ event, token, onSubmitted }) {
       if (current) {
         const records = Array.isArray(result) ? result : result.venues || [];
         setVenues(records);
-        setVenueId(records[0] ? String(records[0].id) : '');
+        // A chosen catalogue venue must never silently fall back to a different space after refresh/deactivation.
+        const initial = initialVenueId ? records.find(record => String(record.id) === initialVenueId) : records[0];
+        setVenueId(initial ? String(initial.id) : '');
+        if (initialVenueId && !initial) setFeedback({ kind: 'error', message: 'This venue is no longer available. Choose another venue.' });
       }
     }).catch(error => {
       if (current) setFeedback({ kind: 'error', message: error.message || 'Unable to load venues.' });
@@ -31,7 +34,7 @@ export default function VenueBookingRequest({ event, token, onSubmitted }) {
       if (current) setLoading(false);
     });
     return () => { current = false; };
-  }, [token]);
+  }, [token, initialVenueId]);
 
   /** Submits the current controlled values so a retry uses the coordinator's latest venue and period. */
   async function submit(eventAction) {
@@ -63,6 +66,7 @@ export default function VenueBookingRequest({ event, token, onSubmitted }) {
     }
   }
 
+  /** Clears obsolete feedback when the coordinator revises a request before retrying. */
   function update(setter) {
     return change => {
       setter(change.target.value);
@@ -76,6 +80,7 @@ export default function VenueBookingRequest({ event, token, onSubmitted }) {
     {loading ? <p role="status">Loading venues…</p> : venues.length === 0 ? <p>No active venues are available to request.</p> : <form onSubmit={submit}>
       <label>Venue
         <select required value={venueId} onChange={update(setVenueId)}>
+          {!venueId && <option value="">Choose an active venue</option>}
           {venues.map(venue => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
         </select>
       </label>

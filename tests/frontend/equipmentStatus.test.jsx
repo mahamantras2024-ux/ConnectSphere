@@ -36,7 +36,8 @@ function open(path) {
   localStorage.setItem('cs_token', 'session-token');
   render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><App /></AuthProvider></MemoryRouter>);
 }
-const panel = () => screen.findByRole('region', { name: 'Equipment request status' });
+// Navigate through the visible equipment tab before asserting the unchanged business rules.
+const panel = async () => { fireEvent.click(await screen.findByRole('tab', { name: 'Equipment' })); return screen.findByRole('region', { name: 'Equipment request status' }); };
 const itemRows = (section) => within(within(section).getByRole('list', { name: 'Requested equipment and technical support' })).getAllByRole('listitem')
   .map((row) => [row.querySelector('strong').textContent, row.querySelector('span').textContent, row.className]);
 

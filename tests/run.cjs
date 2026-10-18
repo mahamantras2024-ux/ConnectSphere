@@ -6,15 +6,12 @@ const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
 // Maps each implemented story to its shared and feature-specific regression suites.
 const stories = {
-<<<<<<< HEAD
   // Sprint 3: SCRUM-61 requirements, multiple requests, status history and opt-in cancellation policy.
-  'venue-booking-request': ['venueBookingRequestStory','venueBookingRequest','venueRequestRequirements','venueRequestLifecycle','venueBookingDecision','venueBookingRequestPostgres','venueBookingRequestMigration','organiserEvents'],
-=======
+  'venue-booking-request': ['venueDiscoveryWorkflow','venueBookingRequestStory','venueBookingRequest','venueRequestRequirements','venueRequestLifecycle','venueBookingDecision','venueBookingRequestPostgres','venueBookingRequestMigration','organiserEvents'],
   // Withdrawal includes promotion notifications and additive migration compatibility alongside the UI/API rules.
   'withdraw-registration': ['attendeeWithdrawal', 'attendeeWithdrawalPolicy', 'attendeeWithdrawalPostgres', 'notificationMigration', 'migrateExternalEvents', 'registrationModels'],
   // Sprint 3 SCRUM-98 reuses the existing create/validation guards instead of duplicating persistence or authorization tests.
   'venue-emergency-access': ['venueEmergencyAccess','createVenue-backend','venueValidation','venueEmergencyDocuments','venueManagement','migrateExternalEvents','operationalSafetyCheck'],
->>>>>>> origin/main
   // Sprint 1:
   'create-venue': ['createVenue-backend','venueValidation','createVenue','venueInteractions'],
   'view-venue': ['viewVenue-backend','venueInteractions','hourlyRate'],
@@ -26,7 +23,7 @@ const stories = {
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
   // SCRUM-39: one feature suite per layer, including the authenticated search endpoint.
-  'search-venues': ['venueSearch'],
+  'search-venues': ['venueSearch','venueDiscoveryWorkflow'],
   'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
   'delete-venue': ['venueManagement','venueInteractions'],
   // Lead workflow also retains owner/assignment and real-routing regressions.
