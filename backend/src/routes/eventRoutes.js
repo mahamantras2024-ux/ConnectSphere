@@ -3,11 +3,20 @@ const express = require('express');
 const router = express.Router();
 const eventController = require('../controllers/eventController');
 const eventReadController = require('../controllers/eventReadController');
+const attendeeEventController = require('../controllers/attendeeEventController');
+const eventRegistrationController = require('../controllers/eventRegistrationController');
+const eventCancellationController = require('../controllers/eventCancellationController');
 const technicalSupportController = require('../controllers/technicalSupportController');
+const technicalSupportAssignmentController = require('../controllers/technicalSupportAssignmentController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
+const venueBookingDecisions = require('../controllers/venueBookingDecisionController');
+const asyncHandler = require('../utils/asyncHandler');
 
 router.use(requireAuth);
+router.get('/technical-support-staff', requireRole('event_coordinator'), technicalSupportAssignmentController.listStaff);
+router.get('/on-site-support', requireRole('technical_support'), technicalSupportAssignmentController.listAssigned);
+router.put('/:id/technical-support-assignment', requireRole('event_coordinator'), technicalSupportAssignmentController.assign);
 const lead = require('../controllers/coordinatorLeadController');
 router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
 router.put('/:id/assignment', requireRole('event_coordinator_lead'), lead.assign);
@@ -21,14 +30,21 @@ router.put('/:id/non-critical', requireRole('event_organiser'), eventController.
 router.put('/:id/equipment', requireRole('event_organiser'), eventController.updateEquipmentRequirements);
 router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);
 router.post('/change-requests/:id/decision', requireRole('event_coordinator'), eventController.decideChangeRequest);
+router.get('/:id/venue-bookings', requireRole('event_coordinator'), venueBookingDecisions.listEventVenueBookings);
+router.get('/published', requireRole('attendee'), asyncHandler(attendeeEventController.listPublished));
+router.get('/published/:id', requireRole('attendee'), asyncHandler(attendeeEventController.getPublished));
+router.get('/:id/registrations', requireRole('event_organiser'), asyncHandler(eventRegistrationController.getEventRegistrations));
+router.post('/:id/cancel', requireRole('event_organiser', 'event_coordinator'), eventCancellationController.postCancellation);
 router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);
 router.post('/:id/clarifications/:clarificationId/respond', requireRole('event_organiser'), eventController.respondToClarification);
 
 router.get('/equipment-requests', requireRole('technical_support'), technicalSupportController.listEquipmentRequests);
 router.post('/:id/equipment-reviews', requireRole('technical_support'), technicalSupportController.reviewEquipmentRequest);
 router.get('/equipment-inventory', requireRole('technical_support'), technicalSupportController.listEquipmentInventory);
+router.put('/equipment-inventory/:id/repair', requireRole('technical_support'), technicalSupportController.repairEquipment);
 router.get('/equipment-reservations', requireRole('technical_support'), technicalSupportController.listEquipmentReservations);
 router.get('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
+router.post('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
 router.post('/:id/equipment-reservations', requireRole('technical_support'), technicalSupportController.reserveEquipment);
 
 router.get(

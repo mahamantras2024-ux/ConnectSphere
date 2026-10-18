@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
 const db = require('../config/db');
 const notificationService = require('../services/notificationService');
+const equipmentStatusService = require('../services/equipmentStatusService');
 const { decideChangeRequest } = require('../services/changeRequestDecisions');
 const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements, changeLines } = require('../services/changeRequestReview');
 const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
@@ -134,12 +135,13 @@ const updateEquipmentRequirements = asyncHandler(async (req, res) => {
   if (!current) return res.status(404).json({ message: 'Event not found.' });
 
   if (!current.equipment_confirmed) {
-    const event = await eventModel.updateEquipment(id, req.user.id, equipment.data);
+    // A reviewed request goes back to pending; the service tells the coordinator in the same transaction.
+    const saved = await equipmentStatusService.resubmitRequest(id, req.user.id, equipment.data);
     // No row means Technical Support confirmed the arrangements between the read above and this write.
-    if (!event) {
+    if (!saved.event) {
       return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'Equipment arrangements were confirmed while you were editing. Refresh the event and submit a change request.' });
     }
-    return res.json({ event, message: 'Equipment requirements saved.' });
+    return res.json({ event: saved.event, message: 'Equipment requirements saved.' });
   }
   if (!current.coordinator_id) {
     return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a change request.' });

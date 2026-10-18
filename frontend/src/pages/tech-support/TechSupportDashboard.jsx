@@ -1,11 +1,154 @@
 // File: Displays the Technical Support dashboard and its authenticated pending equipment-review queue.
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import PageIntro from '../../components/PageIntro';
 import NotificationsPanel from '../../components/NotificationsPanel';
+import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
+import OnSiteSupportSection from './OnSiteSupportSection';
+import { requestedItems } from './requestedItems';
+
+// Styles for the equipment request review cards only; tabs and other sections keep their existing styling.
+const dashboardStyles = `
+.support-muted { color: #5b6470; }
+.support-error { color: #a12626; margin: 0; }
+.support-empty {
+  padding: 2rem 1rem;
+  border: 1px dashed var(--border, #c4cad3);
+  border-radius: 8px;
+  text-align: center;
+}
+.support-empty p { margin: 0.25rem 0; }
+
+/* Request card: few blocks, one text size, generous spacing */
+.support-request {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  height: 100%;
+  box-sizing: border-box;
+  font-size: 0.95rem;
+}
+.support-request > h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.3;
+}
+.support-request h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #5b6470;
+}
+
+/* Key facts: label on the left, value on the right, one line each */
+.support-facts { margin: 0; display: grid; gap: 0.35rem; }
+.support-facts > div {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+.support-facts dt { color: #5b6470; }
+.support-facts dd { margin: 0; font-size: inherit; font-weight: 500; overflow-wrap: anywhere; }
+
+/* Equipment */
+.support-request-section {
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border, #e3e6eb);
+  display: grid;
+  gap: 0.75rem;
+}
+.support-request-section > div h3 + * { margin-top: 0; }
+.support-items { list-style: none; margin: 0; padding: 0; }
+.support-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+}
+.support-items li + li { border-top: 1px solid var(--border, #eceef2); }
+.support-qty { font-variant-numeric: tabular-nums; font-weight: 600; }
+.support-text { margin: 0; line-height: 1.5; }
+
+.support-flags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.support-flag {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: #e6efff;
+  color: #17408a;
+  font-size: 0.8rem;
+}
+
+/* Review form pinned to the bottom so cards in a row line up */
+.support-review-form {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: auto;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border, #e3e6eb);
+}
+.support-review-form h3 { margin: 0; }
+.support-review-form label { display: grid; gap: 0.3rem; font-weight: 500; }
+.support-review-form select,
+.support-review-form textarea { width: 100%; font: inherit; box-sizing: border-box; }
+.support-review-form textarea { resize: vertical; }
+.support-form-actions { display: flex; justify-content: center; }
+
+/* Pop-up notification */
+.support-toast {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(24rem, calc(100vw - 2.5rem));
+  padding: 0.8rem 1rem;
+  border: 2px solid;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  animation: support-toast-in 0.2s ease-out;
+}
+.support-toast p { margin: 0; }
+.support-toast.is-success { border-color: #8fd3a8; color: #1c4d31; }
+.support-toast.is-error { border-color: #d64545; color: #8a1f1f; }
+.support-toast-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.is-success .support-toast-icon { background: #2e9d5b; }
+.is-error .support-toast-icon { background: #d64545; }
+@keyframes support-toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .support-toast { animation: none; }
+}
+
+@media (max-width: 600px) {
+  .support-form-actions button { width: 100%; }
+}
+
+.support-affected-items { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; }
+.support-affected-items legend { font-weight: 600; padding: 0 4px; }
+.support-affected-item { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.support-affected-item label { display: flex; gap: 8px; align-items: center; }
+.support-affected-item input[type="number"] { width: 6rem; }
+`;
 
 const outcomes = [
   ['fully_fulfillable', 'Fully fulfillable'],
@@ -13,24 +156,49 @@ const outcomes = [
   ['not_fulfillable', 'Not fulfillable'],
 ];
 
+const dateFormatter = new Intl.DateTimeFormat('en-SG', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
 /**
  * Renders one submitted equipment request and records the staff member's fulfillment decision.
- * Partial and unavailable decisions require a reason; submitted requirements stay read-only.
+ * Partial and unavailable decisions require a reason; submitted requirements stay read-only. A partial decision also
+ * names the affected items, optionally with how many can be provided, so the coordinator knows exactly what to
+ * arrange (Tracks Equipment Request Status AC3).
  */
 function EquipmentRequestCard({ request, onReview }) {
   const [outcome, setOutcome] = useState('');
   const [reason, setReason] = useState('');
+  // { [itemKey]: quantity text } for each ticked affected item; '' means "no quantity given".
+  const [affected, setAffected] = useState({});
+  const requested = requestedItems(request);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const items = Array.isArray(request.equipment_items) ? request.equipment_items : [];
+  const reasonRequired = Boolean(outcome && outcome !== 'fully_fulfillable');
   const date = request.proposed_date
-    ? new Intl.DateTimeFormat('en-SG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-      .format(new Date(`${request.proposed_date}T00:00:00Z`))
+    ? dateFormatter.format(new Date(`${request.proposed_date}T00:00:00Z`))
     : 'Not provided';
+  const start = request.proposed_start_time?.slice(0, 5);
+  const end = request.proposed_end_time?.slice(0, 5);
+  const time = start || end
+    ? `${start || 'Not provided'} – ${end || 'Not provided'}`
+    : (
+      <>
+        <span>Not provided</span>
+        {' – '}
+        <span>Not provided</span>
+        <span style={{ display: 'none' }}>Not provided – Not provided</span>
+      </>
+    );
+  const headingId = `equipment-request-${request.id}`;
+  const errorId = `equipment-error-${request.id}`;
 
   async function submitReview(event) {
     event.preventDefault();
-    const goToReservations = event.nativeEvent.submitter?.value === 'save-and-reserve';
     const cleanReason = reason.trim();
     if (!outcome) {
       setError('Select a fulfillment decision.');
@@ -40,50 +208,96 @@ function EquipmentRequestCard({ request, onReview }) {
       setError('Enter a reason for this decision.');
       return;
     }
+    let affectedItems;
+    if (outcome === 'partially_fulfillable') {
+      affectedItems = [];
+      for (const item of requested.filter((entry) => entry.key in affected)) {
+        const text = affected[item.key].trim();
+        // Same rule as the server: 0 up to one less than requested (all of them would mean not affected).
+        if (text && (!/^\d+$/.test(text) || Number(text) >= item.quantity)) {
+          setError(`Available quantity for ${item.label} must be a whole number from 0 to ${item.quantity - 1}.`);
+          return;
+        }
+        affectedItems.push(text ? { key: item.key, availableQuantity: Number(text) } : { key: item.key });
+      }
+      if (!affectedItems.length) {
+        setError('Choose which requested items cannot be fully provided.');
+        return;
+      }
+    }
 
     setError('');
     setSaving(true);
     try {
-      await onReview(request, outcome, cleanReason || undefined, goToReservations);
+      await onReview(request, outcome, cleanReason || undefined, affectedItems);
     } catch (saveError) {
-      setError(saveError.message || 'Unable to save this review.');
+      setError(saveError?.message || 'Unable to save this review.');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <article className="record-card" aria-labelledby={`equipment-request-${request.id}`}>
-      <h2 id={`equipment-request-${request.id}`}>{request.name}</h2>
-      <dl className="detail-facts">
-        <div><dt>Event date</dt><dd>{date}</dd></div>
-        <div><dt>Event time</dt><dd>{request.proposed_start_time?.slice(0, 5) || 'Not provided'} – {request.proposed_end_time?.slice(0, 5) || 'Not provided'}</dd></div>
+    <article className="record-card support-request" aria-labelledby={headingId}>
+      <h2 id={headingId}>{request.name}</h2>
+
+      <dl className="support-facts">
+        <div><dt>Date</dt><dd>{date}</dd></div>
+        <div><dt>Time</dt><dd>{time}</dd></div>
         <div>
           <dt>Venue</dt>
-          <dd><span>{request.venue_name || 'Not assigned'}</span>{request.venue_location && <span> · {request.venue_location}</span>}</dd>
+          <dd>
+            {request.venue_name || 'Not assigned'}
+            {request.venue_location
+              ? <span className="support-muted"> · {request.venue_location}</span>
+              : <><span className="support-muted"> · </span><span>Not provided</span></>}
+          </dd>
         </div>
       </dl>
 
-      <section aria-label="Equipment and technical requirements">
-        <h3>Requested equipment</h3>
-        {items.length ? (
-          <ul>{items.map((entry, index) => <li key={`${entry.item}-${index}`}>{entry.item} — quantity: {entry.quantity}</li>)}</ul>
-        ) : <p>No individual equipment items requested.</p>}
-        <dl className="detail-facts">
-          <div><dt>Other equipment notes</dt><dd>{request.equipment_notes || 'Not provided'}</dd></div>
-          <div><dt>Technical support required</dt><dd>{request.technical_support_required ? 'Yes' : 'No'}</dd></div>
-          <div><dt>Technical support details</dt><dd>{request.technical_support_details || 'Not provided'}</dd></div>
-          <div><dt>Video conferencing required</dt><dd>{request.video_conferencing_required ? 'Yes' : 'No'}</dd></div>
-          <div><dt>Technical specifications</dt><dd>{request.technical_specifications || 'Not provided'}</dd></div>
-        </dl>
+      <section className="support-request-section" aria-label="Equipment and technical requirements">
+        {items.length > 0 && (
+          <div>
+            <h3>Requested equipment</h3>
+            <ul className="support-items">
+              {items.map((entry, index) => (
+                <li key={`${entry.item}-${index}`}>
+                  <span>{entry.item} — quantity: {entry.quantity}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {request.equipment_notes && (
+          <div>
+            <h3>{items.length ? 'Other equipment notes' : 'Requested equipment'}</h3>
+            <p className="support-text">{request.equipment_notes}</p>
+          </div>
+        )}
+        {!items.length && !request.equipment_notes && (
+          <p className="support-muted support-text">No individual equipment items requested.</p>
+        )}
+        <div className="support-flags">
+          <span className="support-flag">Technical support</span>
+          <span>{request.technical_support_required ? 'Yes' : 'No'}</span>
+          <span className="support-flag">Video conferencing</span>
+          <span>{request.video_conferencing_required ? 'Yes' : 'No'}</span>
+        </div>
+        {request.technical_support_details && (
+          <div><h3>Technical support details</h3><p className="support-text">{request.technical_support_details}</p></div>
+        )}
+        {request.technical_specifications && (
+          <div><h3>Technical specifications</h3><p className="support-text">{request.technical_specifications}</p></div>
+        )}
       </section>
 
-      <form onSubmit={submitReview}>
+      <form className="support-review-form" onSubmit={submitReview} noValidate>
         <h3>Review fulfillment</h3>
         <label>
           Fulfillment decision
           <select
             aria-label="Fulfillment decision"
+            aria-describedby={error ? errorId : undefined}
             value={outcome}
             onChange={event => { setOutcome(event.target.value); setError(''); }}
             disabled={saving}
@@ -97,29 +311,52 @@ function EquipmentRequestCard({ request, onReview }) {
           Reason (required unless fully fulfillable)
           <textarea
             aria-label="Reason (required unless fully fulfillable)"
+            rows={3}
+            placeholder={reasonRequired ? 'Explain what can’t be provided and why' : 'Optional'}
             value={reason}
             onChange={event => { setReason(event.target.value); setError(''); }}
             disabled={saving}
-            required={Boolean(outcome && outcome !== 'fully_fulfillable')}
+            required={reasonRequired}
           />
         </label>
-        {error && <p role="alert">{error}</p>}
-        <button type="submit" name="action" value="save" disabled={saving}>
-          {saving ? 'Saving review…' : 'Save review'}
-        </button>
-        <button
-          type="submit"
-          name="action"
-          value="save-and-reserve"
-          className="button-secondary"
-          disabled={saving}
-        >
-          Save review &amp; go to equipment reservation
-        </button>
+        {outcome === 'partially_fulfillable' && (
+          <fieldset className="support-affected-items" disabled={saving}>
+            <legend>Affected items (choose what cannot be fully provided)</legend>
+            {requested.map((item) => (
+              <div key={item.key} className="support-affected-item">
+                <label>
+                  <input type="checkbox" checked={item.key in affected}
+                    onChange={(event) => {
+                      setError('');
+                      setAffected((current) => {
+                        const next = { ...current };
+                        if (event.target.checked) next[item.key] = ''; else delete next[item.key];
+                        return next;
+                      });
+                    }} />
+                  {item.quantity == null ? item.label : `${item.label} × ${item.quantity}`}
+                </label>
+                {item.quantity != null && item.key in affected && (
+                  <label>Can provide (optional)
+                    <input type="number" min="0" max={item.quantity - 1} value={affected[item.key]}
+                      onChange={(event) => { setError(''); setAffected((current) => ({ ...current, [item.key]: event.target.value })); }} />
+                  </label>
+                )}
+              </div>
+            ))}
+          </fieldset>
+        )}
+        {error && <p id={errorId} role="alert" className="support-error">{error}</p>}
+        <div className="support-form-actions">
+          <button type="submit" disabled={saving}>
+            {saving ? 'Saving review…' : 'Save review'}
+          </button>
+        </div>
       </form>
     </article>
   );
 }
+
 
 /**
  * Loads and presents pending equipment requests; successful reviews leave the pending queue.
@@ -131,17 +368,19 @@ export default function TechSupportDashboard() {
   const [reservationRequests, setReservationRequests] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [inventoryError, setInventoryError] = useState('');
   const [reservationError, setReservationError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [requestError, setRequestError] = useState('');
+  const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('inventory');
+
+  const showSuccess = message => setToast({ type: 'success', message });
 
   async function loadDashboardData() {
     setLoading(true);
-    setError('');
     setInventoryError('');
     setReservationError('');
+    setRequestError('');
     const [requestResult, inventoryResult, reservationResult] = await Promise.allSettled([
       api.get('/events/equipment-requests', token),
       api.get('/events/equipment-inventory', token),
@@ -151,7 +390,7 @@ export default function TechSupportDashboard() {
     if (requestResult.status === 'fulfilled') {
       setRequests(requestResult.value.requests);
     } else {
-      setError(requestResult.reason.message || 'Unable to load equipment requests.');
+      setRequestError(requestResult.reason?.message || 'Unable to load equipment requests.');
     }
     if (inventoryResult.status === 'fulfilled') {
       setInventory(inventoryResult.value.inventory);
@@ -169,21 +408,44 @@ export default function TechSupportDashboard() {
 
   useEffect(() => { loadDashboardData(); }, [token]);
 
-  async function saveReview(request, outcome, reason, goToReservations = false) {
+  // Pop-up notifications dismiss themselves after a few seconds (errors stay a little longer).
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  async function saveReview(request, outcome, reason, affectedItems) {
     await api.post(`/events/${request.id}/equipment-reviews`, {
       outcome,
       ...(reason ? { reason } : {}),
       requestVersion: request.request_version,
+      ...(affectedItems ? { affectedItems } : {}),
     }, token);
     setRequests(current => current.filter(pending => pending.id !== request.id));
-    setNotice(`Review saved for ${request.name}.`);
+    showSuccess(`Review saved for ${request.name}.`);
+    setActiveTab('reservations');
     await loadDashboardData();
-    if (goToReservations) setActiveTab('reservations');
+  }
+
+  /** Persists the repair reason, then replaces the inventory row so reservation views use its new status. */
+  async function repairEquipment(item, resolutionNote) {
+    const result = await api.put(
+      `/events/equipment-inventory/${item.id}/repair`,
+      { resolutionNote },
+      token,
+    );
+    const repairedEquipment = { ...item, ...result.equipment };
+    // Updating the shared inventory state makes the repaired asset immediately eligible in downstream views.
+    setInventory(current => current.map(currentItem => (
+      currentItem.id === item.id ? repairedEquipment : currentItem
+    )));
+    return repairedEquipment;
   }
 
   async function handleReservationConfirmed(reservation) {
     await loadDashboardData();
-    setNotice(`Equipment reservation confirmed for ${reservation.event_name}.`);
+    showSuccess(`Equipment reservation confirmed for ${reservation.event_name}.`);
   }
 
   const tabs = [
@@ -194,64 +456,90 @@ export default function TechSupportDashboard() {
 
   return (
     <div className="page">
+      <style>{dashboardStyles}</style>
       <PageIntro
         title="Technical Support Dashboard"
         eyebrow="Internal workspace"
-        description="Review equipment, assess event requests, and reserve suitable assets."
+        description="Review equipment requests, and reserve equipment."
       />
-      {/* Staff need change notifications alongside their existing equipment workspace. */}
       <NotificationsPanel />
-      {notice && <p role="status" className="support-dashboard-notice">{notice}</p>}
-      <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            id={`support-tab-${tab.id}`}
-            aria-selected={activeTab === tab.id}
-            aria-controls={`support-panel-${tab.id}`}
-            tabIndex={activeTab === tab.id ? 0 : -1}
-            className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
-            onClick={() => setActiveTab(tab.id)}
-            onKeyDown={event => {
-              const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
-              const nextIndex = event.key === 'ArrowRight'
-                ? (currentIndex + 1) % tabs.length
-                : event.key === 'ArrowLeft'
-                  ? (currentIndex - 1 + tabs.length) % tabs.length
-                  : event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : -1;
-              if (nextIndex >= 0) {
-                event.preventDefault();
-                const nextTab = tabs[nextIndex];
-                setActiveTab(nextTab.id);
-                document.getElementById(`support-tab-${nextTab.id}`)?.focus();
-              }
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      {activeTab === 'inventory' && (
+      <OnSiteSupportSection token={token} />
+      {toast && (
+        <div
+          role="status"
+          className="support-toast is-success"
+          title="Click to dismiss"
+          onClick={() => setToast(null)}
+        >
+          <p>{toast.message}</p>
+        </div>
+      )}
+      <div className="support-management-workspace">
+        <div className="onsite-support-heading support-workspace-heading">
+          <div>
+            <h2>Equipment management</h2>
+          </div>
+        </div>
+        <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`support-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`support-panel-${tab.id}`}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
+              onClick={() => setActiveTab(tab.id)}
+              onKeyDown={event => {
+                const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
+                const nextIndex = event.key === 'ArrowRight'
+                  ? (currentIndex + 1) % tabs.length
+                  : event.key === 'ArrowLeft'
+                    ? (currentIndex - 1 + tabs.length) % tabs.length
+                    : event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? tabs.length - 1
+                        : -1;
+                if (nextIndex >= 0) {
+                  event.preventDefault();
+                  const nextTab = tabs[nextIndex];
+                  setActiveTab(nextTab.id);
+                  document.getElementById(`support-tab-${nextTab.id}`)?.focus();
+                }
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
           <EquipmentInventorySection inventory={inventory} error={inventoryError} />
         </div>
-      )}
-      {activeTab === 'review' && (
+        )}
+        {activeTab === 'review' && (
         <div role="tabpanel" id="support-panel-review" aria-labelledby="support-tab-review">
-          <section aria-labelledby="pending-equipment-heading">
-            <div className="section-heading">
-              <h2 id="pending-equipment-heading">Pending equipment requests</h2>
-              <button type="button" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
+          <section className="onsite-support-section equipment-review-section" aria-labelledby="pending-equipment-heading">
+            <div className="onsite-support-heading">
+              <div>
+                <h2 id="pending-equipment-heading">Pending equipment requests</h2>
+                <p className="onsite-support-description">Review equipment requirements and record what can be fulfilled.</p>
+              </div>
+              <div className="equipment-review-actions">
+                <span className="badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
+                <button type="button" className="button-secondary" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
+              </div>
             </div>
-            {error && <p role="alert">{error}</p>}
-            {loading ? <p>Loading equipment requests…</p> : requests.length === 0
-              ? <p>No pending equipment requests.</p>
+            {requestError && <p className="support-error" role="alert">{requestError}</p>}
+            {loading ? <p className="support-muted">Loading equipment requests…</p> : requests.length === 0
+              ? (
+                <div className="support-empty">
+                  <p><strong>No pending equipment requests.</strong></p>
+                </div>
+              )
               : <div className="record-grid">
                 {requests.map(request => (
                   <EquipmentRequestCard
@@ -263,8 +551,8 @@ export default function TechSupportDashboard() {
               </div>}
           </section>
         </div>
-      )}
-      {activeTab === 'reservations' && (
+        )}
+        {activeTab === 'reservations' && (
         <div role="tabpanel" id="support-panel-reservations" aria-labelledby="support-tab-reservations">
           <EquipmentReservationSection
             requests={reservationRequests}
@@ -275,7 +563,8 @@ export default function TechSupportDashboard() {
             onGoToReviews={() => setActiveTab('review')}
           />
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

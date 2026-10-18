@@ -1,9 +1,26 @@
 // File: Displays the fixed asset catalogue and a separate calendar for searched equipment.
 import { useState } from 'react';
 
-// Every caller supplies a selected date or a calendar column's actual date; no missing-date branch is reachable.
-const formatDate = value => new Intl.DateTimeFormat('en-SG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-  .format(new Date(`${value}T00:00:00Z`));
+const formatDate = value => new Intl.DateTimeFormat('en-SG', {
+  day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${value}T00:00:00Z`));
+
+// Reserved slots are shown in neutral grey; the "· Reserved" text keeps the status readable without colour.
+const CALENDAR_STYLES = `
+.equipment-calendar-window.is-reserved {
+  background: #e9ecef;
+  border-color: #ced4da;
+  color: #6c757d;
+}
+.equipment-calendar-window.is-reserved small { color: inherit; }
+@media (prefers-color-scheme: dark) {
+  .equipment-calendar-window.is-reserved {
+    background: #2b3138;
+    border-color: #444c56;
+    color: #9aa4ae;
+  }
+}
+`;
 
 function matchesFilters(window, date, fromTime, toTime) {
   if (date && window.date !== date) return false;
@@ -15,17 +32,28 @@ function matchesFilters(window, date, fromTime, toTime) {
 }
 
 const getAvailabilityWindows = item => Array.isArray(item.availabilities) ? item.availabilities : [];
+// Legacy stock health values map onto explicit availability until a record is transitioned by staff.
+const getAvailabilityStatus = item => item.availability_status ||
+  (item.status && item.status !== 'operational' ? 'Unavailable' : 'Available');
+
+// A window is reserved when it is not open and is tied to a reservation (status says so, or an event holds it).
+const isReservedWindow = window => window.status !== 'Available' &&
+  (/reserv|book/i.test(String(window.status)) || Boolean(window.eventName));
 
 /**
  * Filters the read-only catalogue by asset ID/name and availability date/time range.
  * Availability range filters show only assets whose available window covers the full range.
- * The calendar is kept separate from the catalogue and appears only for a non-empty search.
+ * Available quantities are date-specific and show the best matching window unless a full range is set.
  */
-export default function EquipmentInventorySection({ inventory, error }) {
+export default function EquipmentInventorySection({ inventory, error, onRepairEquipment }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
+  const [repairingEquipmentId, setRepairingEquipmentId] = useState(null);
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [repairError, setRepairError] = useState('');
+  const [repairSaving, setRepairSaving] = useState(false);
   const hasAvailabilityFilter = Boolean(dateFilter || fromTime || toTime);
   const hasFilter = Boolean(searchTerm.trim() || hasAvailabilityFilter);
   const invalidTimeRange = Boolean(fromTime && toTime && fromTime >= toTime);
@@ -51,14 +79,20 @@ export default function EquipmentInventorySection({ inventory, error }) {
       matchesFilters(window, dateFilter, fromTime, toTime)
     ));
     const availableWindows = matchingWindows.filter(window => window.status === 'Available');
-    if (hasAvailabilityFilter && availableWindows.length === 0) return [];
+    if (hasAvailabilityFilter && (dateFilter ? matchingWindows : availableWindows).length === 0) return [];
     return [{
       ...item,
-      matchingWindows: availableWindows.filter(window => (
-        matchesFilters(window, dateFilter, fromTime, toTime)
-      )),
+      matchingWindows: availableWindows,
     }];
   });
+
+  // A date without a complete time range may match several windows, so report the best slot as an upper bound.
+  function getAvailableQuantity(item) {
+    const matchingWindows = getAvailabilityWindows(item).filter(window => (
+      matchesFilters(window, dateFilter, fromTime, toTime)
+    ));
+    return Math.max(0, ...matchingWindows.map(window => Number(window.availableQuantity) || 0));
+  }
 
   function clearFilters() {
     setSearchTerm('');
@@ -67,15 +101,37 @@ export default function EquipmentInventorySection({ inventory, error }) {
     setToTime('');
   }
 
+  /**
+   * Requires a non-empty explanation before requesting the Unavailable-to-Available transition.
+   */
+  async function submitRepair(event, item) {
+    event.preventDefault();
+    const cleanNote = resolutionNote.trim();
+    if (!cleanNote) {
+      // A whitespace-only reason would leave the equipment history without an auditable resolution.
+      setRepairError('Enter a brief resolution note before marking equipment available.');
+      return;
+    }
+
+    setRepairError('');
+    setRepairSaving(true);
+    try {
+      await onRepairEquipment(item, cleanNote);
+      setRepairingEquipmentId(null);
+      setResolutionNote('');
+    } catch (saveError) {
+      setRepairError(saveError?.message || 'Unable to update equipment status.');
+    } finally {
+      setRepairSaving(false);
+    }
+  }
+
   return (
     <section aria-labelledby="equipment-inventory-heading">
+      <style>{CALENDAR_STYLES}</style>
       <div className="section-heading">
         <h2 id="equipment-inventory-heading">Equipment inventory</h2>
       </div>
-      <p>
-        Showing {filteredAssets.length} of {inventory.length} pre-provisioned physical assets.
-        {' '}Search for an asset to view its availability calendar below.
-      </p>
       <div className="equipment-inventory-filters">
         <label>
           Search by ID or name
@@ -131,17 +187,14 @@ export default function EquipmentInventorySection({ inventory, error }) {
           ) : (
           <div className="equipment-inventory-table-wrap">
             <table className="equipment-inventory-table">
-              <caption>
-                {hasFilter
-                  ? `Equipment matching filters${dateFilter ? ` on ${formatDate(dateFilter)}` : ''}${fromTime ? ` from ${fromTime}` : ''}${toTime ? ` to ${toTime}` : ''}`
-                  : 'Equipment catalogue'}
-              </caption>
               <thead>
                 <tr>
                   <th scope="col">ID</th>
                   <th scope="col">Name</th>
                   <th scope="col">Specifications</th>
-                  <th scope="col">Quantity</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">{dateFilter ? 'Available quantity' : 'Total quantity'}</th>
+                  <th scope="col">Status history</th>
                 </tr>
               </thead>
               <tbody>
@@ -150,7 +203,58 @@ export default function EquipmentInventorySection({ inventory, error }) {
                     <th scope="row">{item.asset_code}</th>
                     <td>{item.name}</td>
                     <td>{item.specification}</td>
-                    <td>{item.quantity}</td>
+                    <td>
+                      <span>{getAvailabilityStatus(item)}</span>
+                      {onRepairEquipment && getAvailabilityStatus(item) === 'Unavailable' && (
+                        repairingEquipmentId === item.id ? (
+                          <form onSubmit={event => submitRepair(event, item)} noValidate>
+                            <label>
+                              Resolution note
+                              <textarea
+                                aria-label="Resolution note"
+                                value={resolutionNote}
+                                onChange={event => {
+                                  setResolutionNote(event.target.value);
+                                  setRepairError('');
+                                }}
+                                maxLength={500}
+                                required
+                              />
+                            </label>
+                            {repairError && <p role="alert">{repairError}</p>}
+                            <button type="submit" disabled={repairSaving}>
+                              {repairSaving ? 'Saving repair…' : 'Mark Available'}
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRepairingEquipmentId(item.id);
+                              setResolutionNote('');
+                              setRepairError('');
+                            }}
+                          >
+                            Mark Available
+                          </button>
+                        )
+                      )}
+                    </td>
+                    <td>{dateFilter
+                      ? `${fromTime && toTime ? '' : 'Up to '}${getAvailableQuantity(item)}`
+                      : item.quantity}</td>
+                    <td>
+                      {item.status_history?.length ? (
+                        <ul aria-label={`Status history for ${item.asset_code}`}>
+                          {item.status_history.map(entry => (
+                            <li key={entry.id}>
+                              <span>{entry.status}: {entry.note}</span>
+                              {entry.changed_by_name && <span> — {entry.changed_by_name}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : 'No status history'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -162,10 +266,8 @@ export default function EquipmentInventorySection({ inventory, error }) {
               <div className="section-heading">
                 <h3 id="equipment-calendar-heading">Availability calendar</h3>
               </div>
-              <p>Calendar for equipment matching “{searchTerm.trim()}”. Matching available windows are highlighted.</p>
               <div className="equipment-inventory-table-wrap">
-                <table className="equipment-inventory-table equipment-availability-calendar">
-                  <caption>Equipment availability calendar</caption>
+                <table className="equipment-inventory-table equipment-availability-calendar" aria-label="Equipment availability calendar">
                   <thead>
                     <tr>
                       <th scope="col">ID</th>
@@ -202,10 +304,13 @@ export default function EquipmentInventorySection({ inventory, error }) {
                                       matchingWindow.startTime === window.startTime &&
                                       matchingWindow.endTime === window.endTime
                                     ));
+                                    const classes = ['equipment-calendar-window'];
+                                    if (matches) classes.push('is-available');
+                                    else if (isReservedWindow(window)) classes.push('is-reserved');
                                     return (
                                       <li
                                         key={`${window.startTime}-${window.endTime}-${index}`}
-                                        className={matches ? 'equipment-calendar-window is-available' : 'equipment-calendar-window'}
+                                        className={classes.join(' ')}
                                       >
                                         <span>{window.startTime.slice(0, 5)}–{window.endTime.slice(0, 5)}</span>
                                         <small>{window.availableQuantity} available · {window.status}</small>

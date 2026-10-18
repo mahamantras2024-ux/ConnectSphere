@@ -50,6 +50,17 @@ function mockUpdate({ event = storedEvent, writeResult = { ...storedEvent } } = 
     writes.push({ sql, values });
     return { rows: writeResult ? [writeResult] : [] };
   });
+  // Unconfirmed edits run in a transaction (with any status-change notification); the request lock reports no earlier
+  // review, so no notification is written and `writes` holds only the guarded UPDATE as before.
+  mock.method(pool, 'connect', async () => ({
+    release() {},
+    async query(sql, values) {
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+      if (sql.includes('FOR UPDATE OF e')) return { rows: event ? [{ ...event, reviewed: false }] : [] };
+      writes.push({ sql, values });
+      return { rows: writeResult ? [writeResult] : [] };
+    },
+  }));
   return writes;
 }
 const create = (body) => request('/api/events', { method: 'POST', body: { name: 'Workshop', proposedDate: '2030-10-15', proposedStartTime: '09:00', proposedEndTime: '12:00', expectedAttendance: 50, isDraft: false, ...body } });

@@ -22,7 +22,8 @@ function open(path) { localStorage.setItem('cs_token', 'test-session'); return r
 beforeEach(() => {
   // Resets the test session and supplies authenticated empty-workspace responses.
   localStorage.clear(); api.get.mockReset(); api.post.mockReset();
-  user = { id: 8, full_name: 'Test Person', role: 'attendee', roles: ['attendee', 'venue_staff'] };
+  // Only external accounts hold several roles; staff accounts are tied to one internal role (staff login story AC1).
+  user = { id: 8, full_name: 'Test Person', role: 'attendee', roles: ['attendee', 'event_organiser'] };
   api.get.mockImplementation(async path =>
       // Handles this operation using the surrounding screen or request state.
       path === '/auth/me' ? { user } : path === '/registrations/mine' ? { registrations: [] } : path === '/venues' ? [] : { events: [] });
@@ -56,28 +57,28 @@ it('role switching replaces the token and opens only the server-approved workspa
   await screen.findByRole('heading', { name: 'Attendee Dashboard' });
   api.post.mockImplementation(async () => {
       // Handles this operation using the surrounding screen or request state.
-       user = { ...user, role: 'venue_staff' }; return { user, token: 'venue-session' }; });
-  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'venue_staff' } });
-  expect(await screen.findByRole('heading', { name: 'Venue Staff Dashboard' })).toBeTruthy();
-  expect(api.post).toHaveBeenCalledWith('/auth/switch-role', { role: 'venue_staff' }, 'test-session');
-  expect(localStorage.getItem('cs_token')).toBe('venue-session');
+       user = { ...user, role: 'event_organiser' }; return { user, token: 'organiser-session' }; });
+  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'event_organiser' } });
+  expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
+  expect(api.post).toHaveBeenCalledWith('/auth/switch-role', { role: 'event_organiser' }, 'test-session');
+  expect(localStorage.getItem('cs_token')).toBe('organiser-session');
 });
 // Test case: Fails a switch and checks the current token/workspace remain intact.
 it('failed role switching retains the existing workspace and token', async () => {
   // Ensures a denied role grant cannot change client-side authority.
   open('/attendee/dashboard'); await screen.findByRole('heading', { name: 'Attendee Dashboard' });
   api.post.mockRejectedValue(new Error('This role is not assigned to your account.'));
-  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'venue_staff' } });
+  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'event_organiser' } });
   expect((await screen.findByRole('alert')).textContent).toMatch(/not assigned/);
   expect(localStorage.getItem('cs_token')).toBe('test-session');
   expect(screen.getByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
 });
 // Test case: Opens an assigned but inactive role dashboard and checks active-role guards deny it without switching.
 it('an inactive provisioned role cannot bypass dashboard guards without switching', async () => {
-  // A multi-role attendee must explicitly activate Venue Staff before using its workspace.
-  open('/venue/dashboard');
+  // A multi-role attendee must explicitly activate Event Organiser before using its workspace.
+  open('/organizer/dashboard');
   expect(await screen.findByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Add venue' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Event Organiser Dashboard' })).toBeNull();
 });
 // Test case: Logs out before a switch resolves and checks the late response cannot reauthenticate.
 it('a role-switch response arriving after logout cannot restore the session', async () => {
@@ -91,14 +92,14 @@ it('a role-switch response arriving after logout cannot restore the session', as
   // Exposes context actions for controlled asynchronous session testing.
   function Probe() { const auth = useAuth(); return <><span>{auth.user?.role || 'Signed out'}</span><button onClick={() =>
       // Handles this control action and updates the screen state.
-      auth.switchRole('venue_staff').catch(() => {
+      auth.switchRole('event_organiser').catch(() => {
       // Reports a failed asynchronous operation.
       })}>Switch</button><button onClick={auth.logout}>Logout</button></>; }
   localStorage.setItem('cs_token', 'test-session'); render(<AuthProvider><Probe /></AuthProvider>);
   await screen.findByText('attendee'); fireEvent.click(screen.getByText('Switch')); fireEvent.click(screen.getByText('Logout'));
   await act(async () =>
       // Handles this operation using the surrounding screen or request state.
-      resolve({ user: { ...user, role: 'venue_staff' }, token: 'late-token' }));
+      resolve({ user: { ...user, role: 'event_organiser' }, token: 'late-token' }));
   expect(screen.getByText('Signed out')).toBeTruthy(); expect(localStorage.getItem('cs_token')).toBeNull();
 });
 // Test case: Opens venue dialogs and presses Escape, checking closure and restored opener focus.
@@ -266,6 +267,7 @@ beforeEach(()=>{
   user={id:8,full_name:'Chris Lee',email:'chris@example.test',role:'technical_support',roles:['technical_support']};
   api.get.mockImplementation(async(path)=>{
     if(path === '/auth/me') return {user};
+    if(path === '/events/on-site-support') return {events:[]};
     if(path === '/events/assignments') return {events:[],coordinators:[]};
     if(path === '/events/equipment-requests') return {requests:[]};
     if(path === '/events/equipment-inventory') return {inventory:[]};
@@ -298,7 +300,7 @@ it.each([
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
+    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
     : role === 'safety_officer' ? ['/auth/me','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
@@ -312,13 +314,14 @@ it('Internal AC1 AC5 - Technical Support queue loads without optional profile fi
   expect(screen.queryByText('Not recorded')).toBeNull();
   expect(api.get).toHaveBeenCalledWith('/events/equipment-requests','staff-session');
 });
-// Test case: Multi-role identity stays on the active Technical Support workspace without venue-only controls.
-it('Internal AC1 AC5 - multi-role Technical Support session does not gain venue controls',async()=>{
-  user.roles=['technical_support','venue_staff'];open('/tech-support/dashboard');
+// Test case: A single-role Technical Support account gets no role switcher and no venue-only controls.
+it('Internal AC1 AC5 - single-role Technical Support session has no switcher and no venue controls',async()=>{
+  user.roles=['technical_support'];open('/tech-support/dashboard');
   fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
   await screen.findByRole('heading',{name:'Pending equipment requests'});
   expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Add venue'})).toBeNull();
+  expect(screen.queryByLabelText('Active role')).toBeNull();
 });
 
 // Test case: Safety staff keep the existing profile fallback when the role list and identity details are absent.
@@ -446,13 +449,14 @@ it('UI1 / Organiser AC4 - failed details retain a working close control and reve
   fireEvent.click(within(drawer).getByRole('button', { name: 'Close dialog' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
-// Test case: Opens attendee details from a personal registration and checks no additional event request is made.
-it('UI1 / External AC7-8 - attendee details use only personal registrations and close without another event request', async () => {
+// Test case: Opens attendee details from a personal registration and checks the drawer does not request event details.
+it('UI1 / External AC7-8 - attendee registration details stay personal while the dashboard loads its published catalogue', async () => {
   user.role = 'attendee'; open('/attendee/dashboard');
   const trigger = await screen.findByRole('button', { name: 'View registration' }); trigger.focus(); fireEvent.click(trigger);
   const drawer = screen.getByRole('dialog', { name: 'Registration details' });
   for (const text of ['Community afternoon', 'confirmed', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
-  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/registrations/mine']);
+  // Dashboard now loads the published-event catalogue; opening the personal drawer must not fetch another event record.
+  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/notifications', '/registrations/mine', '/events/published']);
   fireEvent.click(within(drawer).getByRole('button', { name: 'Back to list' }));
   expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(trigger);
   fireEvent.click(trigger); fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));

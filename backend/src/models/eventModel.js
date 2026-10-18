@@ -20,7 +20,11 @@ async function listForOrganiser(organiserId) {
 async function listForCoordinator(coordinatorId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.purpose, e.status, e.organiser_id, e.coordinator_id, e.created_at, e.updated_at,
-      EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding
+      EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding,
+      e.technical_support_required,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('id', u.id, 'full_name', u.full_name) ORDER BY u.full_name)
+        FROM event_technical_support_assignments a JOIN users u ON u.id=a.staff_id
+        WHERE a.event_id=e.id), '[]'::jsonb) AS technical_support_staff
     FROM events e
     WHERE coordinator_id = $1
     ORDER BY e.created_at DESC
@@ -202,8 +206,9 @@ async function userIdsWithRole(db, role) {
 
 // Replaces an owned event's equipment requirements before confirmation and advances its reviewable version.
 // The confirmation check lives in the UPDATE so a confirmation committed mid-edit cannot be overwritten.
-async function updateEquipment(id, organiserId, data) {
-  const result = await pool.query(`
+// `db` may be a transaction client so a status-change notification commits with the edit.
+async function updateEquipment(id, organiserId, data, db = pool) {
+  const result = await db.query(`
     UPDATE events SET equipment_items=$3::jsonb, technical_support_required=$4, technical_support_details=$5,
       video_conferencing_required=$6, technical_specifications=$7,
       equipment_requirements_version=equipment_requirements_version+1, updated_at=now()
@@ -302,7 +307,20 @@ async function createEquipmentReview(eventId, data, reviewerId) {
 /** Lists seeded stock counts and availability windows with remaining units per slot. */
 async function listEquipmentInventory() {
   const result = await pool.query(`
-    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
+    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
+      stock.availability_status, stock.quantity,
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+          'id', history.id,
+          'status', history.status,
+          'note', history.note,
+          'changed_at', history.changed_at,
+          'changed_by_name', staff.full_name
+        ) ORDER BY history.changed_at, history.id)
+        FROM equipment_status_history history
+        LEFT JOIN users staff ON staff.id=history.changed_by
+        WHERE history.inventory_id=stock.id
+      ), '[]'::jsonb) AS status_history,
       COALESCE(jsonb_agg(jsonb_build_object(
         'date', availability.available_date::text,
         'startTime', availability.start_time::text,
@@ -332,12 +350,14 @@ async function listEquipmentInventory() {
 }
 
 /**
- * Lists reviewed requests with equipment that still needs to be reserved.
+ * Lists reviewed requests with equipment that still needs reservation, including the event's full technical requirements.
  */
 async function listEquipmentReservationCandidates() {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
-      e.proposed_start_time, e.proposed_end_time, e.equipment_items,
+      e.proposed_start_time, e.proposed_end_time, e.equipment_items, e.equipment_notes,
+      e.technical_support_required, e.technical_support_details,
+      e.video_conferencing_required, e.technical_specifications,
       e.equipment_requirements_version AS request_version,
       review.outcome AS review_outcome, review.reason AS review_reason,
       venue.name AS venue_name, venue.location AS venue_location
@@ -355,7 +375,6 @@ async function listEquipmentReservationCandidates() {
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
-      AND jsonb_array_length(e.equipment_items) > 0
       AND NOT EXISTS (
         SELECT 1 FROM event_equipment_reservations reservation
         WHERE reservation.event_id=e.id
@@ -370,7 +389,7 @@ async function listEquipmentReservationCandidates() {
 /**
  * Lists upcoming reservations with their item quantities and audit details.
  */
-async function listActiveEquipmentReservations() {
+async function listActiveEquipmentReservations(staffId) {
   const result = await pool.query(`
     SELECT reservation.id, reservation.event_id, e.name AS event_name,
       reservation.event_date::text AS event_date, reservation.start_time,
@@ -385,20 +404,23 @@ async function listActiveEquipmentReservations() {
     JOIN users staff ON staff.id=reservation.reserved_by
     LEFT JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
     LEFT JOIN equipments inventory ON inventory.id=reserved_item.inventory_id
-    WHERE reservation.status='reserved' AND (
+    WHERE reservation.reserved_by=$1 AND reservation.status='reserved' AND (
       reservation.event_date > CURRENT_DATE
       OR (reservation.event_date=CURRENT_DATE AND reservation.end_time > LOCALTIME)
     )
     GROUP BY reservation.id, e.name, staff.full_name
     ORDER BY reservation.event_date, reservation.start_time, reservation.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
 /**
- * Finds matching operational assets whose catalogue windows contain the reviewed event slot.
+ * Finds matching operational assets for itemized requests and optional staff-entered equipment.
+ * @param {number} eventId event with a current equipment review.
+ * @param {Array<{item:string,quantity:number}>} additionalItems equipment extracted from other request text.
+ * @returns {Promise<object|null>} requested names, quantities and matching available assets.
  */
-async function getEquipmentReservationAvailability(eventId) {
+async function getEquipmentReservationAvailability(eventId, additionalItems = []) {
   const event = (await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
       e.proposed_start_time::text AS proposed_start_time,
@@ -432,7 +454,7 @@ async function getEquipmentReservationAvailability(eventId) {
 
   const requestedItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
   const combinedRequests = new Map();
-  for (const entry of requestedItems) {
+  for (const entry of [...requestedItems, ...additionalItems]) {
     const key = String(entry.item).trim().toLowerCase();
     const existing = combinedRequests.get(key);
     combinedRequests.set(key, {
@@ -443,7 +465,8 @@ async function getEquipmentReservationAvailability(eventId) {
   const distinctRequestedItems = [...combinedRequests.values()];
   const names = distinctRequestedItems.map(entry => String(entry.item).trim().toLowerCase());
   const inventory = names.length ? (await pool.query(`
-    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
+    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
+      stock.availability_status, stock.quantity,
       GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity,
       availability.available_date::text AS available_date,
       availability.start_time::text AS available_start_time,
@@ -458,7 +481,8 @@ async function getEquipmentReservationAvailability(eventId) {
         AND reservation.event_date=$2::date
         AND reservation.start_time < $4::time AND reservation.end_time > $3::time
     ) booked ON true
-    WHERE stock.status='operational' AND lower(trim(stock.name))=ANY($1::text[])
+    WHERE stock.status='operational' AND stock.availability_status='Available'
+      AND lower(trim(stock.name))=ANY($1::text[])
       AND availability.available_date=$2::date
       AND availability.start_time <= $3::time AND availability.end_time >= $4::time
       AND stock.quantity > COALESCE(booked.quantity, 0)
@@ -489,9 +513,10 @@ async function getEquipmentReservationAvailability(eventId) {
  * @param {number} eventId event with a current full/partial fulfillment review.
  * @param {Array<{inventoryId:number,quantity:number}>} stock lines and unit quantities to reserve.
  * @param {number} staffId authenticated Technical Support staff member.
+ * @param {Array<{item:string,quantity:number}>} additionalItems manually identified equipment.
  * @returns {Promise<object>} reservation or a business-rule conflict.
  */
-async function createEquipmentReservation(eventId, selections, staffId) {
+async function createEquipmentReservation(eventId, selections, staffId, additionalItems = []) {
   const client = await databasePool.connect();
   try {
     await client.query('BEGIN');
@@ -524,7 +549,13 @@ async function createEquipmentReservation(eventId, selections, staffId) {
     }
     const requestItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
     const requestedByName = new Map();
+    const requiredByName = new Map();
     for (const item of requestItems) {
+      const name = item.item.trim().toLowerCase();
+      requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
+      requiredByName.set(name, (requiredByName.get(name) || 0) + item.quantity);
+    }
+    for (const item of additionalItems) {
       const name = item.item.trim().toLowerCase();
       requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
     }
@@ -532,7 +563,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
     const inventory = ids.length ? (await client.query(`
       SELECT id, name, asset_code, specification, quantity
       FROM equipments
-      WHERE id=ANY($1::integer[]) AND status='operational'
+      WHERE id=ANY($1::integer[]) AND status='operational' AND availability_status='Available'
       ORDER BY id
       FOR UPDATE
     `, [ids])).rows : [];
@@ -561,7 +592,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
     }
     if (event.review_outcome === 'fully_fulfillable' &&
         requestItems.some(item =>
-          (selectedCounts.get(item.item.trim().toLowerCase()) || 0) !== requestedByName.get(item.item.trim().toLowerCase()))) {
+          (selectedCounts.get(item.item.trim().toLowerCase()) || 0) < requiredByName.get(item.item.trim().toLowerCase()))) {
       await client.query('ROLLBACK');
       return { conflict: 'A fully fulfillable request must reserve every requested item and quantity.' };
     }
@@ -571,6 +602,10 @@ async function createEquipmentReservation(eventId, selections, staffId) {
       return { conflict: 'Select at least one equipment item to reserve.' };
     }
     // Check after acquiring ordered asset locks so concurrent requests cannot both reserve an asset.
+    const availabilitySelections = selections.map(({ inventoryId, quantity }) => ({
+      inventory_id: inventoryId,
+      quantity,
+    }));
     const stillAvailable = (await client.query(`
       SELECT stock.id,
         GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity
@@ -585,12 +620,14 @@ async function createEquipmentReservation(eventId, selections, staffId) {
           AND reservation.start_time < $4::time AND reservation.end_time > $3::time
       ) booked ON true
       WHERE stock.id=ANY($1::integer[]) AND stock.status='operational'
+        AND stock.availability_status='Available'
         AND availability.available_date=$2::date
         AND availability.start_time <= $3::time AND availability.end_time >= $4::time
         AND stock.quantity - COALESCE(booked.quantity, 0) >=
           (SELECT selection.quantity FROM jsonb_to_recordset($5::jsonb) AS selection(inventory_id integer, quantity integer)
            WHERE selection.inventory_id=stock.id)
-    `, [ids, event.proposed_date, event.proposed_start_time, event.proposed_end_time, JSON.stringify(selections)])).rows;
+    `, [ids, event.proposed_date, event.proposed_start_time, event.proposed_end_time,
+      JSON.stringify(availabilitySelections)])).rows;
     if (stillAvailable.length !== ids.length) {
       await client.query('ROLLBACK');
       return { conflict: 'One or more selected quantities are no longer available for this time. Refresh availability.' };
@@ -614,7 +651,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
       INSERT INTO event_equipment_reservation_items (reservation_id, inventory_id, quantity)
       SELECT $1, selection.inventory_id, selection.quantity
       FROM jsonb_to_recordset($2::jsonb) AS selection(inventory_id integer, quantity integer)
-    `, [reservation.id, JSON.stringify(selections)]);
+    `, [reservation.id, JSON.stringify(availabilitySelections)]);
     // Reservation freezes the reviewed equipment details so later organiser edits become change requests.
     await client.query('UPDATE events SET equipment_confirmed_at=COALESCE(equipment_confirmed_at, now()) WHERE id=$1', [event.id]);
     await client.query('COMMIT');
@@ -632,6 +669,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
 
 /**
  * Lists upcoming active equipment requests that have not been reviewed at their current version.
+ * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
  * @returns {Promise<Array<object>>} event, venue, and organiser-submitted technical requirements.
  */
 async function listPendingEquipmentRequests() {
@@ -650,7 +688,7 @@ async function listPendingEquipmentRequests() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND (
@@ -675,15 +713,17 @@ async function listPendingEquipmentRequests() {
  * @param {number} eventId submitted event identifier.
  * @param {object} data decision, optional reason, and the version shown to the reviewer.
  * @param {number} reviewerId authenticated Technical Support user identifier.
- * @returns {Promise<object|null>} saved audit entry, or null when the request is no longer eligible.
+ * @param {{ query: Function }} [db] pool or transaction client (the review and its coordinator notification commit together).
+ * @returns {Promise<object|null>} saved audit entry, or null when the request is no longer eligible (including an
+ *   event with no assigned Event Coordinator yet).
  */
-async function createEquipmentReview(eventId, data, reviewerId) {
-  const result = await pool.query(`
+async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
+  const result = await db.query(`
     WITH target AS (
       SELECT e.id, e.equipment_requirements_version
       FROM events e
       WHERE e.id=$1 AND e.equipment_requirements_version=$5
-        AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+        AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND (
@@ -699,27 +739,40 @@ async function createEquipmentReview(eventId, data, reviewerId) {
         )
       FOR UPDATE
     ), saved_review AS (
-      INSERT INTO event_equipment_reviews (event_id, request_version, outcome, reason, reviewed_by)
-      SELECT id, equipment_requirements_version, $2, $3, $4 FROM target
+      INSERT INTO event_equipment_reviews (event_id, request_version, outcome, reason, reviewed_by, affected_items)
+      SELECT id, equipment_requirements_version, $2, $3, $4, $6::jsonb FROM target
       ON CONFLICT (event_id, request_version) DO NOTHING
-      RETURNING id, event_id, request_version, outcome, reason, reviewed_by, reviewed_at
+      RETURNING id, event_id, request_version, outcome, reason, reviewed_by, reviewed_at, affected_items
     ), confirmed AS (
       UPDATE events e SET equipment_confirmed_at=now()
       FROM saved_review r
       WHERE e.id=r.event_id AND r.outcome='fully_fulfillable'
       RETURNING e.id
     )
-    SELECT r.id, r.event_id, r.request_version, r.outcome, r.reason, r.reviewed_by, r.reviewed_at
+    SELECT r.id, r.event_id, r.request_version, r.outcome, r.reason, r.reviewed_by, r.reviewed_at, r.affected_items
     FROM saved_review r
     LEFT JOIN confirmed c ON c.id=r.event_id
-  `, [eventId, data.outcome, data.reason, reviewerId, data.requestVersion]);
+  `, [eventId, data.outcome, data.reason, reviewerId, data.requestVersion, JSON.stringify(data.affectedItems || [])]);
   return result.rows[0] || null;
 }
 
 /** Lists seeded stock counts and availability windows with remaining units per slot. */
 async function listEquipmentInventory() {
   const result = await pool.query(`
-    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
+    SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
+      stock.availability_status, stock.quantity,
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+          'id', history.id,
+          'status', history.status,
+          'note', history.note,
+          'changed_at', history.changed_at,
+          'changed_by_name', staff.full_name
+        ) ORDER BY history.changed_at, history.id)
+        FROM equipment_status_history history
+        LEFT JOIN users staff ON staff.id=history.changed_by
+        WHERE history.inventory_id=stock.id
+      ), '[]'::jsonb) AS status_history,
       COALESCE(jsonb_agg(jsonb_build_object(
         'date', availability.available_date::text,
         'startTime', availability.start_time::text,
@@ -749,12 +802,57 @@ async function listEquipmentInventory() {
 }
 
 /**
- * Lists reviewed requests with equipment that still needs to be reserved.
+ * Atomically changes one Unavailable asset to Available and appends its staff resolution note.
+ * Returns null if the asset is missing or another request has already changed its availability.
+ */
+async function markEquipmentAvailable(inventoryId, resolutionNote, staffId) {
+  const client = await databasePool.connect();
+  try {
+    await client.query('BEGIN');
+    const updated = (await client.query(`
+      UPDATE equipments
+      SET availability_status='Available', status='operational', updated_at=now()
+      WHERE id=$1 AND availability_status='Unavailable'
+      RETURNING id, asset_code, name, specification, status, availability_status, quantity
+    `, [inventoryId])).rows[0];
+    if (!updated) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    // Persisting the note inside this transaction prevents an Available status without its audit explanation.
+    await client.query(`
+      INSERT INTO equipment_status_history (inventory_id, status, note, changed_by)
+      VALUES ($1, 'Available', $2, $3)
+    `, [inventoryId, resolutionNote, staffId]);
+    const statusHistory = await client.query(`
+      SELECT history.id, history.status, history.note, history.changed_at,
+        staff.full_name AS changed_by_name
+      FROM equipment_status_history history
+      LEFT JOIN users staff ON staff.id=history.changed_by
+      WHERE history.inventory_id=$1
+      ORDER BY history.changed_at, history.id
+    `, [inventoryId]);
+    await client.query('COMMIT');
+    return { ...updated, status_history: statusHistory.rows };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Lists reviewed requests with equipment that still needs reservation, including the event's full technical requirements.
+ * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
  */
 async function listEquipmentReservationCandidates() {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
-      e.proposed_start_time, e.proposed_end_time, e.equipment_items,
+      e.proposed_start_time, e.proposed_end_time, e.equipment_items, e.equipment_notes,
+      e.technical_support_required, e.technical_support_details,
+      e.video_conferencing_required, e.technical_specifications,
       e.equipment_requirements_version AS request_version,
       review.outcome AS review_outcome, review.reason AS review_reason,
       venue.name AS venue_name, venue.location AS venue_location
@@ -768,11 +866,10 @@ async function listEquipmentReservationCandidates() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
-      AND jsonb_array_length(e.equipment_items) > 0
       AND NOT EXISTS (
         SELECT 1 FROM event_equipment_reservations reservation
         WHERE reservation.event_id=e.id
@@ -787,7 +884,7 @@ async function listEquipmentReservationCandidates() {
 /**
  * Lists upcoming reservations with their item quantities and audit details.
  */
-async function listActiveEquipmentReservations() {
+async function listActiveEquipmentReservations(staffId) {
   const result = await pool.query(`
     SELECT reservation.id, reservation.event_id, e.name AS event_name,
       reservation.event_date::text AS event_date, reservation.start_time,
@@ -802,20 +899,23 @@ async function listActiveEquipmentReservations() {
     JOIN users staff ON staff.id=reservation.reserved_by
     LEFT JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
     LEFT JOIN equipments inventory ON inventory.id=reserved_item.inventory_id
-    WHERE reservation.status='reserved' AND (
+    WHERE reservation.reserved_by=$1 AND reservation.status='reserved' AND (
       reservation.event_date > CURRENT_DATE
       OR (reservation.event_date=CURRENT_DATE AND reservation.end_time > LOCALTIME)
     )
     GROUP BY reservation.id, e.name, staff.full_name
     ORDER BY reservation.event_date, reservation.start_time, reservation.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
 /**
- * Finds matching operational assets whose catalogue windows contain the reviewed event slot.
+ * Finds matching operational assets for itemized requests and optional staff-entered equipment.
+ * @param {number} eventId event with a current equipment review and an assigned Event Coordinator.
+ * @param {Array<{item:string,quantity:number}>} additionalItems equipment extracted from other request text.
+ * @returns {Promise<object|null>} requested names, quantities and matching available assets.
  */
-async function getEquipmentReservationAvailability(eventId) {
+async function getEquipmentReservationAvailability(eventId, additionalItems = []) {
   const event = (await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
       e.proposed_start_time::text AS proposed_start_time,
@@ -839,7 +939,7 @@ async function getEquipmentReservationAvailability(eventId) {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.id=$1 AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+    WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
@@ -849,7 +949,7 @@ async function getEquipmentReservationAvailability(eventId) {
 
   const requestedItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
   const combinedRequests = new Map();
-  for (const entry of requestedItems) {
+  for (const entry of [...requestedItems, ...additionalItems]) {
     const key = String(entry.item).trim().toLowerCase();
     const existing = combinedRequests.get(key);
     combinedRequests.set(key, {
@@ -875,7 +975,8 @@ async function getEquipmentReservationAvailability(eventId) {
         AND reservation.event_date=$2::date
         AND reservation.start_time < $4::time AND reservation.end_time > $3::time
     ) booked ON true
-    WHERE stock.status='operational' AND lower(trim(stock.name))=ANY($1::text[])
+    WHERE stock.status='operational' AND stock.availability_status='Available'
+      AND lower(trim(stock.name))=ANY($1::text[])
       AND availability.available_date=$2::date
       AND availability.start_time <= $3::time AND availability.end_time >= $4::time
       AND stock.quantity > COALESCE(booked.quantity, 0)
@@ -903,12 +1004,13 @@ async function getEquipmentReservationAvailability(eventId) {
 
 /**
  * Confirms selected assets atomically, locking assets in a stable order to prevent overbooking.
- * @param {number} eventId event with a current full/partial fulfillment review.
+ * @param {number} eventId event with a current full/partial fulfillment review and an assigned Event Coordinator.
  * @param {Array<{inventoryId:number,quantity:number}>} stock lines and unit quantities to reserve.
  * @param {number} staffId authenticated Technical Support staff member.
+ * @param {Array<{item:string,quantity:number}>} additionalItems manually identified equipment.
  * @returns {Promise<object>} reservation or a business-rule conflict.
  */
-async function createEquipmentReservation(eventId, selections, staffId) {
+async function createEquipmentReservation(eventId, selections, staffId, additionalItems = []) {
   const client = await databasePool.connect();
   try {
     await client.query('BEGIN');
@@ -929,7 +1031,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
         ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
         LIMIT 1
       ) venue ON true
-      WHERE e.id=$1 AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+      WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
@@ -941,7 +1043,13 @@ async function createEquipmentReservation(eventId, selections, staffId) {
     }
     const requestItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
     const requestedByName = new Map();
+    const requiredByName = new Map();
     for (const item of requestItems) {
+      const name = item.item.trim().toLowerCase();
+      requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
+      requiredByName.set(name, (requiredByName.get(name) || 0) + item.quantity);
+    }
+    for (const item of additionalItems) {
       const name = item.item.trim().toLowerCase();
       requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
     }
@@ -949,7 +1057,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
     const inventory = ids.length ? (await client.query(`
       SELECT id, name, asset_code, specification, quantity
       FROM equipments
-      WHERE id=ANY($1::integer[]) AND status='operational'
+      WHERE id=ANY($1::integer[]) AND status='operational' AND availability_status='Available'
       ORDER BY id
       FOR UPDATE
     `, [ids])).rows : [];
@@ -978,7 +1086,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
     }
     if (event.review_outcome === 'fully_fulfillable' &&
         requestItems.some(item =>
-          (selectedCounts.get(item.item.trim().toLowerCase()) || 0) !== requestedByName.get(item.item.trim().toLowerCase()))) {
+          (selectedCounts.get(item.item.trim().toLowerCase()) || 0) < requiredByName.get(item.item.trim().toLowerCase()))) {
       await client.query('ROLLBACK');
       return { conflict: 'A fully fulfillable request must reserve every requested item and quantity.' };
     }
@@ -988,6 +1096,10 @@ async function createEquipmentReservation(eventId, selections, staffId) {
       return { conflict: 'Select at least one equipment item to reserve.' };
     }
     // Check after acquiring ordered asset locks so concurrent requests cannot both reserve an asset.
+    const availabilitySelections = selections.map(({ inventoryId, quantity }) => ({
+      inventory_id: inventoryId,
+      quantity,
+    }));
     const stillAvailable = (await client.query(`
       SELECT stock.id,
         GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity
@@ -1002,12 +1114,14 @@ async function createEquipmentReservation(eventId, selections, staffId) {
           AND reservation.start_time < $4::time AND reservation.end_time > $3::time
       ) booked ON true
       WHERE stock.id=ANY($1::integer[]) AND stock.status='operational'
+        AND stock.availability_status='Available'
         AND availability.available_date=$2::date
         AND availability.start_time <= $3::time AND availability.end_time >= $4::time
         AND stock.quantity - COALESCE(booked.quantity, 0) >=
           (SELECT selection.quantity FROM jsonb_to_recordset($5::jsonb) AS selection(inventory_id integer, quantity integer)
            WHERE selection.inventory_id=stock.id)
-    `, [ids, event.proposed_date, event.proposed_start_time, event.proposed_end_time, JSON.stringify(selections)])).rows;
+    `, [ids, event.proposed_date, event.proposed_start_time, event.proposed_end_time,
+      JSON.stringify(availabilitySelections)])).rows;
     if (stillAvailable.length !== ids.length) {
       await client.query('ROLLBACK');
       return { conflict: 'One or more selected quantities are no longer available for this time. Refresh availability.' };
@@ -1031,7 +1145,7 @@ async function createEquipmentReservation(eventId, selections, staffId) {
       INSERT INTO event_equipment_reservation_items (reservation_id, inventory_id, quantity)
       SELECT $1, selection.inventory_id, selection.quantity
       FROM jsonb_to_recordset($2::jsonb) AS selection(inventory_id integer, quantity integer)
-    `, [reservation.id, JSON.stringify(selections)]);
+    `, [reservation.id, JSON.stringify(availabilitySelections)]);
     // Reservation freezes the reviewed equipment details so later organiser edits become change requests.
     await client.query('UPDATE events SET equipment_confirmed_at=COALESCE(equipment_confirmed_at, now()) WHERE id=$1', [event.id]);
     await client.query('COMMIT');
@@ -1117,6 +1231,7 @@ module.exports = {
   listPendingEquipmentRequests,
   createEquipmentReview,
   listEquipmentInventory,
+  markEquipmentAvailable,
   listEquipmentReservationCandidates,
   listActiveEquipmentReservations,
   getEquipmentReservationAvailability,

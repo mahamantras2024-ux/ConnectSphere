@@ -34,15 +34,28 @@ async function openDashboard() {
 beforeEach(() => {
   localStorage.clear();
   let pendingRequest = eventRequest;
+  let reservationRequest = null;
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-requests') return { requests: pendingRequest ? [pendingRequest] : [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
-    if (path === '/events/equipment-reservations') return { requests: [], reservations: [] };
+    if (path === '/events/equipment-reservations') {
+      return { requests: reservationRequest ? [reservationRequest] : [], reservations: [] };
+    }
     throw new Error(`Unexpected API route: ${path}`);
   });
-  api.post.mockImplementation(async path => {
-    if (path.endsWith('/equipment-reviews')) pendingRequest = null;
+  api.post.mockImplementation(async (path, body) => {
+    if (path.endsWith('/equipment-reviews')) {
+      pendingRequest = null;
+      if (body.outcome === 'fully_fulfillable' || body.outcome === 'partially_fulfillable') {
+        reservationRequest = {
+          ...eventRequest,
+          review_outcome: body.outcome,
+          review_reason: body.reason || null,
+        };
+      }
+    }
     return { review: { outcome: 'fully_fulfillable' }, message: 'Review saved.' };
   });
 });
@@ -66,6 +79,28 @@ it('AC1 - displays event timing, venue, equipment quantities, and technical requ
   expect(api.get).toHaveBeenCalledWith('/events/equipment-requests', 'support-token');
 });
 
+// AC1 - missing date/time and notes use explicit fallbacks in the review card.
+it('AC1 - displays review fallbacks for partial event details', async () => {
+  api.get.mockImplementation(async path => {
+    if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/events/equipment-requests') return {
+      requests: [
+        { ...eventRequest, proposed_date: null, proposed_start_time: '09:00:00', proposed_end_time: null, equipment_items: [], equipment_notes: 'Additional cable' },
+        { ...eventRequest, id: 502, name: 'Evening Meetup', proposed_date: null, proposed_start_time: null, proposed_end_time: '12:00:00', equipment_items: [], equipment_notes: 'Additional cable' },
+      ],
+    };
+    if (path === '/events/equipment-inventory') return { inventory: [] };
+    if (path === '/events/equipment-reservations') return { requests: [], reservations: [] };
+    throw new Error(`Unexpected API route: ${path}`);
+  });
+  await openDashboard();
+  const card = await screen.findByRole('article', { name: 'Community Workshop' });
+  expect(within(card).getByText('Not provided')).toBeTruthy();
+  expect(within(card).getByText(/09:00.*Not provided/)).toBeTruthy();
+  expect(within(card).getByText('Requested equipment')).toBeTruthy();
+});
+
 // AC2/AC3/AC4: submit each permitted decision and remove it from the pending queue on success.
 it.each([
   ['fully fulfillable', 'fully_fulfillable', ''],
@@ -78,13 +113,24 @@ it.each([
   const reasonInput = within(card).getByLabelText(/Reason/);
   if (reason) fireEvent.change(reasonInput, { target: { value: reason } });
   if (outcome !== 'fully_fulfillable') expect(reasonInput.required).toBe(true);
+  // A partial decision names the affected item (Tracks Equipment Request Status AC3).
+  if (outcome === 'partially_fulfillable') fireEvent.click(within(card).getByRole('checkbox', { name: /microphone/i }));
 
   fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
   expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('status'));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome, ...(reason ? { reason } : {}), requestVersion: 1,
+    ...(outcome === 'partially_fulfillable' ? { affectedItems: [{ key: 'equipment:0' }] } : {}),
   }, 'support-token'));
-  expect(screen.queryByRole('article', { name: 'Community Workshop' })).toBeNull();
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  const reservationPanel = screen.getByRole('tabpanel', { name: 'Equipment reservation' });
+  if (outcome === 'fully_fulfillable' || outcome === 'partially_fulfillable') {
+    expect(await within(reservationPanel).findByRole('article', { name: 'Community Workshop' })).toBeTruthy();
+    expect(within(reservationPanel).getByText(`Review: ${outcome.replaceAll('_', ' ')}${reason ? ` — ${reason}` : ''}`)).toBeTruthy();
+  } else {
+    expect(within(reservationPanel).queryByRole('article', { name: 'Community Workshop' })).toBeNull();
+  }
 });
 
 // AC3: a partial or unavailable choice cannot be persisted without a reason.
@@ -112,7 +158,8 @@ it('AC1 - presents safe fallbacks for event requests with no recorded optional d
   };
   api.get.mockImplementation(async path => path === '/auth/me'
     ? { user: supportUser }
-    : path === '/events/equipment-requests' ? { requests: [sparseRequest] }
+    : path === '/events/on-site-support' ? { events: [] }
+      : path === '/events/equipment-requests' ? { requests: [sparseRequest] }
       : path === '/events/equipment-inventory' ? { inventory: [] }
         : { requests: [], reservations: [] });
   await openDashboard();
@@ -140,6 +187,7 @@ it('AC1 - shows queue errors and permits retry', async () => {
   let queueFails = true;
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-requests' && queueFails) {
       queueFails = false;
       throw new Error('The request queue is unavailable.');
@@ -159,6 +207,7 @@ it('AC1 - shows queue errors and permits retry', async () => {
 it('AC1 - shows a fallback queue error when no error message is supplied', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     throw {};
   });
   await openDashboard();
@@ -204,26 +253,53 @@ it('AC2 AC4 - disables duplicate review submissions while saving', async () => {
   expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
 });
 
-// AC4 - The review shortcut takes staff directly to the reservation tab after the audit write succeeds.
-it('AC4 - saves the review and opens equipment reservation', async () => {
+// AC4 - Saving a review opens the reservation tab without a second navigation action.
+it('AC4 - saves the review and immediately opens equipment reservation', async () => {
   await openDashboard();
   const card = await screen.findByRole('article', { name: 'Community Workshop' });
   fireEvent.change(within(card).getByLabelText('Fulfillment decision'), {
     target: { value: 'fully_fulfillable' },
   });
-  fireEvent.click(within(card).getByRole('button', { name: 'Save review & go to equipment reservation' }));
+
+  expect(within(card).queryByRole('button', { name: 'Save review & go to equipment reservation' })).toBeNull();
+  fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
 
   expect(await screen.findByRole('heading', { name: 'Equipment availability and reservation' })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome: 'fully_fulfillable',
     requestVersion: 1,
   }, 'support-token');
 });
 
+// AC5 - dashboard tabs support keyboard navigation and preserve the selected workspace.
+it('AC5 - moves between support tabs with arrow, Home, and End keys', async () => {
+  await openDashboard();
+  const reviewTab = screen.getByRole('tab', { name: 'Equipment request review' });
+  fireEvent.keyDown(reviewTab, { key: 'PageDown' });
+  fireEvent.keyDown(reviewTab, { key: 'ArrowRight' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
+  expect(screen.getByRole('tab', { name: 'Equipment info', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'End' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+});
+
+// AC5 - the reservation empty state returns staff to the review queue.
+it('AC5 - returns from the empty reservation state to equipment review', async () => {
+  await openDashboard();
+  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Go to equipment request review' }));
+  expect(screen.getByRole('tab', { name: 'Equipment request review', selected: true })).toBeTruthy();
+});
+
 // AC1 - A failing section remains independently visible when each dashboard data request errors.
 it('AC1 - reports inventory and reservation load errors in their respective tabs', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-requests') throw new Error('Request queue unavailable.');
     if (path === '/events/equipment-inventory') throw new Error('Catalogue unavailable.');
     if (path === '/events/equipment-reservations') throw new Error('Reservation list unavailable.');

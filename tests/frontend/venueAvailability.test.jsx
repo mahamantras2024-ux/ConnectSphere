@@ -1,7 +1,7 @@
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
 import App from '../../frontend/src/App';
@@ -65,21 +65,21 @@ it('AC1 - coordinator selects another venue and date without receiving staff edi
   fireEvent.click(screen.getAllByRole('button', { name: /View details/ })[1]);
   fireEvent.click(screen.getByRole('button', { name: 'View schedule' }));
   fireEvent.change(screen.getByLabelText('Schedule date'), { target: { value: date } });
-  expect(await screen.findByText(/Hall B booking/)).toBeVisible();
+  expect(await screen.findByRole('gridcell', { name: /Confirmed booking: Hall B booking/ })).toBeVisible();
   expect(api.get).toHaveBeenCalledWith(`/venues/8/schedule?date=${date}`, 'coordinator-token');
   expect(screen.queryByRole('heading', { name: 'Hall A schedule' })).not.toBeInTheDocument();
 });
 
 it('AC4 AC6 - displays independently buffered occupancy using the selected venue configuration', async () => {
-  // Arrange: passing the correct venue settings to the interval utility is observable in the agenda.
+  // Arrange: passing the correct venue settings to the interval utility is observable on the timeline.
   api.get.mockResolvedValue([{ ...hold, status: 'approved' }]);
   render(<VenueSchedule venue={venue} initialDate={date} />);
   // Act
-  const agenda = await screen.findByRole('list', { name: 'Daily availability' });
+  await screen.findByRole('grid', { name: 'Venue day timeline' });
   // Assert: catches a correct utility that the component calls without its buffer configuration.
-  expect(within(agenda).getByText(/00:00–09:30.*Available/)).toBeVisible();
-  expect(within(agenda).getByText(/11:15–24:00.*Available/)).toBeVisible();
-  expect(agenda).toHaveTextContent('Booked');
+  expect(screen.getByRole('gridcell', { name: /00:00–09:30.*Available/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /11:15–24:00.*Available/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /09:30–11:15.*Booked/ })).toBeVisible();
 });
 
 it('AC3 AC4 AC7 - active holds and maintenance have distinct textual slot statuses', async () => {
@@ -93,9 +93,9 @@ it('AC3 AC4 AC7 - active holds and maintenance have distinct textual slot status
   // Act: flush the resolved network promise without waiting on real time.
   await act(async () => {});
   // Assert: both unavailable reasons must be readable without interpreting colour.
-  expect(screen.getByText(/Workshop/).closest('li')).toHaveTextContent(/10:00–11:00.*Temporary Hold/);
-  expect(screen.getByText(/Lift repair/).closest('li')).toHaveTextContent(/12:00–13:00.*Under Maintenance/);
-  expect(screen.getByText(/11:00–12:00.*Available/)).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /10:00–11:00.*Temporary Hold.*Workshop/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /12:00–13:00.*Under Maintenance.*Lift repair/ })).toBeVisible();
+  expect(screen.getByRole('gridcell', { name: /11:00–12:00.*Available/ })).toBeVisible();
 });
 
 it('AC8 AC9 - an open agenda releases a hold exactly at expiry without manual refresh or confirmation', async () => {
@@ -106,13 +106,13 @@ it('AC8 AC9 - an open agenda releases a hold exactly at expiry without manual re
   await act(async () => {});
   // Act / Assert: all three deadline probes are deterministic and visibly distinguish hold from free time.
   await act(async () => { vi.advanceTimersByTime(999); });
-  expect(screen.getByText(/Workshop/).closest('li')).toHaveTextContent('Temporary Hold');
+  expect(screen.getByRole('gridcell', { name: /Temporary Hold.*Workshop/ })).toBeVisible();
   await act(async () => { vi.advanceTimersByTime(1); });
-  expect(screen.queryByText(/Temporary Hold/)).not.toBeInTheDocument();
-  expect(screen.getByText(/(?:00:00–24:00|10:00–11:00).*Available/)).toBeVisible();
-  expect(screen.queryByText(/Booked|Confirmed booking/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('gridcell', { name: /Temporary Hold/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('gridcell', { name: /(?:00:00–24:00|10:00–11:00).*Available/ })).toBeVisible();
+  expect(screen.queryByRole('gridcell', { name: /Booked|Confirmed booking/ })).not.toBeInTheDocument();
   await act(async () => { vi.advanceTimersByTime(1); });
-  expect(screen.queryByText(/Temporary Hold|Booked|Confirmed booking/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('gridcell', { name: /Temporary Hold|Booked|Confirmed booking/ })).not.toBeInTheDocument();
 });
 
 it('AC5 AC8 - returning to the browser revalidates a hold that was approved while the page was inactive', async () => {
@@ -120,12 +120,12 @@ it('AC5 AC8 - returning to the browser revalidates a hold that was approved whil
   api.get.mockResolvedValueOnce([{ ...hold, hold_expires_at: '2099-01-01T00:00:00Z' }])
     .mockResolvedValue([{ ...hold, status: 'approved' }]);
   render(<VenueSchedule venue={venue} initialDate={date} />);
-  await screen.findByText(/Workshop/);
+  await screen.findByRole('gridcell', { name: /Temporary Hold.*Workshop/ });
   // Act
   fireEvent(window, new Event('focus'));
   // Assert: the server's confirmation must replace the stale temporary state.
-  expect(await screen.findByText(/Confirmed booking: Workshop/)).toBeVisible();
-  expect(screen.queryByText(/Temporary Hold/)).not.toBeInTheDocument();
+  expect(await screen.findByRole('gridcell', { name: /Confirmed booking: Workshop/ })).toBeVisible();
+  expect(screen.queryByRole('gridcell', { name: /Temporary Hold/ })).not.toBeInTheDocument();
 });
 
 it('AC5 AC8 AC9 - expiration revalidates a stale hold so a staff-approved booking never becomes available', async () => {
@@ -134,10 +134,10 @@ it('AC5 AC8 AC9 - expiration revalidates a stale hold so a staff-approved bookin
   api.get.mockResolvedValueOnce([hold]).mockResolvedValue([{ ...hold, status: 'approved' }]);
   render(<VenueSchedule venue={{ ...venue, setup_minutes: 0, turnaround_minutes: 0 }} initialDate={date} />);
   await act(async () => {});
-  expect(screen.getByText(/Workshop/).closest('li')).toHaveTextContent('Temporary Hold');
+  expect(screen.getByRole('gridcell', { name: /Temporary Hold.*Workshop/ })).toBeVisible();
   // Act: the old hold deadline passes without a manual refresh or focus event.
   await act(async () => { vi.advanceTimersByTime(1000); });
   // Assert: relying solely on the old pending snapshot would incorrectly free this booked slot.
-  expect(screen.getByText(/Confirmed booking: Workshop/).closest('li')).toHaveTextContent(/10:00–11:00.*Unavailable.*Booked/);
-  expect(screen.queryByText(/10:00–11:00.*Available/)).not.toBeInTheDocument();
+  expect(screen.getByRole('gridcell', { name: /10:00–11:00.*Unavailable.*Booked.*Workshop/ })).toBeVisible();
+  expect(screen.queryByRole('gridcell', { name: /10:00–11:00.*Available/ })).not.toBeInTheDocument();
 });

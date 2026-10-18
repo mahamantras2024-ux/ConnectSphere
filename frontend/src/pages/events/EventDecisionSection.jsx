@@ -1,7 +1,8 @@
 // File: Shows an event's review outcome and lets the assigned Event Coordinator approve or reject it.
 import { useEffect, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
+import SafetyChangesPanel from './SafetyChangesPanel';
 
 // Checklist labels for the server's readiness requirements (eventDecisionPolicy REQUIREMENTS).
 const REQUIREMENT_LABELS = {
@@ -18,6 +19,7 @@ function formatTime(value) {
 /**
  * Event review decision panel.
  * - Organisers (and other viewers) see the recorded outcome with its reason, or that a decision is pending (AC6).
+ * - While the Safety Officer's requested changes are open, both see them and the coordinator can mark each complete.
  * - The assigned coordinator also sees each readiness requirement and can approve only when the server allows it;
  *   rejection opens an optional reason (AC1-AC3, AC7). The server re-checks every rule, so the buttons are guidance.
  * @param {{ event: object, onDecided: (status: string) => void }} props `onDecided` updates the page's status label.
@@ -62,13 +64,27 @@ export default function EventDecisionSection({ event, onDecided }) {
 
   const outcome = review?.outcome;
   return (
-    <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="decision-heading">
+    <section
+      className="ed-card"
+      style={{
+        backgroundColor: '#ffffff',
+        color: '#1c2530',
+        border: '1px solid #d9dee5',
+        borderRadius: '10px',
+        padding: '24px 28px',
+        marginBottom: '28px'
+      }}
+      aria-labelledby="decision-heading"
+    >
       <div className="section-heading">
         <h2 id="decision-heading">Review decision</h2>
         {review && <span className={`status-badge status-${outcome ? outcome.decision : 'under_review'}`}>{outcome ? (outcome.decision === 'approved' ? 'Approved' : 'Rejected') : 'Awaiting decision'}</span>}
       </div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
+      {/* Operational Feasibility Check AC3/AC4: stages the Safety Officer reopened, shown while any is still open. */}
+      {review?.safetyChanges && <SafetyChangesPanel eventId={event.id} changes={review.safetyChanges} coordinator={coordinator} token={token}
+        onChanged={() => setReloadKey((key) => key + 1)} />}
       {/* Plain text (not an alert) so a decision-panel outage never masks the event page's own errors. */}
       {loadError ? <p className="error-message">{loadError}</p> : !review ? <p role="status" className="loading-state">Loading review decision...</p> : outcome ? (
         <dl className="grid gap-3 md:grid-cols-2">

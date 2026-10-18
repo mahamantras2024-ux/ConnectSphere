@@ -2,25 +2,20 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
-import { formatEquipmentItems } from '../events/equipmentRequirements';
+import SafetyEventFacts, { LATEST_LABELS, STAGE_LABELS } from './SafetyEventFacts';
 
 const OUTCOMES = [['approved', 'Approve'], ['rejected', 'Reject'], ['changes_requested', 'Request changes']];
-const LATEST_LABELS = { approved: 'Passed', rejected: 'Failed', changes_requested: 'Changes requested' };
 
-/** Summarises the equipment and technical needs the Safety Officer must consider (placement, crowd movement). */
-function equipmentSummary(event) {
-  const needs = [];
-  if (event.equipment_items?.length) needs.push(formatEquipmentItems(event.equipment_items));
-  if (event.technical_support_required) needs.push('On-site technical support');
-  if (event.video_conferencing_required) needs.push('Video-conferencing / hybrid');
-  if (event.equipment_notes?.trim()) needs.push(event.equipment_notes.trim());
-  return needs.length ? needs.join('; ') : 'None requested';
+/** Technical Support only reviews events that asked for something technical, so only those can reopen that stage. */
+function needsTechnical(event) {
+  return Boolean(event.equipment_items?.length || event.technical_support_required || event.video_conferencing_required || event.equipment_notes?.trim());
 }
 
 /**
- * Safety Officer queue (Week 7 change 6). Each event shows the facts the check considers - attendance, venue and
- * capacity, layout, accessibility, equipment - and a form to approve, reject or request changes. Notes are required
- * unless approving; the server enforces the same rule and the confirmed-arrangements prerequisite.
+ * Safety Officer queue (Week 7 change 6, Operational Feasibility Check). Each event shows the facts the check
+ * considers (SafetyEventFacts, AC1) and a form to approve, reject or request changes (AC2). Notes are required unless
+ * approving, and a change request must name the planning stages it reopens (AC3). The server enforces the same rules,
+ * and lists an event only once its arrangements are confirmed and no requested change is still open (AC4).
  */
 export default function SafetyCheckQueue() {
   const { token } = useAuth();
@@ -37,18 +32,28 @@ export default function SafetyCheckQueue() {
       .catch((err) => setLoadError(err.message));
   }, [token, reloadKey]);
 
-  // Updates one event's draft outcome or notes without touching the others.
+  // Updates one event's draft outcome, notes or stages without touching the others.
   const setForm = (id, field, value) => setForms((current) => ({ ...current, [id]: { ...current[id], [field]: value } }));
+  // Adds or removes one planning stage from an event's change request.
+  const toggleStage = (id, area, checked) => setForms((current) => {
+    const stages = current[id]?.stages || [];
+    return { ...current, [id]: { ...current[id], stages: checked ? [...stages, area] : stages.filter((stage) => stage !== area) } };
+  });
 
   // Records the check; a missing explanation is caught here first so the officer gets immediate feedback.
   async function record(submitEvent, event) {
     submitEvent.preventDefault();
-    const { outcome = '', notes = '' } = forms[event.id] || {};
+    const { outcome = '', notes = '', stages = [] } = forms[event.id] || {};
     if (!outcome) { setError('Choose an outcome for the safety check.'); return; }
     if (outcome !== 'approved' && !notes.trim()) { setError('Explain what is unsafe or what must change.'); return; }
+    // AC3: a change request names the planning stages the event returns to; other outcomes send none.
+    const requestingChanges = outcome === 'changes_requested';
+    if (requestingChanges && !stages.length) { setError('Choose which planning stages need changes.'); return; }
     setSaving(event.id); setError(''); setStatus('');
     try {
-      const data = await api.post(`/events/${event.id}/safety-checks`, { outcome, notes }, token);
+      // Stages are sent in a fixed order so the stored list does not depend on click order.
+      const body = requestingChanges ? { outcome, notes, changeAreas: Object.keys(STAGE_LABELS).filter((area) => stages.includes(area)) } : { outcome, notes };
+      const data = await api.post(`/events/${event.id}/safety-checks`, body, token);
       setStatus(data.message);
       setForms((current) => ({ ...current, [event.id]: {} }));
     } catch (err) {
@@ -75,14 +80,7 @@ export default function SafetyCheckQueue() {
                   <div><strong>{event.name}</strong>
                     <span className={`status-badge ${event.latest_safety_check ? `status-${event.latest_safety_check.outcome}` : 'status-under_review'}`}>
                       {event.latest_safety_check ? `Last check: ${LATEST_LABELS[event.latest_safety_check.outcome]}` : 'Not yet checked'}</span></div>
-                  <dl className="detail-facts">
-                    <div><dt>Date and time</dt><dd>{event.proposed_date || 'Not specified'}{event.proposed_start_time ? `, ${event.proposed_start_time.slice(0, 5)}–${event.proposed_end_time?.slice(0, 5) || '?'}` : ''}</dd></div>
-                    <div><dt>Expected attendance</dt><dd>{event.expected_attendance ?? 'Not specified'}</dd></div>
-                    <div><dt>Venue</dt><dd>{event.venues.map((venue) => `${venue.name} (capacity ${venue.capacity})`).join(', ')}</dd></div>
-                    <div><dt>Layout</dt><dd>{event.room_layout_preference || 'Not specified'}</dd></div>
-                    <div><dt>Accessibility</dt><dd>{event.accessibility_requirements?.length ? event.accessibility_requirements.join(', ') : 'None recorded'}</dd></div>
-                    <div><dt>Equipment</dt><dd>{equipmentSummary(event)}</dd></div>
-                  </dl>
+                  <SafetyEventFacts event={event} />
                   <form className="grid gap-2" onSubmit={(submitEvent) => record(submitEvent, event)}>
                     <fieldset className="flex flex-wrap gap-4" disabled={saving === event.id}>
                       <legend className="mb-1 font-medium">Outcome for {event.name}</legend>
@@ -93,6 +91,18 @@ export default function SafetyCheckQueue() {
                         </label>
                       ))}
                     </fieldset>
+                    {form.outcome === 'changes_requested' && (
+                      <fieldset className="flex flex-wrap gap-4" disabled={saving === event.id}>
+                        <legend className="mb-1 font-medium">Planning stages to reopen for {event.name}</legend>
+                        {Object.entries(STAGE_LABELS).map(([area, label]) => (
+                          <label key={area} className="flex items-center gap-2">
+                            <input className="!w-4" type="checkbox" checked={(form.stages || []).includes(area)}
+                              disabled={area === 'technical' && !needsTechnical(event)}
+                              onChange={(changeEvent) => toggleStage(event.id, area, changeEvent.target.checked)} />{label}
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
                     <label className="grid gap-1" htmlFor={`safety-notes-${event.id}`}>Notes (required unless approving)
                       <textarea id={`safety-notes-${event.id}`} rows={3} maxLength={4000} value={form.notes || ''} disabled={saving === event.id}
                         onChange={(changeEvent) => setForm(event.id, 'notes', changeEvent.target.value)} />

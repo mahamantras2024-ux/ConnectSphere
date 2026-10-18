@@ -8,7 +8,19 @@ See [current functionality](docs/current-functionality.md), [database files](doc
 
 From the root, install with `npm ci --prefix backend` and `npm ci --prefix frontend`. Retain the private configuration files. Run `npm run dev --prefix backend` and `npm run dev --prefix frontend` in separate terminals. Default addresses: http://localhost:4000 and http://localhost:5173. See [email configuration](docs/email-setup.md).
 
-Existing shared databases do not need seeding. Deliberate upgrades for an existing compatible database are the backend commands `migrate:external-events`, `setup:sprint-one`, and `setup:venue-management`, in that order. These additive upgrades are not a verified empty-database bootstrap. Internal accounts use `npm run provision:account --prefix backend`.
+Existing shared databases do not need seeding. Deliberate upgrades for an existing compatible database are the backend commands `migrate:external-events`, `setup:sprint-one`, and `setup:venue-management`, in that order. The event migration also applies additive equipment repair history and seeds two unavailable repair-demo assets in whichever configured development or test database it targets. These upgrades are not a verified empty-database bootstrap. Internal accounts use `npm run provision:account --prefix backend`.
+
+## Quality checks
+
+The same checks used by CI are available from the repository root:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run lint` | Static JavaScript/JSX linting |
+| `npm run audit` | High-severity audit of production dependencies |
+| `npm run package` | Builds `artifacts/quackloan.zip` once and writes its CycloneDX file SBOM |
+| `npm run smoke` | Extracts the package and probes the API `/health` endpoint |
+| `npm run e2e` | Runs the Playwright browser checks against the production frontend preview |
 
 ## Folders
 

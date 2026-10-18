@@ -204,6 +204,58 @@ describe('dashboard and event authorization', () => {
     expect(getDashboardRoute(undefined)).toBe('/dashboard');
   });
 });
+// Staff login story: a Safety Officer (and every other staff role) reaches only its own workspace.
+const staffDashboards = dashboards.filter(([role]) => !['event_organiser', 'attendee'].includes(role));
+const queuedEvent = { id: 7, name: 'Annual Gala', proposed_date: '2030-02-01', proposed_start_time: '18:00', proposed_end_time: '22:00',
+  expected_attendance: 120, room_layout_preference: 'Banquet', accessibility_requirements: null, equipment_items: [],
+  technical_support_required: false, video_conferencing_required: false, equipment_notes: null,
+  venues: [{ name: 'Hall A', capacity: 200 }], latest_safety_check: null };
+describe('Safety Officer role-based access', () => {
+  beforeEach(() => {
+    // Adds the Safety Officer queue to the shared API double; every other unexpected request still fails loudly.
+    const shared = api.get.getMockImplementation();
+    api.get.mockImplementation(async (path, token) => path === '/safety/checks' ? { events: [queuedEvent] } : shared(path, token));
+  });
+  // Test case: Opens another role's workspace or event data as a Safety Officer and checks only the safety workspace loads.
+  it.each(['/venue/dashboard', '/coordinator/dashboard', '/tech-support/dashboard', '/coordinator-lead/dashboard', '/organizer/dashboard',
+    '/attendee/dashboard', '/events', '/events/1', '/registrations', '/dashboard', '/'])('Staff AC4 - keeps a Safety Officer in their own dashboard when opening %s', async (path) => {
+    currentUser = { ...currentUser, role: 'safety_officer', roles: ['safety_officer'] };
+    open(path, true);
+    expect(await screen.findByRole('heading', { name: 'Safety Officer Dashboard' })).toBeTruthy();
+    await screen.findByText('Annual Gala');
+    expect([...new Set(api.get.mock.calls.map(([endpoint]) => endpoint))].sort()).toEqual(['/auth/me', '/safety/checks']);
+    expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/safety/dashboard');
+  });
+  // Test case: Opens the Safety Officer dashboard as each other staff role and checks the safety queue is never requested.
+  it.each(staffDashboards.filter(([role]) => role !== 'safety_officer'))('Staff AC4 - does not let %s open the Safety Officer dashboard', async (role, title) => {
+    currentUser = { ...currentUser, role, roles: [role] };
+    open('/safety/dashboard', true);
+    expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Operational safety checks' })).toBeNull();
+    expect(api.get.mock.calls.some(([endpoint]) => endpoint === '/safety/checks')).toBe(false);
+  });
+  // Test case: Signs in as a Safety Officer and checks the dashboard shows the safety queue and nothing from other roles.
+  it('Staff AC2/AC3 - a Safety Officer lands on a dashboard with only safety tasks', async () => {
+    currentUser = { id: 4, email: 'safety@example.com', full_name: 'Sam Safety', role: 'safety_officer', roles: ['safety_officer'] };
+    open(); submitLogin();
+    expect(await screen.findByRole('heading', { name: 'Safety Officer Dashboard' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Operational safety checks' })).toBeTruthy();
+    expect(screen.getByText('Annual Gala')).toBeTruthy();
+    expect(screen.getByLabelText('Provisioned workspaces').textContent).toBe('Safety Officer');
+    for (const heading of ['Venues', 'Unassigned requests', 'Assigned active events', 'Pending equipment requests']) {
+      expect(screen.queryByRole('heading', { name: heading })).toBeNull();
+    }
+    expect(screen.queryByRole('button', { name: 'Add venue' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Events' })).toBeNull();
+  });
+  // Test case: Opens each staff dashboard with its one provisioned role and checks no role switcher is offered.
+  it.each(staffDashboards)('Staff AC1 - a single-role %s account is offered no role switcher', async (role, title) => {
+    currentUser = { ...currentUser, role, roles: [role] };
+    open(getDashboardRoute(role), true);
+    expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
+    expect(screen.queryByLabelText('Active role')).toBeNull();
+  });
+});
 describe('internal account provisioning', () => {
   // Groups checks that internal accounts cannot self-register.
 
