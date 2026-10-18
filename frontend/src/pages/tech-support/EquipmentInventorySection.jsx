@@ -130,7 +130,7 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
     event.preventDefault();
     const cleanNote = resolutionNote.trim();
     if (!cleanNote) {
-      // A whitespace-only reason would leave the equipment history without an auditable resolution.
+    // A whitespace-only reason would leave the equipment history without an auditable resolution.
       setRepairError('Enter a brief resolution note before marking equipment available.');
       return;
     }

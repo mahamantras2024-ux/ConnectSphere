@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
 // Maps Sprint 1 stories and Sprint 2 venue/event stories to their regression suites.
 const stories = {
+  // Sprint 3 SCRUM-98 reuses the existing create/validation guards instead of duplicating persistence or authorization tests.
+  'venue-emergency-access': ['venueEmergencyAccess','createVenue-backend','venueValidation','venueEmergencyDocuments','venueManagement','migrateExternalEvents','operationalSafetyCheck'],
   // Sprint 1:
   'create-venue': ['createVenue-backend','venueValidation','createVenue','venueInteractions'],
   'view-venue': ['viewVenue-backend','venueInteractions','hourlyRate'],
@@ -16,6 +18,8 @@ const stories = {
   'organiser-events': ['organiserEvents','registrationModels','sharedUiRegressions'],
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
+  // SCRUM-39: one feature suite per layer, including the authenticated search endpoint.
+  'search-venues': ['venueSearch'],
   'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
   'delete-venue': ['venueManagement','venueInteractions'],
   // Lead workflow also retains owner/assignment and real-routing regressions.

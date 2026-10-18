@@ -27,6 +27,7 @@ test('Migration compatibility - preserves event_cancelled and equipment_status_c
     'event_approved',
     'event_rejected',
     'safety_check_recorded',
+    // Assignment notifications are persisted by the newer staff-assignment workflow too.
     'technical_support_assigned',
     'technical_support_unassigned',
     'event_cancelled',

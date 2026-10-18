@@ -151,7 +151,7 @@ it('a late failure from a superseded map point is not shown',async()=>{
 // Test case: Simulates image read failure/replacement and checks the error, reader cancellation and new preview.
 it('[SCRUM-35 AC1] - image read failures show a useful error and a second upload cancels the first reader',()=>{
  const readers=[];class Reader {constructor(){readers.push(this);}abort=vi.fn();readAsDataURL=vi.fn();}
- vi.stubGlobal('FileReader',Reader);const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);const input=view.baseElement.querySelector('input[type="file"]');
+ vi.stubGlobal('FileReader',Reader);const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);const input=screen.getByLabelText('Venue image');
  fireEvent.change(input,{target:{files:[]}});expect(readers).toHaveLength(0);
  fireEvent.change(input,{target:{files:[new File(['image'],'a.png',{type:'image/png'})]}});act(()=>readers[0].onerror());expect(screen.getByRole('alert').textContent).toMatch(/Unable to read/);
  fireEvent.change(input,{target:{files:[new File(['image'],'b.png',{type:'image/png'})]}});expect(readers[0].abort).toHaveBeenCalledOnce();readers[1].result='data:image/png;base64,YQ==';act(()=>readers[1].onload());expect(screen.getByAltText('Venue preview').src).toContain('data:image/png');
@@ -192,7 +192,7 @@ it('[SCRUM-35 AC1] - invalid lists, turnaround, operating hours and excessive ho
 });
 // Test case: Selects an image larger than five megabytes and checks rejection before reading.
 it('[SCRUM-35 AC1] - oversized images are rejected before reading',()=>{
- const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);fireEvent.change(view.baseElement.querySelector('input[type="file"]'),{target:{files:[{type:'image/png',size:5*1024*1024+1}]}});expect(screen.getByRole('alert').textContent).toBe('Images must be 5 MB or smaller.');
+ const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);fireEvent.change(screen.getByLabelText('Venue image'),{target:{files:[{type:'image/png',size:5*1024*1024+1}]}});expect(screen.getByRole('alert').textContent).toBe('Images must be 5 MB or smaller.');
 });
 // Test case: Searches/selects an address and checks pending notifications at each request start/end.
 it('map search and selection notify the form when location work starts and ends',async()=>{
