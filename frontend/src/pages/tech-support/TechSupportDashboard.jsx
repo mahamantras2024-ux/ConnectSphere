@@ -471,6 +471,12 @@ export default function TechSupportDashboard() {
     showSuccess(`Equipment reservation confirmed for ${reservation.event_name}.`);
   }
 
+  /** Refreshes the affected-reservation list and confirms a submitted replacement proposal. */
+  async function handleAlternativeProposed() {
+    await loadDashboardData();
+    showSuccess('Replacement proposal sent to the Event Coordinator.');
+  }
+
   /** Releases an allocation, then reloads reservations so newly available time slots and audit details stay in sync. */
   async function releaseReservation(reservation) {
     await api.delete(`/events/equipment-reservations/${reservation.id}`, token);

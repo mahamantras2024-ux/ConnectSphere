@@ -76,6 +76,7 @@ beforeEach(() => {
     if (path === '/events/equipment-inventory') return { inventory: [] };
     // The dashboard also fetches assigned events; keep the unrelated panel in its empty state.
     if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       return reservationsResponse([cancelledEventReservation, rescheduledEventReservation]);
     }
@@ -132,6 +133,8 @@ it('AC1 - keeps reservations for unchanged events protected from release', async
   api.get.mockImplementation(async (path) => {
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
+    if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       return reservationsResponse([{
         ...cancelledEventReservation,
@@ -220,6 +223,8 @@ it('AC2 - shows released equipment as available during a subsequent availability
   api.get.mockImplementation(async (path) => {
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
+    if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       reservationFetchCount += 1;
       return reservationsResponse(reservationFetchCount === 1
@@ -250,9 +255,12 @@ it('AC2 - shows released equipment as available during a subsequent availability
 // This assertion fails if the server drops either the staff identity or persisted release time.
 it('AC3 - displays who released the reservation and when for audit', async () => {
   let reservationFetchCount = 0;
+  const releasedAt = '2026-10-17T11:00:00.000Z';
   api.get.mockImplementation(async (path) => {
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
+    if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       reservationFetchCount += 1;
       return reservationsResponse(reservationFetchCount === 1
@@ -261,7 +269,7 @@ it('AC3 - displays who released the reservation and when for audit', async () =>
           ...cancelledEventReservation,
           status: 'cancelled',
           released_by_name: 'Taylor Support',
-          released_at: '2026-10-17T11:00:00.000Z',
+          released_at: releasedAt,
         }]);
     }
     throw new Error(`Unexpected GET ${path}`);
@@ -273,8 +281,9 @@ it('AC3 - displays who released the reservation and when for audit', async () =>
     name: 'Release reservation for Cancelled Community Workshop',
   }));
 
-  expect(await screen.findByText(/Released by Taylor Support/)).toBeTruthy();
-  expect(screen.getByText(/10\/17\/2026/)).toBeTruthy();
+  expect(await screen.findByText(/Released by Taylor Support/)).toHaveTextContent(
+    new Date(releasedAt).toLocaleString(),
+  );
   expect(screen.queryByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
   })).toBeNull();
@@ -288,6 +297,8 @@ it('AC3 - distinguishes a legacy cancelled reservation with no release audit', a
   api.get.mockImplementation(async (path) => {
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
+    if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       return reservationsResponse([{
         ...cancelledEventReservation,
