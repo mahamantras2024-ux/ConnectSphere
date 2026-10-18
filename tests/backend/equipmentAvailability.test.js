@@ -66,7 +66,10 @@ test('AC1 - lists the pre-provisioned equipment inventory and availability windo
     specification: 'Full HD 1080p, 4,000 lumens, HDMI',
     status: 'operational',
     quantity: 3,
-    availabilities: [{ date: '2026-10-12', startTime: '09:00:00', endTime: '17:00:00', status: 'Available', availableQuantity: 3 }],
+    availabilities: [{
+      date: '2026-10-12', startTime: '09:00:00', endTime: '17:00:00',
+      status: 'Available', availableQuantity: 2, reservedQuantity: 1, eventName: 'Town Hall',
+    }],
   };
   let inventorySql;
   mock.method(pool, 'query', async sql => {
@@ -82,6 +85,9 @@ test('AC1 - lists the pre-provisioned equipment inventory and availability windo
   assert.match(inventorySql, /FROM equipments stock/i);
   assert.match(inventorySql, /technical_equipment_availability/i);
   assert.match(inventorySql, /reserved_item\.quantity/i);
+  assert.match(inventorySql, /'reservedQuantity',\s*COALESCE\(reserved\.quantity,\s*0\)/i);
+  assert.match(inventorySql, /'blockReason'/i);
+  assert.match(inventorySql, /stock\.availability_status/i);
   assert.doesNotMatch(inventorySql, /INSERT INTO equipments|UPDATE equipments/i);
 });
 

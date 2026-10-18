@@ -81,6 +81,8 @@ beforeEach(() => {
     if (endpoint === '/events/equipment-requests') return { requests: [] };
     if (endpoint === '/events/equipment-inventory') return { inventory: [unavailableEquipment, availableEquipment] };
     if (endpoint === '/events/equipment-reservations') return { requests: [], reservations: [] };
+    if (endpoint === '/events/on-site-support') return { events: [] };
+    if (endpoint === '/notifications') return { notifications: [], unreadCount: 0 };
     throw new Error(`Unexpected GET ${endpoint}`);
   });
   vi.spyOn(api, 'put').mockImplementation(async (_endpoint, body) => ({

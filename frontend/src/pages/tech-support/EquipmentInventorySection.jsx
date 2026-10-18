@@ -4,6 +4,15 @@ import { useState } from 'react';
 const formatDate = value => new Intl.DateTimeFormat('en-SG', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 }).format(new Date(`${value}T00:00:00Z`));
+const CALENDAR_HORIZON_DAYS = 90;
+const CALENDAR_PAGE_DAYS = 14;
+
+function calendarDateAtOffset(offset) {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
 
 // Reserved slots are shown in neutral grey; the "· Reserved" text keeps the status readable without colour.
 const CALENDAR_STYLES = `
@@ -13,11 +22,31 @@ const CALENDAR_STYLES = `
   color: #6c757d;
 }
 .equipment-calendar-window.is-reserved small { color: inherit; }
+.equipment-calendar-window.is-partially-reserved {
+  background: #fff4d6;
+  border-color: #e4c36a;
+  color: #624b00;
+}
+.equipment-calendar-window.is-blocked {
+  background: #fde9e7;
+  border-color: #e4a19a;
+  color: #762c24;
+}
 @media (prefers-color-scheme: dark) {
   .equipment-calendar-window.is-reserved {
     background: #2b3138;
     border-color: #444c56;
     color: #9aa4ae;
+  }
+  .equipment-calendar-window.is-partially-reserved {
+    background: #3b321b;
+    border-color: #77632b;
+    color: #f3d77e;
+  }
+  .equipment-calendar-window.is-blocked {
+    background: #3d2422;
+    border-color: #80423c;
+    color: #f1aaa2;
   }
 }
 `;
@@ -36,9 +65,27 @@ const getAvailabilityWindows = item => Array.isArray(item.availabilities) ? item
 const getAvailabilityStatus = item => item.availability_status ||
   (item.status && item.status !== 'operational' ? 'Unavailable' : 'Available');
 
-// A window is reserved when it is not open and is tied to a reservation (status says so, or an event holds it).
-const isReservedWindow = window => window.status !== 'Available' &&
-  (/reserv|book/i.test(String(window.status)) || Boolean(window.eventName));
+// Partial bookings retain available units, so reservation quantity is considered independently of status.
+const isReservedWindow = window => Number(window.reservedQuantity) > 0 ||
+  (window.status !== 'Available' && (/reserv|book/i.test(String(window.status)) || Boolean(window.eventName)));
+const isBlockedWindow = (item, window) => getAvailabilityStatus(item) !== 'Available' ||
+  /unavailable|maintenance|damage|blocked/i.test(String(window.status));
+
+function getBlockedReason(item, window) {
+  if (window.blockReason) return window.blockReason;
+  const latestStatus = item.status_history?.at(-1);
+  if (latestStatus?.status === 'Unavailable' && latestStatus.note) return latestStatus.note;
+  return window.status === 'Available' ? 'Equipment is unavailable.' : window.status;
+}
+
+function getWindowSummary(item, window) {
+  if (isBlockedWindow(item, window)) return `Blocked · ${getBlockedReason(item, window)}`;
+  const available = Number(window.availableQuantity) || 0;
+  const reserved = Number(window.reservedQuantity) || 0;
+  if (reserved > 0) return `${reserved} reserved · ${available} available`;
+  if (window.status === 'Reserved' || window.eventName) return `${available} available · Reserved`;
+  return `${available} available · Available`;
+}
 
 /**
  * Filters the read-only catalogue by asset ID/name and availability date/time range.
@@ -50,6 +97,7 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
+  const [calendarPage, setCalendarPage] = useState(0);
   const [repairingEquipmentId, setRepairingEquipmentId] = useState(null);
   const [resolutionNote, setResolutionNote] = useState('');
   const [repairError, setRepairError] = useState('');
@@ -66,12 +114,18 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
   const searchCalendarAssets = searchCalendarMatches.map(item => ({
     ...item,
     matchingWindows: getAvailabilityWindows(item).filter(window => (
-      matchesFilters(window, dateFilter, fromTime, toTime) && window.status === 'Available'
+      window.date >= calendarDateAtOffset(0) &&
+      window.date < calendarDateAtOffset(CALENDAR_HORIZON_DAYS) &&
+      matchesFilters(window, dateFilter, fromTime, toTime) &&
+      window.status === 'Available' &&
+      !isBlockedWindow(item, window)
     )),
   }));
-  const calendarDates = [...new Set(searchCalendarAssets.flatMap(item => (
-    getAvailabilityWindows(item).map(window => window.date)
-  )))].sort();
+  const calendarStartOffset = calendarPage * CALENDAR_PAGE_DAYS;
+  const calendarDayCount = Math.min(CALENDAR_PAGE_DAYS, CALENDAR_HORIZON_DAYS - calendarStartOffset);
+  const calendarDates = Array.from({ length: calendarDayCount }, (_, index) => (
+    calendarDateAtOffset(calendarStartOffset + index)
+  ));
 
   const assetsToFilter = search ? searchCalendarMatches : inventory;
   const filteredAssets = invalidTimeRange ? [] : assetsToFilter.flatMap(item => {
@@ -266,6 +320,29 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
               <div className="section-heading">
                 <h3 id="equipment-calendar-heading">Availability calendar</h3>
               </div>
+              <p>Only scheduled windows are shown; a dash means no window is scheduled. Unavailable equipment is blocked for its scheduled windows.</p>
+              <div className="equipment-calendar-navigation" aria-label="Calendar date range">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => setCalendarPage(page => Math.max(0, page - 1))}
+                  disabled={calendarPage === 0}
+                >
+                  Previous 14 days
+                </button>
+                <span>
+                  {formatDate(calendarDates[0])} – {formatDate(calendarDates.at(-1))}
+                  {' · '}within the next 90 days
+                </span>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => setCalendarPage(page => page + 1)}
+                  disabled={calendarStartOffset + calendarDayCount >= CALENDAR_HORIZON_DAYS}
+                >
+                  Next 14 days
+                </button>
+              </div>
               <div className="equipment-inventory-table-wrap">
                 <table className="equipment-inventory-table equipment-availability-calendar" aria-label="Equipment availability calendar">
                   <thead>
@@ -296,7 +373,9 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
                               className={dateFilter === date ? 'is-filtered-date' : undefined}
                               aria-label={`Availability on ${formatDate(date)} for ${item.asset_code}`}
                             >
-                              {dayWindows.length === 0 ? <span className="equipment-calendar-empty">—</span> : (
+                              {dayWindows.length === 0 ? (
+                                <span className="equipment-calendar-empty" aria-label="No scheduled availability">—</span>
+                              ) : (
                                 <ul className="equipment-calendar-windows">
                                   {dayWindows.map((window, index) => {
                                     const matches = item.matchingWindows.some(matchingWindow => (
@@ -305,15 +384,18 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
                                       matchingWindow.endTime === window.endTime
                                     ));
                                     const classes = ['equipment-calendar-window'];
-                                    if (matches) classes.push('is-available');
-                                    else if (isReservedWindow(window)) classes.push('is-reserved');
+                                    if (isBlockedWindow(item, window)) classes.push('is-blocked');
+                                    else if (isReservedWindow(window) && Number(window.availableQuantity) > 0) {
+                                      classes.push('is-partially-reserved');
+                                    } else if (isReservedWindow(window)) classes.push('is-reserved');
+                                    else if (matches) classes.push('is-available');
                                     return (
                                       <li
                                         key={`${window.startTime}-${window.endTime}-${index}`}
                                         className={classes.join(' ')}
                                       >
                                         <span>{window.startTime.slice(0, 5)}–{window.endTime.slice(0, 5)}</span>
-                                        <small>{window.availableQuantity} available · {window.status}</small>
+                                        <small>{getWindowSummary(item, window)}</small>
                                         {window.eventName && <small>{window.eventName}</small>}
                                       </li>
                                     );

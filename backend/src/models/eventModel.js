@@ -756,7 +756,7 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
   return result.rows[0] || null;
 }
 
-/** Lists seeded stock counts and availability windows with remaining units per slot. */
+/** Lists equipment stock and scheduled windows with booked, available and blocked quantities. */
 async function listEquipmentInventory() {
   const result = await pool.query(`
     SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
@@ -777,8 +777,26 @@ async function listEquipmentInventory() {
         'date', availability.available_date::text,
         'startTime', availability.start_time::text,
         'endTime', availability.end_time::text,
-        'status', CASE WHEN COALESCE(reserved.quantity, 0) < stock.quantity THEN 'Available' ELSE 'Reserved' END,
-        'availableQuantity', GREATEST(stock.quantity - COALESCE(reserved.quantity, 0), 0),
+        'status', CASE
+          WHEN stock.availability_status <> 'Available' OR stock.status <> 'operational' THEN 'Unavailable'
+          WHEN COALESCE(reserved.quantity, 0) >= stock.quantity THEN 'Reserved'
+          ELSE 'Available'
+        END,
+        'availableQuantity', CASE
+          WHEN stock.availability_status <> 'Available' OR stock.status <> 'operational' THEN 0
+          ELSE GREATEST(stock.quantity - COALESCE(reserved.quantity, 0), 0)
+        END,
+        'reservedQuantity', COALESCE(reserved.quantity, 0),
+        'blockReason', CASE
+          WHEN stock.availability_status <> 'Available' OR stock.status <> 'operational' THEN (
+            SELECT history.note
+            FROM equipment_status_history history
+            WHERE history.inventory_id=stock.id AND history.status='Unavailable'
+            ORDER BY history.changed_at DESC, history.id DESC
+            LIMIT 1
+          )
+          ELSE NULL
+        END,
         'eventName', reserved.event_names
       ) ORDER BY availability.available_date, availability.start_time)
         FILTER (WHERE availability.id IS NOT NULL), '[]'::jsonb) AS availabilities
