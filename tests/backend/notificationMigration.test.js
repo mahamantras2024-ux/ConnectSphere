@@ -20,10 +20,11 @@ const supportedNotificationTypes = [
   'technical_support_unassigned',
   'event_cancelled',
   'equipment_status_changed',
+  'waitlist_promoted',
 ];
 
 // Migration compatibility - Existing stored and current application notification types must survive reruns.
-test('Migration compatibility - preserves stored and supported notification types', () => {
+test('Withdraw AC2 / Migration compatibility - preserves stored and supported notification types', () => {
   // Arrange
   const typeList = migration.match(/ARRAY\[([\s\S]*?)\]::text\[\]/);
   assert.ok(typeList, 'The migration must retain an explicit list of supported notification types.');
@@ -37,7 +38,7 @@ test('Migration compatibility - preserves stored and supported notification type
   assert.match(migration, /EXECUTE format\([\s\S]*ADD CONSTRAINT notifications_type_check/i);
 });
 
-test('Migration compatibility - later constraints retain every supported notification type', () => {
+test('Withdraw AC2 / Migration compatibility - later constraints retain every supported notification type', () => {
   // Arrange
   const laterMigrations = [
     '012-event-cancellation-notifications.sql',

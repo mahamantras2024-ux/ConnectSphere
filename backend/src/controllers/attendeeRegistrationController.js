@@ -1,5 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const registrations = require('../services/attendeeRegistration');
+const withdrawalService = require('../services/attendeeWithdrawal');
 
 /** Validates the event identity before any registration database reads or writes. */
 function validEvent(req, res) {
@@ -30,4 +31,14 @@ const create = asyncHandler(async (req, res) => {
   return res.status(status).json(result);
 });
 
-module.exports = { get, create };
+/** Withdraws the authenticated attendee's own place; caller-provided attendee identities are never accepted. */
+const withdraw = asyncHandler(async (req, res) => {
+  if (!validEvent(req, res)) return;
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Object.keys(req.body).length) {
+    return res.status(400).json({ message: 'Submit withdrawal without additional fields.' });
+  }
+  const { status, ...result } = await withdrawalService.withdraw(Number(req.params.eventId), req.user.id);
+  return res.status(status).json(result);
+});
+
+module.exports = { get, create, withdraw };
