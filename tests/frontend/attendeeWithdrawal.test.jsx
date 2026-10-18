@@ -101,8 +101,8 @@ it('Withdraw AC1 - My Registrations updates the matching card and drawer immedia
   fireEvent.click(screen.getByRole('button', { name: 'Withdraw registration' }));
   fireEvent.click(screen.getByRole('button', { name: 'Confirm', exact: true }));
   // Assert: persisted status updates both views, while the second event remains registered.
-  expect(await screen.findAllByText('withdrawn')).toHaveLength(2);
-  expect(screen.getByText('registered')).toBeInTheDocument();
+  expect(await screen.findAllByText('Withdrawn')).toHaveLength(2);
+  expect(screen.getByText('Registered')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
   expect(screen.queryByRole('button', { name: 'Withdraw registration' })).not.toBeInTheDocument();
 });

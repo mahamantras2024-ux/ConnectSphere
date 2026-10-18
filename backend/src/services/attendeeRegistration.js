@@ -29,6 +29,9 @@ function present(event, facts, now) {
   const cutoff = deadline && event.starts_at ? Math.min(new Date(deadline), new Date(event.starts_at)) : NaN;
   const closesAt = Number.isFinite(cutoff) ? new Date(cutoff).toISOString() : null;
   return { registration: facts.registration, waitlistPosition: facts.waitlist_position,
+    // The registration view needs cancellation context without receiving internal planning states.
+    event_status: ['approved', 'confirmed'].includes(event.status) ? 'confirmed'
+      : ['cancelled', 'completed'].includes(event.status) ? event.status : null,
     capacity: capacityFor(event), remaining: Math.max(0, (capacityFor(event) || 0) - facts.occupied),
     deadline: closesAt, blocker: registrationBlocker(event, now) };
 }
