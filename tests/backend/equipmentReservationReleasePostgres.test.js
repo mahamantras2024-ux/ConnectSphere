@@ -11,7 +11,7 @@ const eventModel = require('../../backend/src/models/eventModel');
 after(async () => pool.end());
 
 // This test uses a random schema and only runs when the database suite is explicitly enabled.
-test('AC1-AC3 - releases seeded postponed/cancelled reservations and restores PostgreSQL slot availability', {
+test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking after postponement', {
   skip: process.env.RUN_DB_TESTS !== '1',
 }, async () => {
   const schema = `cs_equipment_release_${crypto.randomBytes(8).toString('hex')}`;
@@ -70,6 +70,12 @@ test('AC1-AC3 - releases seeded postponed/cancelled reservations and restores Po
     );
     await client.query(releaseMigration);
     await client.query(releaseMigration);
+    const rebookingMigration = fs.readFileSync(
+      path.join(__dirname, '../../backend/src/db/migrations/014-active-equipment-reservation-uniqueness.sql'),
+      'utf8',
+    );
+    await client.query(rebookingMigration);
+    await client.query(rebookingMigration);
     await client.query(`INSERT INTO equipments (asset_code, name, specification, status, quantity)
       VALUES ('PROJ-001', 'Projector', 'Full HD', 'operational', 2)`);
 
@@ -103,6 +109,8 @@ test('AC1-AC3 - releases seeded postponed/cancelled reservations and restores Po
     const replacementEvent = (await client.query(
       "SELECT id FROM events WHERE name='[DEMO] Replacement equipment event'",
     )).rows[0];
+    // Availability and booking require a current coordinator assignment in the production model.
+    await client.query('UPDATE events SET coordinator_id=$1 WHERE id=$2', [staff.id, replacementEvent.id]);
 
     // Arrange two reservations for one two-unit asset at the replacement event's requested time.
     const beforeRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id);
@@ -122,12 +130,90 @@ test('AC1-AC3 - releases seeded postponed/cancelled reservations and restores Po
     const afterRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id);
     assert.equal(afterRelease.items[0].availableQuantity, 2);
 
+    // Arrange: give one reviewed event a future slot, matching stock windows, and unchanged request version.
+    const organiser = (await client.query(
+      "SELECT id FROM users WHERE email='equipment-release-demo-organiser@connectsphere.invalid'",
+    )).rows[0];
+    const coordinator = (await client.query(`
+      INSERT INTO users (email, password_hash, full_name, role, roles)
+      VALUES ('equipment-rebooking-demo-coordinator@connectsphere.invalid', 'not-a-login-account',
+        'Equipment Rebooking Demo Coordinator', 'event_coordinator', ARRAY['event_coordinator'])
+      RETURNING id
+    `)).rows[0];
+    const projector = (await client.query(
+      "SELECT id FROM equipments WHERE asset_code='PROJ-001'",
+    )).rows[0];
+    const rebookingEvent = (await client.query(`
+      INSERT INTO events (
+        organiser_id, coordinator_id, name, proposed_date, proposed_start_time, proposed_end_time,
+        equipment_items, is_draft, status
+      )
+      VALUES ($1, $2, '[TEST] Equipment rebooking event', CURRENT_DATE + 30, '09:00', '12:00',
+        '[{"item":"Projector","quantity":1}]'::jsonb, false, 'planning')
+      RETURNING id
+    `, [organiser.id, coordinator.id])).rows[0];
+    await client.query(`
+      INSERT INTO event_equipment_reviews (event_id, request_version, outcome, reviewed_by)
+      VALUES ($1, 1, 'fully_fulfillable', $2)
+    `, [rebookingEvent.id, staff.id]);
+    await client.query(`
+      INSERT INTO technical_equipment_availability (inventory_id, available_date, start_time, end_time)
+      SELECT id, CURRENT_DATE + days_after, '09:00', '12:00'
+      FROM equipments CROSS JOIN (VALUES (30), (37)) AS slots(days_after)
+      WHERE asset_code='PROJ-001'
+      ON CONFLICT (inventory_id, available_date, start_time, end_time) DO NOTHING
+    `);
+
+    // Act: reserve, postpone the event without changing its request version, release, then reserve again.
+    const firstBooking = await eventModel.createEquipmentReservation(
+      rebookingEvent.id, [{ inventoryId: projector.id, quantity: 1 }], staff.id,
+    );
+    assert.ok(firstBooking.reservation);
+    await client.query(
+      'UPDATE events SET proposed_date=CURRENT_DATE + 37 WHERE id=$1',
+      [rebookingEvent.id],
+    );
+    const rebookingRelease = await eventModel.releaseEquipmentReservation(firstBooking.reservation.id, staff.id);
+    const secondBooking = await eventModel.createEquipmentReservation(
+      rebookingEvent.id, [{ inventoryId: projector.id, quantity: 1 }], staff.id,
+    );
+    const duplicateActiveBooking = await eventModel.createEquipmentReservation(
+      rebookingEvent.id, [{ inventoryId: projector.id, quantity: 1 }], staff.id,
+    );
+
+    // Assert: the old row remains auditable while the same event/version has a new active reservation.
+    assert.equal(rebookingRelease.status, 'cancelled');
+    assert.equal(rebookingRelease.released_by, staff.id);
+    assert.ok(rebookingRelease.released_at instanceof Date);
+    assert.ok(secondBooking.reservation, secondBooking.conflict);
+    assert.equal(duplicateActiveBooking.conflict, 'Equipment has already been reserved for this request.');
+    assert.equal(secondBooking.reservation.event_id, rebookingEvent.id);
+    assert.equal(secondBooking.reservation.request_version, 1);
+    assert.notEqual(secondBooking.reservation.id, firstBooking.reservation.id);
+    const rebookingHistory = (await client.query(`
+      SELECT id, request_version, event_date::text AS event_date, status, released_by, released_at
+      FROM event_equipment_reservations
+      WHERE event_id=$1
+      ORDER BY id
+    `, [rebookingEvent.id])).rows;
+    assert.equal(rebookingHistory.length, 2);
+    assert.equal(rebookingHistory[0].id, firstBooking.reservation.id);
+    assert.equal(rebookingHistory[0].status, 'cancelled');
+    assert.equal(rebookingHistory[0].released_by, staff.id);
+    assert.ok(rebookingHistory[0].released_at instanceof Date);
+    assert.equal(rebookingHistory[1].id, secondBooking.reservation.id);
+    assert.equal(rebookingHistory[1].status, 'reserved');
+    assert.equal(rebookingHistory[1].request_version, rebookingHistory[0].request_version);
+
     const reservations = await eventModel.listActiveEquipmentReservations();
-    assert.equal(reservations.filter(item => item.status === 'cancelled').length, 2);
-    assert.ok(reservations.every(item => item.released_by_name === 'Equipment Release Demo Support'));
+    assert.equal(reservations.filter(item => item.status === 'cancelled').length, 3);
+    assert.ok(reservations
+      .filter(item => item.status === 'cancelled')
+      .every(item => item.released_by_name === 'Equipment Release Demo Support'));
   } finally {
     mock.restoreAll();
     if (schemaCreated) {
+      await client.query('ROLLBACK');
       await client.query('SET search_path TO public');
       await client.query(`DROP SCHEMA ${schema} CASCADE`);
     }

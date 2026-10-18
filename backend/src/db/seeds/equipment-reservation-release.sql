@@ -73,7 +73,7 @@ BEGIN
     (event_id, request_version, event_date, start_time, end_time, reserved_by)
   SELECT event_id, 1, CURRENT_DATE + 7, '09:00', '12:00', support_id
   FROM (VALUES (cancelled_event_id), (postponed_event_id)) AS demo(event_id)
-  ON CONFLICT (event_id, request_version) DO NOTHING;
+  ON CONFLICT (event_id, request_version) WHERE status='reserved' DO NOTHING;
 
   INSERT INTO event_equipment_reservation_items (reservation_id, inventory_id, quantity)
   SELECT reservation.id, projector_id, 1

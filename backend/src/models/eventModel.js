@@ -762,7 +762,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       INSERT INTO event_equipment_reservations
         (event_id, request_version, event_date, start_time, end_time, venue_name, venue_location, reserved_by)
       VALUES ($1, $2, $3::date, $4::time, $5::time, $6, $7, $8)
-      ON CONFLICT (event_id, request_version) DO NOTHING
+      ON CONFLICT (event_id, request_version) WHERE status='reserved' DO NOTHING
       RETURNING id, event_id, request_version, event_date::text AS event_date,
         start_time, end_time, venue_name, venue_location, reserved_by, reserved_at
     `, [event.id, event.request_version, event.proposed_date, event.proposed_start_time,
@@ -1349,7 +1349,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       INSERT INTO event_equipment_reservations
         (event_id, request_version, event_date, start_time, end_time, venue_name, venue_location, reserved_by)
       VALUES ($1, $2, $3::date, $4::time, $5::time, $6, $7, $8)
-      ON CONFLICT (event_id, request_version) DO NOTHING
+      ON CONFLICT (event_id, request_version) WHERE status='reserved' DO NOTHING
       RETURNING id, event_id, request_version, event_date::text AS event_date,
         start_time, end_time, venue_name, venue_location, reserved_by, reserved_at
     `, [event.id, event.request_version, event.proposed_date, event.proposed_start_time,
