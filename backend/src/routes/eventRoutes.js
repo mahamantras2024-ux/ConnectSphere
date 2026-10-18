@@ -7,6 +7,7 @@ const attendeeEventController = require('../controllers/attendeeEventController'
 const eventRegistrationController = require('../controllers/eventRegistrationController');
 const eventCancellationController = require('../controllers/eventCancellationController');
 const technicalSupportController = require('../controllers/technicalSupportController');
+const equipmentReservationUnavailability = require('../controllers/equipmentReservationUnavailabilityController');
 const technicalSupportAssignmentController = require('../controllers/technicalSupportAssignmentController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
@@ -42,6 +43,17 @@ router.get('/equipment-requests', requireRole('technical_support'), technicalSup
 router.post('/:id/equipment-reviews', requireRole('technical_support'), technicalSupportController.reviewEquipmentRequest);
 router.get('/equipment-inventory', requireRole('technical_support'), technicalSupportController.listEquipmentInventory);
 router.put('/equipment-inventory/:id/repair', requireRole('technical_support'), technicalSupportController.repairEquipment);
+router.put(
+  '/equipment-inventory/:id/unavailable',
+  requireRole('technical_support'),
+  equipmentReservationUnavailability.markUnavailable,
+);
+router.get('/equipment-reservation-issues', requireRole('technical_support'), equipmentReservationUnavailability.listOpenIssues);
+router.put(
+  '/equipment-reservation-issues/:issueId/suggestion',
+  requireRole('technical_support'),
+  equipmentReservationUnavailability.suggestAlternative,
+);
 router.get('/equipment-reservations', requireRole('technical_support'), technicalSupportController.listEquipmentReservations);
 router.get('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
 router.post('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);

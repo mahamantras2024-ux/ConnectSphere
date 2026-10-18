@@ -1,6 +1,7 @@
 // File: Lists pending equipment requests and records Technical Support decisions with reviewer audit data.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
+const reservationUnavailability = require('../services/equipmentReservationUnavailability');
 const equipmentStatusService = require('../services/equipmentStatusService');
 
 const outcomes = new Set(['fully_fulfillable', 'partially_fulfillable', 'not_fulfillable']);
@@ -122,11 +123,12 @@ const repairEquipment = asyncHandler(async (req, res) => {
  * Returns reviewed equipment requests awaiting reservation and upcoming reserved allocations.
  */
 const listEquipmentReservations = asyncHandler(async (req, res) => {
-  const [requests, reservations] = await Promise.all([
+  const [requests, reservations, affectedReservations] = await Promise.all([
     eventModel.listEquipmentReservationCandidates(),
     eventModel.listActiveEquipmentReservations(req.user.id),
+    reservationUnavailability.listOpenIssues(),
   ]);
-  return res.status(200).json({ requests, reservations });
+  return res.status(200).json({ requests, reservations, affectedReservations });
 });
 
 /**

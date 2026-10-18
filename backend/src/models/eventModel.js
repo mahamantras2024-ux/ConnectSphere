@@ -305,6 +305,7 @@ async function createEquipmentReview(eventId, data, reviewerId) {
 }
 
 /** Lists seeded stock counts and availability windows with remaining units per slot. */
+/** Returns inventory with scheduled windows and reserved windows on otherwise unscheduled dates. */
 async function listEquipmentInventory() {
   const result = await pool.query(`
     SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
@@ -331,7 +332,30 @@ async function listEquipmentInventory() {
       ) ORDER BY availability.available_date, availability.start_time)
         FILTER (WHERE availability.id IS NOT NULL), '[]'::jsonb) AS availabilities
     FROM equipments stock
-    LEFT JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+    LEFT JOIN LATERAL (
+      SELECT schedule.id, schedule.available_date, schedule.start_time, schedule.end_time
+      FROM technical_equipment_availability schedule
+      WHERE schedule.inventory_id=stock.id
+      UNION ALL
+      SELECT -row_number() OVER (
+        ORDER BY reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time
+      ) AS id,
+        reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time
+      FROM (
+        SELECT DISTINCT reservation.event_date AS available_date,
+          reservation.start_time, reservation.end_time
+        FROM event_equipment_reservations reservation
+        JOIN event_equipment_reservation_items reserved_item
+          ON reserved_item.reservation_id=reservation.id
+        WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+      ) reservation_slot
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM technical_equipment_availability scheduled_date
+        WHERE scheduled_date.inventory_id=stock.id
+          AND scheduled_date.available_date=reservation_slot.available_date
+      )
+    ) availability ON TRUE
     LEFT JOIN LATERAL (
       SELECT sum(reserved_item.quantity)::integer AS quantity,
         string_agg(DISTINCT event.name, ', ' ORDER BY event.name) AS event_names
@@ -472,7 +496,14 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
       availability.start_time::text AS available_start_time,
       availability.end_time::text AS available_end_time
     FROM equipments stock
-    JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+    LEFT JOIN LATERAL (
+      SELECT schedule.id, schedule.available_date, schedule.start_time, schedule.end_time
+      FROM technical_equipment_availability schedule
+      WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+        AND schedule.start_time <= $3::time AND schedule.end_time >= $4::time
+      ORDER BY schedule.start_time, schedule.end_time
+      LIMIT 1
+    ) availability ON true
     LEFT JOIN LATERAL (
       SELECT sum(reserved_item.quantity)::integer AS quantity
       FROM event_equipment_reservations reservation
@@ -483,8 +514,10 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
     ) booked ON true
     WHERE stock.status='operational' AND stock.availability_status='Available'
       AND lower(trim(stock.name))=ANY($1::text[])
-      AND availability.available_date=$2::date
-      AND availability.start_time <= $3::time AND availability.end_time >= $4::time
+      AND (availability.id IS NOT NULL OR NOT EXISTS (
+        SELECT 1 FROM technical_equipment_availability schedule
+        WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+      ))
       AND stock.quantity > COALESCE(booked.quantity, 0)
     ORDER BY lower(stock.name), stock.asset_code
   `, [names, event.proposed_date, event.proposed_start_time, event.proposed_end_time])).rows : [];
@@ -610,7 +643,14 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       SELECT stock.id,
         GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity
       FROM equipments stock
-      JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+      LEFT JOIN LATERAL (
+        SELECT schedule.id
+        FROM technical_equipment_availability schedule
+        WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+          AND schedule.start_time <= $3::time AND schedule.end_time >= $4::time
+        ORDER BY schedule.start_time, schedule.end_time
+        LIMIT 1
+      ) availability ON true
       LEFT JOIN LATERAL (
         SELECT sum(reserved_item.quantity)::integer AS quantity
         FROM event_equipment_reservations reservation
@@ -621,8 +661,10 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       ) booked ON true
       WHERE stock.id=ANY($1::integer[]) AND stock.status='operational'
         AND stock.availability_status='Available'
-        AND availability.available_date=$2::date
-        AND availability.start_time <= $3::time AND availability.end_time >= $4::time
+        AND (availability.id IS NOT NULL OR NOT EXISTS (
+          SELECT 1 FROM technical_equipment_availability schedule
+          WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+        ))
         AND stock.quantity - COALESCE(booked.quantity, 0) >=
           (SELECT selection.quantity FROM jsonb_to_recordset($5::jsonb) AS selection(inventory_id integer, quantity integer)
            WHERE selection.inventory_id=stock.id)
@@ -757,6 +799,7 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
 }
 
 /** Lists equipment stock and scheduled windows with booked, available and blocked quantities. */
+/** Returns inventory with scheduled windows and reserved windows on otherwise unscheduled dates. */
 async function listEquipmentInventory() {
   const result = await pool.query(`
     SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
@@ -801,7 +844,30 @@ async function listEquipmentInventory() {
       ) ORDER BY availability.available_date, availability.start_time)
         FILTER (WHERE availability.id IS NOT NULL), '[]'::jsonb) AS availabilities
     FROM equipments stock
-    LEFT JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+    LEFT JOIN LATERAL (
+      SELECT schedule.id, schedule.available_date, schedule.start_time, schedule.end_time
+      FROM technical_equipment_availability schedule
+      WHERE schedule.inventory_id=stock.id
+      UNION ALL
+      SELECT -row_number() OVER (
+        ORDER BY reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time
+      ) AS id,
+        reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time
+      FROM (
+        SELECT DISTINCT reservation.event_date AS available_date,
+          reservation.start_time, reservation.end_time
+        FROM event_equipment_reservations reservation
+        JOIN event_equipment_reservation_items reserved_item
+          ON reserved_item.reservation_id=reservation.id
+        WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+      ) reservation_slot
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM technical_equipment_availability scheduled_date
+        WHERE scheduled_date.inventory_id=stock.id
+          AND scheduled_date.available_date=reservation_slot.available_date
+      )
+    ) availability ON TRUE
     LEFT JOIN LATERAL (
       SELECT sum(reserved_item.quantity)::integer AS quantity,
         string_agg(DISTINCT event.name, ', ' ORDER BY event.name) AS event_names
@@ -984,7 +1050,15 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
       availability.start_time::text AS available_start_time,
       availability.end_time::text AS available_end_time
     FROM equipments stock
-    JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+    -- No schedule rows for this date means unrestricted; existing rows must cover the whole event.
+    LEFT JOIN LATERAL (
+      SELECT schedule.id, schedule.available_date, schedule.start_time, schedule.end_time
+      FROM technical_equipment_availability schedule
+      WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+        AND schedule.start_time <= $3::time AND schedule.end_time >= $4::time
+      ORDER BY schedule.start_time, schedule.end_time
+      LIMIT 1
+    ) availability ON true
     LEFT JOIN LATERAL (
       SELECT sum(reserved_item.quantity)::integer AS quantity
       FROM event_equipment_reservations reservation
@@ -995,8 +1069,10 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
     ) booked ON true
     WHERE stock.status='operational' AND stock.availability_status='Available'
       AND lower(trim(stock.name))=ANY($1::text[])
-      AND availability.available_date=$2::date
-      AND availability.start_time <= $3::time AND availability.end_time >= $4::time
+      AND (availability.id IS NOT NULL OR NOT EXISTS (
+        SELECT 1 FROM technical_equipment_availability schedule
+        WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+      ))
       AND stock.quantity > COALESCE(booked.quantity, 0)
     ORDER BY lower(stock.name), stock.asset_code
   `, [names, event.proposed_date, event.proposed_start_time, event.proposed_end_time])).rows : [];
@@ -1122,7 +1198,15 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       SELECT stock.id,
         GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity
       FROM equipments stock
-      JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+      -- Reapply the preview rule after locking stock so unscheduled dates remain reservable.
+      LEFT JOIN LATERAL (
+        SELECT schedule.id
+        FROM technical_equipment_availability schedule
+        WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+          AND schedule.start_time <= $3::time AND schedule.end_time >= $4::time
+        ORDER BY schedule.start_time, schedule.end_time
+        LIMIT 1
+      ) availability ON true
       LEFT JOIN LATERAL (
         SELECT sum(reserved_item.quantity)::integer AS quantity
         FROM event_equipment_reservations reservation
@@ -1133,8 +1217,10 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       ) booked ON true
       WHERE stock.id=ANY($1::integer[]) AND stock.status='operational'
         AND stock.availability_status='Available'
-        AND availability.available_date=$2::date
-        AND availability.start_time <= $3::time AND availability.end_time >= $4::time
+        AND (availability.id IS NOT NULL OR NOT EXISTS (
+          SELECT 1 FROM technical_equipment_availability schedule
+          WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+        ))
         AND stock.quantity - COALESCE(booked.quantity, 0) >=
           (SELECT selection.quantity FROM jsonb_to_recordset($5::jsonb) AS selection(inventory_id integer, quantity integer)
            WHERE selection.inventory_id=stock.id)

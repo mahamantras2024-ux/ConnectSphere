@@ -30,7 +30,7 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN
   'change_request_approved', 'change_request_rejected', 'event_details_changed',
   'event_approved', 'event_rejected', 'safety_check_recorded',
   'technical_support_assigned', 'technical_support_unassigned',
-  'event_cancelled', 'equipment_status_changed'));
+  'event_cancelled', 'equipment_status_changed', 'equipment_reservation_affected'));
 
 ALTER TABLE event_technical_support_assignments ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN

@@ -84,10 +84,14 @@ test('AC1 - lists the pre-provisioned equipment inventory and availability windo
   assert.deepEqual(result.body.inventory, [item]);
   assert.match(inventorySql, /FROM equipments stock/i);
   assert.match(inventorySql, /technical_equipment_availability/i);
+  assert.match(inventorySql, /SELECT schedule\.id,\s*schedule\.available_date/i);
   assert.match(inventorySql, /reserved_item\.quantity/i);
   assert.match(inventorySql, /'reservedQuantity',\s*COALESCE\(reserved\.quantity,\s*0\)/i);
   assert.match(inventorySql, /'blockReason'/i);
   assert.match(inventorySql, /stock\.availability_status/i);
+  assert.match(inventorySql, /UNION ALL/i);
+  assert.match(inventorySql, /reservation\.event_date AS available_date/i);
+  assert.match(inventorySql, /NOT EXISTS\s*\([\s\S]*scheduled_date\.available_date=reservation_slot\.available_date/i);
   assert.doesNotMatch(inventorySql, /INSERT INTO equipments|UPDATE equipments/i);
 });
 
@@ -123,8 +127,11 @@ test('AC2 - checks matching stock and subtracts reservations overlapping the eve
     availableAssets: [asset],
   }]);
   assert.match(stockQuery.sql, /FROM equipments stock/i);
-  assert.match(stockQuery.sql, /availability\.start_time <= \$3::time/i);
-  assert.match(stockQuery.sql, /availability\.end_time >= \$4::time/i);
+  assert.match(stockQuery.sql, /schedule\.start_time <= \$3::time/i);
+  assert.match(stockQuery.sql, /schedule\.end_time >= \$4::time/i);
+  // Missing same-day schedule rows use the default Available policy, but existing same-day rows must cover the slot.
+  assert.match(stockQuery.sql, /NOT EXISTS\s*\(\s*SELECT 1 FROM technical_equipment_availability schedule\s+WHERE schedule\.inventory_id=stock\.id AND schedule\.available_date=\$2::date\s*\)/i);
+  assert.match(stockQuery.sql, /availability\.id IS NOT NULL OR NOT EXISTS/i);
   assert.match(stockQuery.sql, /reservation\.start_time < \$4::time/i);
   assert.match(stockQuery.sql, /reservation\.end_time > \$3::time/i);
   assert.deepEqual(stockQuery.values, [['projector'], '2026-10-12', '09:00:00', '12:00:00']);

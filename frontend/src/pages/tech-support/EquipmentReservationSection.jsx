@@ -462,8 +462,35 @@ function ReservationCandidate({ request, token, onReserved }) {
  * Presents reviewed requests awaiting asset allocation and confirmed reservation audit details.
  */
 export default function EquipmentReservationSection({
-  requests, reservations, token, onReserved, error, onGoToReviews,
+  requests, reservations, affectedReservations = [], token, onReserved, onSuggestionSubmitted, error, onGoToReviews,
 }) {
+  const [selectedAlternatives, setSelectedAlternatives] = useState({});
+  const [suggestingIssue, setSuggestingIssue] = useState(null);
+  const [suggestionErrors, setSuggestionErrors] = useState({});
+
+  async function submitAlternative(issue) {
+    const alternativeInventoryId = Number(selectedAlternatives[issue.id]);
+    if (!alternativeInventoryId) {
+      setSuggestionErrors(current => ({ ...current, [issue.id]: 'Choose replacement equipment first.' }));
+      return;
+    }
+    setSuggestingIssue(issue.id);
+    setSuggestionErrors(current => ({ ...current, [issue.id]: '' }));
+    try {
+      await api.put(`/events/equipment-reservation-issues/${issue.id}/suggestion`, {
+        alternativeInventoryId,
+      }, token);
+      await onSuggestionSubmitted?.();
+    } catch (saveError) {
+      setSuggestionErrors(current => ({
+        ...current,
+        [issue.id]: saveError.message || 'Unable to send this replacement suggestion.',
+      }));
+    } finally {
+      setSuggestingIssue(null);
+    }
+  }
+
   return (
     <div className="er-root">
       <style>{STYLES}</style>
@@ -486,10 +513,82 @@ export default function EquipmentReservationSection({
         )}
       </section>
 
+      <section className="er-section" aria-labelledby="affected-reservations-heading">
+        <h2 className="er-section-title" id="affected-reservations-heading">Affected reservations</h2>
+        {error
+          ? <p className="er-section-hint" role="status">Unable to verify whether reservations need replacement arrangements.</p>
+          : affectedReservations.length === 0
+          ? <p className="er-section-hint">No upcoming reservations need replacement arrangements.</p>
+          : (
+            <div className="er-grid">
+              {affectedReservations.map(issue => (
+                <article className="er-card" key={issue.id} aria-labelledby={`affected-reservation-${issue.id}`}>
+                  <header className="er-card-head">
+                    <h3 className="er-card-title" id={`affected-reservation-${issue.id}`}>{issue.event_name}</h3>
+                    <dl className="er-meta">
+                      <dt>Date</dt><dd>{formatDate(issue.event_date)}</dd>
+                      <dt>Time</dt><dd>{formatTime(issue.start_time)}–{formatTime(issue.end_time)}</dd>
+                      <dt>Unavailable</dt><dd>{issue.original_asset_code} — {issue.original_name} (×{issue.quantity})</dd>
+                      <dt>Reason</dt><dd>{issue.reason}</dd>
+                    </dl>
+                  </header>
+                  <div className="er-card-body">
+                    {issue.suggestion_status === 'pending'
+                      ? <p role="status">Replacement suggestion sent. Waiting for the Event Coordinator.</p>
+                      : issue.suggestion_status === 'awaiting_staff' && issue.alternatives.length === 0
+                        ? <p role="status">No replacements found for this event slot. The reservation remains flagged for staff follow-up.</p>
+                        : (
+                          <>
+                            {issue.alternatives.length === 0
+                              ? <p role="status">No replacement equipment is currently available for this event slot.</p>
+                              : (
+                                <label className="er-field">
+                                  Suggest replacement equipment
+                                  <select
+                                    aria-label={`Replacement for ${issue.original_asset_code} at ${issue.event_name}`}
+                                    value={selectedAlternatives[issue.id] || ''}
+                                    onChange={event => setSelectedAlternatives(current => ({
+                                      ...current, [issue.id]: event.target.value,
+                                    }))}
+                                    disabled={suggestingIssue === issue.id}
+                                  >
+                                    <option value="">Choose an available asset</option>
+                                    {issue.alternatives.map(alternative => (
+                                      <option key={alternative.id} value={alternative.id}>
+                                        {alternative.asset_code} — {alternative.name} ({alternative.available_quantity} available)
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                            {issue.alternatives.length > 0 && (
+                              <button
+                                type="button"
+                                className="er-btn"
+                                onClick={() => submitAlternative(issue)}
+                                disabled={suggestingIssue === issue.id}
+                              >
+                                {suggestingIssue === issue.id ? 'Sending suggestion…' : 'Send suggestion to coordinator'}
+                              </button>
+                            )}
+                            {issue.suggestion_status === 'rejected' && (
+                              <p role="status">The coordinator rejected the previous suggestion. Choose another replacement or follow up.</p>
+                            )}
+                          </>
+                        )}
+                    {suggestionErrors[issue.id] && <p className="er-error" role="alert">{suggestionErrors[issue.id]}</p>}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+      </section>
+
       <section className="er-section" aria-labelledby="confirmed-reservations-heading">
         <h2 className="er-section-title" id="confirmed-reservations-heading">Equipment Reservations</h2>
-        {error && reservations.length === 0 && <p className="er-error">Reservations could not be loaded.</p>}
-        {reservations.length === 0 ? <p className="er-section-hint">No upcoming equipment reservations.</p> : (
+        {error
+          ? <p className="er-section-hint" role="status">Unable to verify upcoming equipment reservations.</p>
+          : reservations.length === 0 ? <p className="er-section-hint">No upcoming equipment reservations.</p> : (
           <div className="er-table-wrap">
             <table className="er-table">
               <thead>

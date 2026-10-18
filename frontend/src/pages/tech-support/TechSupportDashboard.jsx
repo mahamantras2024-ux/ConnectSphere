@@ -367,6 +367,7 @@ export default function TechSupportDashboard() {
   const [inventory, setInventory] = useState([]);
   const [reservationRequests, setReservationRequests] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [affectedReservations, setAffectedReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inventoryError, setInventoryError] = useState('');
   const [reservationError, setReservationError] = useState('');
@@ -400,6 +401,7 @@ export default function TechSupportDashboard() {
     if (reservationResult.status === 'fulfilled') {
       setReservationRequests(reservationResult.value.requests);
       setReservations(reservationResult.value.reservations);
+      setAffectedReservations(reservationResult.value.affectedReservations || []);
     } else {
       setReservationError(reservationResult.reason.message || 'Unable to load equipment reservations.');
     }
@@ -441,6 +443,27 @@ export default function TechSupportDashboard() {
       currentItem.id === item.id ? repairedEquipment : currentItem
     )));
     return repairedEquipment;
+  }
+
+  /** Marks inventory unavailable, updates the visible row, and reports affected reservations to staff. */
+  async function markEquipmentUnavailable(item, reason) {
+    const result = await api.put(
+      `/events/equipment-inventory/${item.id}/unavailable`,
+      { reason },
+      token,
+    );
+    const unavailableEquipment = { ...item, ...result.equipment };
+    setInventory(current => current.map(currentItem => (
+      currentItem.id === item.id ? unavailableEquipment : currentItem
+    )));
+    await loadDashboardData();
+    if (result.affectedIssues.length > 0) setActiveTab('reservations');
+    showSuccess(
+      result.affectedIssues.length > 0
+        ? `${item.asset_code} marked unavailable. Choose replacement suggestions for ${result.affectedIssues.length} affected reservation(s).`
+        : `${item.asset_code} marked unavailable. No upcoming reservations were affected.`,
+    );
+    return unavailableEquipment;
   }
 
   async function handleReservationConfirmed(reservation) {
@@ -521,6 +544,7 @@ export default function TechSupportDashboard() {
             inventory={inventory}
             error={inventoryError}
             onRepairEquipment={repairEquipment}
+            onMarkUnavailable={markEquipmentUnavailable}
           />
         </div>
         )}
@@ -561,8 +585,10 @@ export default function TechSupportDashboard() {
           <EquipmentReservationSection
             requests={reservationRequests}
             reservations={reservations}
+            affectedReservations={affectedReservations}
             token={token}
             onReserved={handleReservationConfirmed}
+            onSuggestionSubmitted={loadDashboardData}
             error={reservationError}
             onGoToReviews={() => setActiveTab('review')}
           />

@@ -16,11 +16,6 @@ const availableDate = getDateOffset(1);
 const reservedDate = getDateOffset(3);
 const maintenanceDate = getDateOffset(5);
 
-function formatCalendarDay(date) {
-  return new Intl.DateTimeFormat('en-SG', {
-    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
-  }).format(new Date(`${date}T00:00:00Z`));
-}
 // The catalogue has no caption, so scope to its region and use the first table before the calendar.
 function getInventoryTable() {
   return within(screen.getByRole('region', { name: 'Equipment inventory' })).getAllByRole('table')[0];
@@ -85,7 +80,7 @@ it('AC1 - maps legacy maintenance status to Unavailable', () => {
   const row = getAssetRow('PROJ-001');
 
   // Assert: dropping this fallback would present unrepaired legacy stock as available.
-  expect(within(row).getAllByRole('cell')[2].textContent).toBe('Unavailable');
+  expect(within(row).getByRole('combobox', { name: 'Status for PROJ-001' }).value).toBe('Unavailable');
 });
 
 // AC2 - Availability is deducted for reservations overlapping the chosen date and time.
@@ -142,7 +137,7 @@ it('AC2 - handles one-sided time filters, empty calendar days, and non-booked un
   fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
   expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
   fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: maintenanceDate } });
-  const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   expect(within(calendar).getByText(/Maintenance/)).toBeTruthy();
 });
 
@@ -159,14 +154,15 @@ it('AC1 - searches by ID or name and shows the matched asset calendar separately
   expect(getInventoryTable()).toBeTruthy();
   expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
   expect(screen.queryByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeNull();
-  const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   expect(within(calendar).getAllByText(/09:00–17:00/).length).toBeGreaterThan(0);
-  expect(within(calendar).getByText('Town Hall')).toBeTruthy();
-  expect(within(calendar).getAllByText('—').length).toBeGreaterThan(0);
+  expect(within(calendar).queryByText('Town Hall')).toBeNull();
+  expect(within(calendar).getAllByText('Available').length).toBeGreaterThan(0);
+  expect(within(calendar).getAllByRole('columnheader')).toHaveLength(7);
 });
 
-// AC1 - The calendar pages through a rolling 90-day horizon and never treats absent windows as free.
-it('AC1 - pages through 90 days of scheduled windows without showing past or out-of-range dates', () => {
+// AC1 - The calendar pages through the rolling horizon and marks unscheduled in-range dates available.
+it('AC1 - pages month by month and shows unscheduled in-range dates as available', () => {
   const item = {
     ...inventory[0],
     availabilities: [
@@ -181,23 +177,50 @@ it('AC1 - pages through 90 days of scheduled windows without showing past or out
     target: { value: 'PROJ-001' },
   });
 
-  let calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
-  expect(within(calendar).getByRole('columnheader', { name: formatCalendarDay(getDateOffset(0)) })).toBeTruthy();
-  expect(within(calendar).queryByRole('columnheader', { name: formatCalendarDay(getDateOffset(-1)) })).toBeNull();
-  expect(within(calendar).queryByRole('columnheader', { name: formatCalendarDay(getDateOffset(89)) })).toBeNull();
-  expect(screen.getByText(/Only scheduled windows are shown/)).toBeTruthy();
+  let calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  expect(within(calendar).getByLabelText(`Availability on ${new Intl.DateTimeFormat('en-SG', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${getDateOffset(0)}T00:00:00Z`))} for PROJ-001`)).toBeTruthy();
+  expect(screen.getByText(/Unscheduled dates are available/)).toBeTruthy();
+  expect(screen.queryByRole('list', { name: 'Availability legend' })).toBeNull();
+  expect(within(calendar).getAllByText('Available').length).toBeGreaterThan(1);
+  const longDate = date => new Intl.DateTimeFormat('en-SG', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${date}T00:00:00Z`));
 
-  for (let page = 0; page < 6; page += 1) {
-    fireEvent.click(screen.getByRole('button', { name: 'Next 14 days' }));
+  for (let page = 0; page < 3; page += 1) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
   }
-  calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
-  expect(within(calendar).getByRole('columnheader', { name: formatCalendarDay(getDateOffset(89)) })).toBeTruthy();
-  expect(within(calendar).queryByRole('columnheader', { name: formatCalendarDay(getDateOffset(90)) })).toBeNull();
+  calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  expect(within(calendar).getByLabelText(`Availability on ${longDate(getDateOffset(89))} for PROJ-001`)).toBeTruthy();
+  expect(within(calendar).queryByLabelText(`Availability on ${longDate(getDateOffset(90))} for PROJ-001`)).toBeNull();
   expect(within(calendar).getByText(/09:00–10:00/)).toBeTruthy();
+  expect(within(calendar).queryByText('—')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Next month' }).disabled).toBe(true);
 });
 
-// AC2 - Reserved units are explicit even when some quantity remains available.
-it('AC2 - distinguishes available, partially reserved, and fully reserved schedule windows', () => {
+// AC1 - The current month shows only the remaining calendar weeks instead of blank past weeks.
+it('AC1 - keeps the current month calendar compact from today onward', () => {
+  // Arrange
+  render(<EquipmentInventorySection inventory={[inventory[0]]} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'PROJ-001' },
+  });
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  const today = new Date();
+  const lastDayOfCurrentMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0));
+  const horizonEnd = new Date(today);
+  horizonEnd.setUTCDate(today.getUTCDate() + 89);
+  const lastVisibleDate = new Date(Math.min(lastDayOfCurrentMonth.getTime(), horizonEnd.getTime()));
+  const remainingDates = (lastVisibleDate.getTime() - today.getTime()) / 86400000 + 1;
+  const expectedWeeks = Math.ceil((today.getUTCDay() + remainingDates) / 7);
+
+  // Assert: fully elapsed weeks should not consume vertical space in the current-month view.
+  expect(calendar.querySelectorAll('tbody tr')).toHaveLength(expectedWeeks);
+});
+
+// AC2 - The calendar shows reservation quantities without exposing event names.
+it('AC2 - never displays event names for reserved calendar windows', () => {
   const item = {
     ...inventory[0],
     quantity: 3,
@@ -212,16 +235,57 @@ it('AC2 - distinguishes available, partially reserved, and fully reserved schedu
     target: { value: 'PROJ-001' },
   });
 
-  const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
-  expect(within(calendar).getByText('3 available · Available')).toBeTruthy();
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  expect(within(calendar).getAllByText('Available').length).toBeGreaterThan(0);
+  expect(screen.queryByText('Partially reserved')).toBeNull();
+  expect(screen.queryByText('Fully reserved')).toBeNull();
+  expect(within(calendar).getByText('3 available')).toBeTruthy();
   expect(within(calendar).getByText('2 reserved · 1 available')).toBeTruthy();
   expect(within(calendar).getByText('3 reserved · 0 available')).toBeTruthy();
-  expect(within(calendar).getByText('Town Hall')).toBeTruthy();
-  expect(within(calendar).getByText('Gala')).toBeTruthy();
+  expect(within(calendar).queryByText('Town Hall')).toBeNull();
+  expect(within(calendar).queryByText('Gala')).toBeNull();
   const windows = within(calendar).getAllByRole('listitem');
   expect(windows[0].classList.contains('is-available')).toBe(true);
-  expect(windows[1].classList.contains('is-partially-reserved')).toBe(true);
-  expect(windows[2].classList.contains('is-reserved')).toBe(true);
+  expect(windows[1].classList.contains('is-available')).toBe(true);
+  expect(windows[2].classList.contains('is-unavailable')).toBe(true);
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: getDateOffset(1) } });
+  expect(windows[0].classList.contains('is-available')).toBe(true);
+});
+
+// AC2 - A confirmed reservation on an unscheduled date is shown as a timed calendar window without event identity.
+it('AC2 - displays a reservation window when the date has no availability schedule', () => {
+  // Arrange: an API window represents the confirmed booking, despite no schedule row for its date.
+  const reservationDate = getDateOffset(3);
+  const item = {
+    ...inventory[1],
+    quantity: 2,
+    availabilities: [{
+      date: reservationDate,
+      startTime: '14:00:00',
+      endTime: '16:00:00',
+      status: 'Available',
+      availableQuantity: 1,
+      reservedQuantity: 1,
+      eventName: 'Community Workshop',
+    }],
+  };
+  render(<EquipmentInventorySection inventory={[item]} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'MIC-001' },
+  });
+
+  // Act: inspect the reservation date in the monthly calendar.
+  const calendar = screen.getByRole('table', { name: 'MIC-001 monthly availability' });
+
+  // Assert: the reserved time and stock counts appear without exposing the event name.
+  const day = within(calendar).getByLabelText(
+    `Availability on ${new Intl.DateTimeFormat('en-SG', {
+      day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+    }).format(new Date(`${reservationDate}T00:00:00Z`))} for MIC-001`,
+  );
+  expect(within(day).getByText('14:00–16:00')).toBeTruthy();
+  expect(within(day).queryByText('Community Workshop')).toBeNull();
+  expect(within(day).getByText('1 reserved · 1 available')).toBeTruthy();
 });
 
 // AC3 - Current maintenance/damage status blocks scheduled windows and exposes its recorded reason.
@@ -259,10 +323,12 @@ it('AC3 - marks maintenance windows blocked and displays the recorded damage rea
     target: { value: 'PROJ-' },
   });
 
-  const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
-  expect(within(calendar).getAllByText(/Blocked · Damage: cracked lens/).length).toBeGreaterThan(0);
-  expect(within(calendar).getByText('Blocked · Equipment is unavailable.')).toBeTruthy();
-  expect(within(calendar).getAllByRole('listitem').every(window => window.classList.contains('is-blocked'))).toBe(true);
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  const legacyCalendar = screen.getByRole('table', { name: 'PROJ-002 monthly availability' });
+  expect(within(calendar).getAllByText('Unavailable').length).toBeGreaterThan(0);
+  expect(within(calendar).getAllByText('Damage: cracked lens').length).toBeGreaterThan(0);
+  expect(within(legacyCalendar).getByText('Equipment is unavailable.')).toBeTruthy();
+  expect(within(calendar).getAllByRole('listitem').every(window => window.classList.contains('is-unavailable'))).toBe(true);
 });
 
 // AC3 - Date and time filters only retain an asset whose available window covers the requested range.
