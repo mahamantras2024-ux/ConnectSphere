@@ -88,7 +88,8 @@ async function safetyCandidates(db) {
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('name', v.name, 'capacity', v.capacity, 'supported_layouts', v.supported_layouts,
           'accessibility_features', v.accessibility_features, 'operating_hours', v.operating_hours, 'setup_minutes', v.setup_minutes,
-          'turnaround_minutes', v.turnaround_minutes, 'emergency_access', v.emergency_access, 'known_restrictions', v.known_restrictions) ORDER BY vb.id)
+          'turnaround_minutes', v.turnaround_minutes, 'emergency_access', v.emergency_access, 'known_restrictions', v.known_restrictions,
+          'emergency_documents', v.emergency_documents) ORDER BY vb.id)
         FROM venue_bookings vb JOIN venues v ON v.id = vb.venue_id WHERE vb.event_id = e.id AND vb.status = 'approved'), '[]'::jsonb) AS venues,
       (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'change_areas', s.change_areas)
         FROM event_safety_checks s WHERE s.event_id = e.id ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
