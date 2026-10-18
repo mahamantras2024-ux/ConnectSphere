@@ -517,8 +517,13 @@ export default function TechSupportDashboard() {
         </div>
         {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
-          {/* Pass the existing repair workflow through to the inventory controls and shared state. */}
-          <EquipmentInventorySection inventory={inventory} error={inventoryError} onRepairEquipment={repairEquipment} />
+          {/* Keep the existing repair handler connected after integrating both feature branches. */}
+          <EquipmentInventorySection
+            inventory={inventory}
+            error={inventoryError}
+            onRepairEquipment={repairEquipment}
+          />
+
         </div>
         )}
         {activeTab === 'review' && (
