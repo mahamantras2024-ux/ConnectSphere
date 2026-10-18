@@ -154,6 +154,82 @@ it('AC1 - manages optional additional equipment rows without stale availability'
   expect(await within(candidate).findByLabelText('Quantity of PROJ-001 to reserve')).toBeTruthy();
 });
 
+// AC5 - Alias rows with the same equipment type render one status and one deduplicated asset selection.
+it('AC5 - groups category and asset-code availability aliases into one result card', async () => {
+  api.post.mockResolvedValue({ reservation: {}, items: [] });
+  api.get.mockResolvedValue({ availability: { items: [
+    {
+      item: 'Projector',
+      requestAliases: ['Projector', 'PROJ-001'],
+      requestedQuantity: 1,
+      availableQuantity: 2,
+      availableAssets: [{
+        id: 31, asset_code: 'PROJ-001', name: 'Projector', specification: 'Full HD',
+        quantity: 2, available_quantity: 2,
+      }],
+    },
+    {
+      item: 'PROJ-001',
+      requestAliases: ['Projector', 'PROJ-001'],
+      requestedQuantity: 1,
+      availableQuantity: 0,
+      availableAssets: [],
+    },
+  ] } });
+  render(<EquipmentReservationSection
+    requests={[{
+      ...request,
+      review_outcome: 'fully_fulfillable',
+      equipment_items: [
+        { item: 'Projector', quantity: 1 },
+        { item: 'PROJ-001', quantity: 1 },
+      ],
+    }]}
+    reservations={[]}
+    token="staff-token"
+    onReserved={vi.fn()}
+  />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+
+  expect(await within(candidate).findByText('Projector: 2 of 1 requested available — Available')).toBeTruthy();
+  expect(within(candidate).queryByText('PROJ-001: 0 of 1 requested available — Not available')).toBeNull();
+  expect(within(candidate).getAllByRole('group', { name: /Projector:/ })).toHaveLength(1);
+  expect(within(candidate).getByLabelText('Quantity of PROJ-001 to reserve').value).toBe('1');
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Confirm reservation' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    '/events/501/equipment-reservations',
+    { selections: [{ inventoryId: 31, quantity: 1 }] },
+    'staff-token',
+  ));
+});
+
+// AC6 - An unresolved asset-code alias cannot be treated as fulfilled by an unrelated category result.
+it('AC6 - keeps an unmatched reviewed asset code from appearing fully available', async () => {
+  api.get.mockResolvedValue({ availability: { items: [{
+    item: 'Projector',
+    requestedQuantity: 1,
+    availableQuantity: 1,
+    requestAliases: ['Projector'],
+    availableAssets: [{
+      id: 31, asset_code: 'PROJ-001', name: 'Projector', specification: 'Full HD',
+      quantity: 2, available_quantity: 1,
+    }],
+  }] } });
+  render(<EquipmentReservationSection requests={[{
+    ...request,
+    equipment_items: [{ item: 'PROJ-001', quantity: 1 }],
+  }]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  const candidate = screen.getByRole('article', { name: 'Community Workshop' });
+
+  fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
+
+  expect(await within(candidate).findByText('Projector: 1 of 1 requested available — Available')).toBeTruthy();
+  expect(within(candidate).getByRole('button', { name: 'Confirm reservation' }).disabled).toBe(true);
+  expect(within(candidate).getByRole('status').textContent).toContain('Select all requested units');
+});
+
 // AC1 - Missing event timing and venue data remains explicit in the reservation candidate.
 it('AC1 - reports absent reservation metadata without inventing values', () => {
   render(<EquipmentReservationSection requests={[{

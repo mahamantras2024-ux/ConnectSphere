@@ -49,6 +49,7 @@ router.get('/equipment-reservation-issues', requireRole('technical_support'), eq
 router.get('/:id/equipment-reservation-issues', requireRole('event_coordinator'), equipmentUnavailability.listForCoordinator);
 router.post('/equipment-reservation-issues/:id/proposals', requireRole('technical_support'), equipmentUnavailability.proposeAlternative);
 router.post('/equipment-reservation-proposals/:id/decision', requireRole('event_coordinator'), equipmentUnavailability.decideProposal);
+router.delete('/equipment-reservations/:id', requireRole('technical_support'), technicalSupportController.releaseEquipmentReservation);
 router.get('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
 router.post('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
 router.post('/:id/equipment-reservations', requireRole('technical_support'), technicalSupportController.reserveEquipment);
