@@ -4,8 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
-import ProtectedRoute from '../../frontend/src/components/ProtectedRoute';
-import CoordinatorDashboard from '../../frontend/src/pages/coordinator/CoordinatorDashboard';
+import App from '../../frontend/src/App';
 import VenueList from '../../frontend/src/pages/venues/VenueList';
 import VenueSchedule from '../../frontend/src/pages/venues/VenueSchedule';
 import { api } from '../../frontend/src/api/client';
@@ -39,12 +38,13 @@ function coordinatorNetwork() {
   });
 }
 
-it('AC1 - coordinator dashboard exposes venue selection alongside assigned events', async () => {
+it('AC1 - authenticated coordinator reaches venue availability through Find venues', async () => {
   // Arrange: restore the actual session instead of mocking a permission boolean.
   coordinatorNetwork();
-  render(<MemoryRouter><AuthProvider><ProtectedRoute roles={['event_coordinator']}><CoordinatorDashboard /></ProtectedRoute></AuthProvider></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/coordinator/dashboard']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
   // Act: wait for the real dashboard's assigned-event data.
   await screen.findByText('No assigned events yet.');
+  fireEvent.click(screen.getByRole('link', { name: 'Find venues' }));
   // Assert: a coordinator must be able to discover the venue availability entry point.
   expect(await screen.findByText('Hall A')).toBeVisible();
   expect(screen.getAllByRole('button', { name: /View details/ })).toHaveLength(2);

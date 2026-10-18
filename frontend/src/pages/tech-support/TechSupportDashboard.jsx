@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import PageIntro from '../../components/PageIntro';
+import NotificationsPanel from '../../components/NotificationsPanel';
 import { useAuth } from '../../context/AuthContext';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
@@ -198,6 +199,8 @@ export default function TechSupportDashboard() {
         eyebrow="Internal workspace"
         description="Review equipment, assess event requests, and reserve suitable assets."
       />
+      {/* Staff need change notifications alongside their existing equipment workspace. */}
+      <NotificationsPanel />
       {notice && <p role="status" className="support-dashboard-notice">{notice}</p>}
       <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
         {tabs.map(tab => (

@@ -215,3 +215,64 @@ it('AC4 - confirms a reservation through the dashboard and refreshes its audit r
   expect(screen.getByText(/Reserved by Taylor Support/)).toBeTruthy();
   expect(screen.getByText(/PROJ-001 — Projector \(×2\)/)).toBeTruthy();
 });
+
+// AC2: Submitting the form itself must still reject an incomplete full allocation or an empty partial allocation.
+it.each(['fully_fulfillable', 'partially_fulfillable'])('AC2 - rejects an invalid %s form submission before writing', async outcome => {
+  api.get.mockResolvedValue({ availability: { items: availableItems } });
+  render(<EquipmentReservationSection requests={[{ ...request, review_outcome: outcome }]}
+    reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Check availability' }));
+  const quantity = await screen.findByLabelText('Quantity of PROJ-001 to reserve');
+  fireEvent.change(quantity, { target: { value: outcome === 'fully_fulfillable' ? '1' : '-1' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Confirm reservation' }).closest('form'));
+  expect(screen.getByRole('alert').textContent).toContain(outcome === 'fully_fulfillable'
+    ? 'every requested unit' : 'at least one');
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+// AC1 AC2: Transport failures without messages must still be visible at both external request boundaries.
+it.each(['check', 'reserve'])('AC1 AC2 - shows a meaningful fallback for a failed %s request', async stage => {
+  api.get.mockResolvedValue({ availability: { items: availableItems } });
+  if (stage === 'check') api.get.mockRejectedValueOnce({});
+  api.post.mockRejectedValueOnce({});
+  render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Check availability' }));
+  if (stage === 'reserve') {
+    await screen.findByLabelText('Quantity of PROJ-001 to reserve');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm reservation' }));
+  }
+  expect((await screen.findByRole('alert')).textContent).toBe(stage === 'check'
+    ? 'Unable to check equipment availability.' : 'Unable to confirm this reservation.');
+});
+
+// AC2: Repeated item names contribute their total quantity; stock split across assets must preserve every unit.
+it('AC2 - combines repeated requested names and split asset allocations without losing units', async () => {
+  const first = availableItems[0].availableAssets[0];
+  api.get.mockResolvedValue({ availability: { items: [
+    { item: 'Projector', requestedQuantity: 2, availableQuantity: 2, availableAssets: [
+      { ...first, available_quantity: 1 }, { ...first, id: 32, asset_code: 'PROJ-002', available_quantity: 1 },
+    ] },
+    { item: ' PROJECTOR ', requestedQuantity: 1, availableQuantity: 1, availableAssets: [
+      { ...first, id: 33, asset_code: 'PROJ-003', available_quantity: 1 },
+    ] },
+  ] } });
+  api.post.mockResolvedValue({ reservation: { id: 903 }, items: [] });
+  render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Check availability' }));
+  const quantity = await screen.findByLabelText('Quantity of PROJ-001 to reserve');
+  fireEvent.change(quantity, { target: { value: '' } });
+  expect(screen.getByRole('button', { name: 'Confirm reservation' }).disabled).toBe(true);
+  fireEvent.change(quantity, { target: { value: '1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm reservation' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reservations',
+    { selections: [{ inventoryId: 31, quantity: 1 }, { inventoryId: 32, quantity: 1 }, { inventoryId: 33, quantity: 1 }] }, 'staff-token'));
+});
+
+// AC3: Historical audit records with absent venue/time fields remain readable without inventing facts.
+it('AC3 - displays explicit fallbacks for missing reservation venue and times', () => {
+  render(<EquipmentReservationSection requests={[{ ...request, venue_name: null, venue_location: null }]} reservations={[{
+    id: 904, event_name: 'Sparse audit', items: [], reserved_at: '2026-10-08T12:00:00Z',
+  }]} token="staff-token" onReserved={vi.fn()} />);
+  expect(screen.getByText(/Venue not confirmed/)).toBeTruthy();
+  expect(screen.getByText(/Not provided/)).toBeTruthy();
+});

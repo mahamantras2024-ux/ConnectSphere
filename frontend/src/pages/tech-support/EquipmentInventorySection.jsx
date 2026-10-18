@@ -1,10 +1,9 @@
 // File: Displays the fixed asset catalogue and a separate calendar for searched equipment.
 import { useState } from 'react';
 
-const formatDate = value => value
-  ? new Intl.DateTimeFormat('en-SG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-    .format(new Date(`${value}T00:00:00Z`))
-  : 'Not provided';
+// Every caller supplies a selected date or a calendar column's actual date; no missing-date branch is reachable.
+const formatDate = value => new Intl.DateTimeFormat('en-SG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  .format(new Date(`${value}T00:00:00Z`));
 
 function matchesFilters(window, date, fromTime, toTime) {
   if (date && window.date !== date) return false;

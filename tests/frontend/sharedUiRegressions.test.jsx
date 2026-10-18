@@ -298,7 +298,7 @@ it.each([
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
+    : role === 'technical_support' ? ['/auth/me','/notifications','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
     : role === 'safety_officer' ? ['/auth/me','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
@@ -353,7 +353,8 @@ it.each([
   // Assert: the real role screen opens and the tab identifies the current workspace.
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   expect(link.getAttribute('aria-current')).toBe('page');
-  expect(nav.getAllByRole('link')).toHaveLength(2); // Brand plus one workspace tab.
+  // Coordinators also have a distinct venue-discovery tab; it must not duplicate the event workspace.
+  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 3 : 2);
 });
 
 });

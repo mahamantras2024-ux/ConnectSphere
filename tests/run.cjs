@@ -14,6 +14,8 @@ const stories = {
   'organiser-events': ['organiserEvents','registrationModels','sharedUiRegressions'],
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
+  // SCRUM-39: one feature suite per layer, including the authenticated search endpoint.
+  'search-venues': ['venueSearch'],
   'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
   'delete-venue': ['venueManagement','venueInteractions'],
   // Lead workflow also retains owner/assignment and real-routing regressions.

@@ -12,25 +12,30 @@ const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { venueSchedule } = require('../controllers/venueScheduleController');
 const { createRequest, decideRequest } = require('../controllers/venueRequestController');
+const { searchVenues } = require('../services/venueSearch');
+// Coordinator-only search returns catalogue records, never other events' private booking metadata.
+router.get('/search', requireAuth, requireRole('event_coordinator'), asyncHandler(async (req, res) => {
+  res.json(await searchVenues(req.query, pool));
+}));
 router.get('/:id/schedule', requireAuth, requireRole('venue_staff', 'event_coordinator'), asyncHandler(venueSchedule));
 router.post('/:id/requests', requireAuth, requireRole('event_coordinator'), asyncHandler(createRequest));
 router.put('/:id/requests/:requestId/decision', requireAuth, requireRole('venue_staff'), asyncHandler(decideRequest));
 // Bounds staff address lookups and nearest-station requests while protecting the public provider.
 const locationLimit = rateLimit({ windowMs:60_000, limit:30, standardHeaders:'draft-8', legacyHeaders:false, message:{message:'Too many map requests. Please try again shortly.'} });
 router.get('/stream', catalogueStream);
-router.get('/locations/search', requireAuth, requireRole('venue_staff'), locationLimit, async (req,res) => {
+router.get('/locations/search', requireAuth, requireRole('venue_staff', 'event_coordinator'), locationLimit, async (req,res) => {
  // Searches Singapore addresses only after an explicit staff request.
  if(typeof req.query.q!=='string' || req.query.q.trim().length<3 || req.query.q.length>255)return res.status(400).json({message:'Enter an address or place name of 3–255 characters.'});
  try {res.json(await geocode('api',{q:req.query.q.trim(),bbox:'103.58,1.15,104.1,1.49',countrycode:'SG'}));}
  catch {res.status(503).json({message:'Address search is temporarily unavailable. You can still click the map to select a location.'});}
 });
-router.get('/locations/resolve', requireAuth, requireRole('venue_staff'), locationLimit, async(req,res) => {
+router.get('/locations/resolve', requireAuth, requireRole('venue_staff', 'event_coordinator'), locationLimit, async(req,res) => {
  // Resolves a map click and calculates its nearest MRT even if address lookup is temporarily offline.
  const latitude=Number(req.query.lat),longitude=Number(req.query.lng);
  try {if(req.query.lat==null || req.query.lng==null)throw new Error('Choose a location on the map.');validateCoordinates(latitude,longitude);}
  catch(error){return res.status(400).json({message:error.message});}
  let locations=[];try {locations=await geocode('reverse',{lat:latitude,lon:longitude});}catch{}
- res.json({latitude,longitude,location:locations[0]?.location || `Map location (${latitude.toFixed(5)}, ${longitude.toFixed(5)}), Singapore`,...{mrt:nearestMrt(latitude,longitude)}});
+ res.json({latitude,longitude,location:locations[0]?.location || `Map location (${latitude.toFixed(5)}, ${longitude.toFixed(5)}), Singapore`,postalCode:locations[0]?.postalCode || null,...{mrt:nearestMrt(latitude,longitude)}});
 });
 router.put('/:id', requireAuth, requireRole('venue_staff'), asyncHandler(updateVenue));
 router.delete('/:id', requireAuth, requireRole('venue_staff'), asyncHandler(deactivateVenue));
