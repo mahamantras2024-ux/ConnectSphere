@@ -183,6 +183,8 @@ p { line-height: 1.65; }
 .detail-grid > div { border-bottom: 1px solid var(--border); padding-bottom: 15px; }
 .detail-grid dt { font-size: 10px; letter-spacing: .6px; color: var(--muted); margin-bottom: 7px; text-transform: uppercase; }
 .detail-grid dd { margin: 0; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+/* SCRUM-98: retain staff-entered route and access-point lines so distinct safety instructions remain readable. */
+.detail-grid .venue-emergency-access { white-space: pre-wrap; }
 .loading-state { padding: 40px; text-align: center; color: var(--muted); }
 .error-message, .error-text { color: #a2352e; font-size: 12px; }
 .error-message { padding: 14px 17px; background: #fff0ec; border: 1px solid #efd3cd; border-radius: 9px; }
@@ -489,3 +491,10 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .safety-queue { margin-top: 24px; }
 .safety-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
+
+/* Keep optional safety documents together with clear file and removal controls. */
+.emergency-documents { margin-block: 1rem 1.5rem; }
+.emergency-document { padding: 1rem; border: 1px solid var(--border, #d5d8c5); border-radius: 14px; background: #fff; min-width: 0; }
+.emergency-document h4 { margin: 0 0 .75rem; }
+.emergency-document-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .75rem; overflow-wrap: anywhere; }
+.emergency-document-actions a { display: inline-flex; align-items: center; text-decoration: none; }

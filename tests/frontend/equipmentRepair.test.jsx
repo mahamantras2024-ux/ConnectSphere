@@ -78,6 +78,9 @@ async function openRepairForm() {
 beforeEach(() => {
   useAuth.mockReturnValue({ token: 'support-token' });
   vi.spyOn(api, 'get').mockImplementation(async endpoint => {
+    // The integrated dashboard also loads unrelated panels; keep those external responses empty and successful.
+    if (endpoint === '/notifications') return { notifications: [] };
+    if (endpoint === '/events/on-site-support') return { events: [] };
     if (endpoint === '/events/equipment-requests') return { requests: [] };
     if (endpoint === '/events/equipment-inventory') return { inventory: [unavailableEquipment, availableEquipment] };
     if (endpoint === '/events/equipment-reservations') return { requests: [], reservations: [] };
