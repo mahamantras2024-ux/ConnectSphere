@@ -119,11 +119,11 @@ describe('dashboard and event authorization', () => {
     currentUser.role = role;
     // Act
     open('/venue/dashboard', true);
-    // Assert: redirect to the permitted dashboard; only coordinators additionally load the read-only catalogue.
+    // Assert: redirect to the permitted dashboard; venue discovery is a separate opt-in tab.
     expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Venue Staff Dashboard' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add venue' })).toBeNull();
-    expect(api.get.mock.calls.some(([endpoint]) => endpoint === '/venues')).toBe(role === 'event_coordinator');
+    expect(api.get.mock.calls.some(([endpoint]) => endpoint === '/venues')).toBe(false);
   });
   // Test case: Visits a protected dashboard without a token and checks login redirection.
   it('Internal AC4 / External AC8 - redirects an unauthenticated direct dashboard visit to login', async () => {

@@ -356,7 +356,8 @@ it.each([
   // Assert: the real role screen opens and the tab identifies the current workspace.
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   expect(link.getAttribute('aria-current')).toBe('page');
-  expect(nav.getAllByRole('link')).toHaveLength(2); // Brand plus one workspace tab.
+  // Coordinators also have a distinct venue-discovery tab; it must not duplicate the event workspace.
+  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 3 : 2);
 });
 
 });
