@@ -134,6 +134,12 @@ test('AC2 - reserves selected stock and persists who reserved it and when', asyn
       calls.push({ sql, values });
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
       if (sql.includes('SELECT e.id, e.name, e.proposed_date')) return { rows: [event] };
+      if (sql.includes('FROM unnest($1::text[])')) {
+        return { rows: values[0].map(item => ({
+          requested_item: item,
+          canonical_item: item === 'projector' ? 'Projector' : 'Video Camera',
+        })) };
+      }
       if (sql.includes('FROM equipments') && sql.includes('FOR UPDATE')) {
         return { rows: [
           { id: 31, name: 'Projector', asset_code: 'PROJ-001', specification: 'Full HD', quantity: 3 },
@@ -168,7 +174,9 @@ test('AC2 - reserves selected stock and persists who reserved it and when', asyn
   assert.deepEqual(header.values, [
     501, 1, '2026-10-12', '09:00:00', '12:00:00', 'Innovation Hall', 'Level 3', supportStaff.id,
   ]);
-  const availabilityCheck = calls.find(call => call.sql.includes('FROM equipments stock'));
+  const availabilityCheck = calls.find(call => (
+    call.sql.includes('FROM equipments stock') && call.sql.includes('technical_equipment_availability')
+  ));
   assert.deepEqual(JSON.parse(availabilityCheck.values[4]), [
     { inventory_id: 31, quantity: 2 },
     { inventory_id: 32, quantity: 1 },
@@ -178,6 +186,59 @@ test('AC2 - reserves selected stock and persists who reserved it and when', asyn
     { inventory_id: 31, quantity: 2 },
     { inventory_id: 32, quantity: 1 },
   ]);
+  assert.equal(calls.at(-1).sql, 'COMMIT');
+});
+
+// AC5 - A type name and exact asset code remain one required category through final reservation validation.
+test('AC5 - accepts one selected projector for duplicate category and asset-code aliases', async () => {
+  const calls = [];
+  const duplicateAliasEvent = {
+    ...event,
+    equipment_items: [
+      { item: 'Projector', quantity: 1 },
+      { item: 'PROJ-001', quantity: 1 },
+    ],
+  };
+  const client = {
+    query: async (sql, values) => {
+      calls.push({ sql, values });
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
+      if (sql.includes('SELECT e.id, e.name, e.proposed_date')) return { rows: [duplicateAliasEvent] };
+      if (sql.includes('FROM unnest($1::text[])')) {
+        return { rows: [
+          { requested_item: 'projector', canonical_item: 'Projector' },
+          { requested_item: 'proj-001', canonical_item: 'Projector' },
+        ] };
+      }
+      if (sql.includes('FROM equipments') && sql.includes('FOR UPDATE')) {
+        return { rows: [{
+          id: 31, name: 'Projector', asset_code: 'PROJ-001',
+          specification: 'Full HD', quantity: 2,
+        }] };
+      }
+      if (sql.includes('FROM equipments stock')) return { rows: [{ id: 31, available_quantity: 2 }] };
+      if (sql.includes('INSERT INTO event_equipment_reservations')) return { rows: [reservation] };
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+  mock.method(pool, 'query', async () => ({ rows: [supportStaff] }));
+  mock.method(pool, 'connect', async () => client);
+
+  const result = await request('/api/events/501/equipment-reservations', {
+    method: 'POST',
+    body: { selections: [{ inventoryId: 31, quantity: 1 }] },
+  });
+
+  assert.equal(result.status, 201, JSON.stringify(result.body));
+  assert.deepEqual(result.body.items, [{
+    inventoryId: 31,
+    assetCode: 'PROJ-001',
+    name: 'Projector',
+    quantity: 1,
+  }]);
+  const resolutionQuery = calls.find(call => call.sql.includes('FROM unnest($1::text[])'));
+  assert.deepEqual(resolutionQuery.values, [['projector', 'proj-001']]);
   assert.equal(calls.at(-1).sql, 'COMMIT');
 });
 
@@ -386,7 +447,12 @@ test('AC2 - counts released inventory as available for a later event time slot',
     if (sql.includes('SELECT e.id, e.name, e.proposed_date')) {
       return { rows: [{ ...event, already_reserved: false }] };
     }
-    if (sql.includes('FROM equipments stock')) return { rows: [availableAsset] };
+    if (sql.includes('FROM unnest($1::text[])')) {
+      return { rows: [{ requested_item: 'Projector', canonical_item: 'Projector' }] };
+    }
+    if (sql.includes('FROM equipments stock') && sql.includes('technical_equipment_availability')) {
+      return { rows: [availableAsset] };
+    }
     return { rows: [] };
   });
 
@@ -394,7 +460,9 @@ test('AC2 - counts released inventory as available for a later event time slot',
 
   assert.equal(result.status, 200);
   assert.equal(result.body.availability.items[0].availableQuantity, 2);
-  const stockQuery = queries.find(sql => sql.includes('FROM equipments stock'));
+  const stockQuery = queries.find(sql => (
+    sql.includes('FROM equipments stock') && sql.includes('technical_equipment_availability')
+  ));
   assert.match(stockQuery, /reservation\.status\s*=\s*'reserved'/i);
   assert.match(stockQuery, /reservation\.event_date\s*=\s*\$2::date/i);
 });

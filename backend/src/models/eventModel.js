@@ -499,26 +499,69 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
   if (event.already_reserved) return { event, alreadyReserved: true, items: [] };
 
   const requestedItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
-  const combinedRequests = new Map();
+  const requestsByAlias = new Map();
   for (const entry of [...requestedItems, ...additionalItems]) {
     const key = String(entry.item).trim().toLowerCase();
-    const existing = combinedRequests.get(key);
-    combinedRequests.set(key, {
+    const existing = requestsByAlias.get(key);
+    requestsByAlias.set(key, {
       item: existing?.item || entry.item,
       quantity: (existing?.quantity || 0) + entry.quantity,
     });
   }
-  const distinctRequestedItems = [...combinedRequests.values()];
-  const names = distinctRequestedItems.map(entry => String(entry.item).trim().toLowerCase());
+  const aliasRequests = [...requestsByAlias.values()];
+  const aliasNames = aliasRequests.map(entry => String(entry.item).trim());
+  const resolvedAliases = aliasNames.length ? (await pool.query(`
+    SELECT requested.item AS requested_item,
+      COALESCE(match.name, requested.item) AS canonical_item
+    FROM unnest($1::text[]) AS requested(item)
+    LEFT JOIN LATERAL (
+      SELECT stock.name
+      FROM equipments stock
+      WHERE lower(trim(stock.name))=lower(trim(requested.item))
+        OR lower(trim(stock.asset_code))=lower(trim(requested.item))
+      ORDER BY CASE WHEN lower(trim(stock.name))=lower(trim(requested.item)) THEN 0 ELSE 1 END,
+        stock.asset_code
+      LIMIT 1
+    ) match ON true
+  `, [aliasNames])).rows : [];
+  const canonicalByAlias = new Map(resolvedAliases.map(row => [
+    String(row.requested_item).trim().toLowerCase(),
+    row.canonical_item,
+  ]));
+  const requestsByType = new Map();
+  for (const entry of aliasRequests) {
+    const canonicalItem = canonicalByAlias.get(String(entry.item).trim().toLowerCase()) || entry.item;
+    const key = String(canonicalItem).trim().toLowerCase();
+    const existing = requestsByType.get(key);
+    // A type name and an asset code can describe the same requested units; don't count that alias twice.
+    requestsByType.set(key, {
+      item: existing?.item || canonicalItem,
+      quantity: Math.max(existing?.quantity || 0, entry.quantity),
+      requestAliases: [...new Set([...(existing?.requestAliases || []), entry.item])],
+    });
+  }
+  const distinctRequestedItems = [...requestsByType.values()];
+  const names = [...requestsByType.keys()];
   const inventory = names.length ? (await pool.query(`
     SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
       stock.availability_status, stock.quantity,
-      GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity,
+      CASE WHEN availability.available_date IS NULL THEN 0
+        ELSE GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)
+      END::integer AS available_quantity,
       availability.available_date::text AS available_date,
       availability.start_time::text AS available_start_time,
       availability.end_time::text AS available_end_time
     FROM equipments stock
-    JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+    LEFT JOIN LATERAL (
+      SELECT calendar.available_date, calendar.start_time, calendar.end_time
+      FROM technical_equipment_availability calendar
+      WHERE calendar.inventory_id=stock.id
+        AND calendar.available_date=$2::date
+        AND calendar.start_time <= $3::time
+        AND calendar.end_time >= $4::time
+      ORDER BY calendar.start_time, calendar.end_time
+      LIMIT 1
+    ) availability ON true
     LEFT JOIN LATERAL (
       SELECT sum(reserved_item.quantity)::integer AS quantity
       FROM event_equipment_reservations reservation
@@ -529,9 +572,6 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
     ) booked ON true
     WHERE stock.status='operational' AND stock.availability_status='Available'
       AND lower(trim(stock.name))=ANY($1::text[])
-      AND availability.available_date=$2::date
-      AND availability.start_time <= $3::time AND availability.end_time >= $4::time
-      AND stock.quantity > COALESCE(booked.quantity, 0)
     ORDER BY lower(stock.name), stock.asset_code
   `, [names, event.proposed_date, event.proposed_start_time, event.proposed_end_time])).rows : [];
   const byName = new Map();
@@ -543,10 +583,12 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
     event,
     alreadyReserved: false,
     items: distinctRequestedItems.map(requested => {
-      const matches = byName.get(String(requested.item).trim().toLowerCase()) || [];
+      const matches = (byName.get(String(requested.item).trim().toLowerCase()) || [])
+        .filter(asset => Number(asset.available_quantity) > 0);
       return {
         item: requested.item,
         requestedQuantity: requested.quantity,
+        requestAliases: requested.requestAliases,
         availableQuantity: matches.reduce((sum, asset) => sum + asset.available_quantity, 0),
         availableAssets: matches,
       };
@@ -594,17 +636,50 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       return { conflict: 'This event does not have a current equipment review or is no longer upcoming.' };
     }
     const requestItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
-    const requestedByName = new Map();
-    const requiredByName = new Map();
+    const requestQuantitiesByAlias = new Map();
+    const allowedQuantitiesByAlias = new Map();
     for (const item of requestItems) {
       const name = item.item.trim().toLowerCase();
-      requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
-      requiredByName.set(name, (requiredByName.get(name) || 0) + item.quantity);
+      requestQuantitiesByAlias.set(name, (requestQuantitiesByAlias.get(name) || 0) + item.quantity);
+      allowedQuantitiesByAlias.set(name, (allowedQuantitiesByAlias.get(name) || 0) + item.quantity);
     }
     for (const item of additionalItems) {
       const name = item.item.trim().toLowerCase();
-      requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
+      allowedQuantitiesByAlias.set(name, (allowedQuantitiesByAlias.get(name) || 0) + item.quantity);
     }
+    const requestAliases = [...new Set([
+      ...requestQuantitiesByAlias.keys(),
+      ...allowedQuantitiesByAlias.keys(),
+    ])];
+    const resolutionRows = requestAliases.length ? (await client.query(`
+      SELECT requested.item AS requested_item,
+        COALESCE(match.name, requested.item) AS canonical_item
+      FROM unnest($1::text[]) AS requested(item)
+      LEFT JOIN LATERAL (
+        SELECT stock.name
+        FROM equipments stock
+        WHERE lower(trim(stock.name))=requested.item
+          OR lower(trim(stock.asset_code))=requested.item
+        ORDER BY CASE WHEN lower(trim(stock.name))=requested.item THEN 0 ELSE 1 END,
+          stock.asset_code
+        LIMIT 1
+      ) match ON true
+    `, [requestAliases])).rows : [];
+    const canonicalByAlias = new Map(resolutionRows.map(row => [
+      String(row.requested_item).trim().toLowerCase(),
+      String(row.canonical_item).trim().toLowerCase(),
+    ]));
+    function mergeTypeQuantities(quantitiesByAlias) {
+      const quantitiesByType = new Map();
+      for (const [alias, quantity] of quantitiesByAlias) {
+        const type = canonicalByAlias.get(alias) || alias;
+        // Name/code aliases represent the same requested units, while repeated identical labels were already summed.
+        quantitiesByType.set(type, Math.max(quantitiesByType.get(type) || 0, quantity));
+      }
+      return quantitiesByType;
+    }
+    const requiredByName = mergeTypeQuantities(requestQuantitiesByAlias);
+    const requestedByName = mergeTypeQuantities(allowedQuantitiesByAlias);
     const ids = selections.map(selection => selection.inventoryId).sort((a, b) => a - b);
     const inventory = ids.length ? (await client.query(`
       SELECT id, name, asset_code, specification, quantity
@@ -637,8 +712,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       }
     }
     if (event.review_outcome === 'fully_fulfillable' &&
-        requestItems.some(item =>
-          (selectedCounts.get(item.item.trim().toLowerCase()) || 0) < requiredByName.get(item.item.trim().toLowerCase()))) {
+        [...requiredByName].some(([name, quantity]) => (selectedCounts.get(name) || 0) < quantity)) {
       await client.query('ROLLBACK');
       return { conflict: 'A fully fulfillable request must reserve every requested item and quantity.' };
     }
@@ -1008,25 +1082,68 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
   if (event.already_reserved) return { event, alreadyReserved: true, items: [] };
 
   const requestedItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
-  const combinedRequests = new Map();
+  const requestsByAlias = new Map();
   for (const entry of [...requestedItems, ...additionalItems]) {
     const key = String(entry.item).trim().toLowerCase();
-    const existing = combinedRequests.get(key);
-    combinedRequests.set(key, {
+    const existing = requestsByAlias.get(key);
+    requestsByAlias.set(key, {
       item: existing?.item || entry.item,
       quantity: (existing?.quantity || 0) + entry.quantity,
     });
   }
-  const distinctRequestedItems = [...combinedRequests.values()];
-  const names = distinctRequestedItems.map(entry => String(entry.item).trim().toLowerCase());
+  const aliasRequests = [...requestsByAlias.values()];
+  const aliasNames = aliasRequests.map(entry => String(entry.item).trim());
+  const resolvedAliases = aliasNames.length ? (await pool.query(`
+    SELECT requested.item AS requested_item,
+      COALESCE(match.name, requested.item) AS canonical_item
+    FROM unnest($1::text[]) AS requested(item)
+    LEFT JOIN LATERAL (
+      SELECT stock.name
+      FROM equipments stock
+      WHERE lower(trim(stock.name))=lower(trim(requested.item))
+        OR lower(trim(stock.asset_code))=lower(trim(requested.item))
+      ORDER BY CASE WHEN lower(trim(stock.name))=lower(trim(requested.item)) THEN 0 ELSE 1 END,
+        stock.asset_code
+      LIMIT 1
+    ) match ON true
+  `, [aliasNames])).rows : [];
+  const canonicalByAlias = new Map(resolvedAliases.map(row => [
+    String(row.requested_item).trim().toLowerCase(),
+    row.canonical_item,
+  ]));
+  const requestsByType = new Map();
+  for (const entry of aliasRequests) {
+    const canonicalItem = canonicalByAlias.get(String(entry.item).trim().toLowerCase()) || entry.item;
+    const key = String(canonicalItem).trim().toLowerCase();
+    const existing = requestsByType.get(key);
+    // A type name and an asset code can describe the same requested units; don't count that alias twice.
+    requestsByType.set(key, {
+      item: existing?.item || canonicalItem,
+      quantity: Math.max(existing?.quantity || 0, entry.quantity),
+      requestAliases: [...new Set([...(existing?.requestAliases || []), entry.item])],
+    });
+  }
+  const distinctRequestedItems = [...requestsByType.values()];
+  const names = [...requestsByType.keys()];
   const inventory = names.length ? (await pool.query(`
     SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
-      GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)::integer AS available_quantity,
+      CASE WHEN availability.available_date IS NULL THEN 0
+        ELSE GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)
+      END::integer AS available_quantity,
       availability.available_date::text AS available_date,
       availability.start_time::text AS available_start_time,
       availability.end_time::text AS available_end_time
     FROM equipments stock
-    JOIN technical_equipment_availability availability ON availability.inventory_id=stock.id
+    LEFT JOIN LATERAL (
+      SELECT calendar.available_date, calendar.start_time, calendar.end_time
+      FROM technical_equipment_availability calendar
+      WHERE calendar.inventory_id=stock.id
+        AND calendar.available_date=$2::date
+        AND calendar.start_time <= $3::time
+        AND calendar.end_time >= $4::time
+      ORDER BY calendar.start_time, calendar.end_time
+      LIMIT 1
+    ) availability ON true
     LEFT JOIN LATERAL (
       SELECT sum(reserved_item.quantity)::integer AS quantity
       FROM event_equipment_reservations reservation
@@ -1038,9 +1155,6 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
     ) booked ON true
     WHERE stock.status='operational' AND stock.availability_status='Available'
       AND lower(trim(stock.name))=ANY($1::text[])
-      AND availability.available_date=$2::date
-      AND availability.start_time <= $3::time AND availability.end_time >= $4::time
-      AND stock.quantity > COALESCE(booked.quantity, 0)
     ORDER BY lower(stock.name), stock.asset_code
   `, [names, event.proposed_date, event.proposed_start_time, event.proposed_end_time])).rows : [];
   const byName = new Map();
@@ -1052,10 +1166,12 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
     event,
     alreadyReserved: false,
     items: distinctRequestedItems.map(requested => {
-      const matches = byName.get(String(requested.item).trim().toLowerCase()) || [];
+      const matches = (byName.get(String(requested.item).trim().toLowerCase()) || [])
+        .filter(asset => Number(asset.available_quantity) > 0);
       return {
         item: requested.item,
         requestedQuantity: requested.quantity,
+        requestAliases: requested.requestAliases,
         availableQuantity: matches.reduce((sum, asset) => sum + asset.available_quantity, 0),
         availableAssets: matches,
       };
@@ -1103,17 +1219,50 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       return { conflict: 'This event does not have a current equipment review or is no longer upcoming.' };
     }
     const requestItems = Array.isArray(event.equipment_items) ? event.equipment_items : [];
-    const requestedByName = new Map();
-    const requiredByName = new Map();
+    const requestQuantitiesByAlias = new Map();
+    const allowedQuantitiesByAlias = new Map();
     for (const item of requestItems) {
       const name = item.item.trim().toLowerCase();
-      requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
-      requiredByName.set(name, (requiredByName.get(name) || 0) + item.quantity);
+      requestQuantitiesByAlias.set(name, (requestQuantitiesByAlias.get(name) || 0) + item.quantity);
+      allowedQuantitiesByAlias.set(name, (allowedQuantitiesByAlias.get(name) || 0) + item.quantity);
     }
     for (const item of additionalItems) {
       const name = item.item.trim().toLowerCase();
-      requestedByName.set(name, (requestedByName.get(name) || 0) + item.quantity);
+      allowedQuantitiesByAlias.set(name, (allowedQuantitiesByAlias.get(name) || 0) + item.quantity);
     }
+    const requestAliases = [...new Set([
+      ...requestQuantitiesByAlias.keys(),
+      ...allowedQuantitiesByAlias.keys(),
+    ])];
+    const resolutionRows = requestAliases.length ? (await client.query(`
+      SELECT requested.item AS requested_item,
+        COALESCE(match.name, requested.item) AS canonical_item
+      FROM unnest($1::text[]) AS requested(item)
+      LEFT JOIN LATERAL (
+        SELECT stock.name
+        FROM equipments stock
+        WHERE lower(trim(stock.name))=requested.item
+          OR lower(trim(stock.asset_code))=requested.item
+        ORDER BY CASE WHEN lower(trim(stock.name))=requested.item THEN 0 ELSE 1 END,
+          stock.asset_code
+        LIMIT 1
+      ) match ON true
+    `, [requestAliases])).rows : [];
+    const canonicalByAlias = new Map(resolutionRows.map(row => [
+      String(row.requested_item).trim().toLowerCase(),
+      String(row.canonical_item).trim().toLowerCase(),
+    ]));
+    function mergeTypeQuantities(quantitiesByAlias) {
+      const quantitiesByType = new Map();
+      for (const [alias, quantity] of quantitiesByAlias) {
+        const type = canonicalByAlias.get(alias) || alias;
+        // Name/code aliases represent the same requested units, while repeated identical labels were already summed.
+        quantitiesByType.set(type, Math.max(quantitiesByType.get(type) || 0, quantity));
+      }
+      return quantitiesByType;
+    }
+    const requiredByName = mergeTypeQuantities(requestQuantitiesByAlias);
+    const requestedByName = mergeTypeQuantities(allowedQuantitiesByAlias);
     const ids = selections.map(selection => selection.inventoryId).sort((a, b) => a - b);
     const inventory = ids.length ? (await client.query(`
       SELECT id, name, asset_code, specification, quantity
@@ -1146,8 +1295,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       }
     }
     if (event.review_outcome === 'fully_fulfillable' &&
-        requestItems.some(item =>
-          (selectedCounts.get(item.item.trim().toLowerCase()) || 0) < requiredByName.get(item.item.trim().toLowerCase()))) {
+        [...requiredByName].some(([name, quantity]) => (selectedCounts.get(name) || 0) < quantity)) {
       await client.query('ROLLBACK');
       return { conflict: 'A fully fulfillable request must reserve every requested item and quantity.' };
     }
