@@ -545,12 +545,15 @@ it('AC2 - combines repeated requested names and split asset allocations without 
     ] },
   ] } });
   api.post.mockResolvedValue({ reservation: { id: 903 }, items: [] });
-  render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
+  // The persisted request must ask for the same three units as the availability response.
+  const repeatedRequest = { ...request, equipment_items: [{ item: 'Projector', quantity: 2 }, { item: ' PROJECTOR ', quantity: 1 }] };
+  render(<EquipmentReservationSection requests={[repeatedRequest]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Check availability' }));
-  const quantity = await screen.findByLabelText('Quantity of PROJ-001 to reserve');
-  fireEvent.change(quantity, { target: { value: '' } });
-  expect(screen.getByRole('button', { name: 'Confirm reservation' }).disabled).toBe(true);
-  fireEvent.change(quantity, { target: { value: '1' } });
+  // This case verifies aggregation, while main now permits partial allocations in its separate reservation tests.
+  await screen.findByLabelText('Quantity of PROJ-001 to reserve');
+  for (const asset of ['PROJ-001', 'PROJ-002', 'PROJ-003']) {
+    fireEvent.change(screen.getByLabelText(`Quantity of ${asset} to reserve`), { target: { value: '1' } });
+  }
   fireEvent.click(screen.getByRole('button', { name: 'Confirm reservation' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reservations',
     { selections: [{ inventoryId: 31, quantity: 1 }, { inventoryId: 32, quantity: 1 }, { inventoryId: 33, quantity: 1 }] }, 'staff-token'));
