@@ -36,7 +36,9 @@
 - In every pull request or completion report, include a **Test Verification Record** containing: the user story and ACs covered; the test file and test names; the distinct happy, error, and boundary cases covered; confirmation that each test was inspected rather than merely run; why each assertion would fail for a plausible defect; coverage results; and any uncovered code with its reason.
 
 # TESTING AND DOCUMENTATION RULES
-- **Automated Test Documentation (CSV):** Whenever you generate testing code, create a pull request, or provide a completion report, you MUST automatically write the testing documentation to two separate files in the workspace (for example, docs/tests/test_specifications.csv and docs/tests/test_execution.csv). Do not generate qualitative markdown summaries; output ONLY the CSV blocks with these exact headers:
+- **Automated Test Documentation (CSV):** Whenever you create a pull request - You MUST automatically **generate** the testing documentation (test specifications and execution results) directly within the PR body or completion summary.
+- Do NOT write, append, or modify documentation files on disk (e.g., do NOT edit files under `docs/tests/`).
+Do not generate qualitative markdown summaries; output ONLY the CSV blocks with these exact headers:
   1. **Test Case Specifications (CSV):** "Story/AC", "Sprint", "Test Case ID", "User Story", "Acceptance Criteria", "Test Scenario", "Pre-Conditions", "Test Steps", "Test Data", "Expected Results", "Test File", "Test Details"
   2. **Test Execution Record (CSV):** "Story / AC Ref", "Test Case ID", "File", "Execution Date", "Status", "Failure Log"
 
