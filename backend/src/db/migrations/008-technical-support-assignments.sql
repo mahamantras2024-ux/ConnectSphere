@@ -17,8 +17,9 @@ ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title VARCHAR(255);
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
 DO $$ BEGIN
+  -- Resolve metadata in the active schema so isolated-schema migrations never target public tables.
   IF EXISTS (SELECT 1 FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='notifications' AND column_name='is_read') THEN
+      WHERE table_schema=current_schema() AND table_name='notifications' AND column_name='is_read') THEN
     ALTER TABLE notifications ALTER COLUMN is_read SET DEFAULT false;
   END IF;
 END $$;

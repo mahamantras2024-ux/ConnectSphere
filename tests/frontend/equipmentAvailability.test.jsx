@@ -69,7 +69,7 @@ it('AC1 - maps legacy maintenance status to Unavailable', () => {
   const row = getAssetRow('PROJ-001');
 
   // Assert: dropping this fallback would present unrepaired legacy stock as available.
-  expect(within(row).getAllByRole('cell')[2].textContent).toBe('Unavailable');
+  expect(within(row).getByLabelText('Status for PROJ-001').value).toBe('Unavailable');
 });
 
 // AC2 - Availability is deducted for reservations overlapping the chosen date and time.

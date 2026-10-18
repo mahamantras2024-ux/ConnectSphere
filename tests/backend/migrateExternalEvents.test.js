@@ -51,19 +51,25 @@ test('SCRUM-98 upload AC / Register AC3 - migration runner preserves existing up
   const cancellationIndex = queries.indexOf(migrationSql('012-event-cancellation-notifications.sql'));
   const equipmentReviewIndex = queries.indexOf(migrationSql('013-equipment-review-affected-items.sql'));
   const repairHistoryIndex = queries.indexOf(migrationSql('012-equipment-repair-history.sql'));
+  const reservationUnavailabilityIndex = queries.indexOf(migrationSql('014-equipment-reservation-unavailability.sql'));
+  const documentsIndex = queries.indexOf(migrationSql('20261018021358_venue_emergency_information.sql'));
 
-  // Assert: both existing migrations run in order before repair history is appended.
+  // Assert: the feature migrations retain their order and registration follows the existing document upgrade.
   assert.notEqual(cancellationIndex, -1, 'cancellation migration must run');
   assert.notEqual(equipmentReviewIndex, -1, 'equipment-review migration must run');
   assert.notEqual(repairHistoryIndex, -1, 'repair-history migration must run');
+  assert.notEqual(reservationUnavailabilityIndex, -1, 'reservation unavailability migration must run');
+  assert.notEqual(documentsIndex, -1, 'venue documents migration must run');
   assert.ok(cancellationIndex < equipmentReviewIndex, 'cancellation must precede equipment review');
-  assert.ok(equipmentReviewIndex < repairHistoryIndex, 'repair history must be appended after equipment review');
-  const documentsIndex=queries.indexOf(migrationSql('20261018021358_venue_emergency_information.sql'));
-  assert.ok(documentsIndex>repairHistoryIndex,'SCRUM-98 upload AC: append emergency documents without losing older migrations');
-  // Register AC3: append the registration upgrade after the existing document migration.
-  assert.equal(queries.indexOf(migrationSql('015-attendee-registration.sql')), queries.length-1);
-  assert.match(queries[documentsIndex],/ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
-  assert.match(queries[documentsIndex],/octet_length/);
+  assert.ok(equipmentReviewIndex < repairHistoryIndex, 'repair history must follow equipment review');
+  assert.ok(repairHistoryIndex < reservationUnavailabilityIndex, 'reservation issues must follow repair history');
+  assert.ok(reservationUnavailabilityIndex < documentsIndex, 'venue documents must follow reservation issues');
+  // Register AC3: both stories' upgrades must run before the new registration fields are appended.
+  const registrationIndex = queries.indexOf(migrationSql('015-attendee-registration.sql'));
+  assert.ok(documentsIndex < registrationIndex, 'registration must follow venue documents');
+  assert.equal(registrationIndex, queries.length - 1, 'registration must be the final migration');
+  assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
+  assert.match(queries[documentsIndex], /octet_length/);
 });
 
 // Upload AC: upgrading an existing venue catalogue must not replay unrelated seed/demo migrations.

@@ -52,6 +52,7 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/013-equipment-reservation-release-audit.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/014-active-equipment-reservation-uniqueness.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/012-equipment-repair-history.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/014-equipment-reservation-unavailability.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/20261018021358_venue_emergency_information.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/015-attendee-registration.sql'), 'utf8'));
     console.log('External event, equipment reservation and repair, venue safety, emergency-document and attendee-registration migrations are ready.');
