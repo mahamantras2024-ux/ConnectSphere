@@ -458,11 +458,79 @@ function ReservationCandidate({ request, token, onReserved }) {
   );
 }
 
+/** Displays a flagged reservation and sends a same-type replacement proposal to its Coordinator. */
+function AffectedReservationCard({ issue, token, onProposed }) {
+  const [alternativeId, setAlternativeId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const pending = issue.proposal?.status === 'pending';
+
+  async function propose(event) {
+    event.preventDefault();
+    if (!alternativeId) {
+      setError('Choose an available alternative.');
+      return;
+    }
+    setError('');
+    setSaving(true);
+    try {
+      await api.post(`/events/equipment-reservation-issues/${issue.id}/proposals`, {
+        alternativeInventoryId: Number(alternativeId),
+      }, token);
+      await onProposed(issue);
+    } catch (proposalError) {
+      setError(proposalError.message || 'Unable to send the replacement proposal.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article className="er-card" aria-labelledby={`affected-reservation-${issue.id}`}>
+      <header className="er-card-head">
+        <h3 className="er-card-title" id={`affected-reservation-${issue.id}`}>{issue.event_name}</h3>
+        <p>{issue.unavailable_asset_code} — {issue.equipment_name} × {issue.quantity} is unavailable.</p>
+        <p>{issue.reason}</p>
+        <p>{formatDate(issue.event_date)} {formatTime(issue.start_time)}–{formatTime(issue.end_time)}</p>
+      </header>
+      <div className="er-card-body">
+        {issue.proposal && (
+          <p role={pending ? 'status' : undefined}>
+            {pending ? 'Awaiting Coordinator decision: ' : `Latest proposal ${issue.proposal.status}: `}
+            {issue.proposal.assetCode} — {issue.proposal.name} × {issue.proposal.quantity}
+          </p>
+        )}
+        {!pending && (
+          <form onSubmit={propose}>
+            <label className="er-field">
+              Propose available alternative
+              <select value={alternativeId} onChange={event => setAlternativeId(event.target.value)}>
+                <option value="">Choose equipment</option>
+                {issue.alternatives.map(asset => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.assetCode} — {asset.name} ({asset.availableQuantity} available)
+                  </option>
+                ))}
+              </select>
+            </label>
+            {error && <p className="er-error" role="alert">{error}</p>}
+            <button className="er-btn" type="submit" disabled={saving || issue.alternatives.length === 0}>
+              {saving ? 'Sending proposal…' : 'Send proposal to Coordinator'}
+            </button>
+            {issue.alternatives.length === 0 && <p>No matching alternative is available for this reservation.</p>}
+          </form>
+        )}
+      </div>
+    </article>
+  );
+}
+
 /**
  * Presents reviewed requests awaiting asset allocation and confirmed reservation audit details.
  */
 export default function EquipmentReservationSection({
   requests, reservations, token, onReserved, error, onGoToReviews,
+  affectedReservations = [], onAlternativeProposed = () => {},
 }) {
   return (
     <div className="er-root">
@@ -524,6 +592,24 @@ export default function EquipmentReservationSection({
             </table>
           </div>
         )}
+      </section>
+
+      <section className="er-section" aria-labelledby="affected-reservations-heading">
+        <h2 className="er-section-title" id="affected-reservations-heading">Affected reservations</h2>
+        {affectedReservations.length === 0
+          ? <p className="er-section-hint">No confirmed reservations are affected by unavailable equipment.</p>
+          : (
+            <div className="er-grid">
+              {affectedReservations.map(issue => (
+                <AffectedReservationCard
+                  key={issue.id}
+                  issue={issue}
+                  token={token}
+                  onProposed={onAlternativeProposed}
+                />
+              ))}
+            </div>
+          )}
       </section>
     </div>
   );

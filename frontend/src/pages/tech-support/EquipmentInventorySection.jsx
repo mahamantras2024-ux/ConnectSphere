@@ -4,6 +4,9 @@ import { useState } from 'react';
 const formatDate = value => new Intl.DateTimeFormat('en-SG', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 }).format(new Date(`${value}T00:00:00Z`));
+const formatHistoryDate = value => new Intl.DateTimeFormat('en-SG', {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(value));
 
 // Reserved slots are shown in neutral grey; the "· Reserved" text keeps the status readable without colour.
 const CALENDAR_STYLES = `
@@ -20,6 +23,21 @@ const CALENDAR_STYLES = `
     color: #9aa4ae;
   }
 }
+.equipment-status-control { display: grid; gap: 8px; }
+.equipment-status-control select { min-width: 132px; padding: 8px 10px; border: 1px solid #c8cec1; border-radius: 8px; background: #fff; color: #25322a; }
+.equipment-status-control form { display: grid; gap: 6px; }
+.equipment-status-control textarea { width: 100%; min-height: 64px; }
+.equipment-inventory-table th:last-child,
+.equipment-inventory-table td:last-child { min-width: 280px; }
+.equipment-status-history { display: grid; min-width: 250px; gap: 8px; margin: 0; padding: 0 !important; list-style: none; }
+.equipment-status-history-entry { padding: 9px 11px; border: 1px solid #e4e9df; border-radius: 8px; background: #fbfcf8; }
+.equipment-status-history-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.equipment-status-history-status { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 8px; border-radius: 999px; background: #eef2e8; color: #43583b; font-size: 11px; font-weight: 700; }
+.equipment-status-history-status.is-unavailable { background: #fff0e8; color: #a3431b; }
+.equipment-status-history-meta time { flex: 0 0 auto; color: #71796e; font-size: 11px; white-space: nowrap; }
+.equipment-status-history-reason { margin: 7px 0 0; color: #333b32; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
+.equipment-status-history-actor { display: block; margin-top: 5px; color: #71796e; font-size: 11px; }
+.equipment-status-history-empty { color: #788073; font-size: 12px; }
 `;
 
 function matchesFilters(window, date, fromTime, toTime) {
@@ -45,7 +63,7 @@ const isReservedWindow = window => window.status !== 'Available' &&
  * Availability range filters show only assets whose available window covers the full range.
  * Available quantities are date-specific and show the best matching window unless a full range is set.
  */
-export default function EquipmentInventorySection({ inventory, error, onRepairEquipment }) {
+export default function EquipmentInventorySection({ inventory, error, onRepairEquipment, onMarkUnavailable }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
@@ -54,6 +72,10 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
   const [resolutionNote, setResolutionNote] = useState('');
   const [repairError, setRepairError] = useState('');
   const [repairSaving, setRepairSaving] = useState(false);
+  const [unavailableEquipmentId, setUnavailableEquipmentId] = useState(null);
+  const [unavailabilityReason, setUnavailabilityReason] = useState('');
+  const [unavailabilityError, setUnavailabilityError] = useState('');
+  const [unavailabilitySaving, setUnavailabilitySaving] = useState(false);
   const hasAvailabilityFilter = Boolean(dateFilter || fromTime || toTime);
   const hasFilter = Boolean(searchTerm.trim() || hasAvailabilityFilter);
   const invalidTimeRange = Boolean(fromTime && toTime && fromTime >= toTime);
@@ -123,6 +145,53 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
       setRepairError(saveError?.message || 'Unable to update equipment status.');
     } finally {
       setRepairSaving(false);
+    }
+  }
+
+  /** Records an auditable cause before changing inventory state and notifying affected reservation owners. */
+  async function submitUnavailable(event, item) {
+    event.preventDefault();
+    const reason = unavailabilityReason.trim();
+    if (!reason) {
+      setUnavailabilityError('Enter why this equipment is unavailable.');
+      return;
+    }
+    setUnavailabilityError('');
+    setUnavailabilitySaving(true);
+    try {
+      await onMarkUnavailable(item, reason);
+      setUnavailableEquipmentId(null);
+      setUnavailabilityReason('');
+    } catch (saveError) {
+      setUnavailabilityError(saveError?.message || 'Unable to mark equipment unavailable.');
+    } finally {
+      setUnavailabilitySaving(false);
+    }
+  }
+
+  /** Starts or cancels an audited status transition without changing inventory before confirmation. */
+  function handleStatusChange(item, nextStatus) {
+    const currentStatus = getAvailabilityStatus(item);
+    if (nextStatus === currentStatus) {
+      setUnavailableEquipmentId(null);
+      setRepairingEquipmentId(null);
+      setUnavailabilityReason('');
+      setResolutionNote('');
+      setUnavailabilityError('');
+      setRepairError('');
+      return;
+    }
+
+    if (nextStatus === 'Unavailable' && onMarkUnavailable) {
+      setUnavailableEquipmentId(item.id);
+      setRepairingEquipmentId(null);
+      setUnavailabilityReason('');
+      setUnavailabilityError('');
+    } else if (nextStatus === 'Available' && onRepairEquipment) {
+      setRepairingEquipmentId(item.id);
+      setUnavailableEquipmentId(null);
+      setResolutionNote('');
+      setRepairError('');
     }
   }
 
@@ -204,9 +273,40 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
                     <td>{item.name}</td>
                     <td>{item.specification}</td>
                     <td>
-                      <span>{getAvailabilityStatus(item)}</span>
-                      {onRepairEquipment && getAvailabilityStatus(item) === 'Unavailable' && (
-                        repairingEquipmentId === item.id ? (
+                      <div className="equipment-status-control">
+                        <select
+                          aria-label={`Status for ${item.asset_code}`}
+                          value={getAvailabilityStatus(item)}
+                          disabled={getAvailabilityStatus(item) === 'Available'
+                            ? !onMarkUnavailable || unavailabilitySaving
+                            : !onRepairEquipment || repairSaving}
+                          onChange={event => handleStatusChange(item, event.target.value)}
+                        >
+                          <option value="Available">Available</option>
+                          <option value="Unavailable">Unavailable</option>
+                        </select>
+                        {unavailableEquipmentId === item.id && (
+                          <form onSubmit={event => submitUnavailable(event, item)} noValidate>
+                            <label>
+                              Reason for unavailability
+                              <textarea
+                                aria-label={`Reason for unavailability of ${item.asset_code}`}
+                                value={unavailabilityReason}
+                                onChange={event => {
+                                  setUnavailabilityReason(event.target.value);
+                                  setUnavailabilityError('');
+                                }}
+                                maxLength={500}
+                                required
+                              />
+                            </label>
+                            {unavailabilityError && <p role="alert">{unavailabilityError}</p>}
+                            <button type="submit" disabled={unavailabilitySaving}>
+                              {unavailabilitySaving ? 'Saving…' : 'Confirm unavailable'}
+                            </button>
+                          </form>
+                        )}
+                        {repairingEquipmentId === item.id && (
                           <form onSubmit={event => submitRepair(event, item)} noValidate>
                             <label>
                               Resolution note
@@ -223,37 +323,36 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
                             </label>
                             {repairError && <p role="alert">{repairError}</p>}
                             <button type="submit" disabled={repairSaving}>
-                              {repairSaving ? 'Saving repair…' : 'Mark Available'}
+                              {repairSaving ? 'Saving repair…' : 'Confirm available'}
                             </button>
                           </form>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRepairingEquipmentId(item.id);
-                              setResolutionNote('');
-                              setRepairError('');
-                            }}
-                          >
-                            Mark Available
-                          </button>
-                        )
-                      )}
+                        )}
+                      </div>
                     </td>
                     <td>{dateFilter
                       ? `${fromTime && toTime ? '' : 'Up to '}${getAvailableQuantity(item)}`
                       : item.quantity}</td>
                     <td>
                       {item.status_history?.length ? (
-                        <ul aria-label={`Status history for ${item.asset_code}`}>
+                        <ul className="equipment-status-history" aria-label={`Status history for ${item.asset_code}`}>
                           {item.status_history.map(entry => (
-                            <li key={entry.id}>
-                              <span>{entry.status}: {entry.note}</span>
-                              {entry.changed_by_name && <span> — {entry.changed_by_name}</span>}
+                            <li className="equipment-status-history-entry" key={entry.id}>
+                              <div className="equipment-status-history-meta">
+                                <span className={`equipment-status-history-status${entry.status === 'Unavailable' ? ' is-unavailable' : ''}`}>
+                                  {entry.status}
+                                </span>
+                                <time dateTime={entry.changed_at}>
+                                  {formatHistoryDate(entry.changed_at)}
+                                </time>
+                              </div>
+                              <p className="equipment-status-history-reason">{entry.note}</p>
+                              {entry.changed_by_name && (
+                                <small className="equipment-status-history-actor">By {entry.changed_by_name}</small>
+                              )}
                             </li>
                           ))}
                         </ul>
-                      ) : 'No status history'}
+                      ) : <span className="equipment-status-history-empty">No status history</span>}
                     </td>
                   </tr>
                 ))}

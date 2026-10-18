@@ -1,4 +1,3 @@
-import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -57,8 +56,8 @@ it('AC1 - displays assigned event date time venue and equipment', async () => {
   expect(within(card).getByText('Qty. 2')).toBeTruthy();
 });
 
-// AC3: a failed assignment is visible and does not claim that the team was saved.
-it('AC3 - reports assignment changes that fail', async () => {
+// AC4: a failed assignment is visible and does not claim that the team was saved.
+it('AC4 - reports assignment changes that fail', async () => {
   api.put.mockRejectedValue(new Error('Assignment changed. Refresh and try again.'));
   render(<TechnicalSupportAssignment event={event} token="coordinator-token" staff={staff} onSaved={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Assign staff' }));

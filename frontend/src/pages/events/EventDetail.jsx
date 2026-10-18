@@ -16,6 +16,7 @@ import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
 import EquipmentStatusSection from './EquipmentStatusSection';
+import EquipmentReservationIssuesSection from './EquipmentReservationIssuesSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 import VenueBookingRequest from './VenueBookingRequest';
 import VenueSuitabilitySection from './VenueSuitabilitySection';
@@ -939,6 +940,7 @@ export default function EventDetail() {
       {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} />}
       {/* Tracks Equipment Request Status: the assigned coordinator (the API scopes it) monitors the technical arrangements. */}
       {user.role === 'event_coordinator' && <EquipmentStatusSection eventId={event.id} token={token} />}
+      {user.role === 'event_coordinator' && <EquipmentReservationIssuesSection eventId={event.id} token={token} />}
 
       <CancelEventAction event={event} user={user} token={token}
         onCancelled={(cancelledEvent) => setEvent((current) => ({ ...current, ...cancelledEvent }))}

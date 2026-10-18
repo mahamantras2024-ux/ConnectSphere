@@ -55,8 +55,13 @@ test('AC3 migration - assignment notifications survive migration reruns and brow
         await client.query('RESET ROLE');
       }
     } finally {
-      await client.query('RESET ROLE');
-      await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-      client.release();
+      try {
+        // Clear a failed migration transaction first so cleanup does not hide its original PostgreSQL error.
+        await client.query('ROLLBACK');
+        await client.query('RESET ROLE');
+        await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+      } finally {
+        client.release();
+      }
     }
   });

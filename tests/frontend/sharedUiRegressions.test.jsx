@@ -272,6 +272,7 @@ beforeEach(()=>{
     if(path === '/events/equipment-requests') return {requests:[]};
     if(path === '/events/equipment-inventory') return {inventory:[]};
     if(path === '/events/equipment-reservations') return {requests:[],reservations:[]};
+    if(path === '/events/equipment-reservation-issues') return {affectedReservations:[]};
     throw new Error(`Unexpected API route: ${path}`);
   });
 });
@@ -300,7 +301,7 @@ it.each([
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
+    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations','/events/equipment-reservation-issues']
     : role === 'safety_officer' ? ['/auth/me','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
