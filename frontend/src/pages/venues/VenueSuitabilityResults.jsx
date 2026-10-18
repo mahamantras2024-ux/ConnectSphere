@@ -72,7 +72,7 @@ export default function VenueSuitabilityResults({ eventId, token, venues, render
     {suitable.length ? <VenueGroup title={`Suitable venues (${suitable.length})`} venues={suitable} assessments={assessments} renderVenue={renderVenue} />
       : <p className="venue-fit-empty">No venue matches all recorded event requirements in these results.</p>}
     {unsuitable.length > 0 && <details className="venue-other-results">
-      <summary>Other venues ({unsuitable.length}) - requirements not met</summary>
+      <summary>Other venues ({unsuitable.length}) — requirements not met</summary>
       <div className="venue-other-body"><VenueGroup title={`Other venues (${unsuitable.length})`} venues={unsuitable} assessments={assessments} renderVenue={renderVenue} /></div>
     </details>}
     {unassessed.length > 0 && <VenueGroup title={`Not yet assessed (${unassessed.length})`} venues={unassessed} assessments={assessments} renderVenue={renderVenue} />}
