@@ -113,6 +113,85 @@ test('AC1 AC3 AC4 - flags each affected confirmed reservation and notifies assig
   assert.equal(calls.at(-1).sql, 'COMMIT');
 });
 
+test('AC1 - reports an asset conflict and rolls back when it was already unavailable', async () => {
+  mockAuthentication();
+  const calls = [];
+  mock.method(pool, 'connect', async () => ({
+    async query(sql) {
+      calls.push(sql.trim());
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+      if (sql.includes('UPDATE equipments')) return { rows: [] };
+      assert.fail(`Unexpected transaction query: ${sql}`);
+    },
+    release() {},
+  }));
+
+  const result = await request('/api/events/equipment-inventory/91/unavailable', {
+    method: 'PUT', body: { reason: 'Damaged during setup' },
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(calls[0], 'BEGIN');
+  assert.ok(calls[1].includes('UPDATE equipments'));
+  assert.equal(calls.at(-1), 'ROLLBACK');
+});
+
+test('AC1 - records a newly affected reservation without notifying an unassigned team', async () => {
+  // No assigned recipients exercises the successful incident path without a notification insert.
+  mockAuthentication();
+  const calls = [];
+  mock.method(pool, 'connect', async () => ({
+    async query(sql) {
+      calls.push(sql.trim());
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+      if (sql.includes('UPDATE equipments')) return { rows: [equipment] };
+      if (sql.includes('INSERT INTO equipment_status_history')) return { rows: [] };
+      if (sql.includes('SELECT reservation.id AS reservation_id')) {
+        return { rows: [{ ...affected, support_ids: [], coordinator_id: null }] };
+      }
+      if (sql.includes('INSERT INTO equipment_reservation_unavailability')) return { rows: [{ id: 602 }] };
+      assert.fail(`Unexpected transaction query: ${sql}`);
+    },
+    release() {},
+  }));
+
+  const result = await request('/api/events/equipment-inventory/91/unavailable', {
+    method: 'PUT', body: { reason: 'Damaged during setup' },
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.affectedIssues, [{ id: 602, reservationId: 901, eventId: 501 }]);
+  assert.equal(calls.some(sql => sql.includes('INSERT INTO notifications')), false);
+  assert.equal(calls.at(-1), 'COMMIT');
+});
+
+test('AC1 - skips an affected reservation whose open issue already exists', async () => {
+  // ON CONFLICT DO NOTHING returns no new issue, so this reservation must not be reported or alerted twice.
+  mockAuthentication();
+  const calls = [];
+  mock.method(pool, 'connect', async () => ({
+    async query(sql) {
+      calls.push(sql.trim());
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+      if (sql.includes('UPDATE equipments')) return { rows: [equipment] };
+      if (sql.includes('INSERT INTO equipment_status_history')) return { rows: [] };
+      if (sql.includes('SELECT reservation.id AS reservation_id')) return { rows: [affected] };
+      if (sql.includes('INSERT INTO equipment_reservation_unavailability')) return { rows: [] };
+      assert.fail(`Unexpected transaction query: ${sql}`);
+    },
+    release() {},
+  }));
+
+  const result = await request('/api/events/equipment-inventory/91/unavailable', {
+    method: 'PUT', body: { reason: 'Damaged during setup' },
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.affectedIssues, []);
+  assert.equal(calls.some(sql => sql.includes('INSERT INTO notifications')), false);
+  assert.equal(calls.at(-1), 'COMMIT');
+});
+
 // AC1 - Invalid reasons fail at the HTTP boundary without starting a transaction.
 test('AC1 - rejects blank or overlong unavailability reasons before writing', async () => {
   mockAuthentication();
@@ -144,6 +223,24 @@ test('AC2 - lists affected reservations only through the signed-in member event 
   assert.deepEqual(queries[0].values, [support.id]);
 });
 
+test('AC2 - returns open issues only to the Coordinator assigned to the requested event', async () => {
+  // The authenticated Coordinator ID and route event ID must both constrain the service query.
+  mockAuthentication(coordinator);
+  const queries = [];
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
+    queries.push({ sql, values });
+    return { rows: [{ id: 601, event_name: 'Community Workshop', proposals: [] }] };
+  });
+
+  const result = await request('/api/events/501/equipment-reservation-issues', { user: coordinator });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.affectedReservations, [{ id: 601, event_name: 'Community Workshop', proposals: [] }]);
+  assert.match(queries[0].sql, /event\.coordinator_id=\$2/i);
+  assert.deepEqual(queries[0].values, [501, coordinator.id]);
+});
+
 // AC3 - A proposal must be an available same-type alternative and is sent to the Coordinator for a decision.
 test('AC3 AC4 - stores the replacement proposal and notifies the assigned Coordinator', async () => {
   mockAuthentication();
@@ -155,6 +252,7 @@ test('AC3 AC4 - stores the replacement proposal and notifies the assigned Coordi
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
       const notificationResult = notificationWrite(sql, values);
       if (notificationResult) return notificationResult;
+      if (sql.includes('SELECT id FROM equipments WHERE id=$1 FOR UPDATE')) return { rows: [{ id: 92 }] };
       if (sql.includes('SELECT issue.id, issue.status')) return { rows: [{
         ...affected, id: 601, status: 'open', inventory_id: 91, equipment_name: 'Projector',
         reservation_id: 901, quantity: 1,
@@ -176,16 +274,58 @@ test('AC3 AC4 - stores the replacement proposal and notifies the assigned Coordi
 
   assert.equal(result.status, 201);
   assert.equal(result.body.proposal.status, 'pending');
+  const stockLockIndex = calls.findIndex(call => call.sql.includes('SELECT id FROM equipments WHERE id=$1 FOR UPDATE'));
+  const availabilityCheckIndex = calls.findIndex(call => call.sql.includes('SELECT stock.id, stock.name'));
+  assert.ok(stockLockIndex >= 0 && stockLockIndex < availabilityCheckIndex,
+    'the stock row must be locked before availability is read in a separate statement');
   assert.deepEqual(calls.find(call => call.sql.includes('INSERT INTO equipment_reservation_alternative_proposals')).values,
     [601, 92, 1, support.id]);
   assert.deepEqual(calls.find(call => call.sql.includes('INSERT INTO notifications')).values[0], [coordinator.id]);
   assert.equal(calls.some(call => call.sql.includes('DELETE FROM event_equipment_reservation_items')), false);
 });
 
+for (const pendingCase of [
+  { label: 'an issue that is no longer open', issue: null, status: 404 },
+  { label: 'an issue with a pending proposal', issue: true, pending: true, status: 409 },
+]) {
+  test(`AC3 - refuses to propose a replacement for ${pendingCase.label}`, async () => {
+    // Invalid issue state or an existing pending proposal must stop before locking candidate stock.
+    mockAuthentication();
+    const calls = [];
+    mock.method(pool, 'connect', async () => ({
+      async query(sql) {
+        calls.push(sql.trim());
+        if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+        if (sql.includes('SELECT issue.id, issue.status')) {
+          return { rows: pendingCase.issue ? [{
+            ...affected, id: 601, status: 'open', inventory_id: 91, equipment_name: 'Projector',
+            reservation_id: 901, quantity: 1,
+          }] : [] };
+        }
+        if (sql.includes('SELECT id FROM equipment_reservation_alternative_proposals')) {
+          return { rows: pendingCase.pending ? [{ id: 700 }] : [] };
+        }
+        assert.fail(`A replacement must not proceed beyond the rejected precondition: ${sql}`);
+      },
+      release() {},
+    }));
+
+    const result = await request('/api/events/equipment-reservation-issues/601/proposals', {
+      method: 'POST', body: { alternativeInventoryId: 92 },
+    });
+
+    assert.equal(result.status, pendingCase.status);
+    assert.equal(calls.some(sql => sql.includes('SELECT id FROM equipments WHERE id=$1 FOR UPDATE')), false);
+    assert.equal(calls.some(sql => sql.includes('INSERT INTO equipment_reservation_alternative_proposals')), false);
+    assert.equal(calls.at(-1), 'ROLLBACK');
+  });
+}
+
 // AC3 - A different equipment type or unavailable/insufficient stock cannot become a replacement proposal.
 for (const invalidCase of [
   { label: 'a different equipment type', row: { ...alternative, name: 'Video Camera' }, status: 400 },
   { label: 'an unavailable or insufficient asset', row: null, status: 409 },
+  { label: 'an asset with insufficient free quantity', row: { ...alternative, available_quantity: 0 }, status: 409 },
 ]) {
   test(`AC3 - refuses a proposal for ${invalidCase.label} without storing it`, async () => {
     mockAuthentication();
@@ -199,6 +339,7 @@ for (const invalidCase of [
           reservation_id: 901, quantity: 1,
         }] };
         if (sql.includes('SELECT id FROM equipment_reservation_alternative_proposals')) return { rows: [] };
+        if (sql.includes('SELECT id FROM equipments WHERE id=$1 FOR UPDATE')) return { rows: [{ id: 92 }] };
         if (sql.includes('SELECT stock.id, stock.name')) return { rows: invalidCase.row ? [invalidCase.row] : [] };
         assert.fail(`An invalid alternative must not be written: ${sql}`);
       },
@@ -249,7 +390,10 @@ for (const decision of ['accepted', 'rejected']) {
         if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
         const notificationResult = notificationWrite(sql, values);
         if (notificationResult) return notificationResult;
-        if (sql.includes('FROM equipment_reservation_alternative_proposals proposal')) return { rows: [proposal] };
+        if (sql.includes('FROM equipment_reservation_alternative_proposals proposal')) {
+          return { rows: [{ ...proposal, support_ids: decision === 'rejected' ? null : proposal.support_ids }] };
+        }
+        if (sql.includes('SELECT id FROM equipments WHERE id=$1 FOR UPDATE')) return { rows: [{ id: 92 }] };
         if (sql.includes('SELECT stock.id, stock.name')) return { rows: [alternative] };
         if (sql.includes('INSERT INTO event_equipment_reservation_items')) return { rows: [] };
         return { rows: [] };
@@ -267,10 +411,60 @@ for (const decision of ['accepted', 'rejected']) {
     assert.equal(calls.some(call => call.sql.includes('UPDATE equipment_reservation_unavailability')), decision === 'accepted');
     assert.equal(calls.some(call => call.sql.includes('DELETE FROM event_equipment_reservation_items')), decision === 'accepted');
     assert.equal(calls.some(call => call.sql.includes('INSERT INTO event_equipment_reservation_items')), decision === 'accepted');
-    assert.equal(calls.some(call => call.sql.includes('INSERT INTO notifications')), true);
+    assert.equal(calls.some(call => call.sql.includes('INSERT INTO notifications')), decision === 'accepted');
     assert.equal(calls.at(-1).sql, 'COMMIT');
   });
 }
+
+test('AC3 - rejects deciding a proposal that is no longer pending or whose issue is closed', async () => {
+  // A stale decision must leave both the proposal and reservation rows untouched.
+  mockAuthentication(coordinator);
+  const calls = [];
+  mock.method(pool, 'connect', async () => ({
+    async query(sql) {
+      calls.push(sql.trim());
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+      if (sql.includes('FROM equipment_reservation_alternative_proposals proposal')) {
+        return { rows: [{ ...proposal, status: 'rejected' }] };
+      }
+      assert.fail(`A stale proposal must not mutate reservations: ${sql}`);
+    },
+    release() {},
+  }));
+
+  const result = await request('/api/events/equipment-reservation-proposals/701/decision', {
+    user: coordinator, method: 'POST', body: { decision: 'accepted' },
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(calls.some(sql => sql.includes('UPDATE equipment_reservation_alternative_proposals')), false);
+  assert.equal(calls.at(-1), 'ROLLBACK');
+});
+
+test('AC3 - rejects accepting a replacement that no longer matches the affected equipment type', async () => {
+  // Revalidate type at decision time because inventory facts can change after proposal creation.
+  mockAuthentication(coordinator);
+  const calls = [];
+  mock.method(pool, 'connect', async () => ({
+    async query(sql) {
+      calls.push(sql.trim());
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+      if (sql.includes('FROM equipment_reservation_alternative_proposals proposal')) return { rows: [proposal] };
+      if (sql.includes('SELECT id FROM equipments WHERE id=$1 FOR UPDATE')) return { rows: [{ id: 92 }] };
+      if (sql.includes('SELECT stock.id, stock.name')) return { rows: [{ ...alternative, name: 'Video Camera' }] };
+      assert.fail(`A mismatched replacement must not alter the reservation: ${sql}`);
+    },
+    release() {},
+  }));
+
+  const result = await request('/api/events/equipment-reservation-proposals/701/decision', {
+    user: coordinator, method: 'POST', body: { decision: 'accepted' },
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(calls.some(sql => sql.includes('DELETE FROM event_equipment_reservation_items')), false);
+  assert.equal(calls.at(-1), 'ROLLBACK');
+});
 
 // AC3 - Migration protects incident/proposal tables and admits only the explicit workflow notification types.
 test('AC3 AC4 migration - secures workflow records and permits its notification types', () => {

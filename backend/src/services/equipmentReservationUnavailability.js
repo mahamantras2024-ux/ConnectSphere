@@ -178,7 +178,10 @@ async function listForCoordinator(eventId, coordinatorId) {
   return result.rows;
 }
 
+/** Confirms the candidate asset can cover the reservation's slot and quantity after taking its row lock. */
 async function checkAlternativeAvailability(client, inventoryId, reservation, quantity) {
+  // Lock first so a wait does not leave the reservation count on the pre-wait statement snapshot.
+  await client.query('SELECT id FROM equipments WHERE id=$1 FOR UPDATE', [inventoryId]);
   const result = await client.query(`
     SELECT stock.id, stock.name, stock.asset_code, stock.specification,
       GREATEST(stock.quantity-COALESCE(booked.quantity, 0), 0)::integer AS available_quantity
@@ -195,7 +198,6 @@ async function checkAlternativeAvailability(client, inventoryId, reservation, qu
     WHERE stock.id=$1 AND stock.status='operational' AND stock.availability_status='Available'
       AND availability.available_date=$2::date
       AND availability.start_time<=$3::time AND availability.end_time>=$4::time
-    FOR UPDATE OF stock
   `, [inventoryId, reservation.event_date, reservation.start_time, reservation.end_time]);
   const alternative = result.rows[0];
   if (!alternative || alternative.available_quantity < quantity) {
