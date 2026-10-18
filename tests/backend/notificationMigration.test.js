@@ -27,6 +27,8 @@ test('Migration compatibility - preserves event_cancelled and equipment_status_c
     'event_approved',
     'event_rejected',
     'safety_check_recorded',
+    'technical_support_assigned',
+    'technical_support_unassigned',
     'event_cancelled',
     'equipment_status_changed',
   ]);
