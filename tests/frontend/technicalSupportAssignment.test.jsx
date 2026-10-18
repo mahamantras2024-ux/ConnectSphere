@@ -108,6 +108,10 @@ it('AC2 - accepts a fresh event that has no previously assigned support staff', 
   api.put.mockResolvedValue({ message: 'Saved' });
   render(<TechnicalSupportAssignment event={{ id: 9, name: 'New Event', technical_support_required: true }} token="coordinator-token" staff={staff} onSaved={onSaved} />);
 
+  // AC2: preserve the feature branch's empty-selection guard without duplicating the roster regression.
+  expect(screen.getByRole('button', { name: 'Assign staff' }).disabled).toBe(true);
+  expect(api.put).not.toHaveBeenCalled();
+
   fireEvent.click(screen.getByLabelText(/Taylor Support/));
   fireEvent.click(screen.getByRole('button', { name: 'Assign staff' }));
 
