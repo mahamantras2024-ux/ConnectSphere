@@ -49,11 +49,11 @@ describe('Booking Conflict Detection', () => {
 
     // Assert: the revised values, rather than stale conflicting values, reach the request endpoint.
     await screen.findByText(/venue request submitted/i);
-    expect(api.post).toHaveBeenNthCalledWith(2, '/venues/8/requests', {
+    expect(api.post).toHaveBeenNthCalledWith(2, '/venues/8/requests', expect.objectContaining({
       eventId: 3,
       startDatetime: '2030-10-11T14:00:00+08:00',
       endDatetime: '2030-10-11T15:00:00+08:00',
-    }, 'coordinator-token');
+    }), 'coordinator-token');
   });
 
   it('AC4 - submits a non-overlapping venue and period without showing a conflict warning', async () => {
@@ -68,11 +68,11 @@ describe('Booking Conflict Detection', () => {
     // Assert: the request is accepted and the user sees success rather than a false conflict.
     expect(await screen.findByText(/venue request submitted/i)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/venues/7/requests', {
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/venues/7/requests', expect.objectContaining({
       eventId: 3,
       startDatetime: '2030-10-10T10:00:00+08:00',
       endDatetime: '2030-10-10T11:00:00+08:00',
-    }, 'coordinator-token'));
+    }), 'coordinator-token'));
   });
 
   it('AC3 - keeps the current selection and displays an actionable message when request submission fails', async () => {

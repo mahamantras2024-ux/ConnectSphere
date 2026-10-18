@@ -24,55 +24,34 @@ import CancelEventAction from './CancelEventAction';
 
 
 
-// Scoped styles (everything is prefixed "ed-" so nothing clashes with existing global classes).
+// Keep the event workspace in the approved light brand palette: OS dark mode must not put pale text on fixed light cards.
 
 const STYLES = `
 
 .ed-root {
 
-  --ed-ink: #1c2530; --ed-muted: #5b6776; --ed-line: #d9dee5; --ed-surface: #ffffff; --ed-wash: #f4f6f8;
+  --ed-ink: #30391C; --ed-muted: #686A5E; --ed-line: #E3E4D3; --ed-surface: #FFFFFA; --ed-wash: #F4F4E5;
 
-  --ed-accent: #198754; --ed-accent-ink: #ffffff;
+  --ed-accent: #EF6B2E; --ed-accent-ink: #272C19;
 
-  --ed-ok-ink: #155724; --ed-ok-bg: #d4edda; --ed-ok-line: #28a745;
+  --ed-ok-ink: #424F19; --ed-ok-bg: #C7D45B; --ed-ok-line: #424F19;
 
-  --ed-warn-ink: #856404; --ed-warn-bg: #fff3cd; --ed-warn-line: #ffc107;
+  --ed-warn-ink: #424F19; --ed-warn-bg: #FFFAD9; --ed-warn-line: #C7D45B;
 
-  --ed-bad: #dc3545; --ed-bad-ink: #721c24; --ed-bad-bg: #f8d7da;
+  --ed-bad: #942B20; --ed-bad-ink: #942B20; --ed-bad-bg: #EFB6AA;
 
-  --ed-info-ink: #0c5460; --ed-info-bg: #d1ecf1; --ed-info-line: #17a2b8;
+  --ed-info-ink: #30391C; --ed-info-bg: #A9B6D3; --ed-info-line: #424F19;
 
-  --ed-link: #1d4ed8;
+  --ed-link: #424F19;
 
   --ed-radius: 10px;
+  color-scheme: light;
 
   display: block; width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; color: var(--ed-ink);
 
 }
 
 .ed-root.event-detail { display: block; width: 100%; max-width: 1100px; margin-inline: auto; }
-
-@media (prefers-color-scheme: dark) {
-
-  .ed-root {
-
-    --ed-ink: #e7ebf0; --ed-muted: #9aa6b4; --ed-line: #324050; --ed-surface: #1a222c; --ed-wash: #212b37;
-
-    --ed-link: #7ab0ff;
-
-    --ed-accent: #4cc26b; --ed-accent-ink: #0b1f12;
-
-    --ed-ok-ink: #8fe0a6; --ed-ok-bg: #173a27; --ed-ok-line: #4cc26b;
-
-    --ed-warn-ink: #f0c070; --ed-warn-bg: #3d2f12; --ed-warn-line: #c9962b;
-
-    --ed-bad: #ff6b78; --ed-bad-ink: #f5a3aa; --ed-bad-bg: #402022;
-
-    --ed-info-ink: #8fd3e0; --ed-info-bg: #12333a; --ed-info-line: #3aa7bb;
-
-  }
-
-}
 
 .ed-root *, .ed-root *::before, .ed-root *::after { box-sizing: border-box; }
 
@@ -122,7 +101,7 @@ const STYLES = `
 
 /* Cards + fields */
 
-.ed-card { background: #ffffff !important; border: 1px solid var(--ed-line); border-radius: var(--ed-radius); padding: 24px 28px; margin-bottom: 28px; }
+.ed-card { background: var(--ed-surface) !important; border: 1px solid var(--ed-line); border-radius: var(--ed-radius); padding: 24px 28px; margin-bottom: 28px; }
 
 .ed-grid { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 
@@ -240,7 +219,7 @@ const STYLES = `
 
 .ed-muted { color: var(--ed-muted); margin: 0; }
 
-.ed-contact a { color: var(--ed-accent); }
+.ed-contact a { color: var(--ed-link); }
 
 .ed-attach > :not(button) { padding: 0; margin: 0; border: 0; box-shadow: none; background: transparent; }
 
@@ -383,6 +362,8 @@ export default function EventDetail() {
   const [editValues, setEditValues] = useState(null);
 
   const [saveMessage, setSaveMessage] = useState('');
+  // A successful request refreshes only the booking history, preserving the event's current editing state.
+  const [bookingRefreshKey, setBookingRefreshKey] = useState(0);
 
   const [saving, setSaving] = useState(false);
 
@@ -934,9 +915,9 @@ export default function EventDetail() {
       {/* Check Venue Suitability: only the assigned coordinator (the API scopes it) compares venues for this event. */}
       {user.role === 'event_coordinator' && <VenueSuitabilitySection eventId={event.id} token={token} />}
 
-      {user.role === 'event_coordinator' && <VenueBookingRequest event={event} token={token} />}
+      {user.role === 'event_coordinator' && <VenueBookingRequest event={event} token={token} onSubmitted={() => setBookingRefreshKey(key => key + 1)} />}
 
-      {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} />}
+      {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} refreshKey={bookingRefreshKey} />}
       {/* Tracks Equipment Request Status: the assigned coordinator (the API scopes it) monitors the technical arrangements. */}
       {user.role === 'event_coordinator' && <EquipmentStatusSection eventId={event.id} token={token} />}
 

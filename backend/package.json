@@ -13,6 +13,7 @@
     "test:coverage:sprint-one": "node ../tests/run.cjs backend coverage sprint-one",
     "migrate:external-events": "node src/db/migrateExternalEvents.js",
     "migrate:technical-support": "node src/db/migrateTechnicalSupportAssignments.js",
+    "migrate:venue-booking-requests": "node src/db/migrateVenueBookingRequests.js",
     "setup:sprint-one": "node src/db/setupSprintOne.js",
     "setup:venue-management": "node src/db/setupVenueManagement.js",
     "setup:venue-availability": "node src/db/setupVenueAvailability.js",

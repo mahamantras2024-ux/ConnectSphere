@@ -39,6 +39,50 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it.each(['light', 'dark'])('UI contrast AC1 AC2 - event text stays readable in the brand palette with %s system preference', async preference => {
+  // Arrange: render real event styles. Read CSSOM explicitly because jsdom does not evaluate colour-scheme media queries.
+  open('/organizer/events/101');
+  await screen.findByRole('heading', { name: event.name });
+  const tokens = {};
+  const declarations = {};
+  /** Applies the actual stylesheet's root variables in cascade order for the selected system preference. */
+  function readTokens(rules) {
+    for (const rule of rules) {
+      if (rule.selectorText) declarations[rule.selectorText] = rule.style;
+      if (rule.selectorText === '.ed-root') {
+        for (const property of Array.from(rule.style)) tokens[property] = rule.style.getPropertyValue(property).trim().toLowerCase();
+      } else if (rule.media?.mediaText === '(prefers-color-scheme: dark)' && preference === 'dark') readTokens(rule.cssRules);
+    }
+  }
+  for (const sheet of document.styleSheets) readTokens(sheet.cssRules);
+  /** WCAG relative luminance uses linearised sRGB, not raw channel averages. */
+  function luminance(hex) {
+    const channels = hex.slice(1).match(/../g).map(channel => parseInt(channel, 16) / 255)
+      .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+    return channels.reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  }
+  // Act / Assert: the customer's palette is the oracle; dark-mode replacement colours fail this check.
+  const palette = ['#30391c', '#686a5e', '#e3e4d3', '#fffffa', '#f4f4e5', '#ef6b2e', '#272c19', '#424f19', '#c7d45b', '#fffad9', '#942b20', '#efb6aa', '#a9b6d3'];
+  expect(tokens['color-scheme']).toBe('light');
+  for (const [name, value] of Object.entries(tokens).filter(([name]) => name.startsWith('--ed-') && name !== '--ed-radius')) expect(palette, name).toContain(value);
+  /** Resolves the actual selectors' colours so changing a selector to use the wrong token also fails. */
+  const colour = (selector, property) => declarations[selector].getPropertyValue(property).trim()
+    .replace(/var\((--[\w-]+)\)/g, (_, token) => tokens[token]);
+  const cardBackground = colour('.ed-card', 'background');
+  // Check normal/muted text on both actual white cards and cream surroundings, plus links, buttons and notices.
+  for (const [foreground, background] of [
+    [colour('.ed-root', 'color'), cardBackground], [colour('.ed-muted', 'color'), cardBackground],
+    [tokens['--ed-ink'], '#fffad9'], [tokens['--ed-muted'], '#fffad9'],
+    [colour('.ed-field dt', 'color'), cardBackground], [colour('.ed-contact a', 'color'), cardBackground],
+    [colour('.ed-btn', 'color'), colour('.ed-btn', 'background')],
+    [tokens['--ed-ok-ink'], tokens['--ed-ok-bg']], [tokens['--ed-warn-ink'], tokens['--ed-warn-bg']],
+    [tokens['--ed-bad-ink'], tokens['--ed-bad-bg']], [tokens['--ed-info-ink'], tokens['--ed-info-bg']],
+  ]) {
+    const [darker, lighter] = [luminance(foreground), luminance(background)].sort((a, b) => a - b);
+    expect((lighter + 0.05) / (darker + 0.05), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 // Test case: AC2/AC3 - organisers save non-critical changes with the Save changes button and receive confirmation.
 it('AC2/AC3 - saves non-critical programme changes with Save changes and confirms the save', async () => {
   api.put.mockResolvedValue({ event: { ...event, programme_details: 'Updated agenda' }, message: 'Non-critical event information saved.' });
@@ -94,9 +138,16 @@ it('assigned coordinator opens dashboard events and sees every submitted require
   expect(screen.getByRole('dialog', {name:'Event details'})).toBeTruthy();expect(api.get).toHaveBeenCalledWith('/events/101','organiser-token');
 });
 
-it('SCRUM-45 AC1 AC2 AC3 - assigned coordinator can submit the event period as a venue booking request', async () => {
+it('SCRUM-45 AC1 AC2 AC3 / SCRUM-61 AC3 AC4 - assigned coordinator submits a request and immediately sees its status', async () => {
   // Arrange: the coordinator opens an assigned event and receives one selectable venue.
   user = { ...user, role: 'event_coordinator' };
+  const originalGet = api.get.getMockImplementation();
+  let submitted = false;
+  // The history response changes only after the server accepts the request; a missing refresh leaves it empty.
+  api.get.mockImplementation(async path => path === '/events/101/venue-bookings'
+    ? { bookings: submitted ? [{ id: 21, venue_name: 'Hall North', status: 'pending' }] : [] }
+    : originalGet(path));
+  api.post.mockImplementation(async () => { submitted = true; return { request: { id: 21 } }; });
   open('/events/101');
   await screen.findByRole('heading', { name: event.name });
   expect(await screen.findByLabelText('Venue')).toBeTruthy();
@@ -106,11 +157,12 @@ it('SCRUM-45 AC1 AC2 AC3 - assigned coordinator can submit the event period as a
 
   // Assert: the request section is reachable from event details and sends the correct event, venue and period.
   expect(await screen.findByText('Venue request submitted.')).toBeTruthy();
-  expect(api.post).toHaveBeenCalledWith('/venues/7/requests', {
+  expect(await screen.findByRole('listitem', { name: 'Hall North Pending' })).toBeTruthy();
+  expect(api.post).toHaveBeenCalledWith('/venues/7/requests', expect.objectContaining({
     eventId: 101,
     startDatetime: '2026-10-15T09:00:00+08:00',
     endDatetime: '2026-10-15T12:00:00+08:00',
-  }, 'organiser-token');
+  }), 'organiser-token');
 });
 // Test case: Opens a sparse coordinator record and checks unavailable labels for missing fields.
 it('coordinator records with missing submitted information identify it as unavailable',async()=>{
