@@ -69,7 +69,7 @@ it('AC1 - maps legacy maintenance status to Unavailable', () => {
   const row = getAssetRow('PROJ-001');
 
   // Assert: dropping this fallback would present unrepaired legacy stock as available.
-  expect(within(row).getAllByRole('cell')[2].textContent).toBe('Unavailable');
+  expect(within(row).getByLabelText('Status for PROJ-001').value).toBe('Unavailable');
 });
 
 // AC2 - Availability is deducted for reservations overlapping the chosen date and time.
@@ -191,4 +191,37 @@ it('AC1 - distinguishes an empty catalogue from a failed inventory request', () 
   rerender(<EquipmentInventorySection inventory={[]} error="Catalogue unavailable." />);
   expect(screen.getByRole('alert').textContent).toBe('Catalogue unavailable.');
   expect(screen.queryByText('No equipment catalogue is available.')).toBeNull();
+});
+
+// AC3: A one-sided interval must exclude windows ending/starting at its boundary, not only earlier/later windows.
+it('AC3 - excludes windows outside a single time boundary', () => {
+  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '07:59' } });
+  expect(screen.queryByRole('table')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '18:00' } });
+  expect(screen.queryByRole('table')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
+  expect(screen.queryByRole('table')).toBeNull();
+});
+
+// AC2 AC3: The calendar spans matching assets, including missing-day cells and distinct same-day windows.
+it('AC2 AC3 - keeps separate calendar windows and empty asset days accurate under a date filter', () => {
+  const assets = [{ ...inventory[0], availabilities: [
+    { date: '2026-10-12', startTime: '09:00', endTime: '10:00', status: 'Available' },
+    { date: '2026-10-12', startTime: '09:00', endTime: '11:00', status: 'Available' },
+    { date: '2026-10-12', startTime: '10:00', endTime: '11:00', status: 'Available' },
+  ] }, { ...inventory[1], name: 'Projector B', availabilities: [
+    { date: '2026-10-14', startTime: '09:00', endTime: '11:00', status: 'Available' },
+  ] }, { id: 3, asset_code: 'PROJ-003', name: 'Projector C', quantity: 1 }];
+  render(<EquipmentInventorySection inventory={assets} error="" />);
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'projector' } });
+  const calendar = screen.getByRole('table', { name: 'Equipment availability calendar' });
+  expect(within(calendar).getAllByText('—').length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-12' } });
+  expect(within(calendar).getByRole('columnheader', { name: /12 Oct/ }).className).toBe('is-filtered-date');
+  const day = within(calendar).getByRole('cell', { name: 'Availability on 12 October 2026 for PROJ-001' });
+  expect(within(day).getByText('09:00–10:00')).toBeTruthy();
+  expect(within(day).getByText('09:00–11:00')).toBeTruthy();
+  expect(within(day).getByText('10:00–11:00')).toBeTruthy();
 });

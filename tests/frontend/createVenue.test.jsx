@@ -108,7 +108,7 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
 
   // RETURN BRANCH 2: Invalid File Upload Exit
   // Test case: Selects an unsupported image and checks the inline validation error.
-  it('2. Rejects invalid image file uploads with an inline error', async () => {
+  it('Create venue AC1 - 2. Rejects invalid image file uploads with an inline error', async () => {
 
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {
       // Supplies controlled vi.spyOn(window, 'alert') behavior for this regression case, including its expected result or failure.
@@ -118,7 +118,8 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
     fireEvent.click(await screen.findByRole('button', { name: /add venue/i }));
 
     const invalidFile = new File(['text-content'], 'document.pdf', { type: 'application/pdf' });
-    const fileInput = document.querySelector('input[type="file"]');
+    // Select the photograph by its accessible label; document uploads are separate controls.
+    const fileInput = screen.getByLabelText('Venue image');
 
     fireEvent.change(fileInput, { target: { files: [invalidFile] } });
 
@@ -127,7 +128,7 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
 
   // RETURN BRANCH 4: Successful API Post & State Resolution Exit
   // Test case: Fills valid venue data and checks creation and catalogue refresh.
-  it('3. Creates a new venue and updates the catalogue when all inputs are valid', async () => {
+  it('Create venue AC1 AC2 - 3. Creates a new venue and updates the catalogue when all inputs are valid', async () => {
 
     open('/venue/dashboard', true);
 
@@ -142,7 +143,8 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
     fireEvent.change(screen.getByPlaceholderText('Accessibility Features (e.g. Wheelchair Access, Ramps, Elevator) *'), { target: { value: 'Elevator' } });
 
     const file = new File(['(binary image content)'], 'smu.png', { type: 'image/png' });
-    const fileInput = document.querySelector('input[type="file"]');
+    // Select the photograph by its accessible label; document uploads are separate controls.
+    const fileInput = screen.getByLabelText('Venue image');
 
     fireEvent.change(fileInput, { target: { files: [file] } });
     await waitFor(() => // Repeats the assertion until the expected asynchronous UI or mocked API state appears.
@@ -162,7 +164,7 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
 
   // RETURN BRANCH 5: API Error / Catch Exit
   // Test case: Simulates creation failure and checks a visible error instead of success.
-  it('4. Handles backend server failure during venue creation gracefully', async () => {
+  it('Create venue AC1 - 4. Handles backend server failure during venue creation gracefully', async () => {
 
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {
       // Supplies controlled vi.spyOn(window, 'alert') behavior for this regression case, including its expected result or failure.
@@ -183,7 +185,8 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
     fireEvent.change(screen.getByPlaceholderText('Accessibility Features (e.g. Wheelchair Access, Ramps, Elevator) *'), { target: { value: 'Ramp' } });
 
     const file = new File(['(binary image content)'], 'test.png', { type: 'image/png' });
-    const fileInput = document.querySelector('input[type="file"]');
+    // Select the photograph by its accessible label; document uploads are separate controls.
+    const fileInput = screen.getByLabelText('Venue image');
     fireEvent.change(fileInput, { target: { files: [file] } });
     await waitFor(() => // Repeats the assertion until the expected asynchronous UI or mocked API state appears.
 

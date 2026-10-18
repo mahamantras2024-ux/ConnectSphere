@@ -103,6 +103,9 @@ test('AC2 - checks matching stock and subtracts reservations overlapping the eve
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
     if (sql.includes('FROM events e')) return { rows: [event] };
+    if (sql.includes('FROM unnest($1::text[])')) {
+      return { rows: [{ requested_item: 'projector', canonical_item: 'Projector' }] };
+    }
     stockQuery = { sql, values };
     return { rows: [asset] };
   });
@@ -113,12 +116,14 @@ test('AC2 - checks matching stock and subtracts reservations overlapping the eve
   assert.deepEqual(result.body.availability.items, [{
     item: 'Projector',
     requestedQuantity: 2,
+    requestAliases: ['Projector'],
     availableQuantity: 1,
     availableAssets: [asset],
   }]);
   assert.match(stockQuery.sql, /FROM equipments stock/i);
-  assert.match(stockQuery.sql, /availability\.start_time <= \$3::time/i);
-  assert.match(stockQuery.sql, /availability\.end_time >= \$4::time/i);
+  assert.match(stockQuery.sql, /calendar\.start_time <= \$3::time/i);
+  assert.match(stockQuery.sql, /calendar\.end_time >= \$4::time/i);
+  assert.match(stockQuery.sql, /LEFT JOIN LATERAL/i);
   assert.match(stockQuery.sql, /reservation\.start_time < \$4::time/i);
   assert.match(stockQuery.sql, /reservation\.end_time > \$3::time/i);
   assert.deepEqual(stockQuery.values, [['projector'], '2026-10-12', '09:00:00', '12:00:00']);
@@ -142,6 +147,12 @@ test('AC4 - checks additional requested names and returns unavailable items with
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
     if (sql.includes('FROM events e')) return { rows: [event] };
+    if (sql.includes('FROM unnest($1::text[])')) {
+      return { rows: values[0].map(item => ({
+        requested_item: item,
+        canonical_item: item === 'projector' ? 'Projector' : item === 'video camera' ? 'Video Camera' : item,
+      })) };
+    }
     stockQuery = { sql, values };
     return { rows: [camera] };
   });
@@ -192,4 +203,104 @@ test('AC3 - rejects availability checks after the event has been reserved', asyn
 
   assert.equal(result.status, 409);
   assert.match(result.body.message, /already has a confirmed equipment reservation/i);
+});
+
+// AC5 - Category names and their exact asset codes resolve to one equipment-type availability result.
+test('AC5 - merges category and asset-code aliases into one consistent availability result', async () => {
+  const duplicateRequest = {
+    ...event,
+    equipment_items: [
+      { item: 'Projector', quantity: 1 },
+      { item: 'PROJ-001', quantity: 1 },
+    ],
+  };
+  const projector = {
+    id: 1,
+    asset_code: 'PROJ-001',
+    name: 'Projector',
+    specification: 'Full HD',
+    status: 'operational',
+    quantity: 2,
+    available_quantity: 2,
+    available_date: '2026-10-12',
+    available_start_time: '09:00:00',
+    available_end_time: '17:00:00',
+  };
+  let resolutionQuery;
+  let stockQuery;
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    if (sql.includes('FROM events e')) return { rows: [duplicateRequest] };
+    if (sql.includes('FROM unnest($1::text[])')) {
+      resolutionQuery = { sql, values };
+      return { rows: [
+        { requested_item: 'projector', canonical_item: 'Projector' },
+        { requested_item: 'proj-001', canonical_item: 'Projector' },
+      ] };
+    }
+    stockQuery = { sql, values };
+    return { rows: [projector] };
+  });
+
+  const result = await request('/api/events/501/equipment-availability');
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.availability.items.map(item => ({
+    item: item.item,
+    requestedQuantity: item.requestedQuantity,
+    availableQuantity: item.availableQuantity,
+    assetCodes: item.availableAssets.map(asset => asset.asset_code),
+  })), [{
+    item: 'Projector',
+    requestedQuantity: 1,
+    availableQuantity: 2,
+    assetCodes: ['PROJ-001'],
+  }]);
+  assert.match(resolutionQuery.sql, /lower\(trim\(stock\.asset_code\)\)/i);
+  assert.deepEqual(resolutionQuery.values, [['Projector', 'PROJ-001']]);
+  assert.deepEqual(stockQuery.values, [['projector'], '2026-10-12', '09:00:00', '12:00:00']);
+});
+
+// AC6 - An exact asset code outside its availability calendar reports zero, not a conflicting category result.
+test('AC6 - returns one unavailable category result when the requested date has no calendar window', async () => {
+  const codeRequest = { ...event, equipment_items: [{ item: 'PROJ-001', quantity: 1 }] };
+  let stockQuery;
+  mock.method(pool, 'query', async sql => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    if (sql.includes('FROM events e')) return { rows: [codeRequest] };
+    if (sql.includes('FROM unnest($1::text[])')) {
+      return { rows: [{ requested_item: 'proj-001', canonical_item: 'Projector' }] };
+    }
+    stockQuery = sql;
+    return { rows: [{
+      id: 1,
+      asset_code: 'PROJ-001',
+      name: 'Projector',
+      specification: 'Full HD',
+      status: 'operational',
+      quantity: 2,
+      available_quantity: 0,
+      available_date: null,
+      available_start_time: null,
+      available_end_time: null,
+    }] };
+  });
+
+  const result = await request('/api/events/501/equipment-availability');
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.availability.items.map(item => ({
+    item: item.item,
+    requestedQuantity: item.requestedQuantity,
+    availableQuantity: item.availableQuantity,
+    availableAssets: item.availableAssets,
+  })), [{
+    item: 'Projector',
+    requestedQuantity: 1,
+    availableQuantity: 0,
+    availableAssets: [],
+  }]);
+  assert.match(stockQuery, /LEFT JOIN LATERAL/i);
+  assert.match(stockQuery, /technical_equipment_availability/i);
+  assert.match(stockQuery, /CASE WHEN availability\.available_date IS NULL THEN 0/i);
 });

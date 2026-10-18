@@ -367,9 +367,11 @@ export default function TechSupportDashboard() {
   const [inventory, setInventory] = useState([]);
   const [reservationRequests, setReservationRequests] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [affectedReservations, setAffectedReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inventoryError, setInventoryError] = useState('');
   const [reservationError, setReservationError] = useState('');
+  const [issueError, setIssueError] = useState('');
   const [requestError, setRequestError] = useState('');
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('inventory');
@@ -380,11 +382,13 @@ export default function TechSupportDashboard() {
     setLoading(true);
     setInventoryError('');
     setReservationError('');
+    setIssueError('');
     setRequestError('');
-    const [requestResult, inventoryResult, reservationResult] = await Promise.allSettled([
+    const [requestResult, inventoryResult, reservationResult, issueResult] = await Promise.allSettled([
       api.get('/events/equipment-requests', token),
       api.get('/events/equipment-inventory', token),
       api.get('/events/equipment-reservations', token),
+      api.get('/events/equipment-reservation-issues', token),
     ]);
 
     if (requestResult.status === 'fulfilled') {
@@ -402,6 +406,11 @@ export default function TechSupportDashboard() {
       setReservations(reservationResult.value.reservations);
     } else {
       setReservationError(reservationResult.reason.message || 'Unable to load equipment reservations.');
+    }
+    if (issueResult.status === 'fulfilled') {
+      setAffectedReservations(issueResult.value.affectedReservations);
+    } else {
+      setIssueError(issueResult.reason.message || 'Unable to load affected reservations.');
     }
     setLoading(false);
   }
@@ -443,9 +452,36 @@ export default function TechSupportDashboard() {
     return repairedEquipment;
   }
 
+  /** Marks inventory unavailable and refreshes issues surfaced to the assigned Technical Support team. */
+  async function markEquipmentUnavailable(item, reason) {
+    const result = await api.put(
+      `/events/equipment-inventory/${item.id}/unavailable`,
+      { reason },
+      token,
+    );
+    setInventory(current => current.map(currentItem => (
+      currentItem.id === item.id ? { ...currentItem, ...result.equipment } : currentItem
+    )));
+    await loadDashboardData();
+    showSuccess(`${item.asset_code} marked unavailable. ${result.affectedIssues.length} reservation(s) flagged.`);
+  }
+
   async function handleReservationConfirmed(reservation) {
     await loadDashboardData();
     showSuccess(`Equipment reservation confirmed for ${reservation.event_name}.`);
+  }
+
+  /** Refreshes the affected-reservation list and confirms a submitted replacement proposal. */
+  async function handleAlternativeProposed() {
+    await loadDashboardData();
+    showSuccess('Replacement proposal sent to the Event Coordinator.');
+  }
+
+  /** Releases an allocation, then reloads reservations so newly available time slots and audit details stay in sync. */
+  async function releaseReservation(reservation) {
+    await api.delete(`/events/equipment-reservations/${reservation.id}`, token);
+    await loadDashboardData();
+    showSuccess(`Equipment reservation released for ${reservation.event_name}.`);
   }
 
   const tabs = [
@@ -460,7 +496,7 @@ export default function TechSupportDashboard() {
       <PageIntro
         title="Technical Support Dashboard"
         eyebrow="Internal workspace"
-        description="Review equipment requests, and reserve equipment."
+        description="Review equipment requests, reserve equipment, and release allocations when events change."
       />
       <NotificationsPanel />
       <OnSiteSupportSection token={token} />
@@ -521,7 +557,9 @@ export default function TechSupportDashboard() {
             inventory={inventory}
             error={inventoryError}
             onRepairEquipment={repairEquipment}
+            onMarkUnavailable={markEquipmentUnavailable}
           />
+
         </div>
         )}
         {activeTab === 'review' && (
@@ -561,9 +599,12 @@ export default function TechSupportDashboard() {
           <EquipmentReservationSection
             requests={reservationRequests}
             reservations={reservations}
+            affectedReservations={affectedReservations}
             token={token}
             onReserved={handleReservationConfirmed}
-            error={reservationError}
+            onAlternativeProposed={handleAlternativeProposed}
+            onRelease={releaseReservation}
+            error={reservationError || issueError}
             onGoToReviews={() => setActiveTab('review')}
           />
         </div>
