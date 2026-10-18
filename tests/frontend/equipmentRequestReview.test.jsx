@@ -37,6 +37,7 @@ beforeEach(() => {
   let reservationRequest = null;
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-requests') return { requests: pendingRequest ? [pendingRequest] : [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
     if (path === '/events/equipment-reservations') {
@@ -82,6 +83,7 @@ it('AC1 - displays event timing, venue, equipment quantities, and technical requ
 it('AC1 - displays review fallbacks for partial event details', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-requests') return {
       requests: [
         { ...eventRequest, proposed_date: null, proposed_start_time: '09:00:00', proposed_end_time: null, equipment_items: [], equipment_notes: 'Additional cable' },
@@ -111,12 +113,15 @@ it.each([
   const reasonInput = within(card).getByLabelText(/Reason/);
   if (reason) fireEvent.change(reasonInput, { target: { value: reason } });
   if (outcome !== 'fully_fulfillable') expect(reasonInput.required).toBe(true);
+  // A partial decision names the affected item (Tracks Equipment Request Status AC3).
+  if (outcome === 'partially_fulfillable') fireEvent.click(within(card).getByRole('checkbox', { name: /microphone/i }));
 
   fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
   expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
   fireEvent.click(screen.getByRole('status'));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome, ...(reason ? { reason } : {}), requestVersion: 1,
+    ...(outcome === 'partially_fulfillable' ? { affectedItems: [{ key: 'equipment:0' }] } : {}),
   }, 'support-token'));
   expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
   const reservationPanel = screen.getByRole('tabpanel', { name: 'Equipment reservation' });
@@ -153,7 +158,8 @@ it('AC1 - presents safe fallbacks for event requests with no recorded optional d
   };
   api.get.mockImplementation(async path => path === '/auth/me'
     ? { user: supportUser }
-    : path === '/events/equipment-requests' ? { requests: [sparseRequest] }
+    : path === '/events/on-site-support' ? { events: [] }
+      : path === '/events/equipment-requests' ? { requests: [sparseRequest] }
       : path === '/events/equipment-inventory' ? { inventory: [] }
         : { requests: [], reservations: [] });
   await openDashboard();
@@ -181,6 +187,7 @@ it('AC1 - shows queue errors and permits retry', async () => {
   let queueFails = true;
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-requests' && queueFails) {
       queueFails = false;
       throw new Error('The request queue is unavailable.');
@@ -200,6 +207,7 @@ it('AC1 - shows queue errors and permits retry', async () => {
 it('AC1 - shows a fallback queue error when no error message is supplied', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     throw {};
   });
   await openDashboard();
@@ -291,6 +299,7 @@ it('AC5 - returns from the empty reservation state to equipment review', async (
 it('AC1 - reports inventory and reservation load errors in their respective tabs', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-requests') throw new Error('Request queue unavailable.');
     if (path === '/events/equipment-inventory') throw new Error('Catalogue unavailable.');
     if (path === '/events/equipment-reservations') throw new Error('Reservation list unavailable.');
@@ -303,4 +312,22 @@ it('AC1 - reports inventory and reservation load errors in their respective tabs
   expect((await screen.findByRole('alert')).textContent).toContain('Catalogue unavailable.');
   fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Reservation list unavailable.');
+});
+
+// AC1/accessibility: Arrow keys wrap, Home/End jump, and unrelated keys leave the current tab unchanged.
+it('AC1 - navigates equipment tabs with the keyboard and returns from an empty reservation queue', async () => {
+  await openDashboard();
+  const review = screen.getByRole('tab', { name: 'Equipment request review' });
+  fireEvent.keyDown(review, { key: 'End' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'ArrowRight' });
+  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'Escape' });
+  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
+  expect(screen.getByRole('tab', { name: 'Equipment request review' }).getAttribute('aria-selected')).toBe('true');
 });

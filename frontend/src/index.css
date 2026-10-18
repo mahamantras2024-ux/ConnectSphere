@@ -46,6 +46,42 @@ p { line-height: 1.65; }
 .support-dashboard-tab:hover { background: #eef3ed; }
 .support-dashboard-tab.is-active, .support-dashboard-tab.is-active:hover { background: var(--teal); color: #fff; border-color: var(--teal); }
 .support-dashboard-notice { padding: 12px 16px; border: 1px solid #b7d5a8; border-radius: 10px; background: #f2f8eb; color: #31552c; }
+.support-workspace-heading { margin: 28px 0 12px; }
+.support-workspace-heading + .support-dashboard-tabs { gap: 8px; margin-bottom: 30px; padding-bottom: 8px; }
+.support-workspace-heading + .support-dashboard-tabs .support-dashboard-tab { padding: 9px 15px; font-size: 12px; }
+.onsite-support-section { margin-bottom: 44px; }
+.onsite-support-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 22px; }
+.onsite-support-heading h2 { margin: 0 0 6px; font-size: 26px; letter-spacing: -.7px; }
+.onsite-support-description { margin: 0; color: var(--muted); font-size: 14px; }
+.equipment-review-section .onsite-support-heading { padding-bottom: 22px; border-bottom: 1px solid var(--border); }
+.equipment-review-section .onsite-support-heading h2 { font-size: 20px; letter-spacing: -.5px; }
+.equipment-review-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.equipment-review-actions button { padding: 9px 14px; }
+.equipment-review-section .record-grid { padding-top: 2px; }
+.onsite-event-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 24px; }
+.onsite-event-card { min-width: 0; padding: 24px; border: 1px solid var(--border); border-top: 4px solid var(--orange); border-radius: 12px; background: #FFFFFA; box-shadow: 0 4px 18px #30391c08; }
+.onsite-event-card:nth-child(3n+2) { border-top-color: var(--seed); }
+.onsite-event-card:nth-child(3n) { border-top-color: var(--blue); }
+.onsite-event-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.onsite-event-title { margin: 22px 0 20px; }
+.onsite-event-title h3 { margin: 0 0 8px; font-size: 24px; letter-spacing: -.6px; overflow-wrap: anywhere; }
+.onsite-event-title p { margin: 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.onsite-event-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 16px; border-radius: 10px; background: #f4f4e5; }
+.onsite-event-facts div { min-width: 0; }
+.onsite-event-facts dt { margin-bottom: 6px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.onsite-event-facts dd { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.onsite-event-equipment { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border); }
+.onsite-event-equipment h4 { margin: 0 0 12px; color: var(--ink); font-size: 14px; }
+.onsite-event-equipment ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.onsite-event-equipment li { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 8px; border-bottom: 1px solid #ececdf; font-size: 13px; }
+.onsite-event-equipment li span:last-child { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.onsite-event-equipment > p { margin: 0; color: var(--muted); font-size: 13px; }
+.onsite-event-notes { display: grid; gap: 4px; margin-top: 16px !important; padding: 12px; border-radius: 8px; background: #f8f8ef; }
+.onsite-event-notes strong { color: var(--ink); font-size: 12px; }
+@media (max-width: 640px) {
+  .onsite-support-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .onsite-event-facts { grid-template-columns: 1fr; gap: 12px; }
+}
 .equipment-inventory-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 14px; margin: 20px 0; }
 .equipment-inventory-filters label { display: grid; gap: 6px; min-width: 190px; color: var(--ink); font-size: 13px; font-weight: 600; }
 .equipment-inventory-filters button { min-height: 43px; }
@@ -173,7 +209,8 @@ p { line-height: 1.65; }
 button, .button-link { background: var(--orange); color: #272C19; border-radius: 999px; font-weight: 700; padding: 13px 23px; }
 button:hover, .button-link:hover { background: #F47B40; box-shadow: 0 5px 16px #EF6B2E24; }
 :focus-visible { outline-color: var(--beet); }
-input, select, textarea { border-color: #D7DAC5; border-radius: 10px; background: #FEFEF8; }
+/* White field surfaces keep native inputs consistent with the catalogue requirement dropdowns. */
+input, select, textarea { border-color: #D7DAC5; border-radius: 10px; background: #fff; }
 input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px #C7D45B40; }
 h1 { font-weight: 800; letter-spacing: -1.3px; }
 h2, h3 { font-weight: 700; }
@@ -330,6 +367,21 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .record-card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px #30391c10; }
 .record-card .record-action { margin-top: auto; align-self: flex-start; padding: 11px 17px; background: #f1f2df; border: 1px solid #d5d9bc; border-radius: 9px; }
 .record-card .record-action:hover { background: #e4e9c6; }
+.support-assignment-form { display: grid; gap: 12px; margin-top: 18px; }
+.support-assignment-form { padding-top: 18px; border-top: 1px solid var(--border); }
+.support-assignment-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.support-assignment-header h4 { margin: 0 0 4px; font-size: 15px; }
+.support-assignment-header p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.support-assignment-fieldset { margin: 0; padding: 0; border: 0; }
+.support-assignment-fieldset legend { padding: 0; }
+.support-assignment-options { display: grid; gap: 8px; margin-top: 4px; }
+.support-assignment-option { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; cursor: pointer; }
+.support-assignment-option:has(input:checked) { border-color: var(--seed); background: #f5f6e9; }
+.support-assignment-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--seed); }
+.support-assignment-empty { margin: 0; color: var(--muted); font-size: 13px; }
+.support-assignment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.support-assignment-button { width: auto; justify-self: start; padding: 9px 16px; }
+.support-assignment-change { padding: 9px 12px; }
 .text-button { padding: 9px 14px; background: #f1f2df; border: 1px solid #d5d9bc; border-radius: 8px; }
 .text-button:hover { background: #e4e9c6; text-decoration: none; }
 .button-secondary { border-color: #cdd2b8; }
@@ -430,9 +482,64 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .decision-checklist { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .decision-checklist li { display: grid; grid-template-columns: minmax(150px, auto) auto 1fr; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
 .decision-checklist .decision-unmet { border-color: #f0c36d; background: #fffaf0; }
+/* Tracks Equipment Request Status: the items a partial review cannot fully provide (AC3). */
+.equipment-affected { margin: 0; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
 .status-approved { background: #e3efd9; color: #2f5a1f; }
 .status-changes_requested { background: #faeae7; color: #98453b; }
 /* Safety Officer queue. */
 .safety-queue { margin-top: 24px; }
 .safety-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
+/* Coordinator venue search keeps related requirements together and stacks controls on small screens. */
+.venue-search-form { margin: 0 0 28px; padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: #fffef3; }
+.venue-search-hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+.venue-search-form fieldset { margin: 0 0 18px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.venue-search-form legend { padding: 0 8px; font-weight: 700; }
+.venue-search-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 16px; }
+.venue-search-fields label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.venue-search-fields input { width: 100%; min-width: 0; }
+.venue-search-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.venue-filter-menu { position: relative; border: 1px solid #cbd8d0; border-radius: 9px; background: white; align-self: end; }
+.venue-filter-menu summary { cursor: pointer; padding: 12px 13px; font-size: 13px; font-weight: 600; }
+.venue-filter-menu > div { position: absolute; top: 100%; left: 0; min-width: 100%; max-height: 240px; overflow-y: auto; padding: 14px; background: white; border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 8px 24px #30391c20; z-index: 4; }
+.venue-filter-menu > div label { display: flex; gap: 10px; align-items: center; padding: 8px 0; white-space: nowrap; }
+.venue-filter-menu input[type=checkbox], .venue-filter-menu input[type=radio] { width: 16px; height: 16px; }
+.venue-search-location { position: relative; min-width: 0; }
+.venue-search-location input[type=search] { height: 48px; padding: 12px 44px; cursor: pointer; border-radius: 9px; }
+.venue-location-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 22px; }
+.venue-location-clear { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; padding: 0; background: transparent; color: var(--muted); font-size: 22px; }
+.venue-location-clear:hover { background: #f1f2df; box-shadow: none; }
+.venue-map-station { display: grid; gap: 8px; margin-bottom: 16px; font-weight: 600; font-size: 13px; }
+.venue-map-selection { margin: 16px 0; padding: 12px; border-radius: 8px; background: var(--cream); }
+/* The location dialog owns its spacing without changing other map or modal layouts. */
+.venue-location-picker { display: grid; gap: 20px; padding: 24px 30px; }
+.venue-location-picker > p { margin: 0; line-height: 1.6; }
+.venue-location-picker .venue-map-station { margin: 0; gap: 10px; }
+.venue-location-picker .venue-map-selection { padding: 14px 16px; }
+.venue-location-picker > .venue-search-actions { justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--border); }
+@media (max-width: 640px) {
+  .venue-location-picker { gap: 16px; padding: 20px; }
+  .venue-location-picker > .venue-search-actions button { flex: 1 1 150px; }
+}
+.venue-search-widget { margin-bottom: 24px; }
+.venue-search-toolbar { margin: 0; padding: 14px; border-radius: 12px; }
+.venue-search-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.venue-search-bar > .venue-search-actions { gap: 8px; flex-wrap: nowrap; }
+.venue-search-bar > .venue-search-actions button { min-height: 48px; }
+/* Keep the popup inset from its edges; a fixed two-column requirements grid avoids an orphaned fourth control. */
+.venue-filter-popup { display: grid; gap: 24px; margin: 0; padding: 24px; border: 0; background: transparent; }
+.venue-filter-popup fieldset { margin: 0; padding: 18px; }
+.venue-filter-popup .venue-search-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: end; }
+.venue-filter-popup > fieldset:first-child .venue-search-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.venue-filter-popup .venue-filter-menu summary { min-height: 44px; display: list-item; align-content: center; }
+.venue-filter-popup > .venue-search-actions { justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--border); }
+.venue-filter-popup .venue-search-hint { line-height: 1.6; margin-top: 14px; }
+@media (max-width: 900px) { .venue-search-bar { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .venue-filter-popup { padding: 18px; gap: 20px; }
+  .venue-filter-popup fieldset { padding: 14px; }
+  .venue-filter-popup .venue-search-fields,
+  .venue-filter-popup > fieldset:first-child .venue-search-fields { grid-template-columns: 1fr; }
+  .venue-filter-popup > .venue-search-actions { justify-content: stretch; }
+  .venue-filter-popup > .venue-search-actions button { flex: 1 1 150px; }
+}

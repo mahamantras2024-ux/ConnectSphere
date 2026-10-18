@@ -29,6 +29,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: { id: 8, full_name: 'Casey Attendee', role: 'attendee' } };
+    if (path === '/notifications') return { notifications: [], unreadCount: 0 };
     if (path === '/registrations/mine') return { registrations: [] };
     if (path === '/events/published') return { events: [publishedEvent] };
     if (path === '/events/published/44') return { event: currentEvent };
@@ -44,6 +45,7 @@ describe('SCRUM-35 Attendee View Event Details', () => {
     let resolveEvents;
     api.get.mockImplementation(path => {
       if (path === '/auth/me') return Promise.resolve({ user: { id: 8, full_name: 'Casey Attendee', role: 'attendee' } });
+      if (path === '/notifications') return Promise.resolve({ notifications: [], unreadCount: 0 });
       if (path === '/registrations/mine') return Promise.resolve({ registrations: [] });
       if (path === '/events/published') return new Promise(resolve => { resolveEvents = resolve; });
       throw new Error(`Unexpected GET ${path}`);

@@ -5,6 +5,30 @@
   "retrievedAt": "2026-10-04T10:31:29.843Z",
   "stations": [
     {
+      "name": "Bukit Panjang",
+      "latitude": 1.378296,
+      "longitude": 103.762138,
+      "ref": "DT1"
+    },
+    {
+      "name": "Choa Chu Kang",
+      "latitude": 1.384749,
+      "longitude": 103.744534,
+      "ref": "NS4"
+    },
+    {
+      "name": "Punggol",
+      "latitude": 1.405255,
+      "longitude": 103.902354,
+      "ref": "NE17"
+    },
+    {
+      "name": "Sengkang",
+      "latitude": 1.39133,
+      "longitude": 103.895294,
+      "ref": "NE16"
+    },
+    {
       "name": "Admiralty",
       "latitude": 1.440637,
       "longitude": 103.800959,
@@ -359,7 +383,7 @@
       "ref": "NS1-EW24"
     },
     {
-      "name": "Kaki Bukit ",
+      "name": "Kaki Bukit",
       "latitude": 1.335024,
       "longitude": 103.908611,
       "ref": "DT28"

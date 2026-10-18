@@ -36,6 +36,8 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
     }
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     const app = require('../../backend/src/index');
     server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
@@ -179,6 +181,8 @@ test('Sprint 1 persists roles, venue buffers and personal registrations in real 
     mock.method(pool, 'query', (sql, values) =>
       // Handles this operation using the surrounding screen or request state.
       client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     // Staff login story AC1: a staff account holding several roles is refused and nothing is stored.
     await assert.rejects(provisionAccount({ email: 'multi@example.test', fullName: 'Test User', password: 'password123', roles: ['venue_staff', 'attendee', 'event_coordinator_lead', 'safety_officer'] }),
       { message: 'Internal staff accounts must have exactly one internal role.' });
@@ -287,6 +291,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
 
       // Handles this operation using the surrounding screen or request state.
       client.query(sql, values));
+    // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
+    mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
     const app = require('../../backend/src/index');
     await new Promise((resolve, reject) => {
       // Starts a local test HTTP server and resolves/rejects on startup.

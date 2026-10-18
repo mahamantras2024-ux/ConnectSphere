@@ -16,6 +16,8 @@ const stories = {
   'organiser-events': ['organiserEvents','registrationModels','sharedUiRegressions'],
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
+  // SCRUM-39: one feature suite per layer, including the authenticated search endpoint.
+  'search-venues': ['venueSearch'],
   'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
   'delete-venue': ['venueManagement','venueInteractions'],
   // Lead workflow also retains owner/assignment and real-routing regressions.
@@ -27,7 +29,9 @@ const stories = {
   // Operational Feasibility Check: Safety Officer facts, change requests that reopen planning stages, and re-checks.
   'operational-safety-check': ['operationalSafetyCheck','eventDecision','eventDecisionPolicy.unit','eventDecisionPostgres','venueValidation','createVenue-backend','venueManagement'],
   // Check Venue Suitability: capacity/facility rules, the coordinator API and the event-page section.
-  'venue-suitability': ['venueSuitability','venueSuitability.unit','venueSuitabilityPostgres','organiserEvents','sharedUiRegressions']
+  'venue-suitability': ['venueSuitability','venueSuitability.unit','venueSuitabilityPostgres','organiserEvents','sharedUiRegressions'],
+  // Coordinator tracks equipment request status: statuses, affected items, notifications and the review form.
+  'equipment-status': ['equipmentStatus','equipmentStatus.unit','equipmentStatusPostgres','equipmentReviewUpgradePostgres','techSupportAssignmentGatePostgres','equipmentRequestReview','equipmentRequirements','changeRequestReview']
 };
 const storyIndex = options.indexOf('story');
 const storyName = storyIndex < 0 ? null : options[storyIndex + 1];
@@ -54,7 +58,7 @@ function run(label, args, directory, env = {}) {
 if (backend) {
   const files = readdirSync(path.join(__dirname, 'backend')).filter(name => name.endsWith('.test.js')).sort()
     .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'databaseAcceptance.test.js'))
-    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js'].includes(name))
+    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js','equipmentStatusPostgres.test.js','equipmentReviewUpgradePostgres.test.js','techSupportAssignmentGatePostgres.test.js'].includes(name))
     .map(name => path.join(__dirname, 'backend', name));
   const args = ['--test', ...(storyPattern ? [`--test-name-pattern=${storyPattern}`] : []), ...files];
   run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', RUN_LEAD_DB: liveDatabase ? '1' : '0', NODE_ENV: 'test' });

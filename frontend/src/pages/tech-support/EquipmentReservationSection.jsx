@@ -182,12 +182,15 @@ function groupAvailabilityItems(items) {
     const key = normaliseItemName(itemName);
     const group = groupedItems.get(key) || {
       item: itemName,
-      requestedQuantity: 0,
+      requestedQuantitiesByAlias: new Map(),
       requestAliases: new Set(),
       assets: new Map(),
     };
-    // Alias rows describe the same type-level request, so keep the larger requirement instead of double-counting it.
-    group.requestedQuantity = Math.max(group.requestedQuantity, item.requestedQuantity);
+    const alias = normaliseItemName(item.item);
+    group.requestedQuantitiesByAlias.set(
+      alias,
+      (group.requestedQuantitiesByAlias.get(alias) || 0) + item.requestedQuantity,
+    );
     for (const alias of item.requestAliases || [item.item]) {
       group.requestAliases.add(normaliseItemName(alias));
     }
@@ -201,7 +204,7 @@ function groupAvailabilityItems(items) {
     const availableAssets = [...group.assets.values()].filter(asset => Number(asset.available_quantity) > 0);
     return {
       item: group.item,
-      requestedQuantity: group.requestedQuantity,
+      requestedQuantity: Math.max(...group.requestedQuantitiesByAlias.values()),
       requestAliases: [...group.requestAliases],
       availableAssets,
       availableQuantity: availableAssets.reduce((total, asset) => total + Number(asset.available_quantity), 0),

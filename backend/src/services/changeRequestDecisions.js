@@ -6,6 +6,9 @@ const {
   isSupportedField, describeChanges, assessArrangements, recipientsFor, changeLines,
 } = require('./changeRequestReview');
 
+// Fields that make up the equipment request Technical Support reviews (the organiser's equipment form).
+const EQUIPMENT_FIELDS = ['equipmentItems', 'technicalSupportRequired', 'technicalSupportDetails', 'videoConferencingRequired', 'technicalSpecifications', 'equipmentNotes'];
+
 /** Builds an error carrying the HTTP status and optional machine-readable code for the controller. */
 function failure(status, message, code) { return Object.assign(new Error(message), { status, code }); }
 
@@ -75,6 +78,12 @@ async function decideChangeRequest(requestId, coordinatorId, decision, reason) {
         throw failure(409, `This change request includes changes that cannot be applied yet: ${unsupported.join(', ')}.`, 'UNSUPPORTED_CHANGE');
       }
       event = await eventModel.applyChanges(client, request.event_id, request.requested_changes);
+      // Changed equipment has not been reviewed: start a new request version and clear the confirmation so Technical
+      // Support reviews it and its status reads "pending" (Tracks Equipment Request Status AC1).
+      if (Object.keys(request.requested_changes).some((field) => EQUIPMENT_FIELDS.includes(field))) {
+        event = (await client.query(`UPDATE events SET equipment_confirmed_at = NULL,
+          equipment_requirements_version = equipment_requirements_version + 1 WHERE id = $1 RETURNING to_jsonb(events.*) AS event`, [request.event_id])).rows[0].event;
+      }
       const changedFields = changes.map((change) => change.field);
       const bookings = await eventModel.loadArrangements(client, request.event_id, true);
       arrangements = assessArrangements(event, changedFields, bookings, Date.now());

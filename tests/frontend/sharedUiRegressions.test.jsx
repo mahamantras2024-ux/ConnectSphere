@@ -267,6 +267,7 @@ beforeEach(()=>{
   user={id:8,full_name:'Chris Lee',email:'chris@example.test',role:'technical_support',roles:['technical_support']};
   api.get.mockImplementation(async(path)=>{
     if(path === '/auth/me') return {user};
+    if(path === '/events/on-site-support') return {events:[]};
     if(path === '/events/assignments') return {events:[],coordinators:[]};
     if(path === '/events/equipment-requests') return {requests:[]};
     if(path === '/events/equipment-inventory') return {inventory:[]};
@@ -299,7 +300,7 @@ it.each([
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
+    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
     : role === 'safety_officer' ? ['/auth/me','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
@@ -355,7 +356,8 @@ it.each([
   // Assert: the real role screen opens and the tab identifies the current workspace.
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   expect(link.getAttribute('aria-current')).toBe('page');
-  expect(nav.getAllByRole('link')).toHaveLength(2); // Brand plus one workspace tab.
+  // Coordinators also have a distinct venue-discovery tab; it must not duplicate the event workspace.
+  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 3 : 2);
 });
 
 });
@@ -454,7 +456,7 @@ it('UI1 / External AC7-8 - attendee registration details stay personal while the
   const drawer = screen.getByRole('dialog', { name: 'Registration details' });
   for (const text of ['Community afternoon', 'confirmed', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
   // Dashboard now loads the published-event catalogue; opening the personal drawer must not fetch another event record.
-  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/registrations/mine', '/events/published']);
+  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/notifications', '/registrations/mine', '/events/published']);
   fireEvent.click(within(drawer).getByRole('button', { name: 'Back to list' }));
   expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(trigger);
   fireEvent.click(trigger); fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));

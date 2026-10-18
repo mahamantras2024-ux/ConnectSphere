@@ -1,11 +1,13 @@
 // File: Displays the Technical Support dashboard and its authenticated pending equipment-review queue.
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
+import NotificationsPanel from '../../components/NotificationsPanel';
 import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
+import OnSiteSupportSection from './OnSiteSupportSection';
+import { requestedItems } from './requestedItems';
 
 // Styles for the equipment request review cards only; tabs and other sections keep their existing styling.
 const dashboardStyles = `
@@ -140,6 +142,12 @@ const dashboardStyles = `
 @media (max-width: 600px) {
   .support-form-actions button { width: 100%; }
 }
+
+.support-affected-items { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; }
+.support-affected-items legend { font-weight: 600; padding: 0 4px; }
+.support-affected-item { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.support-affected-item label { display: flex; gap: 8px; align-items: center; }
+.support-affected-item input[type="number"] { width: 6rem; }
 `;
 
 const outcomes = [
@@ -157,11 +165,16 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', {
 
 /**
  * Renders one submitted equipment request and records the staff member's fulfillment decision.
- * Partial and unavailable decisions require a reason; submitted requirements stay read-only.
+ * Partial and unavailable decisions require a reason; submitted requirements stay read-only. A partial decision also
+ * names the affected items, optionally with how many can be provided, so the coordinator knows exactly what to
+ * arrange (Tracks Equipment Request Status AC3).
  */
 function EquipmentRequestCard({ request, onReview }) {
   const [outcome, setOutcome] = useState('');
   const [reason, setReason] = useState('');
+  // { [itemKey]: quantity text } for each ticked affected item; '' means "no quantity given".
+  const [affected, setAffected] = useState({});
+  const requested = requestedItems(request);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const items = Array.isArray(request.equipment_items) ? request.equipment_items : [];
@@ -195,11 +208,28 @@ function EquipmentRequestCard({ request, onReview }) {
       setError('Enter a reason for this decision.');
       return;
     }
+    let affectedItems;
+    if (outcome === 'partially_fulfillable') {
+      affectedItems = [];
+      for (const item of requested.filter((entry) => entry.key in affected)) {
+        const text = affected[item.key].trim();
+        // Same rule as the server: 0 up to one less than requested (all of them would mean not affected).
+        if (text && (!/^\d+$/.test(text) || Number(text) >= item.quantity)) {
+          setError(`Available quantity for ${item.label} must be a whole number from 0 to ${item.quantity - 1}.`);
+          return;
+        }
+        affectedItems.push(text ? { key: item.key, availableQuantity: Number(text) } : { key: item.key });
+      }
+      if (!affectedItems.length) {
+        setError('Choose which requested items cannot be fully provided.');
+        return;
+      }
+    }
 
     setError('');
     setSaving(true);
     try {
-      await onReview(request, outcome, cleanReason || undefined);
+      await onReview(request, outcome, cleanReason || undefined, affectedItems);
     } catch (saveError) {
       setError(saveError?.message || 'Unable to save this review.');
     } finally {
@@ -289,6 +319,33 @@ function EquipmentRequestCard({ request, onReview }) {
             required={reasonRequired}
           />
         </label>
+        {outcome === 'partially_fulfillable' && (
+          <fieldset className="support-affected-items" disabled={saving}>
+            <legend>Affected items (choose what cannot be fully provided)</legend>
+            {requested.map((item) => (
+              <div key={item.key} className="support-affected-item">
+                <label>
+                  <input type="checkbox" checked={item.key in affected}
+                    onChange={(event) => {
+                      setError('');
+                      setAffected((current) => {
+                        const next = { ...current };
+                        if (event.target.checked) next[item.key] = ''; else delete next[item.key];
+                        return next;
+                      });
+                    }} />
+                  {item.quantity == null ? item.label : `${item.label} × ${item.quantity}`}
+                </label>
+                {item.quantity != null && item.key in affected && (
+                  <label>Can provide (optional)
+                    <input type="number" min="0" max={item.quantity - 1} value={affected[item.key]}
+                      onChange={(event) => { setError(''); setAffected((current) => ({ ...current, [item.key]: event.target.value })); }} />
+                  </label>
+                )}
+              </div>
+            ))}
+          </fieldset>
+        )}
         {error && <p id={errorId} role="alert" className="support-error">{error}</p>}
         <div className="support-form-actions">
           <button type="submit" disabled={saving}>
@@ -358,11 +415,12 @@ export default function TechSupportDashboard() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  async function saveReview(request, outcome, reason) {
+  async function saveReview(request, outcome, reason, affectedItems) {
     await api.post(`/events/${request.id}/equipment-reviews`, {
       outcome,
       ...(reason ? { reason } : {}),
       requestVersion: request.request_version,
+      ...(affectedItems ? { affectedItems } : {}),
     }, token);
     setRequests(current => current.filter(pending => pending.id !== request.id));
     showSuccess(`Review saved for ${request.name}.`);
@@ -412,6 +470,7 @@ export default function TechSupportDashboard() {
         description="Review equipment requests, reserve equipment, and release allocations when events change."
       />
       <NotificationsPanel />
+      <OnSiteSupportSection token={token} />
       {toast && (
         <div
           role="status"
@@ -422,56 +481,70 @@ export default function TechSupportDashboard() {
           <p>{toast.message}</p>
         </div>
       )}
-      <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            id={`support-tab-${tab.id}`}
-            aria-selected={activeTab === tab.id}
-            aria-controls={`support-panel-${tab.id}`}
-            tabIndex={activeTab === tab.id ? 0 : -1}
-            className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
-            onClick={() => setActiveTab(tab.id)}
-            onKeyDown={event => {
-              const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
-              const nextIndex = event.key === 'ArrowRight'
-                ? (currentIndex + 1) % tabs.length
-                : event.key === 'ArrowLeft'
-                  ? (currentIndex - 1 + tabs.length) % tabs.length
-                  : event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : -1;
-              if (nextIndex >= 0) {
-                event.preventDefault();
-                const nextTab = tabs[nextIndex];
-                setActiveTab(nextTab.id);
-                document.getElementById(`support-tab-${nextTab.id}`)?.focus();
-              }
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      {activeTab === 'inventory' && (
+      <div className="support-management-workspace">
+        <div className="onsite-support-heading support-workspace-heading">
+          <div>
+            <h2>Equipment management</h2>
+          </div>
+        </div>
+        <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`support-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`support-panel-${tab.id}`}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
+              onClick={() => setActiveTab(tab.id)}
+              onKeyDown={event => {
+                const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
+                const nextIndex = event.key === 'ArrowRight'
+                  ? (currentIndex + 1) % tabs.length
+                  : event.key === 'ArrowLeft'
+                    ? (currentIndex - 1 + tabs.length) % tabs.length
+                    : event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? tabs.length - 1
+                        : -1;
+                if (nextIndex >= 0) {
+                  event.preventDefault();
+                  const nextTab = tabs[nextIndex];
+                  setActiveTab(nextTab.id);
+                  document.getElementById(`support-tab-${nextTab.id}`)?.focus();
+                }
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
+          {/* Keep the existing repair handler connected after integrating both feature branches. */}
           <EquipmentInventorySection
             inventory={inventory}
             error={inventoryError}
             onRepairEquipment={repairEquipment}
           />
+
         </div>
-      )}
-      {activeTab === 'review' && (
+        )}
+        {activeTab === 'review' && (
         <div role="tabpanel" id="support-panel-review" aria-labelledby="support-tab-review">
-          <section aria-labelledby="pending-equipment-heading">
-            <div className="section-heading">
-              <h2 id="pending-equipment-heading">Pending equipment requests</h2>
-              <button type="button" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
+          <section className="onsite-support-section equipment-review-section" aria-labelledby="pending-equipment-heading">
+            <div className="onsite-support-heading">
+              <div>
+                <h2 id="pending-equipment-heading">Pending equipment requests</h2>
+                <p className="onsite-support-description">Review equipment requirements and record what can be fulfilled.</p>
+              </div>
+              <div className="equipment-review-actions">
+                <span className="badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
+                <button type="button" className="button-secondary" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
+              </div>
             </div>
             {requestError && <p className="support-error" role="alert">{requestError}</p>}
             {loading ? <p className="support-muted">Loading equipment requests…</p> : requests.length === 0
@@ -491,8 +564,8 @@ export default function TechSupportDashboard() {
               </div>}
           </section>
         </div>
-      )}
-      {activeTab === 'reservations' && (
+        )}
+        {activeTab === 'reservations' && (
         <div role="tabpanel" id="support-panel-reservations" aria-labelledby="support-tab-reservations">
           <EquipmentReservationSection
             requests={reservationRequests}
@@ -504,7 +577,8 @@ export default function TechSupportDashboard() {
             onGoToReviews={() => setActiveTab('review')}
           />
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

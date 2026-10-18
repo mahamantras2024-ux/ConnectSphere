@@ -74,6 +74,8 @@ beforeEach(() => {
   api.get.mockImplementation(async (path) => {
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
+    // The dashboard also fetches assigned events; keep the unrelated panel in its empty state.
+    if (path === '/events/on-site-support') return { events: [] };
     if (path === '/events/equipment-reservations') {
       return reservationsResponse([cancelledEventReservation, rescheduledEventReservation]);
     }
