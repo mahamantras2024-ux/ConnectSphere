@@ -3,9 +3,28 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
-const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration } = require('../../backend/src/db/migrateExternalEvents');
+const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal } = require('../../backend/src/db/migrateExternalEvents');
 
 afterEach(() => mock.restoreAll());
+
+test('Withdraw AC2/AC3 - standalone withdrawal upgrade applies only the deadline and notification schema', async () => {
+  // Arrange: database boundary records the exact SQL without touching shared application records.
+  const queries = []; let released = false;
+  mock.method(pool, 'connect', async () => ({ query: async sql => { queries.push(sql); }, release: () => { released = true; } }));
+  // Act
+  await migrateAttendeeWithdrawal();
+  // Assert: no historical seeds are replayed; both story requirements have a schema upgrade.
+  assert.equal(queries.length, 1); assert.match(queries[0], /ADD COLUMN IF NOT EXISTS withdrawal_deadline/);
+  assert.match(queries[0], /waitlist_promoted/); assert.doesNotMatch(queries[0], /INSERT INTO/); assert.equal(released, true);
+});
+test('Withdraw AC2/AC3 - a failed withdrawal upgrade rolls back and releases the connection', async () => {
+  const queries = []; let released = false;
+  mock.method(pool, 'connect', async () => ({ query: async sql => {
+    queries.push(sql); if (sql !== 'ROLLBACK') throw new Error('Withdrawal upgrade unavailable');
+  }, release: () => { released = true; } }));
+  await assert.rejects(migrateAttendeeWithdrawal(), /Withdrawal upgrade unavailable/);
+  assert.equal(queries.at(-1), 'ROLLBACK'); assert.equal(released, true);
+});
 
 test('Register AC3 - standalone upgrade applies only the registration schema and releases its connection', async () => {
   // Arrange: the PostgreSQL boundary records exactly which schema upgrade would run.
@@ -29,7 +48,7 @@ test('Register AC3 - a registration migration failure rolls back and releases it
   assert.equal(released, true);
 });
 
-test('SCRUM-98 upload AC / Register AC3 - migration runner preserves existing upgrades before appending registration', async () => {
+test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner preserves existing upgrades before withdrawal', async () => {
   // Arrange: replace only the PostgreSQL connection so calls are recorded without a database.
   const queries = [];
   const client = {
@@ -67,7 +86,10 @@ test('SCRUM-98 upload AC / Register AC3 - migration runner preserves existing up
   // Register AC3: both stories' upgrades must run before the new registration fields are appended.
   const registrationIndex = queries.indexOf(migrationSql('015-attendee-registration.sql'));
   assert.ok(documentsIndex < registrationIndex, 'registration must follow venue documents');
-  assert.equal(registrationIndex, queries.length - 1, 'registration must be the final migration');
+  // Withdraw AC2/AC3: promotion notifications and deadlines follow registration.
+  const withdrawalIndex = queries.indexOf(migrationSql('016-attendee-withdrawal.sql'));
+  assert.ok(registrationIndex < withdrawalIndex, 'withdrawal follows registration');
+  assert.equal(withdrawalIndex, queries.length - 1, 'withdrawal is the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

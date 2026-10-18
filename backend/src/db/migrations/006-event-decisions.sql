@@ -66,7 +66,7 @@ BEGIN
       'technical_support_assigned',
       'technical_support_unassigned',
       'event_cancelled',
-      'equipment_status_changed'
+      'equipment_status_changed', 'waitlist_promoted'
     ]::text[]) AS type
     UNION
     SELECT DISTINCT type FROM notifications
