@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import useRegistrationResource from '../registrations/useRegistrationResource';
 import { useAuth } from '../../context/AuthContext';
 import AttendeeRegistration from '../registrations/AttendeeRegistration';
+import './AttendeeEventDetails.css';
 
 const publicStatusLabels = { confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
 const publicStatusClasses = { confirmed: 'status-confirmed', completed: 'status-completed', cancelled: 'status-cancelled' };
@@ -13,41 +14,45 @@ function formatEventTime(start, end) {
   return formattedStart && formattedEnd ? `${formattedStart}–${formattedEnd}` : [formattedStart, formattedEnd].filter(Boolean).join('–') || 'Time not specified';
 }
 
-/** Loads fresh attendee-safe details and status for a public event or the attendee's own terminal event. */
+/** Presents the public event in the coordinator visual style while retaining attendee-only data and actions. */
 export default function AttendeeEventDetails() {
   const { id } = useParams();
   const { token } = useAuth();
   const { data, loading, error } = useRegistrationResource(`/events/published/${id}`, token);
   const event = data?.event;
 
-  if (loading) return <main className="page"><p role="status" className="loading-state">Loading event details…</p></main>;
-  if (error && !event) return <main className="page"><p role="alert" className="error-message">{error}</p><Link to="/attendee/dashboard">Back to events</Link></main>;
-  if (!event) return <main className="page"><p>No event details available.</p><Link to="/attendee/dashboard">Back to events</Link></main>;
+  if (loading) return <main className="page attendee-event-detail"><p role="status" className="loading-state">Loading event details…</p></main>;
+  if (error && !event) return <main className="page attendee-event-detail"><p role="alert" className="error-message">{error}</p><Link to="/attendee/dashboard">Back to events</Link></main>;
+  if (!event) return <main className="page attendee-event-detail"><p>No event details available.</p><Link to="/attendee/dashboard">Back to events</Link></main>;
 
   const accessibilityNotes = Array.isArray(event.accessibility_requirements)
     ? event.accessibility_requirements.filter(note => typeof note === 'string' && note.trim()) : [];
   const attendeeInformation = typeof event.special_arrangements === 'string' ? event.special_arrangements.trim() : '';
 
   return (
-    <main className="page">
+    <main className="page attendee-event-detail">
       {error && <p role="alert" className="error-message">{error} Showing the last loaded event information.</p>}
       <Link className="button-link button-secondary" to="/attendee/dashboard">Back to events</Link>
-      <article className="record-card">
+      <header className="attendee-event-header">
+        <div className="attendee-event-eyebrow"><span className="attendee-event-chip">Event Detail</span>
         <span className={`status-badge ${publicStatusClasses[event.status] || 'status-unknown'}`}>
           {publicStatusLabels[event.status] || 'Status unavailable'}
-        </span>
+        </span></div>
         <h1>{event.name}</h1>
-        <dl className="detail-facts">
+      </header>
+      <section className="attendee-event-card" aria-labelledby="attendee-event-overview">
+        <h2 id="attendee-event-overview">Event overview</h2>
+        <dl className="attendee-event-facts">
           <div><dt>Date</dt><dd>{event.proposed_date || 'Date not specified'}</dd></div>
           <div><dt>Time</dt><dd>{formatEventTime(event.proposed_start_time, event.proposed_end_time)}</dd></div>
           <div><dt>Location</dt><dd>{event.venue_name || 'Venue not confirmed'}{event.location ? ` · ${event.location}` : ''}</dd></div>
           <div><dt>Description</dt><dd>{event.description || 'No description provided.'}</dd></div>
           <div><dt>Organiser</dt><dd>{event.organiser_name || 'Organiser not specified'}</dd></div>
         </dl>
-      </article>
-      <section className="record-card" aria-label="Accessibility and attendee information">
+      </section>
+      <section className="attendee-event-card" aria-label="Accessibility and attendee information">
         <h2>Accessibility and attendee information</h2>
-        <dl className="detail-facts">
+        <dl className="attendee-event-facts">
           <div><dt>Accessibility</dt><dd>{accessibilityNotes.length ? <ul>{accessibilityNotes.map((note, index) => <li key={`${index}-${note}`}>{note}</li>)}</ul> : 'No specific accessibility information provided.'}</dd></div>
           <div><dt>Additional information</dt><dd>{attendeeInformation || 'No additional attendee information provided.'}</dd></div>
         </dl>
