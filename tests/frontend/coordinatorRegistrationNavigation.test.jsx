@@ -13,7 +13,7 @@ for (const role of ['event_coordinator', 'event_organiser']) {
     api.get.mockImplementation(async path => {
       if (path === '/auth/me') return { user: { id: 12, role } };
       if (path === '/events/101') return { event: { id: 101, name: 'Workshop', coordinator_id: 12, organiser_id: 12 } };
-      if (path === '/events/101/coordinator-registrations') return { event: { name: 'Workshop' }, headcount: 0, waitlist_count: 0, registered: [], waitlist: [] };
+      if (path === '/events/101/coordinator-registrations') return { event: { name: 'Workshop' }, headcount: 0, waitlist_count: 0, withdrawal_count: 0, venue_capacity: null, overflow_count: null, overflow: [], registered: [], waitlist: [] };
       return { bookings: [], items: [], requests: [] };
     });
     render(<MemoryRouter initialEntries={['/events/101']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
@@ -23,7 +23,7 @@ for (const role of ['event_coordinator', 'event_organiser']) {
       // The back link needs actual CSS spacing so adjacent pill buttons do not touch.
       expect(getComputedStyle(screen.getByRole('link', { name: 'Back to Assigned Events' })).marginInlineEnd).toBe('12px');
       fireEvent.click(screen.getByRole('button', { name: 'Registration details' }));
-      expect(await screen.findByLabelText('Registration summary')).toHaveProperty('textContent', '0 registered · 0 on waitlist');
+      expect(await screen.findByLabelText('Registration summary')).toHaveProperty('textContent', '0 registered · 0 on waitlist · 0 withdrawn');
       expect(screen.getByRole('dialog').classList.contains('venue-drawer')).toBe(true);
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.getByRole('heading', { name: 'Workshop' })).toBeTruthy();
