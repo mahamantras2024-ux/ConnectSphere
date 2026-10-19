@@ -969,21 +969,81 @@ async function listEquipmentInventory() {
         FILTER (WHERE availability.id IS NOT NULL), '[]'::jsonb) AS availabilities
     FROM equipments stock
     LEFT JOIN LATERAL (
-      SELECT schedule.id, schedule.available_date, schedule.start_time, schedule.end_time, TRUE AS is_scheduled
+      SELECT schedule.id, schedule.available_date,
+        schedule_segments.start_time, schedule_segments.end_time, TRUE AS is_scheduled
       FROM technical_equipment_availability schedule
-      WHERE schedule.inventory_id=stock.id
+      -- Split scheduled windows at booking edges so only occupied sub-periods appear reserved.
+      CROSS JOIN LATERAL (
+        SELECT availability_boundaries.point_time AS start_time,
+          LEAD(availability_boundaries.point_time) OVER (
+            ORDER BY availability_boundaries.point_time
+          ) AS end_time
+        FROM (
+          SELECT schedule.start_time AS point_time
+          UNION
+          SELECT schedule.end_time
+          UNION
+          SELECT GREATEST(reservation.start_time, schedule.start_time)
+          FROM event_equipment_reservations reservation
+          JOIN event_equipment_reservation_items reserved_item
+            ON reserved_item.reservation_id=reservation.id
+          WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+            AND reservation.event_date=schedule.available_date
+            AND reservation.start_time < schedule.end_time
+            AND reservation.end_time > schedule.start_time
+          UNION
+          SELECT LEAST(reservation.end_time, schedule.end_time)
+          FROM event_equipment_reservations reservation
+          JOIN event_equipment_reservation_items reserved_item
+            ON reserved_item.reservation_id=reservation.id
+          WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+            AND reservation.event_date=schedule.available_date
+            AND reservation.start_time < schedule.end_time
+            AND reservation.end_time > schedule.start_time
+        ) availability_boundaries
+      ) schedule_segments
+      WHERE schedule_segments.end_time IS NOT NULL
+        AND schedule.inventory_id=stock.id
       UNION ALL
       SELECT -row_number() OVER (
         ORDER BY reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time
       ) AS id,
         reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time, FALSE AS is_scheduled
       FROM (
-        SELECT DISTINCT reservation.event_date AS available_date,
-          reservation.start_time, reservation.end_time
-        FROM event_equipment_reservations reservation
-        JOIN event_equipment_reservation_items reserved_item
-          ON reserved_item.reservation_id=reservation.id
-        WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+        SELECT reservation_segments.available_date, reservation_segments.start_time,
+          reservation_segments.end_time
+        FROM (
+          SELECT reservation_boundaries.available_date, reservation_boundaries.point_time AS start_time,
+            LEAD(reservation_boundaries.point_time) OVER (
+              PARTITION BY reservation_boundaries.available_date
+              ORDER BY reservation_boundaries.point_time
+            ) AS end_time
+          FROM (
+            SELECT DISTINCT reservation.event_date AS available_date, reservation.start_time AS point_time
+            FROM event_equipment_reservations reservation
+            JOIN event_equipment_reservation_items reserved_item
+              ON reserved_item.reservation_id=reservation.id
+            WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+            UNION
+            SELECT DISTINCT reservation.event_date AS available_date, reservation.end_time AS point_time
+            FROM event_equipment_reservations reservation
+            JOIN event_equipment_reservation_items reserved_item
+              ON reserved_item.reservation_id=reservation.id
+            WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+          ) reservation_boundaries
+        ) reservation_segments
+        -- Unscheduled dates default to available; expose only reservation-covered time segments here.
+        WHERE reservation_segments.end_time IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM event_equipment_reservations reservation
+            JOIN event_equipment_reservation_items reserved_item
+              ON reserved_item.reservation_id=reservation.id
+            WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+              AND reservation.event_date=reservation_segments.available_date
+              AND reservation.start_time < reservation_segments.end_time
+              AND reservation.end_time > reservation_segments.start_time
+          )
       ) reservation_slot
       WHERE NOT EXISTS (
         SELECT 1
@@ -1000,8 +1060,8 @@ async function listEquipmentInventory() {
       JOIN events event ON event.id=reservation.event_id
       WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
         AND reservation.event_date=availability.available_date
-        AND reservation.start_time < availability.end_time
-        AND reservation.end_time > availability.start_time
+        AND reservation.start_time <= availability.start_time
+        AND reservation.end_time >= availability.end_time
     ) reserved ON availability.id IS NOT NULL
     GROUP BY stock.id
     ORDER BY stock.asset_code
@@ -1219,7 +1279,10 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
   const names = [...requestsByType.keys()];
   const inventory = names.length ? (await pool.query(`
     SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status, stock.quantity,
-      CASE WHEN availability.available_date IS NULL THEN 0
+      CASE WHEN availability.available_date IS NULL AND EXISTS (
+        SELECT 1 FROM technical_equipment_availability schedule
+        WHERE schedule.inventory_id=stock.id AND schedule.available_date=$2::date
+      ) THEN 0
         ELSE GREATEST(stock.quantity - COALESCE(booked.quantity, 0), 0)
       END::integer AS available_quantity,
       availability.available_date::text AS available_date,
@@ -1237,14 +1300,33 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) availability ON true
     LEFT JOIN LATERAL (
-      SELECT sum(reserved_item.quantity)::integer AS quantity
+  -- Unscheduled dates can still be reserved; calculate conflicts only from peak simultaneous usage.
+  SELECT MAX(concurrent.quantity)::integer AS quantity
+  FROM (
+    SELECT reservation_points.point_time,
+      SUM(active_item.quantity)::integer AS quantity
+    FROM (
+      SELECT $3::time AS point_time
+      UNION
+      SELECT GREATEST(reservation.start_time, $3::time) AS point_time
       FROM event_equipment_reservations reservation
-      JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
-      -- Released rows remain in the audit list but no longer reserve stock for future checks.
+      JOIN event_equipment_reservation_items reserved_item
+        ON reserved_item.reservation_id=reservation.id
       WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
         AND reservation.event_date=$2::date
         AND reservation.start_time < $4::time AND reservation.end_time > $3::time
-    ) booked ON true
+    ) reservation_points
+    JOIN event_equipment_reservations active_reservation
+      ON active_reservation.event_date=$2::date
+      AND active_reservation.status='reserved'
+      AND active_reservation.start_time <= reservation_points.point_time
+      AND active_reservation.end_time > reservation_points.point_time
+    JOIN event_equipment_reservation_items active_item
+      ON active_item.reservation_id=active_reservation.id
+      AND active_item.inventory_id=stock.id
+    GROUP BY reservation_points.point_time
+  ) concurrent
+) booked ON true
     WHERE stock.status='operational' AND stock.availability_status='Available'
       AND lower(trim(stock.name))=ANY($1::text[])
       AND (availability.id IS NOT NULL OR NOT EXISTS (
@@ -1420,12 +1502,32 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
         LIMIT 1
       ) availability ON true
       LEFT JOIN LATERAL (
-        SELECT sum(reserved_item.quantity)::integer AS quantity
-        FROM event_equipment_reservations reservation
-        JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
-        WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
-          AND reservation.event_date=$2::date
-          AND reservation.start_time < $4::time AND reservation.end_time > $3::time
+        -- Match the preview's peak-concurrency rule during the final locked reservation check.
+        SELECT MAX(concurrent.quantity)::integer AS quantity
+        FROM (
+          SELECT reservation_points.point_time,
+            SUM(active_item.quantity)::integer AS quantity
+          FROM (
+            SELECT $3::time AS point_time
+            UNION
+            SELECT GREATEST(reservation.start_time, $3::time) AS point_time
+            FROM event_equipment_reservations reservation
+            JOIN event_equipment_reservation_items reserved_item
+              ON reserved_item.reservation_id=reservation.id
+            WHERE reserved_item.inventory_id=stock.id AND reservation.status='reserved'
+              AND reservation.event_date=$2::date
+              AND reservation.start_time < $4::time AND reservation.end_time > $3::time
+          ) reservation_points
+          JOIN event_equipment_reservations active_reservation
+            ON active_reservation.event_date=$2::date
+            AND active_reservation.status='reserved'
+            AND active_reservation.start_time <= reservation_points.point_time
+            AND active_reservation.end_time > reservation_points.point_time
+          JOIN event_equipment_reservation_items active_item
+            ON active_item.reservation_id=active_reservation.id
+            AND active_item.inventory_id=stock.id
+          GROUP BY reservation_points.point_time
+        ) concurrent
       ) booked ON true
       WHERE stock.id=ANY($1::integer[]) AND stock.status='operational'
         AND stock.availability_status='Available'

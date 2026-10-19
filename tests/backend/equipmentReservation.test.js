@@ -187,6 +187,9 @@ test('AC2 - reserves selected stock and persists who reserved it and when', asyn
   assert.match(availabilityCheck.sql, /schedule\.available_date=\$2::date/i);
   assert.match(availabilityCheck.sql, /schedule\.start_time <= \$3::time/i);
   assert.match(availabilityCheck.sql, /schedule\.end_time >= \$4::time/i);
+  assert.match(availabilityCheck.sql, /MAX\(concurrent\.quantity\)/i);
+  assert.match(availabilityCheck.sql, /GREATEST\(reservation\.start_time,\s*\$3::time\)/i);
+  assert.match(availabilityCheck.sql, /active_reservation\.end_time > reservation_points\.point_time/i);
   const items = calls.find(call => call.sql.includes('INSERT INTO event_equipment_reservation_items'));
   assert.deepEqual(JSON.parse(items.values[1]), [
     { inventory_id: 31, quantity: 2 },
