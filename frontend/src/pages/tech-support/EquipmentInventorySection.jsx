@@ -184,7 +184,7 @@ export default function EquipmentInventorySection({
     }];
   });
 
-  // A date without a complete time range may match several windows, so report the best slot as an upper bound.
+  // Partial filters report the best matching slot; a complete interval must use its lowest available quantity.
   // If the selected date has no schedule or overlapping reservation window, backend availability is full stock.
   function getAvailableQuantity(item) {
     const matchingWindows = getAvailabilityWindows(item).filter(window => (
@@ -196,7 +196,12 @@ export default function EquipmentInventorySection({
     if (dateFilter && !hasScheduledWindowsForDate && matchingWindows.length === 0) {
       return isEquipmentAvailable(item) ? Number(item.quantity) || 0 : 0;
     }
-    return Math.max(0, ...matchingWindows.map(window => Number(window.availableQuantity) || 0));
+    const quantities = matchingWindows.map(window => Number(window.availableQuantity) || 0);
+    if (fromTime && toTime && quantities.length > 0) {
+      // The minimum protects against overstating stock when concurrent reservations change within the interval.
+      return Math.min(...quantities);
+    }
+    return Math.max(0, ...quantities);
   }
 
   function clearFilters() {

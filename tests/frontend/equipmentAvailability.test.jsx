@@ -98,6 +98,33 @@ it('AC2 - shows the remaining quantity for a selected date and time range', () =
   expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('1');
 });
 
+// SCRUM-54 AC3 - A complete interval uses the least stock available across changing reservation windows.
+it('SCRUM-54 AC3 - reports availability across every overlapping reservation window', () => {
+  const item = {
+    ...inventory[0],
+    quantity: 2,
+    availabilities: [
+      {
+        date: availableDate, startTime: '09:00:00', endTime: '10:00:00',
+        status: 'Available', availableQuantity: 1, reservedQuantity: 1, isScheduled: false,
+      },
+      {
+        date: availableDate, startTime: '10:00:00', endTime: '11:00:00',
+        status: 'Reserved', availableQuantity: 0, reservedQuantity: 2, isScheduled: false,
+      },
+    ],
+  };
+  render(<EquipmentInventorySection inventory={[item]} error="" />);
+
+  // Act: request the full period, not just the interval with more free equipment.
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: availableDate } });
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '09:00' } });
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '11:00' } });
+
+  // Assert: zero units are free for the entire period because the later window is fully reserved.
+  expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('0');
+});
+
 // AC2 - A date without a full time range reports the highest matching availability as an upper bound.
 it('AC2 - labels date-only availability as an upper bound', () => {
   render(<EquipmentInventorySection inventory={inventory} error="" />);
