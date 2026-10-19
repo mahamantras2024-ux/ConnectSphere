@@ -31,14 +31,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 // Test case: Returns personal registration fixtures and checks stored event names/statuses in the attendee dashboard.
-it('attendee dashboard displays their real registration names and statuses', async () => {
+it('Status AC1 - attendee dashboard displays their real registration names and statuses', async () => {
   // Verifies the login dashboard criterion through the complete application route.
   api.get.mockImplementation(async path =>
       // Handles this operation using the surrounding screen or request state.
       path === '/auth/me' ? { user } : { registrations: [{ id: 1, event_id: 17, event_name: 'Community Day', status: 'registered', proposed_date: '2026-10-15', proposed_start_time: '09:00:00' }] });
   open('/attendee/dashboard');
   expect(await screen.findByRole('heading', { name: 'Community Day' })).toBeTruthy();
-  expect(screen.getByText('registered')).toBeTruthy();
+  expect(screen.getByText('Registered')).toBeTruthy();
   expect(api.get).toHaveBeenCalledWith('/registrations/mine', 'test-session');
 });
 // Test case: Fails registrations retrieval and checks an error rather than misleading empty-state feedback.
@@ -395,7 +395,8 @@ beforeEach(() => {
   // Arrange a real session and routing; replace only the API boundary.
   localStorage.clear(); localStorage.setItem('cs_token', 'drawer-session'); vi.clearAllMocks();
   user = { id: 7, role: 'event_organiser', full_name: 'Avery' };
-  registrations = [{ id: 1, event_id: 19, event_name: 'Community afternoon', status: 'confirmed', proposed_date: '2026-10-20', proposed_start_time: '14:00:00' }];
+  // Status AC1 uses Registered for a personal place; Confirmed is an event lifecycle label.
+  registrations = [{ id: 1, event_id: 19, event_name: 'Community afternoon', status: 'registered', proposed_date: '2026-10-20', proposed_start_time: '14:00:00' }];
   api.get.mockImplementation(async path => path === '/auth/me' ? { user } : path === '/events' ? { events: [event] } : path === '/registrations/mine' ? { registrations } : { event });
 });
 afterEach(cleanup);
@@ -461,11 +462,11 @@ it('UI1 / Organiser AC4 - failed details retain a working Back control and revea
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
 // Test case: Opens attendee details from a personal registration and checks the drawer does not request event details.
-it('UI1 / External AC7-8 - attendee registration details stay personal while the dashboard loads its published catalogue', async () => {
+it('Status AC1 / UI1 / External AC7-8 - attendee registration details stay personal while the dashboard loads its published catalogue', async () => {
   user.role = 'attendee'; open('/attendee/dashboard');
   const trigger = await screen.findByRole('button', { name: 'View registration' }); trigger.focus(); fireEvent.click(trigger);
   const drawer = screen.getByRole('dialog', { name: 'Registration details' });
-  for (const text of ['Community afternoon', 'confirmed', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
+  for (const text of ['Community afternoon', 'Registered', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
   // Dashboard now loads the published-event catalogue; opening the personal drawer must not fetch another event record.
   expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/notifications', '/registrations/mine', '/events/published']);
   fireEvent.click(within(drawer).getByRole('button', { name: 'Back to list' }));

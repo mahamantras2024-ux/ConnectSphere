@@ -8,6 +8,8 @@ const options = process.argv.slice(2);
 const stories = {
   // Sprint 3: SCRUM-61 requirements, multiple requests, status history and opt-in cancellation policy.
   'venue-booking-request': ['venueDiscoveryWorkflow','venueBookingRequestStory','venueBookingRequest','venueRequestRequirements','venueRequestLifecycle','venueBookingDecision','venueBookingRequestPostgres','venueBookingRequestMigration','organiserEvents'],
+  // The status story covers both registration views, polling races and attendee-safe API context.
+  'view-registration-status': ['viewRegistrationStatus', 'registrationStatusLabel', 'registrationResource', 'attendeeRegistration', 'attendeeEventDetails', 'attendeeEventStatus', 'attendeeWithdrawal', 'registrationModels'],
   // Withdrawal includes promotion notifications and additive migration compatibility alongside the UI/API rules.
   'withdraw-registration': ['attendeeWithdrawal', 'attendeeWithdrawalPolicy', 'attendeeWithdrawalPostgres', 'notificationMigration', 'migrateExternalEvents', 'registrationModels'],
   // Sprint 3 SCRUM-98 reuses the existing create/validation guards instead of duplicating persistence or authorization tests.

@@ -111,6 +111,16 @@ test('Register AC1 - GET exposes own status and availability and reports missing
   mock.restoreAll(); database({ context: null });
   assert.equal((await request('GET')).status, 404);
 });
+test('Status AC1 - registration reads return public event context without exposing planning states', async () => {
+  // Arrange/Act/Assert: cancellation belongs to the event context; the attendee's persisted status remains intact.
+  for (const [status, expected] of [['approved', 'confirmed'], ['confirmed', 'confirmed'], ['cancelled', 'cancelled'], ['completed', 'completed'], ['planning', null]]) {
+    database({ context: { ...event, status }, registration: { id: 7, status: 'registered' } });
+    const result = await request('GET');
+    assert.equal(result.status, 200); assert.equal(result.body.event_status, expected);
+    assert.equal(result.body.registration.status, 'registered');
+    mock.restoreAll();
+  }
+});
 test('Register AC3 - missing or invalid schedule reports a blocker without a fabricated deadline', async () => {
   for (const starts_at of [null, 'invalid']) {
     database({ context: { ...event, starts_at } });
