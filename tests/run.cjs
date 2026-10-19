@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
 // Maps each implemented story to its shared and feature-specific regression suites.
 const stories = {
+  // Coordinator reporting keeps real access middleware and drawer interactions in the story suite.
+  'coordinator-view-registration-information': ['coordinatorRegistrations', 'coordinatorRegistrationAccess', 'coordinatorRegistrationNavigation'],
   // Sprint 3 SCRUM-43: staff review/decisions, notifications, trusted audit and existing occupancy/concurrency guards.
   'venue-booking-approval': ['venueBookingApproval', 'venueRequestLifecycle', 'venueAvailabilityPostgres', 'venueBookingDecision'],
   // Sprint 3: SCRUM-61 requirements, multiple requests, status history and opt-in cancellation policy.
