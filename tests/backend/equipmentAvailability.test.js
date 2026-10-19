@@ -85,6 +85,9 @@ test('AC1 - lists the pre-provisioned equipment inventory and availability windo
   assert.match(inventorySql, /FROM equipments stock/i);
   assert.match(inventorySql, /technical_equipment_availability/i);
   assert.match(inventorySql, /SELECT schedule\.id,\s*schedule\.available_date/i);
+  assert.match(inventorySql, /'isScheduled',\s*availability\.is_scheduled/i);
+  assert.match(inventorySql, /TRUE AS is_scheduled/i);
+  assert.match(inventorySql, /FALSE AS is_scheduled/i);
   assert.match(inventorySql, /reserved_item\.quantity/i);
   assert.match(inventorySql, /'reservedQuantity',\s*COALESCE\(reserved\.quantity,\s*0\)/i);
   assert.match(inventorySql, /'blockReason'/i);

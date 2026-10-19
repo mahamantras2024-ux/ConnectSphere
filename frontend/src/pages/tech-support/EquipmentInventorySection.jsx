@@ -36,8 +36,13 @@ function getMonthGridDates(monthDate, firstVisibleDate, lastVisibleDate) {
   });
 }
 
+// Scheduled windows must contain the requested range; reservation-only windows reduce stock when they overlap it.
 function matchesFilters(window, date, fromTime, toTime) {
   if (date && window.date !== date) return false;
+  if (window.isScheduled === false && fromTime && toTime) {
+    // Synthetic reservation windows block only overlapping slots; schedules must cover the complete requested range.
+    return window.startTime.slice(0, 5) < toTime && window.endTime.slice(0, 5) > fromTime;
+  }
   if (fromTime && window.startTime.slice(0, 5) > fromTime) return false;
   if (toTime && window.endTime.slice(0, 5) < toTime) return false;
   if (fromTime && !toTime && window.endTime.slice(0, 5) <= fromTime) return false;
@@ -49,13 +54,15 @@ const getAvailabilityWindows = item => Array.isArray(item.availabilities) ? item
 // Legacy stock health values map onto explicit availability until a record is transitioned by staff.
 const getAvailabilityStatus = item => item.availability_status ||
   (item.status && item.status !== 'operational' ? 'Unavailable' : 'Available');
+const isEquipmentAvailable = item => getAvailabilityStatus(item) === 'Available' &&
+  (!item.status || item.status === 'operational');
 const formatHistoryDate = value => value
   ? new Intl.DateTimeFormat('en-SG', {
     day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
   }).format(new Date(value))
   : 'Date unavailable';
 
-const isBlockedWindow = (item, window) => getAvailabilityStatus(item) !== 'Available' ||
+const isBlockedWindow = (item, window) => !isEquipmentAvailable(item) ||
   /unavailable|maintenance|damage|blocked/i.test(String(window.status));
 
 function getBlockedReason(item, window) {
@@ -78,22 +85,34 @@ function getWindowState(item, window) {
     : 'unavailable';
 }
 
+/** Keeps a maintenance/damage reason visible beside reservation counts when a blocked asset is already booked. */
 function getWindowDetails(item, window, state) {
   const available = Number(window.availableQuantity) || 0;
   const reserved = Number(window.reservedQuantity) || 0;
   const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
-  if (state === 'unavailable') {
-    if (hasReservation) return `${reserved} reserved · ${available} available`;
+  if (isBlockedWindow(item, window)) {
+    if (reserved > 0) return `${getBlockedReason(item, window)} · ${reserved} reserved · ${available} available`;
     return getBlockedReason(item, window);
   }
-  if (reserved > 0) return `${reserved} reserved · ${available} available`;
+  if (hasReservation) return `${reserved} reserved · ${available} available`;
+  if (state === 'unavailable') return getBlockedReason(item, window);
   return `${available} available`;
 }
 
+/** Distinguishes available, reservation-limited, fully reserved, and maintenance/damage-blocked windows. */
+function getWindowLabel(item, window, state) {
+  if (isBlockedWindow(item, window)) return 'Maintenance / damage blocked';
+  const available = Number(window.availableQuantity) || 0;
+  const reserved = Number(window.reservedQuantity) || 0;
+  const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
+  if (hasReservation) return available > 0 ? 'Partially reserved' : 'Fully reserved';
+  return state === 'available' ? 'Available' : 'Unavailable';
+}
+
 /**
- * Filters the inventory by asset ID/name and availability range, and shows a month calendar for searched equipment.
- * Date/time filters retain assets whose recorded windows cover the requested range; status callbacks persist audited
- * availability transitions and return the updated inventory row through the dashboard.
+ * Filters inventory and shows availability windows; dates without a schedule use full stock unless the asset is blocked.
+ * Scheduled windows must cover the requested range, while reservation-only windows reduce stock on overlap; status
+ * callbacks persist audited availability transitions and return the updated inventory row through the dashboard.
  */
 export default function EquipmentInventorySection({
   inventory,
@@ -116,10 +135,6 @@ export default function EquipmentInventorySection({
   const [resolutionNote, setResolutionNote] = useState('');
   const [repairError, setRepairError] = useState('');
   const [repairSaving, setRepairSaving] = useState(false);
-  const [unavailableEquipmentId, setUnavailableEquipmentId] = useState(null);
-  const [unavailabilityReason, setUnavailabilityReason] = useState('');
-  const [unavailabilityError, setUnavailabilityError] = useState('');
-  const [unavailabilitySaving, setUnavailabilitySaving] = useState(false);
   const hasAvailabilityFilter = Boolean(dateFilter || fromTime || toTime);
   const hasFilter = Boolean(searchTerm.trim() || hasAvailabilityFilter);
   const invalidTimeRange = Boolean(fromTime && toTime && fromTime >= toTime);
@@ -150,12 +165,19 @@ export default function EquipmentInventorySection({
   const canMoveToNextMonth = nextMonthStart.getTime() < latestVisibleDate.getTime();
 
   const assetsToFilter = search ? searchCalendarMatches : inventory;
+  // No schedule rows means the whole date is bookable unless blocked; synthetic reservation windows still reduce stock.
   const filteredAssets = invalidTimeRange ? [] : assetsToFilter.flatMap(item => {
     const matchingWindows = getAvailabilityWindows(item).filter(window => (
       matchesFilters(window, dateFilter, fromTime, toTime)
     ));
     const availableWindows = matchingWindows.filter(window => window.status === 'Available');
-    if (hasAvailabilityFilter && (dateFilter ? matchingWindows : availableWindows).length === 0) return [];
+    const hasScheduledWindowsForDate = dateFilter && getAvailabilityWindows(item).some(window => (
+      window.date === dateFilter && window.isScheduled !== false
+    ));
+    const unscheduledDate = Boolean(dateFilter && !hasScheduledWindowsForDate);
+    if (hasAvailabilityFilter && (dateFilter
+      ? !unscheduledDate && matchingWindows.length === 0
+      : availableWindows.length === 0)) return [];
     return [{
       ...item,
       matchingWindows: availableWindows,
@@ -163,10 +185,17 @@ export default function EquipmentInventorySection({
   });
 
   // A date without a complete time range may match several windows, so report the best slot as an upper bound.
+  // If the selected date has no schedule or overlapping reservation window, backend availability is full stock.
   function getAvailableQuantity(item) {
     const matchingWindows = getAvailabilityWindows(item).filter(window => (
       matchesFilters(window, dateFilter, fromTime, toTime)
     ));
+    const hasScheduledWindowsForDate = dateFilter && getAvailabilityWindows(item).some(window => (
+      window.date === dateFilter && window.isScheduled !== false
+    ));
+    if (dateFilter && !hasScheduledWindowsForDate && matchingWindows.length === 0) {
+      return isEquipmentAvailable(item) ? Number(item.quantity) || 0 : 0;
+    }
     return Math.max(0, ...matchingWindows.map(window => Number(window.availableQuantity) || 0));
   }
 
@@ -466,7 +495,7 @@ export default function EquipmentInventorySection({
                               const dayWindows = isVisibleDate
                                 ? getAvailabilityWindows(item).filter(window => window.date === date)
                                 : [];
-                              const defaultState = getAvailabilityStatus(item) === 'Available'
+                              const defaultState = isEquipmentAvailable(item)
                                 ? 'available'
                                 : 'unavailable';
                               return (
@@ -487,14 +516,19 @@ export default function EquipmentInventorySection({
                                         {new Date(`${date}T00:00:00Z`).getUTCDate()}
                                       </span>
                                       {dayWindows.length === 0 ? (
-                                        <strong className={`equipment-calendar-status is-${defaultState}`}>
-                                          {defaultState === 'available' ? 'Available' : 'Unavailable'}
-                                        </strong>
+                                        <>
+                                          <strong className={`equipment-calendar-status is-${defaultState}`}>
+                                            {defaultState === 'available' ? 'Available' : 'Maintenance / damage blocked'}
+                                          </strong>
+                                          <small>{defaultState === 'available'
+                                            ? `${Number(item.quantity) || 0} available`
+                                            : getBlockedReason(item, { status: 'Available' })}</small>
+                                        </>
                                       ) : (
                                         <ul className="equipment-calendar-windows">
                                           {dayWindows.map((window, index) => {
                                             const state = getWindowState(item, window);
-                                            const statusLabel = state === 'available' ? 'Available' : 'Unavailable';
+                                            const statusLabel = getWindowLabel(item, window, state);
                                             return (
                                               <li
                                                 key={`${window.startTime}-${window.endTime}-${index}`}

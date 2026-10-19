@@ -127,7 +127,7 @@ p { line-height: 1.65; }
 .equipment-calendar-window { display: grid; justify-items: start; gap: 4px; min-width: 0; padding: 4px 0; color: var(--ink); font-size: 10px; }
 .equipment-calendar-window + .equipment-calendar-window { border-top: 1px solid #e9ece4; }
 .equipment-calendar-time { color: inherit; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.equipment-calendar-status { display: inline-flex; align-items: center; gap: 5px; padding: 0; color: #36542f; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+.equipment-calendar-status { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 0; color: #36542f; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: normal; }
 .equipment-calendar-status::before { width: 7px; height: 7px; border-radius: 50%; background: #68a84c; content: ""; }
 .equipment-calendar-status.is-available { color: #365c31; }
 .equipment-calendar-status.is-available::before { background: #68a84c; }

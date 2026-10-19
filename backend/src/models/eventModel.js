@@ -923,6 +923,7 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
 /** Lists equipment stock and scheduled windows with booked, available and blocked quantities. */
 /** Returns inventory with scheduled windows and reserved windows on otherwise unscheduled dates. */
 async function listEquipmentInventory() {
+  // The UI distinguishes scheduled coverage from reservation-only windows when applying unscheduled-date availability.
   const result = await pool.query(`
     SELECT stock.id, stock.asset_code, stock.name, stock.specification, stock.status,
       stock.availability_status, stock.quantity,
@@ -942,6 +943,7 @@ async function listEquipmentInventory() {
         'date', availability.available_date::text,
         'startTime', availability.start_time::text,
         'endTime', availability.end_time::text,
+        'isScheduled', availability.is_scheduled,
         'status', CASE
           WHEN stock.availability_status <> 'Available' OR stock.status <> 'operational' THEN 'Unavailable'
           WHEN COALESCE(reserved.quantity, 0) >= stock.quantity THEN 'Reserved'
@@ -967,14 +969,14 @@ async function listEquipmentInventory() {
         FILTER (WHERE availability.id IS NOT NULL), '[]'::jsonb) AS availabilities
     FROM equipments stock
     LEFT JOIN LATERAL (
-      SELECT schedule.id, schedule.available_date, schedule.start_time, schedule.end_time
+      SELECT schedule.id, schedule.available_date, schedule.start_time, schedule.end_time, TRUE AS is_scheduled
       FROM technical_equipment_availability schedule
       WHERE schedule.inventory_id=stock.id
       UNION ALL
       SELECT -row_number() OVER (
         ORDER BY reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time
       ) AS id,
-        reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time
+        reservation_slot.available_date, reservation_slot.start_time, reservation_slot.end_time, FALSE AS is_scheduled
       FROM (
         SELECT DISTINCT reservation.event_date AS available_date,
           reservation.start_time, reservation.end_time
