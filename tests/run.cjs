@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
 // Maps Sprint 1 stories and Sprint 2 venue/event stories to their regression suites.
 const stories = {
+  // The status story covers both registration views, polling races and attendee-safe API context.
+  'view-registration-status': ['viewRegistrationStatus', 'registrationStatusLabel', 'registrationResource', 'attendeeRegistration', 'attendeeEventDetails', 'attendeeEventStatus', 'attendeeWithdrawal', 'registrationModels'],
   // Withdrawal includes promotion notifications and additive migration compatibility alongside the UI/API rules.
   'withdraw-registration': ['attendeeWithdrawal', 'attendeeWithdrawalPolicy', 'attendeeWithdrawalPostgres', 'notificationMigration', 'migrateExternalEvents', 'registrationModels'],
   // Sprint 3 SCRUM-98 reuses the existing create/validation guards instead of duplicating persistence or authorization tests.
