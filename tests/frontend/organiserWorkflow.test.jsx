@@ -110,11 +110,11 @@ it('Workflow AC4 - pending draft write blocks dismissal and repeated confirmatio
  finish({message:'Draft deleted.'});await screen.findByText('Draft deleted.');
 });
 // AC4: nested confirmation handles Escape without closing the organiser's underlying event drawer.
-it('Workflow AC4 - nested update confirmation closes before event details',async()=>{
- open();fireEvent.click(await screen.findByRole('link',{name:'View details'}));await screen.findByRole('dialog',{name:'Event details'});
+it('Workflow AC4 - update confirmation closes without leaving the event page',async()=>{
+ open();fireEvent.click(await screen.findByRole('link',{name:'View details'}));await screen.findByRole('heading',{name:'Workshop'});
  fireEvent.click(await screen.findByRole('button',{name:'Edit Purpose'}));fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
- expect(screen.getAllByRole('dialog')).toHaveLength(2);fireEvent.keyDown(document,{key:'Escape'});
- expect(screen.getByRole('dialog',{name:'Event details'})).toBeTruthy();expect(api.put).not.toHaveBeenCalled();
+ expect(screen.getAllByRole('dialog')).toHaveLength(1);fireEvent.keyDown(document,{key:'Escape'});
+ expect(screen.queryByRole('dialog')).toBeNull();expect(screen.getByRole('heading',{name:'Workshop'})).toBeTruthy();expect(api.put).not.toHaveBeenCalled();
 });
 // AC3: submitting one draft must preserve unrelated rows when merging the API result.
 it('Workflow AC1 AC3 - submission preserves other drafts and completed history',async()=>{

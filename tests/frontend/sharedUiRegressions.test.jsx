@@ -7,6 +7,7 @@ import App from '../../frontend/src/App';
 import {AuthProvider,useAuth} from '../../frontend/src/context/AuthContext';
 import {api} from '../../frontend/src/api/client';
 import Modal from '../../frontend/src/components/Modal';
+import { useState } from 'react';
 import Dashboard from '../../frontend/src/pages/Dashboard';
 import EventDetail from '../../frontend/src/pages/events/EventDetail';
 import ProtectedRoute from '../../frontend/src/components/ProtectedRoute';
@@ -22,21 +23,22 @@ function open(path) { localStorage.setItem('cs_token', 'test-session'); return r
 beforeEach(() => {
   // Resets the test session and supplies authenticated empty-workspace responses.
   localStorage.clear(); api.get.mockReset(); api.post.mockReset();
-  user = { id: 8, full_name: 'Test Person', role: 'attendee', roles: ['attendee', 'venue_staff'] };
+  // Only external accounts hold several roles; staff accounts are tied to one internal role (staff login story AC1).
+  user = { id: 8, full_name: 'Test Person', role: 'attendee', roles: ['attendee', 'event_organiser'] };
   api.get.mockImplementation(async path =>
       // Handles this operation using the surrounding screen or request state.
       path === '/auth/me' ? { user } : path === '/registrations/mine' ? { registrations: [] } : path === '/venues' ? [] : { events: [] });
 });
 afterEach(cleanup);
 // Test case: Returns personal registration fixtures and checks stored event names/statuses in the attendee dashboard.
-it('attendee dashboard displays their real registration names and statuses', async () => {
+it('Status AC1 - attendee dashboard displays their real registration names and statuses', async () => {
   // Verifies the login dashboard criterion through the complete application route.
   api.get.mockImplementation(async path =>
       // Handles this operation using the surrounding screen or request state.
       path === '/auth/me' ? { user } : { registrations: [{ id: 1, event_id: 17, event_name: 'Community Day', status: 'registered', proposed_date: '2026-10-15', proposed_start_time: '09:00:00' }] });
   open('/attendee/dashboard');
   expect(await screen.findByRole('heading', { name: 'Community Day' })).toBeTruthy();
-  expect(screen.getByText('registered')).toBeTruthy();
+  expect(screen.getByText('Registered')).toBeTruthy();
   expect(api.get).toHaveBeenCalledWith('/registrations/mine', 'test-session');
 });
 // Test case: Fails registrations retrieval and checks an error rather than misleading empty-state feedback.
@@ -56,28 +58,28 @@ it('role switching replaces the token and opens only the server-approved workspa
   await screen.findByRole('heading', { name: 'Attendee Dashboard' });
   api.post.mockImplementation(async () => {
       // Handles this operation using the surrounding screen or request state.
-       user = { ...user, role: 'venue_staff' }; return { user, token: 'venue-session' }; });
-  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'venue_staff' } });
-  expect(await screen.findByRole('heading', { name: 'Venue Staff Dashboard' })).toBeTruthy();
-  expect(api.post).toHaveBeenCalledWith('/auth/switch-role', { role: 'venue_staff' }, 'test-session');
-  expect(localStorage.getItem('cs_token')).toBe('venue-session');
+       user = { ...user, role: 'event_organiser' }; return { user, token: 'organiser-session' }; });
+  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'event_organiser' } });
+  expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
+  expect(api.post).toHaveBeenCalledWith('/auth/switch-role', { role: 'event_organiser' }, 'test-session');
+  expect(localStorage.getItem('cs_token')).toBe('organiser-session');
 });
 // Test case: Fails a switch and checks the current token/workspace remain intact.
 it('failed role switching retains the existing workspace and token', async () => {
   // Ensures a denied role grant cannot change client-side authority.
   open('/attendee/dashboard'); await screen.findByRole('heading', { name: 'Attendee Dashboard' });
   api.post.mockRejectedValue(new Error('This role is not assigned to your account.'));
-  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'venue_staff' } });
+  fireEvent.change(screen.getByLabelText('Active role'), { target: { value: 'event_organiser' } });
   expect((await screen.findByRole('alert')).textContent).toMatch(/not assigned/);
   expect(localStorage.getItem('cs_token')).toBe('test-session');
   expect(screen.getByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
 });
 // Test case: Opens an assigned but inactive role dashboard and checks active-role guards deny it without switching.
 it('an inactive provisioned role cannot bypass dashboard guards without switching', async () => {
-  // A multi-role attendee must explicitly activate Venue Staff before using its workspace.
-  open('/venue/dashboard');
+  // A multi-role attendee must explicitly activate Event Organiser before using its workspace.
+  open('/organizer/dashboard');
   expect(await screen.findByRole('heading', { name: 'Attendee Dashboard' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Add venue' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Event Organiser Dashboard' })).toBeNull();
 });
 // Test case: Logs out before a switch resolves and checks the late response cannot reauthenticate.
 it('a role-switch response arriving after logout cannot restore the session', async () => {
@@ -91,14 +93,14 @@ it('a role-switch response arriving after logout cannot restore the session', as
   // Exposes context actions for controlled asynchronous session testing.
   function Probe() { const auth = useAuth(); return <><span>{auth.user?.role || 'Signed out'}</span><button onClick={() =>
       // Handles this control action and updates the screen state.
-      auth.switchRole('venue_staff').catch(() => {
+      auth.switchRole('event_organiser').catch(() => {
       // Reports a failed asynchronous operation.
       })}>Switch</button><button onClick={auth.logout}>Logout</button></>; }
   localStorage.setItem('cs_token', 'test-session'); render(<AuthProvider><Probe /></AuthProvider>);
   await screen.findByText('attendee'); fireEvent.click(screen.getByText('Switch')); fireEvent.click(screen.getByText('Logout'));
   await act(async () =>
       // Handles this operation using the surrounding screen or request state.
-      resolve({ user: { ...user, role: 'venue_staff' }, token: 'late-token' }));
+      resolve({ user: { ...user, role: 'event_organiser' }, token: 'late-token' }));
   expect(screen.getByText('Signed out')).toBeTruthy(); expect(localStorage.getItem('cs_token')).toBeNull();
 });
 // Test case: Opens venue dialogs and presses Escape, checking closure and restored opener focus.
@@ -198,6 +200,29 @@ it('registration summaries support absent results and absent event metadata', as
   api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{registrations:[{id:1,event_id:17,status:'registered'}]});open(<App/>,'/registrations');
   expect(await screen.findByRole('heading',{name:'Event #17'})).toBeTruthy();expect(screen.getByText('Date not specified')).toBeTruthy();
 });
+// UI1: real nested venue/review dialogs still dismiss only the top layer after event drawers are removed.
+it('UI1 - Escape dismisses only the top review and outside clicks dismiss its remaining parent', () => {
+  const closeParent = vi.fn();
+  /** Keeps dialog visibility in real React state so the modal stack and cleanup are exercised together. */
+  function NestedReview() {
+    const [review, setReview] = useState(false);
+    return <Modal title="Venue details" onClose={closeParent}><p>Parent content</p><button onClick={() => setReview(true)}>Review venue change</button>
+      {review && <Modal title="Confirm change" onClose={() => setReview(false)}><p>Review content</p></Modal>}
+    </Modal>;
+  }
+  const view = render(<NestedReview />);
+  fireEvent.click(screen.getByText('Parent content'));
+  expect(closeParent).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Review venue change' }));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('dialog', { name: 'Confirm change' })).toBeNull();
+  expect(screen.getByRole('dialog', { name: 'Venue details' })).toBeTruthy();
+  expect(closeParent).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('dialog', { name: 'Venue details' }).parentElement);
+  expect(closeParent).toHaveBeenCalledOnce();
+  view.unmount();
+});
+
 // Test case: Presses Tab/Shift+Tab/Escape and checks dialog focus wrapping, closure and restored page scrolling.
 it('dialog Tab and Shift+Tab wrap focus and closing restores scrolling',()=>{
   document.body.style.overflow='auto';const close=vi.fn();const view=render(<Modal title="Test" onClose={close}><input aria-label="Field"/><button>Last</button></Modal>);
@@ -266,10 +291,12 @@ beforeEach(()=>{
   user={id:8,full_name:'Chris Lee',email:'chris@example.test',role:'technical_support',roles:['technical_support']};
   api.get.mockImplementation(async(path)=>{
     if(path === '/auth/me') return {user};
+    if(path === '/events/on-site-support') return {events:[]};
     if(path === '/events/assignments') return {events:[],coordinators:[]};
     if(path === '/events/equipment-requests') return {requests:[]};
     if(path === '/events/equipment-inventory') return {inventory:[]};
     if(path === '/events/equipment-reservations') return {requests:[],reservations:[]};
+    if(path === '/events/equipment-reservation-issues') return {affectedReservations:[]};
     throw new Error(`Unexpected API route: ${path}`);
   });
 });
@@ -298,7 +325,7 @@ it.each([
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations']
+    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations','/events/equipment-reservation-issues']
     : role === 'safety_officer' ? ['/auth/me','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
@@ -312,13 +339,14 @@ it('Internal AC1 AC5 - Technical Support queue loads without optional profile fi
   expect(screen.queryByText('Not recorded')).toBeNull();
   expect(api.get).toHaveBeenCalledWith('/events/equipment-requests','staff-session');
 });
-// Test case: Multi-role identity stays on the active Technical Support workspace without venue-only controls.
-it('Internal AC1 AC5 - multi-role Technical Support session does not gain venue controls',async()=>{
-  user.roles=['technical_support','venue_staff'];open('/tech-support/dashboard');
+// Test case: A single-role Technical Support account gets no role switcher and no venue-only controls.
+it('Internal AC1 AC5 - single-role Technical Support session has no switcher and no venue controls',async()=>{
+  user.roles=['technical_support'];open('/tech-support/dashboard');
   fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
   await screen.findByRole('heading',{name:'Pending equipment requests'});
   expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Add venue'})).toBeNull();
+  expect(screen.queryByLabelText('Active role')).toBeNull();
 });
 
 // Test case: Safety staff keep the existing profile fallback when the role list and identity details are absent.
@@ -353,7 +381,8 @@ it.each([
   // Assert: the real role screen opens and the tab identifies the current workspace.
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   expect(link.getAttribute('aria-current')).toBe('page');
-  expect(nav.getAllByRole('link')).toHaveLength(2); // Brand plus one workspace tab.
+  // Coordinators also have a distinct venue-discovery tab; it must not duplicate the event workspace.
+  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 3 : 2);
 });
 
 });
@@ -366,7 +395,8 @@ beforeEach(() => {
   // Arrange a real session and routing; replace only the API boundary.
   localStorage.clear(); localStorage.setItem('cs_token', 'drawer-session'); vi.clearAllMocks();
   user = { id: 7, role: 'event_organiser', full_name: 'Avery' };
-  registrations = [{ id: 1, event_id: 19, event_name: 'Community afternoon', status: 'confirmed', proposed_date: '2026-10-20', proposed_start_time: '14:00:00' }];
+  // Status AC1 uses Registered for a personal place; Confirmed is an event lifecycle label.
+  registrations = [{ id: 1, event_id: 19, event_name: 'Community afternoon', status: 'registered', proposed_date: '2026-10-20', proposed_start_time: '14:00:00' }];
   api.get.mockImplementation(async path => path === '/auth/me' ? { user } : path === '/events' ? { events: [event] } : path === '/registrations/mine' ? { registrations } : { event });
 });
 afterEach(cleanup);
@@ -377,19 +407,17 @@ function open(path) { render(<MemoryRouter initialEntries={[path]}><AuthProvider
 it.each([
   ['event_organiser', '/organizer/dashboard', 'Event Organiser Dashboard'],
   ['event_coordinator', '/coordinator/dashboard', 'Event Coordinator Dashboard'],
-])('UI1 / Organiser AC1 / Coordinator AC1 - %s details close back to the originating dashboard', async (role, path, heading) => {
+])('UI1 / Organiser AC1 / Coordinator AC1 - %s full-page details return to the originating dashboard', async (role, path, heading) => {
   user.role = role; open(path);
   await screen.findByRole('heading', { name: heading });
   const trigger = await screen.findByRole('link', { name: 'View details' }); trigger.focus();
   fireEvent.click(trigger);
-  const drawer = await screen.findByRole('dialog', { name: 'Event details' });
-  expect(await within(drawer).findByRole('heading', { name: event.name })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: event.name })).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByRole('heading', { name: heading })).toBeNull();
-  expect(document.body.style.overflow).toBe('hidden');
-  fireEvent.click(within(drawer).getByRole('button', { name: 'Close dialog' }));
-  expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
-  await waitFor(() => expect(document.activeElement).toBe(trigger));
   expect(document.body.style.overflow).not.toBe('hidden');
+  fireEvent.click(screen.getByRole('link', { name: role === 'event_coordinator' ? 'Back to Assigned Events' : 'Back to Events' }));
+  expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
 });
 
 // Test case: AC3 - shows a submitted critical change request in the assigned coordinator's dashboard inbox.
@@ -410,49 +438,37 @@ it('AC3 - assigned Event Coordinator sees pending critical change details and th
   expect(screen.getByRole('heading', { name: event.name })).toBeTruthy();
 });
 // Test case: Opens organiser details and checks Escape and Back dismiss the drawer without leaving its list.
-it('UI1 / Organiser AC1 - Escape and Back dismiss event details without leaving the event list', async () => {
+it('UI1 / Organiser AC1 - full-page details stay open on Escape and return using Back', async () => {
+  // A full page must not disappear on Escape as the old popup did.
   open('/organizer/events');
   fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
-  await screen.findByRole('dialog'); fireEvent.keyDown(document, { key: 'Escape' });
-  expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('link', { name: 'View details' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Back to list' }));
-  expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
-});
-// Test case: UI1 - event details open centered and clicking the unfocused backdrop closes the popup.
-it('UI1 - centered event details close when the organiser clicks outside the focused popup', async () => {
-  open('/organizer/events');
-  fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Event details' });
-  expect(dialog.classList.contains('centered-detail-panel')).toBe(true);
-  fireEvent.click(dialog);
-  expect(screen.getByRole('dialog', { name: 'Event details' })).toBeTruthy();
-  fireEvent.click(dialog.parentElement);
-  expect(screen.queryByRole('dialog', { name: 'Event details' })).toBeNull();
+  await screen.findByRole('heading', { name: event.name });
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.getByRole('heading', { name: event.name })).toBeTruthy();
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
   expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
 });
 // Test case: Fails detail retrieval and checks no private data appears and Close still works.
-it('UI1 / Organiser AC4 - failed details retain a working close control and reveal no record', async () => {
+it('UI1 / Organiser AC4 - failed details retain a working Back control and reveal no record', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user };
     if (path === '/events') return { events: [event] };
     throw new Error('Event not found.');
   });
   open('/organizer/dashboard'); fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
-  const drawer = await screen.findByRole('dialog');
-  expect((await within(drawer).findByRole('alert')).textContent).toBe('Event not found.');
-  expect(within(drawer).queryByText(event.purpose)).toBeNull();
-  fireEvent.click(within(drawer).getByRole('button', { name: 'Close dialog' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('Event not found.');
+  expect(screen.queryByText(event.purpose)).toBeNull();
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
 // Test case: Opens attendee details from a personal registration and checks the drawer does not request event details.
-it('UI1 / External AC7-8 - attendee registration details stay personal while the dashboard loads its published catalogue', async () => {
+it('Status AC1 / UI1 / External AC7-8 - attendee registration details stay personal while the dashboard loads its published catalogue', async () => {
   user.role = 'attendee'; open('/attendee/dashboard');
   const trigger = await screen.findByRole('button', { name: 'View registration' }); trigger.focus(); fireEvent.click(trigger);
   const drawer = screen.getByRole('dialog', { name: 'Registration details' });
-  for (const text of ['Community afternoon', 'confirmed', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
+  for (const text of ['Community afternoon', 'Registered', '2026-10-20', '14:00']) expect(within(drawer).getByText(text)).toBeTruthy();
   // Dashboard now loads the published-event catalogue; opening the personal drawer must not fetch another event record.
-  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/registrations/mine', '/events/published']);
+  expect(api.get.mock.calls.map(call => call[0])).toEqual(['/auth/me', '/notifications', '/registrations/mine', '/events/published']);
   fireEvent.click(within(drawer).getByRole('button', { name: 'Back to list' }));
   expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(trigger);
   fireEvent.click(trigger); fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));

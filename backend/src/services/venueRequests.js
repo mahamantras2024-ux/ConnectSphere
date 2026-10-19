@@ -1,5 +1,7 @@
 const { pool } = require('../config/db');
 const { HOLD_DURATION_MS, hasConflict } = require('./venueAvailability');
+const { insertNotifications } = require('./notificationService');
+const { requirements } = require('./venueRequestRequirements');
 
 /** Attaches an HTTP status to an expected domain error for the existing Express error boundary. */
 function reject(status, message) { return Object.assign(new Error(message), { status }); }
@@ -44,11 +46,15 @@ async function recordedPeriods(client, venueId) {
     FROM venue_bookings WHERE venue_id=$1
     UNION ALL
     SELECT id, 'unavailability' AS kind, 'unavailable' AS status, start_datetime, end_datetime, NULL::timestamptz AS hold_expires_at
-    FROM venue_unavailability WHERE venue_id=$1`, [venueId])).rows;
+    FROM venue_unavailability WHERE venue_id=$1
+    UNION ALL
+    SELECT id, 'unavailability' AS kind, 'unavailable' AS status, start_datetime, end_datetime, NULL::timestamptz AS hold_expires_at
+    FROM venue_schedule_periods WHERE venue_id=$1 AND status='unavailable'`, [venueId])).rows;
 }
 
-/** Creates an assignment-authorized hold after locking the venue and checking the full occupied window. */
+/** Creates an assignment-authorized hold with a requirements snapshot and opt-in cancellation policy; returns the stored request after checking the full occupied window. */
 async function createVenueRequest(venueId, body, userId) {
+  const details = requirements(body);
   const start = timestamp(body.startDatetime), end = timestamp(body.endDatetime);
   if (!validId(venueId) || !validId(body.eventId) || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     throw reject(400, 'Choose a valid venue, event and positive event period with explicit timezones.');
@@ -62,16 +68,19 @@ async function createVenueRequest(venueId, body, userId) {
     const candidate = { kind: 'booking', start_datetime: body.startDatetime, end_datetime: body.endDatetime };
     if (hasConflict(candidate, periods, venue, now)) throw reject(409, 'The requested period is unavailable, including setup and turnaround.');
     return (await client.query(`INSERT INTO venue_bookings
-      (venue_id, event_id, requested_by, start_datetime, end_datetime, status, created_at, hold_expires_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      (venue_id, event_id, requested_by, start_datetime, end_datetime, status, created_at, hold_expires_at, requirements, cancel_other_pending)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) RETURNING *`,
     [venue.id, Number(body.eventId), userId, new Date(start).toISOString(), new Date(end).toISOString(), 'pending',
-      new Date(now).toISOString(), new Date(now + HOLD_DURATION_MS).toISOString()])).rows[0];
+      new Date(now).toISOString(), new Date(now + HOLD_DURATION_MS).toISOString(), JSON.stringify(details.requirements), details.cancelOtherPending])).rows[0];
   });
 }
 
 /** Applies an explicit staff decision; even a late approval must recheck current blockers without relying on the old hold. */
-async function decideVenueRequest(venueId, requestId, decision, userId) {
+async function decideVenueRequest(venueId, requestId, decision, userId, reason) {
   if (!validId(venueId) || !validId(requestId) || !['approved', 'rejected'].includes(decision)) throw reject(400, 'Choose a valid request and approval or rejection decision.');
+  if (reason != null && typeof reason !== 'string') throw reject(400, 'The decision reason must be text.');
+  // Rejection notes explain why the booking was declined; approvals never retain an irrelevant reason.
+  const decisionNotes = decision === 'rejected' ? reason?.trim() || null : null;
   return withVenue(Number(venueId), async (client, venue) => {
     const request = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
     if (!request) throw reject(404, 'Venue request not found.');
@@ -80,8 +89,19 @@ async function decideVenueRequest(venueId, requestId, decision, userId) {
       const periods = await recordedPeriods(client, venue.id);
       if (hasConflict(request, periods, venue, Date.now(), request.id)) throw reject(409, 'The requested period is no longer available.');
     }
-    return (await client.query(`UPDATE venue_bookings SET status=$1, decision_by=$2, updated_at=$3
-      WHERE id=$4 AND venue_id=$5 RETURNING *`, [decision, userId, new Date(Date.now()).toISOString(), request.id, venue.id])).rows[0];
+    const decided = (await client.query(`UPDATE venue_bookings SET status=$1, decision_by=$2, updated_at=$3, decision_notes=$4
+      WHERE id=$5 AND venue_id=$6 RETURNING *`, [decision, userId, new Date(Date.now()).toISOString(), decisionNotes, request.id, venue.id])).rows[0];
+    const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [request.event_id])).rows[0];
+    // Store the notification inside the same transaction: a decision cannot commit without its coordinator notice.
+    // The existing event-details type covers this venue-arrangement change without widening database permissions or constraints.
+    await insertNotifications(client, [{ userId: event.coordinator_id ?? request.requested_by, eventId: event.id, changeRequestId: null,
+      type: 'event_details_changed', title: `Venue booking ${decision}: ${event.name}`,
+      message: `${event.name}: venue booking #${request.id} at ${venue.name} was ${decision}.${decisionNotes ? `\nReason or alternative arrangement: ${decisionNotes}` : ''}`,
+      // Keep a separate durable audit snapshot, even if a later arrangement change updates the booking timestamp.
+      details: { kind: 'venue_booking_decision', bookingId: request.id, venueId: venue.id, decision,
+        decisionBy: userId, decidedAt: decided.updated_at, notes: decisionNotes },
+    }]);
+    return decided;
   });
 }
 

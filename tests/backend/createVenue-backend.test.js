@@ -161,3 +161,49 @@ test('US1 - [400 Bad Request] Reject venue creation when required fields are mis
   assert.equal(res.status, 400);
   assert.match(res.body.message, /required/i);
 });
+// SCRUM-98 AC1/AC2 / OFC AC1: authorised creation must persist and return every emergency-access category and line.
+test('SCRUM-98 AC1 AC2 / OFC AC1 - Venue Staff save emergency access and known restrictions with a new venue', async () => {
+  // Arrange: the two safety facts are the last two insert parameters (after the MRT distance).
+  let insert;
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [{ ...user, auth_version: 0 }] };
+    insert = { sql, values };
+    return { rows: [{ id: 3, emergency_access: values[16], known_restrictions: values[17] }] };
+  });
+  // Act
+  const emergencyAccess = 'Emergency exits: north stairwell on Level 1.\nVehicle access: Marina Road loading gate.\nEvacuation: east lobby to assembly area A.\nRestrictions/obstructions: gate height 3 metres; keep lane clear.';
+  const result = await apiRequest('/api/venues', { method: 'POST', authorization: `Bearer ${generateToken()}`,
+    body: { ...sampleVenue, emergencyAccess: ` ${emergencyAccess} `, knownRestrictions: 'No open flames' } });
+  // Assert
+  assert.equal(result.status, 201);
+  assert.match(insert.sql, /mrt_distance_m,\s+emergency_access, known_restrictions, emergency_documents\s+\)/);
+  assert.deepEqual(insert.values.slice(16,18), [emergencyAccess, 'No open flames']);
+  assert.equal(result.body.venue.emergency_access, emergencyAccess, 'The created record must return every saved line for subsequent display.');
+});
+
+// Upload AC: inspect actual SQL parameters; a response-only implementation would not satisfy these assertions.
+test('SCRUM-98 upload AC - creates and retrieves both emergency documents through the venue API',async()=>{
+  const procedure={name:'procedure.pdf',data:Buffer.from('%PDF-procedure').toString('base64')};
+  const floorPlan={name:'plan.png',data:Buffer.from('89504e470d0a1a0a','hex').toString('base64')};
+  let stored;
+  mock.method(pool,'query',async(sql,values)=>{
+    if(sql.includes('FROM users'))return {rows:[user]};
+    if(sql.includes('INSERT INTO venues')) {
+      assert.match(sql,/emergency_documents/);
+      stored={id:98,emergency_documents:JSON.parse(values[18])};return {rows:[stored]};
+    }
+    assert.match(sql,/SELECT \* FROM venues WHERE id/);return {rows:[stored]};
+  });
+  const response=await apiRequest('/api/venues',{method:'POST',authorization:`Bearer ${generateToken()}`,body:{...sampleVenue,emergencyDocuments:{procedure,floorPlan}}});
+  assert.equal(response.status,201);
+  const expected={procedure:{...procedure,type:'application/pdf',size:14},floorPlan:{...floorPlan,type:'image/png',size:8}};
+  assert.deepEqual(response.body.venue.emergency_documents,expected);
+  assert.deepEqual((await apiRequest('/api/venues/98')).body.emergency_documents,expected);
+});
+
+test('SCRUM-98 upload AC - rejects disguised file contents before any venue insert',async()=>{
+  const query=mock.method(pool,'query',async(sql)=>{assert.match(sql,/FROM users/);return {rows:[user]};});
+  const response=await apiRequest('/api/venues',{method:'POST',authorization:`Bearer ${generateToken()}`,body:{...sampleVenue,emergencyDocuments:{procedure:{name:'plan.pdf',data:Buffer.from('<script>bad</script>').toString('base64')}}}});
+  assert.equal(response.status,400);assert.match(response.body.message,/contents do not match/);
+  assert.equal(query.mock.callCount(),1,'Only authentication may query the database for an invalid file.');
+});

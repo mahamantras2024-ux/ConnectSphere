@@ -26,15 +26,18 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // pg keeps the password non-enumerable; preserve it explicitly without logging credentials.
     database = new Pool({ ...pool.options, password: pool.options.password, options: `-c search_path=${schema}`, application_name: schema, max: 10 });
     await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT, role TEXT, auth_version INTEGER DEFAULT 0, roles TEXT[] DEFAULT '{}');
-      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id));
-      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT);
+      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id), name TEXT,
+        expected_attendance INTEGER DEFAULT 100, room_layout_preference TEXT DEFAULT 'Seminar', accessibility_requirements TEXT[] DEFAULT '{Ramp}');
+      CREATE TABLE notifications(id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id), event_id INTEGER,
+        change_request_id INTEGER, type TEXT, title TEXT, message TEXT, details JSONB);
+      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00');
       INSERT INTO users(id,role) VALUES (1,'event_coordinator'),(2,'venue_staff');
-      INSERT INTO events VALUES (3,1),(4,1);
+      INSERT INTO events(id,coordinator_id,name) VALUES (3,1,'Gala'),(4,1,'Workshop');
       INSERT INTO venues VALUES (7,'Hall A','Available'),(8,'Hall B','Available')`);
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
     try {
-      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql']) await client.query(migration(file));
+      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql']) await client.query(migration(file));
     } finally { client.release(); }
     // Redirect only connection acquisition. All route SQL, constraints, locking and commits run on real PostgreSQL.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));
@@ -57,9 +60,9 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
 
   beforeEach(async () => {
     // Test data is isolated even between cases; catalogue status must never become a venue-wide hold.
-    await database.query('TRUNCATE venue_bookings, venue_unavailability RESTART IDENTITY');
+    await database.query('TRUNCATE venue_bookings, venue_unavailability, venue_schedule_periods, notifications RESTART IDENTITY');
     writerPids.clear();
-    await database.query('UPDATE venues SET setup_minutes=30, turnaround_minutes=15 WHERE id=7');
+    await database.query("UPDATE venues SET is_active=true, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
   });
 
   after(async () => {
@@ -192,15 +195,38 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
 
   test('AC7 - staff decisions persist, rejection releases the slot and request IDs remain venue scoped', async () => {
     // Arrange
-    const created = await request('/7/requests', body);
+    const created = await request('/7/requests', { ...body, capacity: 40, layout: 'Theatre', accessibility: ['Step-free'] });
     assert.equal(created.status, 201);
     // Act / Assert: another venue must not allow deciding this request by its globally unique ID.
+    const queue = await request('/requests/pending', undefined, 'GET', 2);
+    assert.equal(queue.status, 200);
+    // SCRUM-43 AC1: the query must retrieve the per-request snapshot, not the event's default 100/Seminar/Ramp.
+    assert.equal(queue.body.requests[0].expected_attendance, 40);
+    assert.equal(queue.body.requests[0].room_layout_preference, 'Theatre');
+    assert.deepEqual(queue.body.requests[0].accessibility_requirements, ['Step-free']);
     assert.equal((await request(`/8/requests/${created.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2)).status, 404);
     assert.equal((await request(`/7/requests/${created.body.request.id}/decision`, { decision: 'rejected' }, 'PUT', 2)).status, 200);
     const replacement = await request('/7/requests', body);
     assert.equal(replacement.status, 201);
     assert.equal((await request(`/7/requests/${replacement.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2)).status, 200);
     assert.deepEqual((await database.query('SELECT status,decision_by FROM venue_bookings ORDER BY id')).rows, [{ status: 'rejected', decision_by: 2 }, { status: 'approved', decision_by: 2 }]);
+    // SCRUM-43 AC5/AC7: each committed decision has a separate durable coordinator/audit notice.
+    const notices = (await database.query('SELECT user_id, details FROM notifications ORDER BY id')).rows;
+    assert.deepEqual(notices.map(note => [note.user_id, note.details.decisionBy, note.details.decision]), [[1, 2, 'rejected'], [1, 2, 'approved']]);
+    assert.ok(notices.every(note => Number.isFinite(Date.parse(note.details.decidedAt))));
+  });
+
+  test('SCRUM-43 AC2 AC3 AC5 AC7 - concurrent opposing decisions commit one audit and notification only', async () => {
+    // Arrange: both staff calls target the same locked pending request; PostgreSQL supplies real serialization.
+    const created = await request('/7/requests', body);
+    const path = `/7/requests/${created.body.request.id}/decision`;
+    const decisions = await Promise.all(['approved', 'rejected'].map(decision => request(path, { decision }, 'PUT', 2)));
+    assert.deepEqual(decisions.map(result => result.status).sort(), [200, 409]);
+    const persisted = (await database.query('SELECT status, decision_by, updated_at FROM venue_bookings')).rows[0];
+    const notes = (await database.query('SELECT details FROM notifications')).rows;
+    assert.equal(notes.length, 1); assert.equal(notes[0].details.decision, persisted.status);
+    assert.equal(notes[0].details.decisionBy, persisted.decision_by);
+    assert.equal(new Date(notes[0].details.decidedAt).getTime(), persisted.updated_at.getTime());
   });
 
   test('AC3 AC5 - moving and deleting recorded maintenance updates only the affected venue schedules', async () => {
@@ -225,5 +251,43 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     await assert.rejects(database.query("INSERT INTO venue_bookings(venue_id,event_id,requested_by,start_datetime,end_datetime,status) VALUES (7,3,1,$1,$2,'approved')", [at('10:00'), at('11:00')]), { code: '23514' });
     assert.equal((await request('/7/requests', body)).status, 404);
     assert.equal((await database.query('SELECT count(*)::integer AS n FROM venue_bookings')).rows[0].n, 0);
+  });
+
+  test('Schedule AC1 AC2 AC6 AC7 - saved day replaces prior periods and both roles see booking-safe results', async () => {
+    // Arrange: staff write one unavailable period for Hall A in the real database.
+    const first = await request('/7/schedule', { date, periods: [{ status: 'unavailable', start: '12:00', end: '13:00' }] }, 'PUT', 2);
+    assert.equal(first.status, 200);
+    // Act: a later day save replaces it with an explicitly available period.
+    const replacement = await request('/7/schedule', { date, periods: [{ status: 'available', start: '12:00', end: '13:00' }] }, 'PUT', 2);
+    const staffView = await request(`/7/schedule?date=${date}`, undefined, 'GET', 2);
+    const coordinatorView = await request(`/7/schedule?date=${date}`, undefined, 'GET', 1);
+    // Assert: replacement and venue scoping come from persisted SQL rows, not an in-memory route mock.
+    assert.equal(replacement.status, 200);
+    assert.deepEqual(staffView.body.map(item => item.status), ['available']);
+    assert.deepEqual(coordinatorView.body.map(item => item.status), ['available']);
+    assert.deepEqual((await request(`/8/schedule?date=${date}`, undefined, 'GET')).body, []);
+    // A confirmed booking then prevents a closure, preserving the saved available row.
+    await database.query("INSERT INTO venue_bookings(venue_id,event_id,requested_by,start_datetime,end_datetime,status) VALUES (7,3,1,$1,$2,'approved')", [at('10:00'), at('11:00')]);
+    const conflict = await request('/7/schedule', { date, periods: [{ status: 'unavailable', start: '10:30', end: '11:30' }] }, 'PUT', 2);
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.body.affectedBookings.length, 1);
+    assert.deepEqual((await database.query('SELECT status FROM venue_schedule_periods')).rows, [{ status: 'available' }]);
+  });
+
+  test('Schedule AC3 AC6 AC7 - saved closures block requests, late approvals and direct database bookings', async () => {
+    // Arrange: a pending request exists before staff close its time; AC6 protects confirmed bookings only.
+    const pending = await request('/7/requests', { ...body, startDatetime: at('12:15'), endDatetime: at('12:45') });
+    assert.equal(pending.status, 201);
+    // Act: the persisted closure must affect both API paths and the PostgreSQL booking guard.
+    const saved = await request('/7/schedule', { date, periods: [{ status: 'unavailable', start: '12:00', end: '13:00' }] }, 'PUT', 2);
+    const newRequest = await request('/7/requests', { ...body, eventId: 4, startDatetime: at('12:30'), endDatetime: at('12:45') });
+    const approval = await request(`/7/requests/${pending.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2);
+    const direct = "INSERT INTO venue_bookings(venue_id,event_id,requested_by,start_datetime,end_datetime,status) VALUES (7,4,1,$1,$2,'approved')";
+    // Assert: no available mark or stale pending hold overrides the unavailable period.
+    assert.equal(saved.status, 200);
+    assert.equal(newRequest.status, 409);
+    assert.equal(approval.status, 409);
+    await assert.rejects(database.query(direct, [at('12:30'), at('12:45')]), { code: '23P01' });
+    assert.deepEqual((await database.query('SELECT status FROM venue_bookings')).rows, [{ status: 'pending' }]);
   });
 });

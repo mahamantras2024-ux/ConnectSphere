@@ -30,3 +30,21 @@ test('hourly rates accept zero and decimal amounts but reject ambiguous prices a
   assert.equal(validateVenue({...valid,pricing:'0'}).pricing,'0.00');
   for(const pricing of ['from $500','$500/hr','-1','1.234','1e3','100000000','NaN'])assert.throws(()=>validateVenue({...valid,pricing}),/hourly rate/);
 });
+
+// Operational Feasibility Check AC1: optional venue safety facts, at most 2000 characters after trimming.
+for (const field of ['emergencyAccess', 'knownRestrictions']) {
+  const story = field === 'emergencyAccess' ? 'SCRUM-98 AC1 AC2 / OFC AC1' : 'OFC AC1';
+  // Test case: Boundary values just below, at and just above the limit, with surrounding spaces that do not count.
+  test(`${story} - ${field} accepts up to 2000 characters and refuses 2001`, () => {
+    assert.equal(validateVenue({ ...valid, [field]: 'x'.repeat(1999) })[field].length, 1999);
+    assert.equal(validateVenue({ ...valid, [field]: ` ${'x'.repeat(2000)} ` })[field].length, 2000);
+    assert.throws(() => validateVenue({ ...valid, [field]: 'x'.repeat(2001) }), { message: `${field} must be text of at most 2000 characters.` });
+  });
+  // Test case: Missing or blank means "not recorded"; non-text is refused.
+  test(`${story} - ${field} is optional, stored trimmed, blank as not recorded, and must be text`, () => {
+    assert.equal(validateVenue(valid)[field], null);
+    assert.equal(validateVenue({ ...valid, [field]: '   ' })[field], null);
+    assert.equal(validateVenue({ ...valid, [field]: '  Exit via Level 1  ' })[field], 'Exit via Level 1');
+    assert.throws(() => validateVenue({ ...valid, [field]: 42 }), { message: `${field} must be text of at most 2000 characters.` });
+  });
+}

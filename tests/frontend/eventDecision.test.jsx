@@ -152,6 +152,7 @@ it('AR AC7 - sending a clarification refreshes whether a decision is allowed', a
   open('/events/101');
   await within(await decisionPanel()).findByRole('button', { name: 'Approve event' });
   expect(decisionLoads()).toBe(1);
+  fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
   fireEvent.click(screen.getByLabelText('Event name'));
   fireEvent.change(screen.getByLabelText('What needs clarification?'), { target: { value: 'Confirm the title.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send clarification request' }));
@@ -229,7 +230,7 @@ it('AR AC6 - the organiser receives the decision as a dashboard notification and
 const queuedEvent = { id: 101, name: 'Community Workshop', proposed_date: '2030-10-15', proposed_start_time: '10:00:00', proposed_end_time: '12:00:00',
   expected_attendance: 80, room_layout_preference: 'Theatre', accessibility_requirements: ['Ramp', 'Hearing loop'],
   equipment_items: [{ item: 'Projector', quantity: 1 }], technical_support_required: true, video_conferencing_required: true, equipment_notes: ' Spare batteries ',
-  venues: [{ name: 'Hall A', capacity: 100 }], latest_safety_check: { outcome: 'changes_requested', notes: 'Widen aisles' } };
+  venues: [{ name: 'Hall A', capacity: 100 }], latest_safety_check: { outcome: 'changes_requested', notes: 'Widen aisles', change_areas: ['venue'] } };
 const sparseEvent = { id: 102, name: 'Sparse Talk', proposed_date: null, proposed_start_time: '09:00:00', proposed_end_time: null, expected_attendance: null,
   room_layout_preference: null, accessibility_requirements: [], equipment_items: [], technical_support_required: false, video_conferencing_required: false,
   equipment_notes: null, venues: [{ name: 'Room B', capacity: 20 }], latest_safety_check: null };
@@ -248,10 +249,11 @@ it('AR AC1 - the Safety Officer sees each ready event with the facts the safety 
   const panel = await openSafety({ events: [queuedEvent, sparseEvent] });
   await within(panel).findByText('Community Workshop', { selector: 'strong' });
   expect(within(panel).getByText('2 ready')).toBeTruthy();
-  expect(facts(card(panel, 'Community Workshop'))).toEqual({ 'Date and time': '2030-10-15, 10:00–12:00', 'Expected attendance': '80', Venue: 'Hall A (capacity 100)',
+  // The six Week 7 facts; the Operational Feasibility Check facts are covered in operationalSafetyCheck.test.jsx.
+  expect(facts(card(panel, 'Community Workshop'))).toMatchObject({ 'Date and time': '2030-10-15, 10:00–12:00', 'Expected attendance': '80', Venue: 'Hall A (capacity 100)',
     Layout: 'Theatre', Accessibility: 'Ramp, Hearing loop', Equipment: 'Projector × 1; On-site technical support; Video-conferencing / hybrid; Spare batteries' });
   expect(within(card(panel, 'Community Workshop')).getByText('Last check: Changes requested')).toBeTruthy();
-  expect(facts(card(panel, 'Sparse Talk'))).toEqual({ 'Date and time': 'Not specified, 09:00–?', 'Expected attendance': 'Not specified', Venue: 'Room B (capacity 20)',
+  expect(facts(card(panel, 'Sparse Talk'))).toMatchObject({ 'Date and time': 'Not specified, 09:00–?', 'Expected attendance': 'Not specified', Venue: 'Room B (capacity 20)',
     Layout: 'Not specified', Accessibility: 'None recorded', Equipment: 'None requested' });
   expect(within(card(panel, 'Sparse Talk')).getByText('Not yet checked')).toBeTruthy();
 });

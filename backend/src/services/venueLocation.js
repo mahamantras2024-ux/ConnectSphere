@@ -37,7 +37,8 @@ async function geocode(path,params) {
   const data=(raw.features||[]).map(feature=> { // Normalizes a provider address without trusting its coordinates.
    const [longitude,latitude]=feature.geometry.coordinates,p=feature.properties;
    const address=[p.name,[p.housenumber,p.street].filter(Boolean).join(' '),p.postcode,p.city||p.country].filter(Boolean);
-   return {location:[...new Set(address)].join(', ').slice(0,255),latitude,longitude};
+   // A map point may be a park or road without a postal code; never fabricate one from nearby coordinates.
+   return {location:[...new Set(address)].join(', ').slice(0,255),latitude,longitude,postalCode:/^\d{6}$/.test(p.postcode)?p.postcode:null};
   }).filter(item=> {try {validateCoordinates(item.latitude,item.longitude);return true;}catch{return false;}});
   if(cache.size>=500)cache.delete(cache.keys().next().value);
   cache.set(url,{data,expires:Date.now()+86400000});return data;

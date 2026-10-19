@@ -44,10 +44,39 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_recent ON notifications(user_id, created_at DESC, id DESC);
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 -- Widen the allowed types to include event decisions and safety checks; keeps every change-request type.
+-- Migrations re-run on every deploy, so 006, 012 and 013 must all allow the same complete list of notification types;
+-- otherwise a re-run fails on stored notifications of a type a later migration added.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
-ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN ('change_request_submitted',
-  'change_request_approved', 'change_request_rejected', 'event_details_changed',
-  'event_approved', 'event_rejected', 'safety_check_recorded'));
+DO $$
+DECLARE
+  allowed_types TEXT;
+BEGIN
+  -- Include legacy types already stored so validation never requires deleting notification history.
+  SELECT string_agg(quote_literal(type), ', ' ORDER BY type)
+  INTO allowed_types
+  FROM (
+    SELECT unnest(ARRAY[
+      'change_request_submitted',
+      'change_request_approved',
+      'change_request_rejected',
+      'event_details_changed',
+      'event_approved',
+      'event_rejected',
+      'safety_check_recorded',
+      'technical_support_assigned',
+      'technical_support_unassigned',
+      'event_cancelled',
+      'equipment_status_changed', 'waitlist_promoted'
+    ]::text[]) AS type
+    UNION
+    SELECT DISTINCT type FROM notifications
+  ) AS notification_types;
+
+  EXECUTE format(
+    'ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN (%s))',
+    allowed_types
+  );
+END $$;
 
 -- Access goes through the API's per-user scoping, never Supabase's public roles.
 DO $$ BEGIN

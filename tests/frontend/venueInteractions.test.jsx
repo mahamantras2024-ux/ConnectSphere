@@ -16,6 +16,28 @@ vi.mock('../../frontend/src/pages/venues/VenueMap',()=>({default:({onPick})=><bu
 const venue={id:7,name:'Test hall',location:'Existing address',capacity:100,facilities:['Wi-Fi'],supported_layouts:['Theatre'],accessibility_features:['Ramp'],operating_hours:'08:00 - 22:00',availability_status:'Available',revision:0};
 beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue([venue]);});
 afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs();});
+it('Schedule AC8 - View details keeps the selected schedule hidden until View schedule is pressed',async()=>{
+ // Arrange: venue 7 is the selected catalogue card; schedule reads are scoped to its ID.
+ api.get.mockImplementation(async path=>path==='/venues'?[venue,{...venue,id:8,name:'Other hall'}]:[]);
+ render(<VenueList/>);
+ const cards=await screen.findAllByRole('article');
+ const detailsAction=within(cards[0]).getByRole('button',{name:/View details/});
+ // Assert: each card has one navigation action, placed after its rate at the footer's far edge.
+ expect(within(cards[0]).queryByRole('button',{name:'View schedule'})).toBeNull();
+ expect(within(cards[1]).queryByRole('button',{name:'View schedule'})).toBeNull();
+ expect(detailsAction.parentElement.lastElementChild).toBe(detailsAction);
+ // Act: opening details for the first venue shows its profile only.
+ fireEvent.click(detailsAction);
+ // Assert: the schedule has neither rendered nor requested data before the drawer action.
+ expect(screen.queryByRole('heading',{name:'Test hall schedule'})).toBeNull();
+ expect(api.get.mock.calls.some(([path])=>path.includes('/schedule'))).toBe(false);
+ // Act: the explicit drawer action reveals the selected venue's schedule.
+ fireEvent.click(screen.getByRole('button',{name:'View schedule'}));
+ // Assert: the selected venue's schedule opens, without showing another venue's schedule.
+ expect(await screen.findByRole('heading',{name:'Test hall schedule'})).toBeTruthy();
+ expect(screen.queryByRole('heading',{name:'Other hall schedule'})).toBeNull();
+ expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/^\/venues\/7\/schedule\?date=/),'staff');
+});
 // Test case: Returns wrapped/sparse venues and settles requests after unmount, checking unavailable labels and ignored late data.
 it('handles object catalogues and missing details without fictional values',async()=>{
  api.get.mockResolvedValue({venues:[{id:7,name:'Sparse venue'}]});render(<VenueList/>);
@@ -129,7 +151,7 @@ it('a late failure from a superseded map point is not shown',async()=>{
 // Test case: Simulates image read failure/replacement and checks the error, reader cancellation and new preview.
 it('[SCRUM-35 AC1] - image read failures show a useful error and a second upload cancels the first reader',()=>{
  const readers=[];class Reader {constructor(){readers.push(this);}abort=vi.fn();readAsDataURL=vi.fn();}
- vi.stubGlobal('FileReader',Reader);const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);const input=view.baseElement.querySelector('input[type="file"]');
+ vi.stubGlobal('FileReader',Reader);const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);const input=screen.getByLabelText('Venue image');
  fireEvent.change(input,{target:{files:[]}});expect(readers).toHaveLength(0);
  fireEvent.change(input,{target:{files:[new File(['image'],'a.png',{type:'image/png'})]}});act(()=>readers[0].onerror());expect(screen.getByRole('alert').textContent).toMatch(/Unable to read/);
  fireEvent.change(input,{target:{files:[new File(['image'],'b.png',{type:'image/png'})]}});expect(readers[0].abort).toHaveBeenCalledOnce();readers[1].result='data:image/png;base64,YQ==';act(()=>readers[1].onload());expect(screen.getByAltText('Venue preview').src).toContain('data:image/png');
@@ -170,7 +192,7 @@ it('[SCRUM-35 AC1] - invalid lists, turnaround, operating hours and excessive ho
 });
 // Test case: Selects an image larger than five megabytes and checks rejection before reading.
 it('[SCRUM-35 AC1] - oversized images are rejected before reading',()=>{
- const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);fireEvent.change(view.baseElement.querySelector('input[type="file"]'),{target:{files:[{type:'image/png',size:5*1024*1024+1}]}});expect(screen.getByRole('alert').textContent).toBe('Images must be 5 MB or smaller.');
+ const view=render(<AddVenueModal venue={venue} onClose={()=>{}}/>);fireEvent.change(screen.getByLabelText('Venue image'),{target:{files:[{type:'image/png',size:5*1024*1024+1}]}});expect(screen.getByRole('alert').textContent).toBe('Images must be 5 MB or smaller.');
 });
 // Test case: Searches/selects an address and checks pending notifications at each request start/end.
 it('map search and selection notify the form when location work starts and ends',async()=>{

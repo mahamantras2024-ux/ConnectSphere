@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import SafetyChangesPanel from './SafetyChangesPanel';
 
 // Checklist labels for the server's readiness requirements (eventDecisionPolicy REQUIREMENTS).
 const REQUIREMENT_LABELS = {
@@ -18,6 +19,7 @@ function formatTime(value) {
 /**
  * Event review decision panel.
  * - Organisers (and other viewers) see the recorded outcome with its reason, or that a decision is pending (AC6).
+ * - While the Safety Officer's requested changes are open, both see them and the coordinator can mark each complete.
  * - The assigned coordinator also sees each readiness requirement and can approve only when the server allows it;
  *   rejection opens an optional reason (AC1-AC3, AC7). The server re-checks every rule, so the buttons are guidance.
  * @param {{ event: object, onDecided: (status: string) => void }} props `onDecided` updates the page's status label.
@@ -80,6 +82,9 @@ export default function EventDecisionSection({ event, onDecided }) {
       </div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
+      {/* Operational Feasibility Check AC3/AC4: stages the Safety Officer reopened, shown while any is still open. */}
+      {review?.safetyChanges && <SafetyChangesPanel eventId={event.id} changes={review.safetyChanges} coordinator={coordinator} token={token}
+        onChanged={() => setReloadKey((key) => key + 1)} />}
       {/* Plain text (not an alert) so a decision-panel outage never masks the event page's own errors. */}
       {loadError ? <p className="error-message">{loadError}</p> : !review ? <p role="status" className="loading-state">Loading review decision...</p> : outcome ? (
         <dl className="grid gap-3 md:grid-cols-2">

@@ -12,12 +12,18 @@
     "test:coverage": "node ../tests/run.cjs backend coverage",
     "test:coverage:sprint-one": "node ../tests/run.cjs backend coverage sprint-one",
     "migrate:external-events": "node src/db/migrateExternalEvents.js",
+    "migrate:attendee-registration": "node src/db/migrateExternalEvents.js --attendee-registration",
+    "migrate:attendee-withdrawal": "node src/db/migrateExternalEvents.js --attendee-withdrawal",
+    "migrate:technical-support": "node src/db/migrateTechnicalSupportAssignments.js",
+    "migrate:venue-booking-requests": "node src/db/migrateVenueBookingRequests.js",
     "setup:sprint-one": "node src/db/setupSprintOne.js",
     "setup:venue-management": "node src/db/setupVenueManagement.js",
     "setup:venue-availability": "node src/db/setupVenueAvailability.js",
+    "seed:equipment-reservation-release": "node src/db/seedEquipmentReservationRelease.js",
     "test:venue-availability:integration": "RUN_VENUE_AVAILABILITY_DB=1 node --test ../tests/backend/venueAvailabilityPostgres.test.js",
     "provision:account": "node src/db/provisionAccount.js",
-    "test:integration": "node ../tests/run.cjs integration"
+    "test:integration": "node ../tests/run.cjs integration",
+    "migrate:venue-emergency-documents": "node src/db/migrateExternalEvents.js --venue-emergency-documents"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
