@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { HOLD_DURATION_MS, hasConflict } = require('./venueAvailability');
+const { insertNotifications } = require('./notificationService');
 const { requirements } = require('./venueRequestRequirements');
 
 /** Attaches an HTTP status to an expected domain error for the existing Express error boundary. */
@@ -88,8 +89,19 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason) 
       const periods = await recordedPeriods(client, venue.id);
       if (hasConflict(request, periods, venue, Date.now(), request.id)) throw reject(409, 'The requested period is no longer available.');
     }
-    return (await client.query(`UPDATE venue_bookings SET status=$1, decision_by=$2, updated_at=$3, decision_notes=$4
+    const decided = (await client.query(`UPDATE venue_bookings SET status=$1, decision_by=$2, updated_at=$3, decision_notes=$4
       WHERE id=$5 AND venue_id=$6 RETURNING *`, [decision, userId, new Date(Date.now()).toISOString(), decisionNotes, request.id, venue.id])).rows[0];
+    const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [request.event_id])).rows[0];
+    // Store the notification inside the same transaction: a decision cannot commit without its coordinator notice.
+    // The existing event-details type covers this venue-arrangement change without widening database permissions or constraints.
+    await insertNotifications(client, [{ userId: event.coordinator_id ?? request.requested_by, eventId: event.id, changeRequestId: null,
+      type: 'event_details_changed', title: `Venue booking ${decision}: ${event.name}`,
+      message: `${event.name}: venue booking #${request.id} at ${venue.name} was ${decision}.${decisionNotes ? `\nReason or alternative arrangement: ${decisionNotes}` : ''}`,
+      // Keep a separate durable audit snapshot, even if a later arrangement change updates the booking timestamp.
+      details: { kind: 'venue_booking_decision', bookingId: request.id, venueId: venue.id, decision,
+        decisionBy: userId, decidedAt: decided.updated_at, notes: decisionNotes },
+    }]);
+    return decided;
   });
 }
 

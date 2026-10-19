@@ -8,6 +8,8 @@ const options = process.argv.slice(2);
 const stories = {
   // Coordinator reporting keeps real access middleware and drawer interactions in the story suite.
   'coordinator-view-registration-information': ['coordinatorRegistrations', 'coordinatorRegistrationAccess', 'coordinatorRegistrationNavigation'],
+  // Sprint 3 SCRUM-43: staff review/decisions, notifications, trusted audit and existing occupancy/concurrency guards.
+  'venue-booking-approval': ['venueBookingApproval', 'venueRequestLifecycle', 'venueAvailabilityPostgres', 'venueBookingDecision'],
   // Sprint 3: SCRUM-61 requirements, multiple requests, status history and opt-in cancellation policy.
   'venue-booking-request': ['venueDiscoveryWorkflow','venueBookingRequestStory','venueBookingRequest','venueRequestRequirements','venueRequestLifecycle','venueBookingDecision','venueBookingRequestPostgres','venueBookingRequestMigration','organiserEvents'],
   // The status story covers both registration views, polling races and attendee-safe API context.

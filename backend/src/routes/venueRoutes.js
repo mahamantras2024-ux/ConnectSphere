@@ -12,7 +12,8 @@ const { validateCoordinates, nearestMrt, geocode } = require('../services/venueL
 const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { venueSchedule, saveVenueSchedule } = require('../controllers/venueScheduleController');
-const { createRequest, decideRequest } = require('../controllers/venueRequestController');
+const { createRequest, decideRequest, listPendingRequests } = require('../controllers/venueRequestController');
+router.get('/requests/pending', requireAuth, requireRole('venue_staff'), asyncHandler(listPendingRequests));
 const { searchVenues } = require('../services/venueSearch');
 // Coordinator-only search returns catalogue records, never other events' private booking metadata.
 router.get('/search', requireAuth, requireRole('event_coordinator'), asyncHandler(async (req, res) => {
