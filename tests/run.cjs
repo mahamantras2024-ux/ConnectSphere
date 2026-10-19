@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
 // Maps each implemented story to its shared and feature-specific regression suites.
 const stories = {
+  // Sprint 3 SCRUM-43: staff review/decisions, notifications, trusted audit and existing occupancy/concurrency guards.
+  'venue-booking-approval': ['venueBookingApproval', 'venueRequestLifecycle', 'venueAvailabilityPostgres', 'venueBookingDecision'],
   // Sprint 3: SCRUM-61 requirements, multiple requests, status history and opt-in cancellation policy.
   'venue-booking-request': ['venueDiscoveryWorkflow','venueBookingRequestStory','venueBookingRequest','venueRequestRequirements','venueRequestLifecycle','venueBookingDecision','venueBookingRequestPostgres','venueBookingRequestMigration','organiserEvents'],
   // The status story covers both registration views, polling races and attendee-safe API context.

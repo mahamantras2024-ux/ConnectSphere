@@ -26,7 +26,10 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // pg keeps the password non-enumerable; preserve it explicitly without logging credentials.
     database = new Pool({ ...pool.options, password: pool.options.password, options: `-c search_path=${schema}`, application_name: schema, max: 10 });
     await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT, role TEXT, auth_version INTEGER DEFAULT 0, roles TEXT[] DEFAULT '{}');
-      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id), name TEXT);
+      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id), name TEXT,
+        expected_attendance INTEGER DEFAULT 100, room_layout_preference TEXT DEFAULT 'Seminar', accessibility_requirements TEXT[] DEFAULT '{Ramp}');
+      CREATE TABLE notifications(id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id), event_id INTEGER,
+        change_request_id INTEGER, type TEXT, title TEXT, message TEXT, details JSONB);
       CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00');
       INSERT INTO users(id,role) VALUES (1,'event_coordinator'),(2,'venue_staff');
       INSERT INTO events(id,coordinator_id,name) VALUES (3,1,'Gala'),(4,1,'Workshop');
@@ -57,7 +60,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
 
   beforeEach(async () => {
     // Test data is isolated even between cases; catalogue status must never become a venue-wide hold.
-    await database.query('TRUNCATE venue_bookings, venue_unavailability, venue_schedule_periods RESTART IDENTITY');
+    await database.query('TRUNCATE venue_bookings, venue_unavailability, venue_schedule_periods, notifications RESTART IDENTITY');
     writerPids.clear();
     await database.query("UPDATE venues SET is_active=true, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
   });
@@ -192,15 +195,38 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
 
   test('AC7 - staff decisions persist, rejection releases the slot and request IDs remain venue scoped', async () => {
     // Arrange
-    const created = await request('/7/requests', body);
+    const created = await request('/7/requests', { ...body, capacity: 40, layout: 'Theatre', accessibility: ['Step-free'] });
     assert.equal(created.status, 201);
     // Act / Assert: another venue must not allow deciding this request by its globally unique ID.
+    const queue = await request('/requests/pending', undefined, 'GET', 2);
+    assert.equal(queue.status, 200);
+    // SCRUM-43 AC1: the query must retrieve the per-request snapshot, not the event's default 100/Seminar/Ramp.
+    assert.equal(queue.body.requests[0].expected_attendance, 40);
+    assert.equal(queue.body.requests[0].room_layout_preference, 'Theatre');
+    assert.deepEqual(queue.body.requests[0].accessibility_requirements, ['Step-free']);
     assert.equal((await request(`/8/requests/${created.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2)).status, 404);
     assert.equal((await request(`/7/requests/${created.body.request.id}/decision`, { decision: 'rejected' }, 'PUT', 2)).status, 200);
     const replacement = await request('/7/requests', body);
     assert.equal(replacement.status, 201);
     assert.equal((await request(`/7/requests/${replacement.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2)).status, 200);
     assert.deepEqual((await database.query('SELECT status,decision_by FROM venue_bookings ORDER BY id')).rows, [{ status: 'rejected', decision_by: 2 }, { status: 'approved', decision_by: 2 }]);
+    // SCRUM-43 AC5/AC7: each committed decision has a separate durable coordinator/audit notice.
+    const notices = (await database.query('SELECT user_id, details FROM notifications ORDER BY id')).rows;
+    assert.deepEqual(notices.map(note => [note.user_id, note.details.decisionBy, note.details.decision]), [[1, 2, 'rejected'], [1, 2, 'approved']]);
+    assert.ok(notices.every(note => Number.isFinite(Date.parse(note.details.decidedAt))));
+  });
+
+  test('SCRUM-43 AC2 AC3 AC5 AC7 - concurrent opposing decisions commit one audit and notification only', async () => {
+    // Arrange: both staff calls target the same locked pending request; PostgreSQL supplies real serialization.
+    const created = await request('/7/requests', body);
+    const path = `/7/requests/${created.body.request.id}/decision`;
+    const decisions = await Promise.all(['approved', 'rejected'].map(decision => request(path, { decision }, 'PUT', 2)));
+    assert.deepEqual(decisions.map(result => result.status).sort(), [200, 409]);
+    const persisted = (await database.query('SELECT status, decision_by, updated_at FROM venue_bookings')).rows[0];
+    const notes = (await database.query('SELECT details FROM notifications')).rows;
+    assert.equal(notes.length, 1); assert.equal(notes[0].details.decision, persisted.status);
+    assert.equal(notes[0].details.decisionBy, persisted.decision_by);
+    assert.equal(new Date(notes[0].details.decidedAt).getTime(), persisted.updated_at.getTime());
   });
 
   test('AC3 AC5 - moving and deleting recorded maintenance updates only the affected venue schedules', async () => {
