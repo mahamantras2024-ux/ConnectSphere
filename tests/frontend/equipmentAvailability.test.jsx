@@ -126,6 +126,70 @@ it('AC2 - treats an available calendar window with no quantity as available', ()
   expect(within(screen.getByRole('table', { name: 'PROJ-001 monthly availability' })).getAllByText('Available').length).toBeGreaterThan(0);
 });
 
+// AC2 - A missing quantity is available only when the window explicitly has Available status.
+it('AC2 - keeps a null-quantity window unavailable when its status is not Available', () => {
+  // Arrange: Pending avoids the explicit-available and blocked-status paths.
+  const date = getDateOffset(8);
+  const item = {
+    ...inventory[0],
+    availabilities: [{
+      date,
+      startTime: '10:00:00',
+      endTime: '11:00:00',
+      status: 'Pending',
+      availableQuantity: null,
+    }],
+  };
+  render(<EquipmentInventorySection inventory={[item]} error="" />);
+
+  // Act: search the item to render its availability calendar.
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'PROJ-001' },
+  });
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  const dateLabel = new Intl.DateTimeFormat('en-SG', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${date}T00:00:00Z`));
+  const day = within(calendar).getByLabelText(`Availability on ${dateLabel} for PROJ-001`);
+  const availabilityWindow = within(day).getByRole('listitem');
+
+  // Assert: absent quantity never presents an unconfirmed status as available.
+  expect(availabilityWindow.classList.contains('is-unavailable')).toBe(true);
+  expect(within(availabilityWindow).getByText('Unavailable')).toBeTruthy();
+  expect(within(availabilityWindow).getByText('Pending')).toBeTruthy();
+});
+
+// AC2 - A missing status must not make a window with unknown stock look available.
+it('AC2 - defaults an unspecified status to unavailable when quantity is unknown', () => {
+  // Arrange: omitting status exercises the empty-string fallback rather than an explicit status.
+  const date = getDateOffset(9);
+  const item = {
+    ...inventory[0],
+    availabilities: [{
+      date,
+      startTime: '10:00:00',
+      endTime: '11:00:00',
+      availableQuantity: null,
+    }],
+  };
+  render(<EquipmentInventorySection inventory={[item]} error="" />);
+
+  // Act: find the item calendar and its window for the date with unknown stock.
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'PROJ-001' },
+  });
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  const dateLabel = new Intl.DateTimeFormat('en-SG', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${date}T00:00:00Z`));
+  const day = within(calendar).getByLabelText(`Availability on ${dateLabel} for PROJ-001`);
+  const availabilityWindow = within(day).getByRole('listitem');
+
+  // Assert: only an explicit Available status can render an unknown quantity as available.
+  expect(availabilityWindow.classList.contains('is-unavailable')).toBe(true);
+  expect(within(availabilityWindow).getByText('Unavailable')).toBeTruthy();
+});
+
 // AC3 - Fully reserved equipment remains visible with zero available for its selected slot.
 it('AC3 - shows zero available when the selected date window is fully reserved', () => {
   render(<EquipmentInventorySection inventory={inventory} error="" />);
