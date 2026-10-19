@@ -45,7 +45,7 @@ after(async () => {
 /** Supplies source-owned event and registration rows while asserting ownership comes from the session. */
 async function databaseQuery(sql, values = []) {
   if (/FROM users\s+WHERE id = \$1/.test(sql)) return { rows: [{ ...fixture.user, id: values[0] }] };
-  if (/FROM events\s+e/.test(sql)) {
+  if (/^\s*SELECT e\.id/.test(sql)) {
     assert.match(sql, /e\.organiser_id\s*=\s*\$2/);
     assert.deepEqual(values, ['101', authenticatedId]);
     return fixture.event && fixture.event.organiser_id === values[1]
@@ -54,7 +54,9 @@ async function databaseQuery(sql, values = []) {
   }
   if (/FROM registrations\s+r/.test(sql)) {
     assert.match(sql, /ORDER BY r\.registered_at ASC, r\.id ASC/);
-    assert.deepEqual(values, ['101']);
+    assert.match(sql, /e\.organiser_id=\$2/);
+    assert.deepEqual(values, ['101', authenticatedId]);
+    if (fixture.failRegistrations) throw new Error('Registration read failed');
     return { rows: fixture.registrations };
   }
   throw new Error(`Unexpected database query: ${sql}`);
@@ -76,6 +78,15 @@ test('AC1 AC2 - summary counts stored waitlist entries and registrations over co
   // Assert: the status totals remain source-status counts while waitlist includes persisted and capacity overflow.
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.event, { id: 101, name: 'Community Workshop', venue_capacity: 3 });
+  // The new drawer report is additive: retain the existing combined waiting-list contract below.
+  assert.equal(response.body.details.headcount, 4);
+  assert.equal(response.body.details.waitlist_count, 1);
+  assert.equal(response.body.details.withdrawal_count, 1);
+  assert.equal(response.body.details.venue_capacity, 3);
+  assert.equal(response.body.details.overflow_count, 1);
+  assert.deepEqual(response.body.details.registered.map(row => row.id), [1, 2, 3, 4]);
+  assert.deepEqual(response.body.details.waitlist.map(row => row.id), [5]);
+  assert.deepEqual(response.body.details.overflow.map(row => [row.id, row.status]), [[4, 'registered']]);
   assert.deepEqual(response.body.summary, {
     headcount: 4,
     waitlist_count: 2,
@@ -106,6 +117,9 @@ for (const [capacity, expectedOverflow] of [[5, 0], [4, 0], [3, 1]]) {
     const response = await request('/101/registrations');
     // Assert: no one is overflowed below or exactly at capacity; one latest registration is overflowed above it.
     assert.equal(response.status, 200);
+    assert.equal(response.body.details.overflow_count, expectedOverflow);
+    assert.equal(response.body.details.waitlist_count, 0);
+    assert.deepEqual(response.body.details.overflow.map(row => row.id), expectedOverflow ? [4] : []);
     assert.equal(response.body.summary.waitlist_count, expectedOverflow);
     assert.deepEqual(response.body.summary.waitlist.map(row => row.registration_id), expectedOverflow ? [4] : []);
   });
@@ -119,6 +133,9 @@ test('AC2 - keeps persisted waitlist entries visible when no confirmed venue cap
   const response = await request('/101/registrations');
   // Assert
   assert.equal(response.status, 200);
+  assert.equal(response.body.details.venue_capacity, null);
+  assert.equal(response.body.details.overflow_count, null);
+  assert.deepEqual(response.body.details.waitlist.map(row => row.id), [5]);
   assert.deepEqual(response.body.summary.waitlist.map(row => row.registration_id), [5]);
 });
 
@@ -150,4 +167,44 @@ test('AC3 - non-organiser roles are denied before registration data is queried',
   const response = await request('/101/registrations', coordinator);
   // Assert
   assert.equal(response.status, 403);
+});
+
+for (const withdrawals of [0, 2]) {
+  test(`AC1 - drawer reports ${withdrawals} withdrawals without changing active headcount`, async () => {
+    // Arrange: zero and multiple withdrawals are separate from active attendance totals.
+    fixture.registrations = fixture.registrations.filter(row => row.status !== 'withdrawn');
+    for (let i = 0; i < withdrawals; i++) fixture.registrations.push({ id: 10 + i, status: 'withdrawn' });
+    // Act / Assert
+    const response = await request('/101/registrations');
+    assert.equal(response.body.details.withdrawal_count, withdrawals);
+    assert.equal(response.body.details.headcount, 4);
+    assert.equal(response.body.details.waitlist_count, 1);
+    assert.equal(response.body.summary.status_breakdown.withdrawn, withdrawals);
+  });
+}
+
+test('AC1 AC2 - an empty event reports zero counts and no calculated overflow', async () => {
+  // Arrange / Act
+  fixture.registrations = [];
+  const response = await request('/101/registrations');
+  // Assert
+  assert.deepEqual(response.body.details, { event: response.body.event, registered: [], waitlist: [], overflow: [],
+    headcount: 0, waitlist_count: 0, withdrawal_count: 0, venue_capacity: 3, overflow_count: 0 });
+});
+
+test('AC3 - unauthenticated direct requests are denied before any database read', async () => {
+  // Arrange / Act
+  const response = await fetch(`${base}/101/registrations`);
+  // Assert
+  assert.equal(response.status, 401);
+  assert.equal(pool.query.mock.callCount(), 0);
+});
+
+test('AC1 - database failure is an error rather than a fabricated empty report', async () => {
+  // Arrange / Act
+  fixture.failRegistrations = true;
+  const response = await request('/101/registrations');
+  // Assert
+  assert.equal(response.status, 500);
+  assert.equal(response.body.details, undefined);
 });

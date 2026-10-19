@@ -6,6 +6,8 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 
 import { api } from '../../api/client';
 
+import { OrganiserRegistrationAction } from '../event-organiser/OrganiserRegistrationDrawer';
+
 import ActionConfirmation from '../../components/ActionConfirmation';
 
 import EventAttachments from '../../components/EventAttachments';
@@ -56,7 +58,7 @@ const STYLES = `
 
 .ed-root *, .ed-root *::before, .ed-root *::after { box-sizing: border-box; }
 
-/* Separate adjacent navigation buttons without changing their existing pill styling. */
+/* Keep neighbouring event action buttons visually separate. */
 .ed-back { display: inline-flex; margin-bottom: 16px; margin-inline-end: 12px; }
 
 
@@ -866,6 +868,7 @@ export default function EventDetail() {
 
       {backLink}
 
+      {user.role === 'event_organiser' && <OrganiserRegistrationAction eventId={event.id} token={token} />}
       {coordinatorWorkspace && <CoordinatorRegistrations eventId={event.id} token={token} />}
 
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
@@ -1049,11 +1052,7 @@ export default function EventDetail() {
 
           </dl>
 
-          {user.role === 'event_organiser' && (
-            <Link className="button-link button-secondary" to={`/organizer/events/${id}/registrations`}>
-              View registration details
-            </Link>
-          )}
+
 
         </section>
 

@@ -25,6 +25,8 @@ const stories = {
   // Staff login and role-based access: one internal role per account, own dashboard only (Safety Officer RBAC story).
   'staff-role-access': ['staffRoleAccess','login','sharedApiRegressions','sharedUiRegressions','coordinatorLeadPostgres'],
   'external-auth': ['login','externalRegistration','ExternalRegister','PasswordReset','externalPasswordReset','sharedApiRegressions','sharedUiRegressions'],
+  // Organiser reporting includes the owner-scoped API, drawer navigation and shared live-resource regressions.
+  'event-organiser-registration-information': ['eventRegistrationDetails', 'registrationResource'],
   'organiser-events': ['organiserEvents','registrationModels','sharedUiRegressions'],
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
