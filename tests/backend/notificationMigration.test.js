@@ -20,43 +20,40 @@ const supportedNotificationTypes = [
   'technical_support_unassigned',
   'event_cancelled',
   'equipment_status_changed',
+  'equipment_reservation_affected',
   'waitlist_promoted',
 ];
 
 // Migration compatibility - Existing stored and current application notification types must survive reruns.
 test('Withdraw AC2 / Migration compatibility - preserves stored and supported notification types', () => {
-  // Arrange
   const typeList = migration.match(/ARRAY\[([\s\S]*?)\]::text\[\]/);
   assert.ok(typeList, 'The migration must retain an explicit list of supported notification types.');
 
-  // Act
   const supportedTypes = [...typeList[1].matchAll(/'([^']+)'/g)].map(([, type]) => type);
 
-  // Assert: data already stored is unioned into the allowed set before PostgreSQL validates the new constraint.
   assert.deepEqual(supportedTypes, supportedNotificationTypes);
   assert.match(migration, /SELECT DISTINCT type FROM notifications/i);
   assert.match(migration, /EXECUTE format\([\s\S]*ADD CONSTRAINT notifications_type_check/i);
 });
 
-test('Withdraw AC2 / Migration compatibility - later constraints retain every supported notification type', () => {
-  // Arrange
-  const laterMigrations = [
+test('Migration compatibility - later notification migrations retain every supported type', () => {
+  const migrationFiles = [
+    '008-technical-support-assignments.sql',
     '012-event-cancellation-notifications.sql',
     '013-equipment-review-affected-items.sql',
-  ].map(file => fs.readFileSync(
-    path.join(__dirname, '../../backend/src/db/migrations', file),
-    'utf8',
-  ));
+  ];
 
-  // Act: collect each subsequent migration's replacement constraint.
-  const typeLists = laterMigrations.map(sql => {
-    const constraint = sql.match(/ADD CONSTRAINT notifications_type_check CHECK \(type IN \(([\s\S]*?)\)\);/);
-    assert.ok(constraint, 'Each later migration must define the notification type constraint.');
-    return [...constraint[1].matchAll(/'([^']+)'/g)].map(([, type]) => type);
-  });
+  for (const migrationFile of migrationFiles) {
+    const migrationSql = fs.readFileSync(
+      path.join(__dirname, '../../backend/src/db/migrations', migrationFile),
+      'utf8',
+    );
+    const constraint = migrationSql.match(
+      /ADD CONSTRAINT notifications_type_check CHECK \(type IN \(([\s\S]*?)\)\);/,
+    );
+    assert.ok(constraint, `${migrationFile} must define the notification type constraint.`);
 
-  // Assert: later reruns cannot narrow the set and reject assignment or previously stored notifications.
-  for (const types of typeLists) {
-    assert.deepEqual(types, supportedNotificationTypes);
+    const acceptedTypes = [...constraint[1].matchAll(/'([^']+)'/g)].map(([, type]) => type);
+    assert.deepEqual(acceptedTypes, supportedNotificationTypes, `${migrationFile} must preserve every notification type.`);
   }
 });

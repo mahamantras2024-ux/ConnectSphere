@@ -140,6 +140,53 @@ it('Coordinator AC1 / Workspace AC1 - assigned coordinator opens dashboard event
   expect(screen.queryByRole('dialog', {name:'Event details'})).toBeNull();expect(api.get).toHaveBeenCalledWith('/events/101','organiser-token');
 });
 
+// AC2: coordinators can save support assignments from the dashboard for only the event requiring support.
+it('AC2 - saves technical support staff from the coordinator dashboard', async () => {
+  user = { ...user, role: 'event_coordinator' };
+  const assignedEvent = { ...event, technical_support_required: true, technical_support_staff: [] };
+  const unrelatedEvent = { ...event, id: 102, name: 'Planning Meeting', technical_support_required: false };
+  const supportMember = { id: 41, full_name: 'Taylor Support' };
+  api.get.mockImplementation(async path => {
+    if (path === '/auth/me') return { user };
+    if (path === '/events') return { events: [assignedEvent, unrelatedEvent] };
+    if (path === '/events/technical-support-staff') return { staff: [supportMember] };
+    if (path === '/notifications') return { notifications: [], unreadCount: 0 };
+    return { requests: [] };
+  });
+  api.put.mockResolvedValue({});
+  open('/coordinator/dashboard');
+
+  const assignmentCard = (await screen.findByRole('heading', { name: 'Community Workshop' })).closest('article');
+  expect(assignmentCard).toBeTruthy();
+  fireEvent.click(within(assignmentCard).getByLabelText(/Taylor Support/));
+  fireEvent.click(within(assignmentCard).getByRole('button', { name: 'Assign staff' }));
+
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+    '/events/101/technical-support-assignment',
+    { staffIds: [41] },
+    'organiser-token',
+  ));
+  expect(within(assignmentCard).getByRole('button', { name: 'Assignment saved' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Planning Meeting' }).closest('article')
+    .querySelector('.support-assignment-form')).toBeNull();
+});
+
+// AC2: if the staff directory cannot be loaded, the coordinator sees that failure on support-required events.
+it('AC2 - reports a failed technical support staff directory load', async () => {
+  user = { ...user, role: 'event_coordinator' };
+  api.get.mockImplementation(async path => {
+    if (path === '/auth/me') return { user };
+    if (path === '/events') return { events: [{ ...event, technical_support_required: true }] };
+    if (path === '/events/technical-support-staff') throw new Error('Staff directory is unavailable.');
+    if (path === '/notifications') return { notifications: [], unreadCount: 0 };
+    return { requests: [] };
+  });
+  open('/coordinator/dashboard');
+
+  expect(await screen.findByText('Staff directory is unavailable.')).toBeTruthy();
+  expect(api.put).not.toHaveBeenCalled();
+});
+
 it('SCRUM-45 AC1 AC2 AC3 / SCRUM-61 AC3 AC4 - assigned coordinator submits a request and immediately sees its status', async () => {
   // Arrange: the coordinator opens an assigned event and receives one selectable venue.
   user = { ...user, role: 'event_coordinator' };

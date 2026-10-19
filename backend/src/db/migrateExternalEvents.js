@@ -60,6 +60,8 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/014-active-equipment-reservation-uniqueness.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/012-equipment-repair-history.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/014-equipment-reservation-unavailability.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/015-equipment-replacement-suggestions.sql'), 'utf8'));
+    console.log('Event, equipment, reservation-impact, support-assignment, venue-safety, and notification database upgrades are ready.');
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/20261018021358_venue_emergency_information.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/015-attendee-registration.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/016-attendee-withdrawal.sql'), 'utf8'));

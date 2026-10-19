@@ -36,16 +36,51 @@ function itemStatusText(item) {
 export default function EquipmentStatusSection({ eventId, token }) {
   const [view, setView] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+  const [decisionIssue, setDecisionIssue] = useState(null);
+  const [decisionError, setDecisionError] = useState('');
+  const [decisionMessage, setDecisionMessage] = useState('');
 
   useEffect(() => {
     api.get(`/events/${eventId}/equipment-status`, token)
       .then((data) => {
         // This panel is supplementary: an unexpected response (e.g. an older API) must not break the event page.
         if (!STATUS_LABELS[data?.status] || !Array.isArray(data.items) || !Array.isArray(data.history)) throw new Error('Equipment request status is unavailable right now.');
-        setView(data); setLoadError('');
+        setView({
+          ...data,
+          replacementSuggestions: Array.isArray(data.replacementSuggestions) ? data.replacementSuggestions : [],
+        });
+        setLoadError('');
       })
       .catch((err) => setLoadError(err.message));
-  }, [eventId, token]);
+  }, [eventId, token, reloadKey]);
+
+  async function decideReplacement(suggestion, outcome) {
+    setDecisionIssue(suggestion.id);
+    setDecisionError('');
+    setDecisionMessage('');
+    try {
+      const result = await api.post(
+        `/events/${eventId}/equipment-reservation-issues/${suggestion.id}/decision`,
+        { outcome },
+        token,
+      );
+      setView(current => ({
+        ...current,
+        replacementSuggestions: current.replacementSuggestions.map(issue => (
+          issue.id === suggestion.id
+            ? { ...issue, status: outcome === 'accepted' ? 'accepted' : 'rejected' }
+            : issue
+        )),
+      }));
+      setDecisionMessage(result.message);
+      setReloadKey(current => current + 1);
+    } catch (error) {
+      setDecisionError(error.message || 'Unable to save the replacement decision.');
+    } finally {
+      setDecisionIssue(null);
+    }
+  }
 
   const affected = view?.items.filter((item) => item.status === 'affected') || [];
   // A partial review from before item-level details were kept: the server reports its items as not recorded.
@@ -68,6 +103,60 @@ export default function EquipmentStatusSection({ eventId, token }) {
               <p role="note" className="equipment-affected">
                 Arrange alternatives or inform the organiser: {affected.map((item) => itemName(item)).join(', ')} cannot be fully provided.
               </p>
+            )}
+            {view.replacementSuggestions.length > 0 && (
+              <section aria-labelledby="equipment-replacement-suggestions-heading">
+                <h3 id="equipment-replacement-suggestions-heading">Replacement suggestions</h3>
+                <ul className="decision-checklist">
+                  {view.replacementSuggestions.map(suggestion => (
+                    <li key={suggestion.id} className="decision-unmet">
+                      <div>
+                        <strong>{suggestion.original_asset_code} — {suggestion.original_name} (×{suggestion.quantity})</strong>
+                        <span>
+                          {formatTime(`${suggestion.event_date}T${suggestion.start_time}`)}{' '}
+                          {suggestion.event_date}; {suggestion.reason}
+                        </span>
+                        {suggestion.status === 'pending' && (
+                          <span>
+                            Suggested replacement: {suggestion.replacement_asset_code} — {suggestion.replacement_name}
+                          </span>
+                        )}
+                        {suggestion.status === 'no_alternative' && (
+                          <span>Technical Support has not found a replacement yet.</span>
+                        )}
+                        {suggestion.status === 'awaiting_staff' && (
+                          <span>Waiting for Technical Support to suggest an available replacement.</span>
+                        )}
+                        {suggestion.status === 'rejected' && (
+                          <span>Suggestion rejected. Technical Support will follow up.</span>
+                        )}
+                        {suggestion.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="button-primary"
+                              onClick={() => decideReplacement(suggestion, 'accepted')}
+                              disabled={decisionIssue === suggestion.id}
+                            >
+                              Accept replacement
+                            </button>
+                            <button
+                              type="button"
+                              className="button-secondary"
+                              onClick={() => decideReplacement(suggestion, 'rejected')}
+                              disabled={decisionIssue === suggestion.id}
+                            >
+                              Reject replacement
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {decisionError && <p role="alert" className="error-message">{decisionError}</p>}
+                {decisionMessage && <p role="status">{decisionMessage}</p>}
+              </section>
             )}
             {legacyPartial && (
               <p role="note" className="equipment-affected">

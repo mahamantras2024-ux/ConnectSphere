@@ -24,52 +24,66 @@ const markUnavailable = asyncHandler(async (req, res) => {
   }
 });
 
-/** Lists only open issues belonging to events assigned to the signed-in support member. */
-const listForSupport = asyncHandler(async (req, res) => (
-  res.status(200).json({ affectedReservations: await workflow.listForSupport(req.user.id) })
-));
-
-/** Lists open issues and replacement proposals for the assigned event Coordinator. */
-const listForCoordinator = asyncHandler(async (req, res) => {
-  if (!validId(req.params.id)) return res.status(400).json({ message: 'Choose a valid event.' });
-  return res.status(200).json({
-    affectedReservations: await workflow.listForCoordinator(Number(req.params.id), req.user.id),
-  });
+const listOpenIssues = asyncHandler(async (_req, res) => {
+  const affectedReservations = await workflow.listOpenIssues();
+  return res.status(200).json({ affectedReservations });
 });
 
-/** Submits an available same-type replacement for Coordinator review. */
-const proposeAlternative = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const alternativeInventoryId = req.body?.alternativeInventoryId;
-  if (!validId(id) || !req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
-      Object.keys(req.body).length !== 1 || !Number.isInteger(alternativeInventoryId) ||
-      alternativeInventoryId < 1 || alternativeInventoryId > 2147483647) {
-    return res.status(400).json({ message: 'Choose a valid available replacement asset.' });
+const suggestAlternative = asyncHandler(async (req, res) => {
+  if (!validId(req.params.issueId)) {
+    return res.status(400).json({ message: 'Choose a valid affected reservation.' });
+  }
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
+      Object.keys(req.body).some(key => key !== 'alternativeInventoryId')) {
+    return res.status(400).json({ message: 'Choose valid replacement equipment.' });
+  }
+  const { alternativeInventoryId } = req.body || {};
+  if (!Number.isInteger(alternativeInventoryId) || alternativeInventoryId < 1 ||
+      alternativeInventoryId > 2147483647) {
+    return res.status(400).json({ message: 'Choose valid replacement equipment.' });
   }
   try {
-    const result = await workflow.proposeAlternative(Number(id), req.user.id, alternativeInventoryId);
-    return res.status(201).json({ ...result, message: 'Replacement proposal sent to the Event Coordinator.' });
+    const result = await workflow.suggestAlternative(
+      Number(req.params.issueId),
+      alternativeInventoryId,
+      req.user.id,
+    );
+    return res.status(200).json({ ...result, message: 'Replacement suggestion sent to the Event Coordinator.' });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     throw error;
   }
 });
 
-/** Records an assigned Coordinator's decision on one pending alternative proposal. */
-const decideProposal = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { decision } = req.body || {};
-  if (!validId(id) || !req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
-      Object.keys(req.body).length !== 1 || !['accepted', 'rejected'].includes(decision)) {
-    return res.status(400).json({ message: 'Choose whether to accept or reject this replacement proposal.' });
+const decideAlternative = asyncHandler(async (req, res) => {
+  if (!validId(req.params.eventId) || !validId(req.params.issueId)) {
+    return res.status(400).json({ message: 'Choose a valid replacement suggestion.' });
+  }
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
+      Object.keys(req.body).some(key => key !== 'outcome')) {
+    return res.status(400).json({ message: 'Choose whether to accept or reject the replacement.' });
+  }
+  const { outcome } = req.body || {};
+  if (!['accepted', 'rejected'].includes(outcome)) {
+    return res.status(400).json({ message: 'Choose whether to accept or reject the replacement.' });
   }
   try {
-    const result = await workflow.decideProposal(Number(id), req.user.id, decision);
-    return res.status(200).json({ ...result, message: `Replacement proposal ${decision}.` });
+    const result = await workflow.decideAlternative(
+      Number(req.params.eventId),
+      Number(req.params.issueId),
+      req.user.id,
+      outcome,
+    );
+    return res.status(200).json({
+      ...result,
+      message: outcome === 'accepted'
+        ? 'Replacement accepted and reservation updated.'
+        : 'Replacement rejected. Technical Support has been asked to follow up.',
+    });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     throw error;
   }
 });
 
-module.exports = { markUnavailable, listForSupport, listForCoordinator, proposeAlternative, decideProposal };
+module.exports = { markUnavailable, listOpenIssues, suggestAlternative, decideAlternative };
