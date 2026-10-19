@@ -2,7 +2,7 @@ const { pool } = require('../config/db');
 
 // An approved, non-draft event that accepts registrations is the repository's published attendee-facing state.
 const publishedEventSelect = `
-  SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
+  SELECT e.id, e.name, e.registration_required, e.proposed_date::text AS proposed_date,
     e.proposed_start_time, e.proposed_end_time, e.description,
     e.accessibility_requirements, e.special_arrangements,
     CASE WHEN e.status = 'approved' THEN 'confirmed' ELSE e.status END AS status,

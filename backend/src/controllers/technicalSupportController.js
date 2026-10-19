@@ -132,6 +132,24 @@ const listEquipmentReservations = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Releases one active reservation and returns the staff/time audit written by the database.
+ */
+const releaseEquipmentReservation = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) > 2147483647) {
+    return res.status(400).json({ message: 'Choose a valid equipment reservation.' });
+  }
+
+  const reservation = await eventModel.releaseEquipmentReservation(Number(id), req.user.id);
+  if (!reservation) {
+    return res.status(409).json({
+      message: 'This equipment reservation is not releasable or is no longer active. Refresh the reservation list.',
+    });
+  }
+  return res.status(200).json({ reservation, message: 'Equipment reservation released.' });
+});
+
+/**
  * Checks reviewed and staff-entered equipment against the event's available assets.
  */
 const checkEquipmentAvailability = asyncHandler(async (req, res) => {
@@ -181,6 +199,7 @@ module.exports = {
   listEquipmentInventory,
   repairEquipment,
   listEquipmentReservations,
+  releaseEquipmentReservation,
   checkEquipmentAvailability,
   reserveEquipment,
 };

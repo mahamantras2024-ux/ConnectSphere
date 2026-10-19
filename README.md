@@ -10,6 +10,8 @@ From the root, install with `npm ci --prefix backend` and `npm ci --prefix front
 
 Existing shared databases do not need seeding. Deliberate upgrades for an existing compatible database are the backend commands `migrate:external-events`, `setup:sprint-one`, and `setup:venue-management`, in that order. The event migration also applies additive equipment repair history, reservation-impact and replacement-offer schema upgrades, and seeds two unavailable repair-demo assets in whichever configured development or test database it targets. Apply it before using equipment reservations or replacement suggestions on an existing database. These upgrades are not a verified empty-database bootstrap. Internal accounts use `npm run provision:account --prefix backend`.
 
+To create repeatable cancelled/postponed reservation examples for Technical Support, run `npm run seed:equipment-reservation-release --prefix backend` against a migrated development or test database. The command is explicit, creates demo-only accounts/events/reservations, and refuses to run when `NODE_ENV=production`; it is not part of application startup or migrations.
+
 ## Quality checks
 
 The same checks used by CI are available from the repository root:

@@ -4,8 +4,18 @@ const { readdirSync } = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
-// Maps Sprint 1 stories and Sprint 2 venue/event stories to their regression suites.
+// Maps each implemented story to its shared and feature-specific regression suites.
 const stories = {
+  // Sprint 3 SCRUM-43: staff review/decisions, notifications, trusted audit and existing occupancy/concurrency guards.
+  'venue-booking-approval': ['venueBookingApproval', 'venueRequestLifecycle', 'venueAvailabilityPostgres', 'venueBookingDecision'],
+  // Sprint 3: SCRUM-61 requirements, multiple requests, status history and opt-in cancellation policy.
+  'venue-booking-request': ['venueDiscoveryWorkflow','venueBookingRequestStory','venueBookingRequest','venueRequestRequirements','venueRequestLifecycle','venueBookingDecision','venueBookingRequestPostgres','venueBookingRequestMigration','organiserEvents'],
+  // The status story covers both registration views, polling races and attendee-safe API context.
+  'view-registration-status': ['viewRegistrationStatus', 'registrationStatusLabel', 'registrationResource', 'attendeeRegistration', 'attendeeEventDetails', 'attendeeEventStatus', 'attendeeWithdrawal', 'registrationModels'],
+  // Withdrawal includes promotion notifications and additive migration compatibility alongside the UI/API rules.
+  'withdraw-registration': ['attendeeWithdrawal', 'attendeeWithdrawalPolicy', 'attendeeWithdrawalPostgres', 'notificationMigration', 'migrateExternalEvents', 'registrationModels'],
+  // Sprint 3 SCRUM-98 reuses the existing create/validation guards instead of duplicating persistence or authorization tests.
+  'venue-emergency-access': ['venueEmergencyAccess','createVenue-backend','venueValidation','venueEmergencyDocuments','venueManagement','migrateExternalEvents','operationalSafetyCheck'],
   // Sprint 1:
   'create-venue': ['createVenue-backend','venueValidation','createVenue','venueInteractions'],
   'view-venue': ['viewVenue-backend','venueInteractions','hourlyRate'],
@@ -16,6 +26,8 @@ const stories = {
   'organiser-events': ['organiserEvents','registrationModels','sharedUiRegressions'],
   'coordinator-events': ['organiserEvents','registrationModels','sharedApiRegressions','sharedUiRegressions'],
   // Sprint 2:
+  // SCRUM-39: one feature suite per layer, including the authenticated search endpoint.
+  'search-venues': ['venueSearch','venueDiscoveryWorkflow'],
   'update-venue': ['venueManagement','venueInteractions','locationAndImpact'],
   'delete-venue': ['venueManagement','venueInteractions'],
   // Lead workflow also retains owner/assignment and real-routing regressions.
@@ -56,10 +68,10 @@ function run(label, args, directory, env = {}) {
 if (backend) {
   const files = readdirSync(path.join(__dirname, 'backend')).filter(name => name.endsWith('.test.js')).sort()
     .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'databaseAcceptance.test.js'))
-    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js','equipmentStatusPostgres.test.js','equipmentReviewUpgradePostgres.test.js','techSupportAssignmentGatePostgres.test.js'].includes(name))
+    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js','equipmentStatusPostgres.test.js','equipmentReviewUpgradePostgres.test.js','techSupportAssignmentGatePostgres.test.js','equipmentAlternativeAvailabilityPostgres.test.js'].includes(name))
     .map(name => path.join(__dirname, 'backend', name));
   const args = ['--test', ...(storyPattern ? [`--test-name-pattern=${storyPattern}`] : []), ...files];
-  run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', RUN_LEAD_DB: liveDatabase ? '1' : '0', NODE_ENV: 'test' });
+  run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', RUN_LEAD_DB: liveDatabase ? '1' : '0', RUN_VENUE_BOOKING_DB: liveDatabase ? '1' : '0', NODE_ENV: 'test' });
 }
 if (frontend) {
   const files = story ? readdirSync(path.join(__dirname,'frontend')).filter(name => story.includes(name.replace(/\.test\.(js|jsx)$/,''))).map(name => path.join(__dirname,'frontend',name)) : [];

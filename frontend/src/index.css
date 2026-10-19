@@ -225,6 +225,8 @@ p { line-height: 1.65; }
 .detail-grid > div { border-bottom: 1px solid var(--border); padding-bottom: 15px; }
 .detail-grid dt { font-size: 10px; letter-spacing: .6px; color: var(--muted); margin-bottom: 7px; text-transform: uppercase; }
 .detail-grid dd { margin: 0; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+/* SCRUM-98: retain staff-entered route and access-point lines so distinct safety instructions remain readable. */
+.detail-grid .venue-emergency-access { white-space: pre-wrap; }
 .loading-state { padding: 40px; text-align: center; color: var(--muted); }
 .error-message, .error-text { color: #a2352e; font-size: 12px; }
 .error-message { padding: 14px 17px; background: #fff0ec; border: 1px solid #efd3cd; border-radius: 9px; }
@@ -251,7 +253,8 @@ p { line-height: 1.65; }
 button, .button-link { background: var(--orange); color: #272C19; border-radius: 999px; font-weight: 700; padding: 13px 23px; }
 button:hover, .button-link:hover { background: #F47B40; box-shadow: 0 5px 16px #EF6B2E24; }
 :focus-visible { outline-color: var(--beet); }
-input, select, textarea { border-color: #D7DAC5; border-radius: 10px; background: #FEFEF8; }
+/* White field surfaces keep native inputs consistent with the catalogue requirement dropdowns. */
+input, select, textarea { border-color: #D7DAC5; border-radius: 10px; background: #fff; }
 input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px #C7D45B40; }
 h1 { font-weight: 800; letter-spacing: -1.3px; }
 h2, h3 { font-weight: 700; }
@@ -315,11 +318,6 @@ h2, h3 { font-weight: 700; }
 /* Venue profiles slide alongside the catalogue; edit forms retain their wider working space. */
 .drawer-backdrop {justify-content:flex-end;align-items:stretch;padding:0;background:#30391c55;backdrop-filter:blur(2px);}
 .venue-drawer {width:min(600px,46vw);max-width:none;max-height:100dvh;height:100dvh;border-radius:22px 0 0 22px;animation:venue-slide-in .25s ease-out;}
-.centered-detail-backdrop {justify-content:center;align-items:center;padding:24px;background:#30391c88;backdrop-filter:blur(3px);}
-.centered-detail-panel {width:min(980px,calc(100vw - 48px));max-width:none;height:auto;max-height:92dvh;border-radius:20px;animation:detail-pop-in .18s ease-out;}
-.centered-detail-panel .event-detail > .grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;}
-.centered-detail-panel .event-detail section {grid-column:auto;}
-.centered-detail-panel .event-detail section.md\:col-span-2 {grid-column:1 / -1;}
 .venue-drawer .modal-header {position:sticky;top:0;z-index:1100;background:#FFFFFA;border-bottom:1px solid #424f1920;}
 .venue-drawer .profile-banner {display:block;background:#fffad9;padding:0 0 20px;overflow:hidden;}
 .venue-drawer .profile-banner img {width:100%;height:210px;object-fit:cover;border-radius:0;}
@@ -379,8 +377,6 @@ h2, h3 { font-weight: 700; }
 @media(max-width:900px){.venue-drawer{width:min(600px,85vw);}}
 @media(max-width:640px){.drawer-backdrop{padding:0;}.venue-drawer{width:94vw;border-radius:16px 0 0 16px;}.venue-map{height:240px;}.map-search{flex-wrap:wrap;}.map-search input{width:100%;}}
 @media(prefers-reduced-motion:reduce){.venue-drawer{animation:none;}}
-@media(max-width:640px){.centered-detail-backdrop{padding:10px;}.centered-detail-panel{width:100%;max-height:96dvh;border-radius:16px;}.centered-detail-panel .event-detail > .grid{grid-template-columns:1fr;}.centered-detail-panel .event-detail section.md\:col-span-2{grid-column:1;}}
-@media(prefers-reduced-motion:reduce){.centered-detail-panel{animation:none;}}
 .modal-header { background: var(--cream); }
 .icon-button { background: #F0EECB; color: var(--ink); padding: 0; }
 .icon-button:hover { background: var(--lemon); }
@@ -531,3 +527,139 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .safety-queue { margin-top: 24px; }
 .safety-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
+
+/* SCRUM-43 keeps the queue distinct from the catalogue and gives the review drawer comfortable, readable spacing. */
+.booking-inbox { margin-block: 2rem; padding: 1.5rem; border: 1px solid var(--color-border, #d8dbc8); border-radius: 1rem; background: #fff; }
+.booking-inbox .section-heading { gap: 1rem; align-items: center; flex-wrap: wrap; }
+.booking-inbox .record-grid { margin-top: 1rem; }
+.booking-review { display: grid; gap: 1.25rem; padding: 1.5rem; }
+.booking-review label { display: grid; gap: .65rem; font-weight: 600; }
+.booking-review textarea { width: 100%; box-sizing: border-box; background: #fff; color: #343a26; border: 1px solid #b8bea7; border-radius: .75rem; padding: .85rem; }
+.booking-review-actions { display: flex; flex-wrap: wrap; gap: .75rem; padding-block: .75rem; }
+.booking-decision-success { padding: 1rem; border-radius: .75rem; background: #edf0d6; color: #41491b; }
+/* Keep optional safety documents together with clear file and removal controls. */
+.emergency-documents { margin-block: 1rem 1.5rem; }
+.emergency-document { padding: 1rem; border: 1px solid var(--border, #d5d8c5); border-radius: 14px; background: #fff; min-width: 0; }
+.emergency-document h4 { margin: 0 0 .75rem; }
+.emergency-document-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .75rem; overflow-wrap: anywhere; }
+.emergency-document-actions a { display: inline-flex; align-items: center; text-decoration: none; }
+/* Coordinator venue search keeps related requirements together and stacks controls on small screens. */
+.venue-search-form { margin: 0 0 28px; padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: #fffef3; }
+.venue-search-hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+.venue-search-form fieldset { margin: 0 0 18px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.venue-search-form legend { padding: 0 8px; font-weight: 700; }
+.venue-search-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 16px; }
+.venue-search-fields label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.venue-search-fields input { width: 100%; min-width: 0; }
+.venue-search-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.venue-filter-menu { position: relative; border: 1px solid #cbd8d0; border-radius: 9px; background: white; align-self: end; }
+.venue-filter-menu summary { cursor: pointer; padding: 12px 13px; font-size: 13px; font-weight: 600; }
+.venue-filter-menu > div { position: absolute; top: 100%; left: 0; min-width: 100%; max-height: 240px; overflow-y: auto; padding: 14px; background: white; border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 8px 24px #30391c20; z-index: 4; }
+.venue-filter-menu > div label { display: flex; gap: 10px; align-items: center; padding: 8px 0; white-space: nowrap; }
+.venue-filter-menu input[type=checkbox], .venue-filter-menu input[type=radio] { width: 16px; height: 16px; }
+.venue-search-location { position: relative; min-width: 0; }
+.venue-search-location input[type=search] { height: 48px; padding: 12px 44px; cursor: pointer; border-radius: 9px; }
+.venue-location-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 22px; }
+.venue-location-clear { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; padding: 0; background: transparent; color: var(--muted); font-size: 22px; }
+.venue-location-clear:hover { background: #f1f2df; box-shadow: none; }
+.venue-map-station { display: grid; gap: 8px; margin-bottom: 16px; font-weight: 600; font-size: 13px; }
+.venue-map-selection { margin: 16px 0; padding: 12px; border-radius: 8px; background: var(--cream); }
+/* The location dialog owns its spacing without changing other map or modal layouts. */
+.venue-location-picker { display: grid; gap: 20px; padding: 24px 30px; }
+.venue-location-picker > p { margin: 0; line-height: 1.6; }
+.venue-location-picker .venue-map-station { margin: 0; gap: 10px; }
+.venue-location-picker .venue-map-selection { padding: 14px 16px; }
+.venue-location-picker > .venue-search-actions { justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--border); }
+@media (max-width: 640px) {
+  .venue-location-picker { gap: 16px; padding: 20px; }
+  .venue-location-picker > .venue-search-actions button { flex: 1 1 150px; }
+}
+.venue-search-widget { margin-bottom: 24px; }
+.venue-search-toolbar { margin: 0; padding: 14px; border-radius: 12px; }
+.venue-search-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.venue-search-bar > .venue-search-actions { gap: 8px; flex-wrap: nowrap; }
+.venue-search-bar > .venue-search-actions button { min-height: 48px; }
+/* Keep the popup inset from its edges; a fixed two-column requirements grid avoids an orphaned fourth control. */
+.venue-filter-popup { display: grid; gap: 24px; margin: 0; padding: 24px; border: 0; background: transparent; }
+.venue-filter-popup fieldset { margin: 0; padding: 18px; }
+.venue-filter-popup .venue-search-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: end; }
+.venue-filter-popup > fieldset:first-child .venue-search-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.venue-filter-popup .venue-filter-menu summary { min-height: 44px; display: list-item; align-content: center; }
+.venue-filter-popup > .venue-search-actions { justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--border); }
+.venue-filter-popup .venue-search-hint { line-height: 1.6; margin-top: 14px; }
+@media (max-width: 900px) { .venue-search-bar { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .venue-filter-popup { padding: 18px; gap: 20px; }
+  .venue-filter-popup fieldset { padding: 14px; }
+  .venue-filter-popup .venue-search-fields,
+  .venue-filter-popup > fieldset:first-child .venue-search-fields { grid-template-columns: 1fr; }
+  .venue-filter-popup > .venue-search-actions { justify-content: stretch; }
+  .venue-filter-popup > .venue-search-actions button { flex: 1 1 150px; }
+}
+/* Full-page event sections and venue discovery share the established cream, orange and olive palette. */
+.event-workspace-tabs { display:flex; flex-wrap:wrap; gap:.5rem; padding:.5rem; margin:1.5rem 0 2rem; background:#f4f4e5; border:1px solid #dfe1cb; border-radius:16px; }
+.event-workspace-tabs [role="tab"] { flex:1; min-width:130px; background:#fff; color:#30391c; border:1px solid transparent; border-radius:10px; padding:.85rem 1.1rem; font-weight:700; }
+.event-workspace-tabs [aria-selected="true"] { background:#ef6b2e; color:#272c19; border-color:#b95020; }
+.event-workspace-tabs button:focus-visible { outline:3px solid #46511e; outline-offset:3px; }
+.event-detail [hidden] { display:none !important; }
+.workspace-action-card, .booking-context { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1.25rem; padding:1.5rem; margin-bottom:1.5rem; border:1px solid #dfe1cb; border-radius:16px; background:#fffdf0; color:#30391c; }
+.workspace-action-card h2 { margin:0 0 .5rem; }
+.workspace-action-card p, .booking-context p { margin:0; }
+.booking-context label { display:grid; gap:.5rem; flex:1; min-width:220px; font-weight:700; }
+.booking-context select { width:100%; background:#fff; color:#30391c; }
+.booking-context > [role="alert"], .booking-context > [role="status"] { flex-basis:100%; }
+.booking-review { color-scheme:light; max-width:1100px; margin-inline:auto; }
+.booking-review .ed-card { padding:1.5rem; margin-bottom:1.5rem; background:#fff; color:#30391c; border:1px solid #dfe1cb; border-radius:16px; }
+.booking-review form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.25rem; }
+.booking-review form > label { display:grid; gap:.5rem; font-weight:600; }
+.booking-review form > label:has(input[type="checkbox"]) { display:flex; align-items:flex-start; grid-column:1/-1; }
+.booking-review form > p, .booking-review form > button { grid-column:1/-1; }
+.booking-review form > button { justify-self:start; }
+.booking-review input, .booking-review select { background:#fff; color:#30391c; width:100%; }
+.booking-review input[type="checkbox"] { width:auto; margin-top:.25rem; flex:none; }
+.booking-next-actions { padding:1.5rem; background:#f4f4e5; border-radius:16px; color:#30391c; }
+.venue-request-action { margin:0 1.5rem 1.5rem; }
+@media (max-width:640px) { .booking-review form { grid-template-columns:1fr; } .booking-context { padding:1rem; } }
+
+.booking-review .ed-muted { color:#686a5e; }
+.booking-next-actions { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; }
+.booking-next-actions > p { flex-basis:100%; margin:0; }
+/* Event comparison lives alongside discovery: compact facts, consistent cards and one quiet expandable group. */
+.venue-fit-results { display:grid; gap:2rem; margin-top:1rem; }
+.venue-requirements-card { padding:1.5rem; background:#fffdf0; border:1px solid #dfe1cb; border-radius:16px; color:#30391c; }
+.venue-fit-heading h2 { margin:0; }
+.venue-fit-heading .eyebrow { margin:0 0 .5rem; }
+.venue-requirement-facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; list-style:none; padding:0; margin:1.25rem 0; }
+.venue-requirement-facts li { display:flex; flex-direction:column; gap:.5rem; padding:1rem; border:1px solid #e3e4d3; border-radius:10px; background:#fff; overflow-wrap:anywhere; }
+.venue-requirement-facts span { font-size:.8rem; color:#686a5e; }
+.venue-requirement-facts strong { color:#30391c; }
+.venue-requirements-card > p { margin:.5rem 0 0; font-size:.85rem; color:#686a5e; }
+.venue-fit-group > h2 { margin:0 0 1rem; font-size:1.25rem; }
+.venue-fit-grid { list-style:none; padding:0; margin:0; align-items:stretch; }
+.venue-fit-grid > li { min-width:0; }
+.venue-fit-grid .venue-card { height:100%; }
+.venue-fit-summary { margin:.75rem 0 1rem; padding:1rem; border-radius:10px; border:1px solid #e3e4d3; }
+.venue-fit-good { background:#f4f6e5; }
+.venue-fit-poor { background:#fff5ef; }
+.venue-fit-badge { display:inline-block; color:#424f19; font-size:.8rem; font-weight:700; }
+.venue-fit-poor .venue-fit-badge { color:#942b20; }
+.venue-check-details { margin-top:.65rem; }
+.venue-check-details summary { color:#424f19; cursor:pointer; font-size:.8rem; font-weight:600; }
+.venue-check-list { display:grid; gap:.65rem; list-style:none; margin:.75rem 0 0; padding:0; font-size:.8rem; line-height:1.5; }
+.venue-check-list li { display:grid; grid-template-columns:1rem minmax(0,1fr); gap:.5rem; color:#30391c; overflow-wrap:anywhere; }
+.venue-check-list li[data-result="false"] { color:#942b20; }
+.venue-other-results { border:1px solid #e3e4d3; border-radius:16px; background:#fff; }
+.venue-other-results > summary { padding:1.25rem 1.5rem; cursor:pointer; font-weight:700; color:#30391c; border-radius:16px; }
+.venue-other-results > summary:hover { background:#fffad9; }
+.venue-other-results > summary:focus-visible { outline:3px solid #424f19; outline-offset:3px; }
+.venue-other-body { border-top:1px solid #e3e4d3; padding:1.5rem; background:#fbfbef; border-radius:0 0 16px 16px; }
+.venue-fit-empty, .venue-fit-notice { padding:1.25rem 1.5rem; border:1px solid #e3e4d3; border-radius:12px; background:#fff; color:#686a5e; }
+.venue-fit-notice { margin-bottom:1.5rem; }
+.venue-fit-notice p:last-child { margin-bottom:0; font-size:.85rem; }
+@media (max-width:640px) { .venue-requirement-facts { grid-template-columns:1fr; gap:.65rem; } .venue-requirements-card, .venue-other-body { padding:1rem; } .venue-other-results > summary { padding:1rem; } }
+.venue-fit-grid .venue-card { display:flex; flex-direction:column; }
+.venue-fit-grid .venue-image { flex-shrink:0; }
+.venue-fit-grid .venue-card-body { display:flex; flex-direction:column; flex:1; }
+.venue-fit-grid .venue-card-footer { margin-top:auto; }
+/* The disclosure summary already names the other-venues group; do not repeat that heading above its cards. */
+.venue-other-body .venue-fit-group > h2 { display:none; }

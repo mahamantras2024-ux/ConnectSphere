@@ -84,6 +84,19 @@ test('[SCRUM-35 AC1; SCRUM-36 AC1] - catalogue streams receive database invalida
 test('OFC AC1 - venue updates save emergency access and clear known restrictions', async () => {
  const response = await request('PUT', { ...payload, emergencyAccess: 'Exit via the loading bay', knownRestrictions: '  ' });
  assert.equal(response.status, 200);
- assert.match(writes[0].sql, /emergency_access=\$18,known_restrictions=\$19\s+WHERE id=\$17/);
- assert.deepEqual(writes[0].values.slice(16), [1, 'Exit via the loading bay', null]);
+ assert.match(writes[0].sql, /emergency_access=\$18,known_restrictions=\$19,emergency_documents=\$20\s+WHERE id=\$17/);
+ assert.deepEqual(writes[0].values.slice(16,19), [1, 'Exit via the loading bay', null]);
+});
+
+// Upload AC: all changes use the existing locked/stale-safe update; omission must not erase older documents.
+test('SCRUM-98 upload AC - update preserves omitted files, replaces one and explicitly removes the other',async()=>{
+  const original={procedure:{name:'old.pdf',data:'JVBERi0=',type:'application/pdf',size:5},floorPlan:{name:'old.png',data:'iVBORw0KGgo=',type:'image/png',size:8}};
+  venue.emergency_documents=original;
+  assert.equal((await request('PUT')).status,200);
+  assert.deepEqual(JSON.parse(writes.at(-1).values[19]),original);
+  const file={name:'new.pdf',data:Buffer.from('%PDF-new').toString('base64')};
+  assert.equal((await request('PUT',{...payload,emergencyDocuments:{procedure:file}})).status,200);
+  assert.deepEqual(JSON.parse(writes.at(-1).values[19]),{...original,procedure:{...file,type:'application/pdf',size:8}});
+  assert.equal((await request('PUT',{...payload,emergencyDocuments:{floorPlan:null}})).status,200);
+  assert.deepEqual(JSON.parse(writes.at(-1).values[19]),{procedure:original.procedure});
 });

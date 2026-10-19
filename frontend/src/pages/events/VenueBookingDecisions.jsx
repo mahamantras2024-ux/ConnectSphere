@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 const STATUS_LABELS = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
 
 /** Shows the assigned coordinator the selected event's venue request history and persisted staff decisions. */
-export default function VenueBookingDecisions({ eventId }) {
+export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
   const { token } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +21,7 @@ export default function VenueBookingDecisions({ eventId }) {
       .catch(loadError => { if (active) setError(loadError.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [eventId, token]);
+  }, [eventId, token, refreshKey]);
 
   return (
     <section className="ed-card" aria-labelledby="venue-bookings-heading">
@@ -38,6 +38,14 @@ export default function VenueBookingDecisions({ eventId }) {
                     <li key={booking.id} aria-label={`${booking.venue_name} ${status}`} className="ed-clar-item">
                       <h3>{booking.venue_name}</h3>
                       <p><strong>Status:</strong> <span>{status}</span></p>
+                      {booking.start_datetime && <p><strong>Period:</strong> {new Date(booking.start_datetime).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} – {new Date(booking.end_datetime).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>}
+                      {booking.requirements && <dl>
+                        <dt>Capacity</dt><dd>{booking.requirements.capacity ?? 'Not specified'}</dd>
+                        <dt>Room layout</dt><dd>{booking.requirements.layout || 'Not specified'}</dd>
+                        <dt>Accessibility</dt><dd>{booking.requirements.accessibility.join(', ') || 'None specified'}</dd>
+                        <dt>Required facilities</dt><dd>{booking.requirements.requiredFacilities.join(', ') || 'None specified'}</dd>
+                      </dl>}
+                      <p>{booking.cancel_other_pending ? 'Other pending requests will be cancelled if this arrangement changes or is cancelled.' : 'Other requests are kept if this arrangement changes or is cancelled.'}</p>
                       {booking.status === 'rejected' && booking.decision_notes?.trim() && (
                         <p><strong>Venue Staff reason:</strong> {booking.decision_notes}</p>
                       )}

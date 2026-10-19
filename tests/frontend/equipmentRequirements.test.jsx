@@ -267,6 +267,7 @@ it('EQ AC1 - coordinators can read equipment requirements but cannot edit them, 
   user = { ...user, id: 30, role: 'event_coordinator' };
   event = { ...baseEvent, equipment_items: [{ item: '<img src=x onerror=alert(1)>', quantity: 1 }] };
   open('/events/101');
+  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment' }));
   await screen.findByRole('heading', { name: event.name });
   expect(within(equipmentSection()).getByText('<img src=x onerror=alert(1)> × 1')).toBeTruthy();
   expect(equipmentSection().querySelector('img')).toBeNull();

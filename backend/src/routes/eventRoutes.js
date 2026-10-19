@@ -9,6 +9,7 @@ const eventCancellationController = require('../controllers/eventCancellationCon
 const technicalSupportController = require('../controllers/technicalSupportController');
 const equipmentReservationUnavailability = require('../controllers/equipmentReservationUnavailabilityController');
 const technicalSupportAssignmentController = require('../controllers/technicalSupportAssignmentController');
+const equipmentUnavailability = require('../controllers/equipmentReservationUnavailabilityController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 const venueBookingDecisions = require('../controllers/venueBookingDecisionController');
@@ -48,13 +49,19 @@ router.put(
   requireRole('technical_support'),
   equipmentReservationUnavailability.markUnavailable,
 );
-router.get('/equipment-reservation-issues', requireRole('technical_support'), equipmentReservationUnavailability.listOpenIssues);
+router.get(
+  '/equipment-reservation-issues',
+  requireRole('technical_support'),
+  equipmentReservationUnavailability.listOpenIssues,
+);
 router.put(
   '/equipment-reservation-issues/:issueId/suggestion',
   requireRole('technical_support'),
   equipmentReservationUnavailability.suggestAlternative,
 );
 router.get('/equipment-reservations', requireRole('technical_support'), technicalSupportController.listEquipmentReservations);
+router.get('/equipment-reservation-issues', requireRole('technical_support'), equipmentUnavailability.listForSupport);
+router.delete('/equipment-reservations/:id', requireRole('technical_support'), technicalSupportController.releaseEquipmentReservation);
 router.get('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
 router.post('/:id/equipment-availability', requireRole('technical_support'), technicalSupportController.checkEquipmentAvailability);
 router.post('/:id/equipment-reservations', requireRole('technical_support'), technicalSupportController.reserveEquipment);

@@ -48,7 +48,8 @@ function open(path) {
   localStorage.setItem('cs_token', 'session-token');
   render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><App /></AuthProvider></MemoryRouter>);
 }
-const panel = () => screen.findByRole('region', { name: 'Equipment request status' });
+// Navigate through the visible equipment tab before asserting the unchanged business rules.
+const panel = async () => { fireEvent.click(await screen.findByRole('tab', { name: 'Equipment' })); return screen.findByRole('region', { name: 'Equipment request status' }); };
 const itemRows = (section) => within(within(section).getByRole('list', { name: 'Requested equipment and technical support' })).getAllByRole('listitem')
   .map((row) => [row.querySelector('strong').textContent, row.querySelector('span').textContent, row.className]);
 
@@ -278,12 +279,12 @@ it('ES AC1 - an event without equipment requests says none were requested', asyn
 
 // Panel states: loading, a failed load and an unusable response never break the event page.
 it('ES AC1 - the panel distinguishes loading, a failed load and an unusable response', async () => {
-  let release;
-  status = () => new Promise((resolve) => { release = resolve; });
+  let resolver;
+  status = () => new Promise((resolve) => { resolver = resolve; });
   open('/events/101');
   const section = await panel();
   expect(within(section).getByText('Loading equipment request status...')).toBeTruthy();
-  release(partialView);
+  resolver(partialView);
   expect(await within(section).findByText('Partially available', { selector: '.status-badge' })).toBeTruthy();
   cleanup();
   status = () => { throw new Error('Unable to load equipment status.'); };

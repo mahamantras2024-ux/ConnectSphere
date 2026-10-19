@@ -1,10 +1,11 @@
-// File: Validates staff requests to mark equipment unavailable and flags affected reservations.
+// File: Validates and serves the post-reservation equipment unavailability workflow.
 const asyncHandler = require('../utils/asyncHandler');
 const workflow = require('../services/equipmentReservationUnavailability');
 
 const MAX_REASON_LENGTH = 500;
 const validId = value => /^[1-9]\d*$/.test(value) && Number(value) <= 2147483647;
 
+/** Marks one catalogue asset unavailable and returns all newly affected active reservations. */
 const markUnavailable = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
@@ -12,17 +13,11 @@ const markUnavailable = asyncHandler(async (req, res) => {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
       Object.keys(req.body).some(key => key !== 'reason') ||
       !reason || reason.length > MAX_REASON_LENGTH) {
-    return res.status(400).json({
-      message: `Enter an unavailability reason of 1 to ${MAX_REASON_LENGTH} characters.`,
-    });
+    return res.status(400).json({ message: `Enter an unavailability reason of 1 to ${MAX_REASON_LENGTH} characters.` });
   }
-
   try {
     const result = await workflow.markUnavailable(Number(id), reason, req.user.id);
-    return res.status(200).json({
-      ...result,
-      message: 'Equipment marked Unavailable and affected reservations flagged.',
-    });
+    return res.status(200).json({ ...result, message: 'Equipment marked Unavailable and affected reservations flagged.' });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     throw error;

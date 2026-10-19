@@ -17,8 +17,9 @@ ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title VARCHAR(255);
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS details JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
 DO $$ BEGIN
+  -- Resolve metadata in the active schema so isolated-schema migrations never target public tables.
   IF EXISTS (SELECT 1 FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='notifications' AND column_name='is_read') THEN
+      WHERE table_schema=current_schema() AND table_name='notifications' AND column_name='is_read') THEN
     ALTER TABLE notifications ALTER COLUMN is_read SET DEFAULT false;
   END IF;
 END $$;
@@ -30,7 +31,7 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN
   'change_request_approved', 'change_request_rejected', 'event_details_changed',
   'event_approved', 'event_rejected', 'safety_check_recorded',
   'technical_support_assigned', 'technical_support_unassigned',
-  'event_cancelled', 'equipment_status_changed', 'equipment_reservation_affected'));
+  'event_cancelled', 'equipment_status_changed', 'equipment_reservation_affected', 'waitlist_promoted'));
 
 ALTER TABLE event_technical_support_assignments ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN

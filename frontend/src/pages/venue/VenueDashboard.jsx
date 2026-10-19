@@ -5,6 +5,7 @@ import VenueList from '../venues/VenueList';
 import AddVenueModal from '../venues/AddVenueModal';
 import PageIntro from '../../components/PageIntro';
 import NotificationsPanel from '../../components/NotificationsPanel';
+import VenueBookingInbox from './VenueBookingInbox';
 
 // Renders Venue Staff catalogue/creation controls and remounts the catalogue after a new venue.
 export default function VenueDashboard() {
@@ -18,6 +19,7 @@ export default function VenueDashboard() {
       // Handles this control action and updates the screen state.
       setAdding(true)}>Add venue <span aria-hidden="true">+</span></button>} />
       <NotificationsPanel />
+      <VenueBookingInbox />
       <VenueList key={version} />
       {adding && <AddVenueModal onClose={() => // Closes the venue creation modal.
 

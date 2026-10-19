@@ -107,6 +107,8 @@ test('OFC AC1/AC4 - the safety queue shows venue safety facts and equipment deta
   assert.equal('safety_changes_open' in result.body.events[0], false);
   // The query reads each venue's safety facts and never the organiser's identity.
   assert.match(queries[0].sql, /'emergency_access', v\.emergency_access, 'known_restrictions', v\.known_restrictions/);
+  // SCRUM-98 upload AC: the source documents must be selected for the Safety Officer, not just stored on the venue.
+  assert.match(queries[0].sql, /'emergency_documents', v\.emergency_documents/);
   assert.doesNotMatch(queries[0].sql, /organiser|email|full_name/);
 });
 

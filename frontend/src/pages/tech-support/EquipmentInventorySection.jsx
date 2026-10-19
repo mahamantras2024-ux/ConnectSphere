@@ -116,6 +116,10 @@ export default function EquipmentInventorySection({
   const [resolutionNote, setResolutionNote] = useState('');
   const [repairError, setRepairError] = useState('');
   const [repairSaving, setRepairSaving] = useState(false);
+  const [unavailableEquipmentId, setUnavailableEquipmentId] = useState(null);
+  const [unavailabilityReason, setUnavailabilityReason] = useState('');
+  const [unavailabilityError, setUnavailabilityError] = useState('');
+  const [unavailabilitySaving, setUnavailabilitySaving] = useState(false);
   const hasAvailabilityFilter = Boolean(dateFilter || fromTime || toTime);
   const hasFilter = Boolean(searchTerm.trim() || hasAvailabilityFilter);
   const invalidTimeRange = Boolean(fromTime && toTime && fromTime >= toTime);
@@ -180,7 +184,7 @@ export default function EquipmentInventorySection({
     event.preventDefault();
     const cleanNote = resolutionNote.trim();
     if (!cleanNote) {
-      // A whitespace-only reason would leave the equipment history without an auditable resolution.
+    // A whitespace-only reason would leave the equipment history without an auditable resolution.
       setRepairError('Enter a brief resolution note before marking equipment available.');
       return;
     }
@@ -198,7 +202,7 @@ export default function EquipmentInventorySection({
     }
   }
 
-  /** Records an auditable reason before marking equipment unavailable and flagging affected reservations. */
+  /** Records an auditable cause before changing inventory state and notifying affected reservation owners. */
   async function submitUnavailable(event, item) {
     event.preventDefault();
     const reason = unavailabilityReason.trim();
@@ -373,11 +377,10 @@ export default function EquipmentInventorySection({
                             </label>
                             {repairError && <p role="alert">{repairError}</p>}
                             <button type="submit" disabled={repairSaving}>
-                              {repairSaving ? 'Saving repair…' : 'Mark Available'}
+                              {repairSaving ? 'Saving repair…' : 'Confirm available'}
                             </button>
                           </form>
-                        )
-                        }
+                        )}
                       </div>
                     </td>
                     <td>{dateFilter
@@ -387,23 +390,23 @@ export default function EquipmentInventorySection({
                       {item.status_history?.length ? (
                         <ul className="equipment-status-history" aria-label={`Status history for ${item.asset_code}`}>
                           {item.status_history.map(entry => (
-                            <li key={entry.id}>
-                              <div className="equipment-status-history-heading">
-                                <span className={`equipment-status-history-status is-${entry.status.toLowerCase()}`}>
+                            <li className="equipment-status-history-entry" key={entry.id}>
+                              <div className="equipment-status-history-meta">
+                                <span className={`equipment-status-history-status${entry.status === 'Unavailable' ? ' is-unavailable' : ''}`}>
                                   {entry.status}
                                 </span>
-                                <time dateTime={entry.changed_at}>{formatHistoryDate(entry.changed_at)}</time>
+                                <time dateTime={entry.changed_at}>
+                                  {formatHistoryDate(entry.changed_at)}
+                                </time>
                               </div>
-                              <p className="equipment-status-history-note">{entry.note}</p>
+                              <p className="equipment-status-history-reason">{entry.note}</p>
                               {entry.changed_by_name && (
-                                <span className="equipment-status-history-meta">
-                                  Changed by {entry.changed_by_name}
-                                </span>
+                                <small className="equipment-status-history-actor">By {entry.changed_by_name}</small>
                               )}
                             </li>
                           ))}
                         </ul>
-                      ) : 'No status history'}
+                      ) : <span className="equipment-status-history-empty">No status history</span>}
                     </td>
                   </tr>
                 ))}
