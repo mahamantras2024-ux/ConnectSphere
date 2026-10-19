@@ -30,6 +30,26 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('View Venue Booking Decision', () => {
+  it('SCRUM-61 AC2 AC4 AC6 - displays saved requirements, periods and both cancellation preferences', async () => {
+    // Arrange: historical rows receive migration defaults; newly submitted rows retain explicit requirements.
+    api.get.mockImplementation(async path => path === '/auth/me'
+      ? { user: { id: 12, role: 'event_coordinator' } }
+      : { bookings: [
+        { ...bookings[0], start_datetime: '2030-04-04T02:00:00Z', end_datetime: '2030-04-04T03:00:00Z',
+          cancel_other_pending: true, requirements: { capacity: 40, layout: 'Theatre', accessibility: ['Ramp'], requiredFacilities: ['Projector'] } },
+        { ...bookings[2], requirements: { capacity: null, layout: '', accessibility: [], requiredFacilities: [] } },
+      ] });
+    // Act / Assert: verify persisted values in their own request, rather than event defaults.
+    openDecisionHistory();
+    const latest = await screen.findByRole('listitem', { name: /Studio East.*Pending/i });
+    for (const value of ['40', 'Theatre', 'Ramp', 'Projector']) expect(within(latest).getByText(value)).toBeTruthy();
+    expect(within(latest).getByText(/2030/)).toBeTruthy();
+    expect(within(latest).getByText('Other pending requests will be cancelled if this arrangement changes or is cancelled.')).toBeTruthy();
+    const approved = screen.getByRole('listitem', { name: /Approved/i });
+    expect(within(approved).getAllByText('Not specified')).toHaveLength(2);
+    expect(within(approved).getAllByText('None specified')).toHaveLength(2);
+    expect(within(approved).getByText('Other requests are kept if this arrangement changes or is cancelled.')).toBeTruthy();
+  });
   it('AC1 AC2 AC4 AC5 - shows the latest booking first with its event, venue and decision status', async () => {
     // Arrange: API data contains the latest pending request followed by older decisions for this event.
     // Act

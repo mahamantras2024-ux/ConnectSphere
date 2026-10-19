@@ -15,6 +15,7 @@
     "migrate:attendee-registration": "node src/db/migrateExternalEvents.js --attendee-registration",
     "migrate:attendee-withdrawal": "node src/db/migrateExternalEvents.js --attendee-withdrawal",
     "migrate:technical-support": "node src/db/migrateTechnicalSupportAssignments.js",
+    "migrate:venue-booking-requests": "node src/db/migrateVenueBookingRequests.js",
     "setup:sprint-one": "node src/db/setupSprintOne.js",
     "setup:venue-management": "node src/db/setupVenueManagement.js",
     "setup:venue-availability": "node src/db/setupVenueAvailability.js",

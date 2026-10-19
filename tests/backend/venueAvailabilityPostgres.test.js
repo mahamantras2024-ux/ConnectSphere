@@ -34,7 +34,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
     try {
-      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql']) await client.query(migration(file));
+      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql']) await client.query(migration(file));
     } finally { client.release(); }
     // Redirect only connection acquisition. All route SQL, constraints, locking and commits run on real PostgreSQL.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));

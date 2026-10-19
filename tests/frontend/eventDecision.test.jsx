@@ -152,6 +152,7 @@ it('AR AC7 - sending a clarification refreshes whether a decision is allowed', a
   open('/events/101');
   await within(await decisionPanel()).findByRole('button', { name: 'Approve event' });
   expect(decisionLoads()).toBe(1);
+  fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
   fireEvent.click(screen.getByLabelText('Event name'));
   fireEvent.change(screen.getByLabelText('What needs clarification?'), { target: { value: 'Confirm the title.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send clarification request' }));

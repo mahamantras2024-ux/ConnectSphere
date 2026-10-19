@@ -4,11 +4,32 @@ import Modal from '../../components/Modal';
 import VenueSearchLocation from './VenueSearchLocation';
 const emptyFilters = { date: '', startTime: '', endTime: '', attendance: '', layout: '', accessibility: [], facilities: [] };
 
-/** Checkbox dropdowns allow multiple catalogue requirements and retain choices when the popup closes. */
+/** Converts recorded event requirements into optional, editable discovery defaults. */
+export function filtersForEvent(event) {
+  if (!event) return emptyFilters;
+  // Incomplete legacy schedules still allow date-only discovery rather than sending an invalid half-period.
+  const completePeriod = event.proposed_date && event.proposed_start_time && event.proposed_end_time;
+  return { date: event.proposed_date || '', startTime: completePeriod ? event.proposed_start_time.slice(0, 5) : '',
+    endTime: completePeriod ? event.proposed_end_time.slice(0, 5) : '', attendance: event.expected_attendance || '',
+    layout: event.room_layout_preference || '', accessibility: event.accessibility_requirements || [], facilities: event.required_facilities || [] };
+}
+
+/** Shares serialization between initial event filtering and later manually edited searches. */
+export function queryForFilters(filters) {
+  const query = new URLSearchParams();
+  for (const key of ['date', 'startTime', 'endTime', 'attendance', 'layout']) if (filters[key]) query.set(key, filters[key]);
+  for (const key of ['accessibility', 'facilities']) if (filters[key].length) query.set(key, filters[key].join(','));
+  return query;
+}
+
+/** Matches event text to catalogue labels using the same case-insensitive rule as venue search. */
+function sameRequirement(first, second) { return first.trim().toLowerCase() === second.trim().toLowerCase(); }
+
+/** Checkbox dropdowns retain event defaults even when catalogue labels use different capitalisation. */
 function RequirementDropdown({ label, options, selected, onChange }) {
   return <details className="venue-filter-menu"><summary>{label}</summary><div role="group" aria-label={label}>
-    {options.length ? options.map(option => <label key={option}><input type="checkbox" checked={selected.includes(option)}
-      onChange={event => onChange(event.target.checked ? [...selected, option] : selected.filter(value => value !== option))} />{option}</label>) : <p>No recorded options.</p>}
+    {options.length ? options.map(option => <label key={option}><input type="checkbox" checked={selected.some(value => sameRequirement(value, option))}
+      onChange={event => onChange(event.target.checked ? [...selected, option] : selected.filter(value => !sameRequirement(value, option)))} />{option}</label>) : <p>No recorded options.</p>}
   </div></details>;
 }
 
@@ -20,9 +41,9 @@ function optionsFor(venues, field) {
 }
 
 /** Stores optional filter drafts across popup openings and submits them together with the selected map/MRT anchor. */
-export default function VenueSearchForm({ onSearch, venues, token }) {
+export default function VenueSearchForm({ onSearch, venues, token, event }) {
   const [open, setOpen] = useState(false);
-  const [location, setLocation] = useState(null), [filters, setFilters] = useState(emptyFilters);
+  const [location, setLocation] = useState(null), [filters, setFilters] = useState(() => filtersForEvent(event));
   // Preserve independent criteria while changing one dropdown or date/time control.
   function change(key, value) { setFilters(current => ({ ...current, [key]: value })); }
   // The main bar and popup share one submission path; unselected requirements never reach the API.
@@ -30,13 +51,7 @@ export default function VenueSearchForm({ onSearch, venues, token }) {
     event.preventDefault();
     // The filter dialog is a portal; stop React submit bubbling into the surrounding search form.
     event.stopPropagation();
-    const query = new URLSearchParams();
-    for (const key of ['date', 'startTime', 'endTime', 'attendance', 'layout']) {
-      if (filters[key]) query.set(key, filters[key]);
-    }
-    for (const key of ['accessibility', 'facilities']) {
-      if (filters[key].length) query.set(key, filters[key].join(','));
-    }
+    const query = queryForFilters(filters);
     if (location) { query.set('latitude', location.latitude); query.set('longitude', location.longitude); }
     setOpen(false);
     onSearch(query.toString());
@@ -62,7 +77,7 @@ export default function VenueSearchForm({ onSearch, venues, token }) {
             {/* Match the requirement menus visually while radios preserve the single-layout search rule. */}
             <details className="venue-filter-menu"><summary>Room layout</summary><div role="group" aria-label="Room layout">
               {['', ...optionsFor(venues, 'supported_layouts')].map(option => <label key={option}>
-                <input type="radio" name="venue-room-layout" checked={filters.layout === option} onChange={() => change('layout', option)} />
+                <input type="radio" name="venue-room-layout" checked={sameRequirement(filters.layout, option)} onChange={() => change('layout', option)} />
                 {option || 'Any layout'}
               </label>)}
             </div></details>
