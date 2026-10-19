@@ -3,6 +3,7 @@ import Modal from '../../components/Modal';
 import {useRef,useState} from 'react';
 import {api} from '../../api/client';
 import VenueMap from './VenueMap';
+import EmergencyDocuments from './EmergencyDocuments';
 import BookingImpactList from './BookingImpactList';
 import VenueSchedule from './VenueSchedule';
 import {formatHourlyRate} from './hourlyRate';
@@ -34,7 +35,8 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
   return <Modal title="Venue Details" onClose={busy?()=>{}:onClose} drawer><div className="venue-profile"><div className="profile-banner">{venue.image ? <img src={venue.image} alt={venue.name} /> : <span className="profile-pattern" aria-hidden="true">▧</span>}<div><p className="eyebrow">A space for your next event</p><h2>{venue.name}</h2></div></div>
     <dl className="detail-grid">{values.map(([label, value]) =>
       // Converts each record into its displayed or submitted representation.
-      <div key={label}><dt>{label}</dt><dd>{value || 'Not specified'}</dd></div>)}</dl>
+      <div key={label}><dt>{label}</dt><dd className={label === 'Emergency access' ? 'venue-emergency-access' : undefined}>{value || 'Not specified'}</dd></div>)}</dl>
+    <EmergencyDocuments value={venue.emergency_documents}/>
     {venue.latitude!=null && venue.longitude!=null ? <VenueMap latitude={venue.latitude} longitude={venue.longitude}/> : <p className="field-help">This older record has no map pin yet. Venue Staff can select its location when editing.</p>}
     {venue.mrt_distance_m!=null && <p className="field-help">Nearest MRT is approximately {(venue.mrt_distance_m/1000).toFixed(2)} km away in a straight line.</p>}
     {canManage && <footer className="venue-record-actions"><button onClick={()=>onEdit?.(venue)} disabled={busy}>Edit venue</button><button className="button-danger" onClick={()=>setRemoving(true)} disabled={busy}>Deactivate venue</button></footer>}

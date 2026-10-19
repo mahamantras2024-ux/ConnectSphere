@@ -1,6 +1,6 @@
 // File: Defines active frontend routes, shared navigation, role-protected dashboards, and the missing-page fallback.
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import Modal from './components/Modal';
+import { useEffect, useRef } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
@@ -20,24 +20,26 @@ import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
 import EventRegistrationDetails from './pages/event-organiser/EventRegistrationDetails.jsx';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
+import FindVenues from './pages/venues/FindVenues';
 import VenueDashboard from './pages/venue/VenueDashboard';
 import MyRegistrations from './pages/registrations/MyRegistrations';
 import StaffWorkspace from './pages/StaffWorkspace';
 import SafetyOfficerDashboard from './pages/safety/SafetyOfficerDashboard';
 import CoordinatorLeadDashboard from './pages/coordinator/CoordinatorLeadDashboard';
 
-// Renders shared navigation and the registered public, role-protected, and fallback routes.
+// Event records use full pages so browser history and deep links work consistently; venue profiles retain their own drawers.
 export default function App() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const background = location.state?.backgroundLocation;
-  // Returns to the list that opened the record, preserving its history and scroll position.
-  function closeDetails() { navigate(-1); }
+  const main = useRef(null);
+  useEffect(() => {
+    // Full-page records and booking review must not inherit a long catalogue's scroll position.
+    main.current.scrollIntoView?.({ block: 'start' });
+  }, [location.pathname, location.search]);
   return (
-    <div className="app-shell" aria-hidden={background ? true : undefined} inert={background ? '' : undefined}>
+    <div className="app-shell">
       <Navbar />
-      <main className="content" id="main-content">
-        <Routes location={background || location}>
+      <main ref={main} className="content" id="main-content">
+        <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/external/login" element={<Login external />} />
           <Route path="/external/register" element={<ExternalRegister />} />
@@ -87,6 +89,8 @@ export default function App() {
             path="/coordinator/dashboard"
             element={<ProtectedRoute roles={['event_coordinator']}><CoordinatorDashboard /></ProtectedRoute>}
           />
+          {/* Keep discovery bookmarkable and enforce coordinator access even for direct URLs. */}
+          <Route path="/coordinator/venues" element={<ProtectedRoute roles={['event_coordinator']}><FindVenues /></ProtectedRoute>} />
 
           <Route
             path="/events"
@@ -100,7 +104,6 @@ export default function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
-        {background && <Routes><Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /><Route path="/events/:id" element={<ProtectedRoute roles={['event_coordinator', 'event_organiser', 'event_coordinator_lead']}><Modal drawer centered title="Event details" onClose={closeDetails}><EventDetail /></Modal></ProtectedRoute>} /></Routes>}
       </main>
     </div>
   );

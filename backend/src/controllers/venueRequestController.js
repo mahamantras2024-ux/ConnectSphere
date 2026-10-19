@@ -1,15 +1,21 @@
 const { createVenueRequest, decideVenueRequest } = require('../services/venueRequests');
 const { pool } = require('../config/db');
 
-/** Returns pending requests across the shared staff catalogue, using the requested period and the event's recorded requirements. */
+/** Returns pending requests with submitted requirements; older unspecified fields fall back to the event record. */
 async function listPendingRequests(req, res) {
   const result = await pool.query(`SELECT booking.id, booking.venue_id, booking.event_id, booking.start_datetime,
-    booking.end_datetime, booking.status, booking.created_at, venue.name AS venue_name,
+    booking.end_datetime, booking.status, booking.created_at, booking.requirements, venue.name AS venue_name,
     event.name AS event_name, event.expected_attendance, event.room_layout_preference, event.accessibility_requirements
     FROM venue_bookings booking JOIN venues venue ON venue.id=booking.venue_id
     JOIN events event ON event.id=booking.event_id
     WHERE booking.status='pending' ORDER BY booking.created_at, booking.id`);
-  return res.json({ requests: result.rows });
+  // Coordinators may edit a request's requirements independently of the event; never replace a specified snapshot with current event values.
+  const requests = result.rows.map(request => ({ ...request,
+    expected_attendance: request.requirements?.capacity ?? request.expected_attendance,
+    room_layout_preference: request.requirements?.layout || request.room_layout_preference,
+    accessibility_requirements: request.requirements?.accessibility ?? request.accessibility_requirements,
+  }));
+  return res.json({ requests });
 }
 
 /** Creates a coordinator's request; authenticated identity is supplied by middleware, never by the request body. */

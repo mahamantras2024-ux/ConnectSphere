@@ -1,5 +1,6 @@
 // File: The facts a Safety Officer reviews for one event in the Operational Safety Check queue.
 import { formatEquipmentItems } from '../events/equipmentRequirements';
+import EmergencyDocuments from '../venues/EmergencyDocuments';
 
 export const LATEST_LABELS = { approved: 'Passed', rejected: 'Failed', changes_requested: 'Changes requested' };
 export const STAGE_LABELS = { venue: 'Venue arrangements', technical: 'Technical arrangements', event_details: 'Event details' };
@@ -67,8 +68,10 @@ export default function SafetyEventFacts({ event }) {
     facts.push(['Previous check', `${LATEST_LABELS[previous.outcome]} to ${previous.change_areas.map((area) => STAGE_LABELS[area]).join(', ')} - ${previous.notes}`]);
   }
   return (
-    <dl className="detail-facts">
+    <><dl className="detail-facts">
       {facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
     </dl>
+    {/* SCRUM-98: expose the venue's source documents alongside the facts reviewed by the Safety Officer. */}
+    {event.venues.map((venue,index)=>venue.emergency_documents && Object.keys(venue.emergency_documents).length>0 ? <section key={index} aria-label={`${venue.name} emergency documents`}><h4>{venue.name}</h4><EmergencyDocuments value={venue.emergency_documents}/></section>:null)}</>
   );
 }

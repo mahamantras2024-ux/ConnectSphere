@@ -71,14 +71,18 @@ function repairedEquipment(note) {
 async function openRepairForm() {
   render(<TechSupportDashboard />);
   const row = await screen.findByRole('row', { name: /REPAIR-DEMO-001 Repair Demo Laptop/ });
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available' }));
+  fireEvent.change(within(row).getByLabelText('Status for REPAIR-DEMO-001'), { target: { value: 'Available' } });
   return row;
 }
 
 beforeEach(() => {
   useAuth.mockReturnValue({ token: 'support-token' });
   vi.spyOn(api, 'get').mockImplementation(async endpoint => {
+    // The integrated dashboard also loads unrelated panels; keep those external responses empty and successful.
+    if (endpoint === '/notifications') return { notifications: [] };
+    if (endpoint === '/events/on-site-support') return { events: [] };
     if (endpoint === '/events/equipment-requests') return { requests: [] };
+    if (endpoint === '/events/on-site-support') return { events: [] };
     if (endpoint === '/events/equipment-inventory') return { inventory: [unavailableEquipment, availableEquipment] };
     if (endpoint === '/events/equipment-reservations') return { requests: [], reservations: [] };
     if (endpoint === '/events/on-site-support') return { events: [] };
@@ -98,11 +102,11 @@ it('AC1 - changes an unavailable item to Available after saving its repair', asy
   });
 
   // Act
-  fireEvent.click(screen.getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: stale status means the repair transition was not applied to the inventory row.
-  await waitFor(() => expect(within(row).getByText('Available')).toBeTruthy());
-  expect(within(row).queryByRole('button', { name: 'Mark Available' })).toBeNull();
+  await waitFor(() => expect(within(row).getByLabelText('Status for REPAIR-DEMO-001').value).toBe('Available'));
+  expect(within(row).queryByRole('button', { name: 'Confirm available' })).toBeNull();
 });
 
 // AC2 - Empty and whitespace-only resolutions must not be sent to the status-transition API.
@@ -111,7 +115,7 @@ it('AC2 - rejects an empty resolution note before updating status', async () => 
   const row = await openRepairForm();
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: missing validation would persist a repair with no auditable explanation.
   expect((await screen.findByRole('alert')).textContent).toMatch(/Enter a brief resolution note/);
@@ -127,7 +131,7 @@ it('AC2 - rejects a whitespace-only resolution note before updating status', asy
   });
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: trimming after persistence would incorrectly accept an empty history entry.
   expect((await screen.findByRole('alert')).textContent).toMatch(/Enter a brief resolution note/);
@@ -143,7 +147,7 @@ it('AC2 - submits the trimmed resolution note with the repair request', async ()
   });
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: the API receives the human-entered reason without accidental surrounding whitespace.
   await waitFor(() => expect(api.put).toHaveBeenCalledWith(
@@ -162,10 +166,10 @@ it('AC3 - keeps the repaired asset in inventory with Available status', async ()
   });
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: it remains in the inventory table and is no longer represented as unavailable.
-  await waitFor(() => expect(within(row).getByText('Available')).toBeTruthy());
+  await waitFor(() => expect(within(row).getByLabelText('Status for REPAIR-DEMO-001').value).toBe('Available'));
   expect(within(row).getByRole('rowheader', { name: 'REPAIR-DEMO-001' })).toBeTruthy();
 });
 
@@ -178,12 +182,26 @@ it('AC4 - shows the updated status and resolution note in equipment history', as
   });
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: missing or overwritten audit entries would hide one of these distinct events.
   expect(await within(row).findByText('Screen replaced')).toBeTruthy();
   expect(within(row).getByText(/Seeded damage reason: display cracked during setup\./)).toBeTruthy();
-  expect(within(row).getByText('Available')).toBeTruthy();
+  expect(within(row).getByLabelText('Status for REPAIR-DEMO-001').value).toBe('Available');
+  expect(within(row).getByText('10 Oct 2026')).toBeTruthy();
+  expect(within(row).getByText('17 Oct 2026')).toBeTruthy();
+  const history = within(row).getByRole('list', { name: 'Status history for REPAIR-DEMO-001' });
+  const entries = within(history).getAllByRole('listitem');
+  expect(entries.length).toBe(2);
+  expect(within(entries[0]).getByText('Unavailable')).toBeTruthy();
+  expect(within(entries[0]).getByText('Unavailable').classList.contains('is-unavailable')).toBe(true);
+  expect(within(entries[0]).getByText('Seeded damage reason: display cracked during setup.')).toBeTruthy();
+  expect(within(entries[0]).getByText('10 Oct 2026')).toBeTruthy();
+  expect(within(entries[1]).getByText('Available')).toBeTruthy();
+  expect(within(entries[1]).getByText('Available').classList.contains('is-unavailable')).toBe(false);
+  expect(within(entries[1]).getByText('17 Oct 2026')).toBeTruthy();
+  expect(within(entries[1]).getByText('By Taylor Support')).toBeTruthy();
+  expect(within(entries[1]).getByText('Screen replaced')).toBeTruthy();
 });
 
 // AC1 - A failed server response leaves the item unavailable and exposes the service error.
@@ -196,11 +214,11 @@ it('AC1 - keeps the item unavailable and displays a repair failure', async () =>
   });
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: failed persistence must not create a success-shaped local status transition.
   expect((await screen.findByRole('alert')).textContent).toBe('Repair service is unavailable.');
-  expect(within(row).getByText('Unavailable')).toBeTruthy();
+  expect(within(row).getByLabelText('Status for REPAIR-DEMO-001').value).toBe('Unavailable');
 });
 
 // AC1 - The save action communicates its pending state while the database update is in flight.
@@ -214,12 +232,12 @@ it('AC1 - disables repair submission until the status update completes', async (
   });
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert the control communicates that duplicate transitions cannot be submitted concurrently.
   expect(within(row).getByRole('button', { name: 'Saving repair…' }).hasAttribute('disabled')).toBe(true);
   finishSave({ equipment: repairedEquipment('Screen replaced') });
-  await waitFor(() => expect(within(row).getByText('Available')).toBeTruthy());
+  await waitFor(() => expect(within(row).getByLabelText('Status for REPAIR-DEMO-001').value).toBe('Available'));
 });
 
 // AC1 - An unstructured transport failure still produces a visible, non-silent error.
@@ -232,9 +250,9 @@ it('AC1 - shows a fallback message when repair fails without a server message', 
   });
 
   // Act
-  fireEvent.click(within(row).getByRole('button', { name: 'Mark Available', exact: true }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Confirm available' }));
 
   // Assert: unknown failures must not appear as successful repairs or disappear silently.
   expect((await screen.findByRole('alert')).textContent).toBe('Unable to update equipment status.');
-  expect(within(row).getByText('Unavailable')).toBeTruthy();
+  expect(within(row).getByLabelText('Status for REPAIR-DEMO-001').value).toBe('Unavailable');
 });

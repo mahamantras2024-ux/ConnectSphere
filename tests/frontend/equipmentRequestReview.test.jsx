@@ -313,3 +313,21 @@ it('AC1 - reports inventory and reservation load errors in their respective tabs
   fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Reservation list unavailable.');
 });
+
+// AC1/accessibility: Arrow keys wrap, Home/End jump, and unrelated keys leave the current tab unchanged.
+it('AC1 - navigates equipment tabs with the keyboard and returns from an empty reservation queue', async () => {
+  await openDashboard();
+  const review = screen.getByRole('tab', { name: 'Equipment request review' });
+  fireEvent.keyDown(review, { key: 'End' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'ArrowRight' });
+  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'Escape' });
+  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
+  expect(screen.getByRole('tab', { name: 'Equipment request review' }).getAttribute('aria-selected')).toBe('true');
+});

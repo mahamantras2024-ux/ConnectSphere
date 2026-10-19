@@ -20,6 +20,22 @@ const hold = {
 };
 let server, base, fixture;
 
+test('SCRUM-61 AC1 AC2 AC5 AC6 - saves distinct venue requests with requirements and cancellation choice', async () => {
+  // Arrange: an assigned event may request alternatives at different venues for the same period.
+  const details = { ...requestBody, capacity: 40, layout: 'Theatre', accessibility: ['Step-free'], requiredFacilities: ['Projector'], cancelOtherPending: true };
+  // Act: create two independent requests; the database mock records writes without enforcing a one-per-event limit.
+  const first = await request('/7/requests', details);
+  fixture.venue = { ...venue, id: 8 };
+  const second = await request('/8/requests', { ...details, cancelOtherPending: false });
+  // Assert: both persist independently, including the snapshot that Venue Staff will review.
+  assert.equal(first.status, 201);
+  assert.equal(second.status, 201);
+  assert.deepEqual(fixture.writes.map(write => write.row.venue_id), [7, 8]);
+  assert.deepEqual(JSON.parse(fixture.writes[0].row.requirements), { capacity: 40, layout: 'Theatre', accessibility: ['Step-free'], requiredFacilities: ['Projector'] });
+  assert.equal(fixture.writes[0].row.cancel_other_pending, true);
+  assert.equal(fixture.writes[1].row.cancel_other_pending, false);
+});
+
 before(async () => {
   // Real HTTP routing, JWT verification, controllers and business logic execute in these tests.
   server = app.listen(0, '127.0.0.1');

@@ -2,6 +2,7 @@
 // requests, and the requested-changes panel the coordinator and organiser see on the event page.
 // Test scope: Real App routes, AuthProvider, dashboards, EventDetail and new components; only the API client is replaced.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -57,6 +58,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 // ---------- AC1: the facts for the check ----------
+
+// SCRUM-98 upload AC / OFC AC1: documents must reach the staff reviewing safety, not just the venue editor.
+it('SCRUM-98 upload AC / OFC AC1 - Safety Officers can download the confirmed venue emergency documents',async()=>{
+  const emergency_documents={procedure:{name:'procedure.pdf',type:'application/pdf',data:'JVBERi0='},floorPlan:{name:'floor.png',type:'image/png',data:'iVBORw0KGgo='}};
+  const {item}=await openQueue([{...gala,venues:[{...hallA,emergency_documents}]}]);
+  expect(within(item).getByRole('link',{name:/Download emergency procedure/})).toHaveAttribute('href','data:application/pdf;base64,JVBERi0=');
+  expect(within(item).getByRole('link',{name:/Download evacuation floor plan/})).toHaveAttribute('download','floor.png');
+  expect(within(item).queryByLabelText('Upload emergency procedure')).not.toBeInTheDocument();
+});
 
 // Test case: Every AC1 fact is shown, taken from the event and from what Venue Staff recorded on the venue.
 it('OFC AC1 - the Safety Officer sees attendance, capacity and layout, emergency access, accessibility, equipment placement, crowd movement and restrictions', async () => {

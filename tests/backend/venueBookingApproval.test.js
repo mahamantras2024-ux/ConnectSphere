@@ -30,7 +30,7 @@ async function query(sql, values = []) {
     return { rows: [] };
   }
   if (sql.includes('FROM users')) return { rows: [{ id: 9, role: state.role }] };
-  if (sql.includes('JOIN venues')) return { rows: [{ ...state.request, venue_name: 'Hall A', event_name: 'Gala', expected_attendance: 100, room_layout_preference: 'Seminar' }] };
+  if (sql.includes('JOIN venues')) return { rows: [{ ...state.request, venue_name: 'Hall A', event_name: 'Gala', expected_attendance: 100, room_layout_preference: 'Seminar', accessibility_requirements: ['Ramp'] }] };
   if (sql.includes('FROM venues')) return { rows: [{ id: 7, name: 'Hall A', is_active: true, setup_minutes: 0, turnaround_minutes: 0 }] };
   if (sql.includes('FROM events')) return { rows: [{ id: 3, name: 'Gala', coordinator_id: state.coordinator }] };
   if (sql.includes('FROM venue_bookings')) return { rows: sql.includes('UNION') ? [] : [state.request] };
@@ -52,6 +52,22 @@ test('SCRUM-43 AC1 - staff pending list includes event requirements and requeste
   assert.equal(response.body.requests[0].expected_attendance, 100);
   assert.equal(response.body.requests[0].room_layout_preference, 'Seminar');
   assert.match(state.calls.find(sql => sql.includes('JOIN venues')), /status\s*=\s*'pending'/);
+});
+test('SCRUM-43 AC1 / SCRUM-61 AC2 - staff review submitted requirements rather than later event changes', async () => {
+  // The event currently says 100/Seminar/Ramp, but this particular venue request deliberately asks for different requirements.
+  state.request.requirements = { capacity: 40, layout: 'Theatre', accessibility: [] };
+  const response = await request('/requests/pending');
+  assert.equal(response.status, 200);
+  const saved = response.body.requests[0];
+  assert.equal(saved.expected_attendance, 40); assert.equal(saved.room_layout_preference, 'Theatre');
+  assert.deepEqual(saved.accessibility_requirements, []); // An explicitly empty requirement list must not gain event requirements.
+});
+test('SCRUM-43 AC1 - unspecified legacy request fields fall back to recorded event details', async () => {
+  state.request.requirements = { capacity: null, layout: '' };
+  const response = await request('/requests/pending');
+  assert.equal(response.body.requests[0].expected_attendance, 100);
+  assert.equal(response.body.requests[0].room_layout_preference, 'Seminar');
+  assert.deepEqual(response.body.requests[0].accessibility_requirements, ['Ramp']);
 });
 for (const role of ['event_coordinator', 'event_organiser', 'attendee', 'technical_support']) {
   test(`SCRUM-43 AC1 AC2 AC3 - ${role} cannot read the staff queue or decide`, async () => {

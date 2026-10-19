@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 
 import { api } from '../../api/client';
 
@@ -16,63 +16,41 @@ import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
 import EquipmentStatusSection from './EquipmentStatusSection';
+import EquipmentReservationIssuesSection from './EquipmentReservationIssuesSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
-import VenueBookingRequest from './VenueBookingRequest';
-import VenueSuitabilitySection from './VenueSuitabilitySection';
 
 import CancelEventAction from './CancelEventAction';
 
 
 
-// Scoped styles (everything is prefixed "ed-" so nothing clashes with existing global classes).
+// Keep the event workspace in the approved light brand palette: OS dark mode must not put pale text on fixed light cards.
 
 const STYLES = `
 
 .ed-root {
 
-  --ed-ink: #1c2530; --ed-muted: #5b6776; --ed-line: #d9dee5; --ed-surface: #ffffff; --ed-wash: #f4f6f8;
+  --ed-ink: #30391C; --ed-muted: #686A5E; --ed-line: #E3E4D3; --ed-surface: #FFFFFA; --ed-wash: #F4F4E5;
 
-  --ed-accent: #198754; --ed-accent-ink: #ffffff;
+  --ed-accent: #EF6B2E; --ed-accent-ink: #272C19;
 
-  --ed-ok-ink: #155724; --ed-ok-bg: #d4edda; --ed-ok-line: #28a745;
+  --ed-ok-ink: #424F19; --ed-ok-bg: #C7D45B; --ed-ok-line: #424F19;
 
-  --ed-warn-ink: #856404; --ed-warn-bg: #fff3cd; --ed-warn-line: #ffc107;
+  --ed-warn-ink: #424F19; --ed-warn-bg: #FFFAD9; --ed-warn-line: #C7D45B;
 
-  --ed-bad: #dc3545; --ed-bad-ink: #721c24; --ed-bad-bg: #f8d7da;
+  --ed-bad: #942B20; --ed-bad-ink: #942B20; --ed-bad-bg: #EFB6AA;
 
-  --ed-info-ink: #0c5460; --ed-info-bg: #d1ecf1; --ed-info-line: #17a2b8;
+  --ed-info-ink: #30391C; --ed-info-bg: #A9B6D3; --ed-info-line: #424F19;
 
-  --ed-link: #1d4ed8;
+  --ed-link: #424F19;
 
   --ed-radius: 10px;
+  color-scheme: light;
 
   display: block; width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; color: var(--ed-ink);
 
 }
 
 .ed-root.event-detail { display: block; width: 100%; max-width: 1100px; margin-inline: auto; }
-
-@media (prefers-color-scheme: dark) {
-
-  .ed-root {
-
-    --ed-ink: #e7ebf0; --ed-muted: #9aa6b4; --ed-line: #324050; --ed-surface: #1a222c; --ed-wash: #212b37;
-
-    --ed-link: #7ab0ff;
-
-    --ed-accent: #4cc26b; --ed-accent-ink: #0b1f12;
-
-    --ed-ok-ink: #8fe0a6; --ed-ok-bg: #173a27; --ed-ok-line: #4cc26b;
-
-    --ed-warn-ink: #f0c070; --ed-warn-bg: #3d2f12; --ed-warn-line: #c9962b;
-
-    --ed-bad: #ff6b78; --ed-bad-ink: #f5a3aa; --ed-bad-bg: #402022;
-
-    --ed-info-ink: #8fd3e0; --ed-info-bg: #12333a; --ed-info-line: #3aa7bb;
-
-  }
-
-}
 
 .ed-root *, .ed-root *::before, .ed-root *::after { box-sizing: border-box; }
 
@@ -122,7 +100,7 @@ const STYLES = `
 
 /* Cards + fields */
 
-.ed-card { background: #ffffff !important; border: 1px solid var(--ed-line); border-radius: var(--ed-radius); padding: 24px 28px; margin-bottom: 28px; }
+.ed-card { background: var(--ed-surface) !important; border: 1px solid var(--ed-line); border-radius: var(--ed-radius); padding: 24px 28px; margin-bottom: 28px; }
 
 .ed-grid { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 
@@ -240,7 +218,7 @@ const STYLES = `
 
 .ed-muted { color: var(--ed-muted); margin: 0; }
 
-.ed-contact a { color: var(--ed-accent); }
+.ed-contact a { color: var(--ed-link); }
 
 .ed-attach > :not(button) { padding: 0; margin: 0; border: 0; box-shadow: none; background: transparent; }
 
@@ -383,6 +361,25 @@ export default function EventDetail() {
   const [editValues, setEditValues] = useState(null);
 
   const [saveMessage, setSaveMessage] = useState('');
+  // Bookmark the active section so returning from discovery restores request history.
+  const [workspaceParams, setWorkspaceParams] = useSearchParams();
+  const workspaceTab = ['venues', 'equipment', 'activity'].includes(workspaceParams.get('tab')) ? workspaceParams.get('tab') : 'overview';
+  const coordinatorWorkspace = user.role === 'event_coordinator';
+
+  /** Keeps tabs bookmarkable without filling browser history with every section switch. */
+  function selectWorkspaceTab(key) {
+    setWorkspaceParams(key === 'overview' ? {} : { tab: key }, { replace: true });
+  }
+
+  /** Supports standard tab-list arrow/Home/End navigation as well as pointer interaction. */
+  function navigateWorkspaceTabs(action, index) {
+    const positions = { ArrowRight: (index + 1) % 4, ArrowLeft: (index + 3) % 4, Home: 0, End: 3 };
+    const next = positions[action.key];
+    if (next === undefined) return;
+    action.preventDefault();
+    const buttons = action.currentTarget.parentElement.querySelectorAll('[role="tab"]');
+    buttons[next].click(); buttons[next].focus();
+  }
 
   const [saving, setSaving] = useState(false);
 
@@ -796,13 +793,13 @@ export default function EventDetail() {
 
 
 
-  const backLink = !location.state?.backgroundLocation && (
+  const backLink = (
 
-    <Link className="button-link button-secondary detail-back ed-back" aria-label="Back to Events"
+    <Link className="button-link button-secondary detail-back ed-back" aria-label={coordinatorWorkspace ? 'Back to Assigned Events' : 'Back to Events'}
 
-      to={user.role === 'event_organiser' ? '/organizer/events' : user.role === 'event_coordinator_lead' ? '/coordinator-lead/dashboard' : '/events'}>
+      to={location.state?.returnTo || (user.role === 'event_organiser' ? '/organizer/events' : user.role === 'event_coordinator_lead' ? '/coordinator-lead/dashboard' : '/coordinator/dashboard')}>
 
-      ← Back to {user.role === 'event_organiser' ? 'My Events' : 'Events'}
+      ← Back to {user.role === 'event_organiser' ? 'My Events' : coordinatorWorkspace ? 'Assigned Events' : 'Events'}
 
     </Link>
 
@@ -906,6 +903,14 @@ export default function EventDetail() {
 
 
 
+      {coordinatorWorkspace && <div role="tablist" aria-label="Event workspace" className="event-workspace-tabs">
+        {[['overview', 'Overview'], ['venues', 'Venue requests'], ['equipment', 'Equipment'], ['activity', 'Activity']].map(([key, label], index) =>
+          <button key={key} role="tab" id={`workspace-tab-${key}`} aria-selected={workspaceTab === key}
+            tabIndex={workspaceTab === key ? 0 : -1} aria-controls={`workspace-panel-${key}`}
+            onKeyDown={action => navigateWorkspaceTabs(action, index)} onClick={() => selectWorkspaceTab(key)}>{label}</button>)}
+      </div>}
+      {/* Keep drafts mounted across sections so tab changes cannot discard unfinished work. */}
+      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-overview' : undefined} id="workspace-panel-overview" hidden={coordinatorWorkspace && workspaceTab !== 'overview'}>
       {confirmUpdate && <ActionConfirmation action="update this event request" busy={saving} error={updateError} success={updateSuccess} onConfirm={saveNonCritical} onClose={() => { setConfirmUpdate(false); if (updateSuccess) { setSaveMessage(updateSuccess); setUpdateSuccess(''); } }} />}
 
       <div className="ed-card ed-attach">
@@ -931,21 +936,147 @@ export default function EventDetail() {
       )}
 
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
-      {/* Check Venue Suitability: only the assigned coordinator (the API scopes it) compares venues for this event. */}
-      {user.role === 'event_coordinator' && <VenueSuitabilitySection eventId={event.id} token={token} />}
-
-      {user.role === 'event_coordinator' && <VenueBookingRequest event={event} token={token} />}
-
-      {user.role === 'event_coordinator' && <VenueBookingDecisions eventId={event.id} />}
-      {/* Tracks Equipment Request Status: the assigned coordinator (the API scopes it) monitors the technical arrangements. */}
-      {user.role === 'event_coordinator' && <EquipmentStatusSection eventId={event.id} token={token} />}
-
       <CancelEventAction event={event} user={user} token={token}
         onCancelled={(cancelledEvent) => setEvent((current) => ({ ...current, ...cancelledEvent }))}
         onMessage={setSaveMessage} />
 
 
 
+      <div className="ed-grid">
+
+        <section className="ed-card ed-span">
+
+          <h2 className="ed-card-title">Event Overview</h2>
+
+          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 3 }}>
+
+            <Field label="Purpose">{renderEditableField('purpose', 'Purpose', event.purpose, true)}</Field>
+
+            <Field label="Description">{renderEditableField('description', 'Description', event.description)}</Field>
+
+            <Field label="Event Type">{renderEditableField('eventType', 'Event type', event.event_type, true, formatText(event.event_type))}</Field>
+
+          </dl>
+
+        </section>
+
+
+
+        <section className="ed-card ed-span">
+
+          <h2 className="ed-card-title">Logistics & Schedule</h2>
+
+          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 4 }}>
+
+            <Field label="Date">{renderEditableField('proposedDate', 'Date', event.proposed_date, true, formatDate(event.proposed_date))}</Field>
+
+            <Field label="Start Time">{renderEditableField('proposedStartTime', 'Start time', event.proposed_start_time, true)}</Field>
+
+            <Field label="End Time">{renderEditableField('proposedEndTime', 'End time', event.proposed_end_time, true)}</Field>
+
+            <Field label="Expected Attendance">{renderEditableField('expectedAttendance', 'Expected attendance', event.expected_attendance, true)}</Field>
+
+          </dl>
+
+        </section>
+
+
+
+        <section className="ed-card ed-span">
+
+          <h2 className="ed-card-title">Requirements</h2>
+
+          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 3 }}>
+
+            <Field label="Programme">{renderEditableField('programmeDetails', 'Programme', event.programme_details)}</Field>
+
+            <Field label="Layout Requirements">{renderEditableField('roomLayoutPreference', 'Layout requirements', event.room_layout_preference, true)}</Field>
+
+            <Field label="Accessibility Needs">{renderEditableField('accessibilityText', 'Accessibility needs', event.accessibility_requirements)}</Field>
+
+          </dl>
+
+        </section>
+
+
+
+        {!coordinatorWorkspace && <>        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
+
+          onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>
+
+          {renderEditableField('equipmentNotes', 'Other equipment notes', event.equipment_notes)}
+
+        </EquipmentRequirementsSection>
+
+
+
+</>}
+
+        <section className="ed-card ed-span">
+
+          <h2 className="ed-card-title">Special Arrangements</h2>
+
+          <div style={{ whiteSpace: 'pre-wrap' }}>{renderEditableField('specialArrangements', 'Special arrangements', event.special_arrangements)}</div>
+
+        </section>
+
+
+
+        <section className="ed-card ed-span">
+
+          <h2 className="ed-card-title">Registration & Coordination</h2>
+
+          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 4 }}>
+
+            <Field label="Registration Required">
+
+              {renderEditableField('registrationRequired', 'Registration required', event.registration_required, true,
+
+                event.registration_required == null ? 'Not specified' : event.registration_required ? 'Yes' : 'No')}
+
+            </Field>
+
+            <Field label="Registration Capacity">{renderEditableField('registrationCapacity', 'Registration capacity', event.registration_capacity, true)}</Field>
+
+            <Field label="Organiser">{fieldValue(event.organiser_name)}</Field>
+
+            <Field label="Coordinator">{fieldValue(event.coordinator_name)}</Field>
+
+          </dl>
+
+          {user.role === 'event_organiser' && (
+            <Link className="button-link button-secondary" to={`/organizer/events/${id}/registrations`}>
+              View registration details
+            </Link>
+          )}
+
+        </section>
+
+      </div>
+
+      </div>
+      {coordinatorWorkspace && <>
+        <section role="tabpanel" id="workspace-panel-venues" aria-labelledby="workspace-tab-venues" hidden={workspaceTab !== 'venues'}>
+          <div className="workspace-action-card"><div><h2>Venue arrangements</h2><p>Review your requests here. Search and request spaces in Find venues.</p></div>
+            <Link className="button-link" to={`/coordinator/venues?eventId=${event.id}`}>Find a venue</Link></div>
+          <VenueBookingDecisions eventId={event.id} />
+        </section>
+        <section role="tabpanel" id="workspace-panel-equipment" aria-labelledby="workspace-tab-equipment" hidden={workspaceTab !== 'equipment'}>
+          <EquipmentStatusSection eventId={event.id} token={token} />
+          <EquipmentReservationIssuesSection eventId={event.id} token={token} />
+        {/* Coordinator equipment is read-only; edit callbacks belong only to the organiser's overview. */}
+        <EquipmentRequirementsSection event={event} canEdit={false}>
+
+          {renderEditableField('equipmentNotes', 'Other equipment notes', event.equipment_notes)}
+
+        </EquipmentRequirementsSection>
+
+
+
+
+        </section>
+      </>}
+      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-activity' : undefined} id="workspace-panel-activity" hidden={coordinatorWorkspace && workspaceTab !== 'activity'}>
       <section className="ed-card" aria-labelledby="clarifications-heading">
 
         <div className="ed-card-head">
@@ -1039,114 +1170,6 @@ export default function EventDetail() {
       </section>
 
 
-
-      <div className="ed-grid">
-
-        <section className="ed-card ed-span">
-
-          <h2 className="ed-card-title">Event Overview</h2>
-
-          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 3 }}>
-
-            <Field label="Purpose">{renderEditableField('purpose', 'Purpose', event.purpose, true)}</Field>
-
-            <Field label="Description">{renderEditableField('description', 'Description', event.description)}</Field>
-
-            <Field label="Event Type">{renderEditableField('eventType', 'Event type', event.event_type, true, formatText(event.event_type))}</Field>
-
-          </dl>
-
-        </section>
-
-
-
-        <section className="ed-card ed-span">
-
-          <h2 className="ed-card-title">Logistics & Schedule</h2>
-
-          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 4 }}>
-
-            <Field label="Date">{renderEditableField('proposedDate', 'Date', event.proposed_date, true, formatDate(event.proposed_date))}</Field>
-
-            <Field label="Start Time">{renderEditableField('proposedStartTime', 'Start time', event.proposed_start_time, true)}</Field>
-
-            <Field label="End Time">{renderEditableField('proposedEndTime', 'End time', event.proposed_end_time, true)}</Field>
-
-            <Field label="Expected Attendance">{renderEditableField('expectedAttendance', 'Expected attendance', event.expected_attendance, true)}</Field>
-
-          </dl>
-
-        </section>
-
-
-
-        <section className="ed-card ed-span">
-
-          <h2 className="ed-card-title">Requirements</h2>
-
-          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 3 }}>
-
-            <Field label="Programme">{renderEditableField('programmeDetails', 'Programme', event.programme_details)}</Field>
-
-            <Field label="Layout Requirements">{renderEditableField('roomLayoutPreference', 'Layout requirements', event.room_layout_preference, true)}</Field>
-
-            <Field label="Accessibility Needs">{renderEditableField('accessibilityText', 'Accessibility needs', event.accessibility_requirements)}</Field>
-
-          </dl>
-
-        </section>
-
-
-
-        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
-
-          onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>
-
-          {renderEditableField('equipmentNotes', 'Other equipment notes', event.equipment_notes)}
-
-        </EquipmentRequirementsSection>
-
-
-
-        <section className="ed-card ed-span">
-
-          <h2 className="ed-card-title">Special Arrangements</h2>
-
-          <div style={{ whiteSpace: 'pre-wrap' }}>{renderEditableField('specialArrangements', 'Special arrangements', event.special_arrangements)}</div>
-
-        </section>
-
-
-
-        <section className="ed-card ed-span">
-
-          <h2 className="ed-card-title">Registration & Coordination</h2>
-
-          <dl className="ed-fields ed-fields--tiles" style={{ '--ed-cols': 4 }}>
-
-            <Field label="Registration Required">
-
-              {renderEditableField('registrationRequired', 'Registration required', event.registration_required, true,
-
-                event.registration_required == null ? 'Not specified' : event.registration_required ? 'Yes' : 'No')}
-
-            </Field>
-
-            <Field label="Registration Capacity">{renderEditableField('registrationCapacity', 'Registration capacity', event.registration_capacity, true)}</Field>
-
-            <Field label="Organiser">{fieldValue(event.organiser_name)}</Field>
-
-            <Field label="Coordinator">{fieldValue(event.coordinator_name)}</Field>
-
-          </dl>
-
-          {user.role === 'event_organiser' && (
-            <Link className="button-link button-secondary" to={`/organizer/events/${id}/registrations`}>
-              View registration details
-            </Link>
-          )}
-
-        </section>
 
       </div>
 

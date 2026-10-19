@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 const { HOLD_DURATION_MS, hasConflict } = require('./venueAvailability');
 const { insertNotifications } = require('./notificationService');
+const { requirements } = require('./venueRequestRequirements');
 
 /** Attaches an HTTP status to an expected domain error for the existing Express error boundary. */
 function reject(status, message) { return Object.assign(new Error(message), { status }); }
@@ -51,8 +52,9 @@ async function recordedPeriods(client, venueId) {
     FROM venue_schedule_periods WHERE venue_id=$1 AND status='unavailable'`, [venueId])).rows;
 }
 
-/** Creates an assignment-authorized hold after locking the venue and checking the full occupied window. */
+/** Creates an assignment-authorized hold with a requirements snapshot and opt-in cancellation policy; returns the stored request after checking the full occupied window. */
 async function createVenueRequest(venueId, body, userId) {
+  const details = requirements(body);
   const start = timestamp(body.startDatetime), end = timestamp(body.endDatetime);
   if (!validId(venueId) || !validId(body.eventId) || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     throw reject(400, 'Choose a valid venue, event and positive event period with explicit timezones.');
@@ -66,10 +68,10 @@ async function createVenueRequest(venueId, body, userId) {
     const candidate = { kind: 'booking', start_datetime: body.startDatetime, end_datetime: body.endDatetime };
     if (hasConflict(candidate, periods, venue, now)) throw reject(409, 'The requested period is unavailable, including setup and turnaround.');
     return (await client.query(`INSERT INTO venue_bookings
-      (venue_id, event_id, requested_by, start_datetime, end_datetime, status, created_at, hold_expires_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      (venue_id, event_id, requested_by, start_datetime, end_datetime, status, created_at, hold_expires_at, requirements, cancel_other_pending)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) RETURNING *`,
     [venue.id, Number(body.eventId), userId, new Date(start).toISOString(), new Date(end).toISOString(), 'pending',
-      new Date(now).toISOString(), new Date(now + HOLD_DURATION_MS).toISOString()])).rows[0];
+      new Date(now).toISOString(), new Date(now + HOLD_DURATION_MS).toISOString(), JSON.stringify(details.requirements), details.cancelOtherPending])).rows[0];
   });
 }
 

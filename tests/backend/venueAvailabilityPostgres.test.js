@@ -37,7 +37,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
     try {
-      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql']) await client.query(migration(file));
+      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql']) await client.query(migration(file));
     } finally { client.release(); }
     // Redirect only connection acquisition. All route SQL, constraints, locking and commits run on real PostgreSQL.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));
@@ -195,13 +195,15 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
 
   test('AC7 - staff decisions persist, rejection releases the slot and request IDs remain venue scoped', async () => {
     // Arrange
-    const created = await request('/7/requests', body);
+    const created = await request('/7/requests', { ...body, capacity: 40, layout: 'Theatre', accessibility: ['Step-free'] });
     assert.equal(created.status, 201);
     // Act / Assert: another venue must not allow deciding this request by its globally unique ID.
     const queue = await request('/requests/pending', undefined, 'GET', 2);
     assert.equal(queue.status, 200);
-    assert.equal(queue.body.requests[0].expected_attendance, 100);
-    assert.equal(queue.body.requests[0].room_layout_preference, 'Seminar');
+    // SCRUM-43 AC1: the query must retrieve the per-request snapshot, not the event's default 100/Seminar/Ramp.
+    assert.equal(queue.body.requests[0].expected_attendance, 40);
+    assert.equal(queue.body.requests[0].room_layout_preference, 'Theatre');
+    assert.deepEqual(queue.body.requests[0].accessibility_requirements, ['Step-free']);
     assert.equal((await request(`/8/requests/${created.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2)).status, 404);
     assert.equal((await request(`/7/requests/${created.body.request.id}/decision`, { decision: 'rejected' }, 'PUT', 2)).status, 200);
     const replacement = await request('/7/requests', body);

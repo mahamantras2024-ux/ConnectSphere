@@ -18,5 +18,7 @@ ALTER TABLE event_equipment_reviews ADD CONSTRAINT event_equipment_reviews_affec
 -- otherwise a re-run fails on stored notifications of a type a later migration added.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN ('change_request_submitted', 'change_request_approved', 'change_request_rejected', 'event_details_changed',
-  'event_approved', 'event_rejected', 'safety_check_recorded', 'event_cancelled', 'equipment_status_changed'));
+  'event_approved', 'event_rejected', 'safety_check_recorded',
+  'technical_support_assigned', 'technical_support_unassigned',
+  'event_cancelled', 'equipment_status_changed', 'waitlist_promoted'));
 COMMIT;
