@@ -21,6 +21,8 @@ import EquipmentStatusSection from './EquipmentStatusSection';
 import EquipmentReservationIssuesSection from './EquipmentReservationIssuesSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 
+import CoordinatorRegistrations from './CoordinatorRegistrations';
+
 import CancelEventAction from './CancelEventAction';
 
 
@@ -867,6 +869,7 @@ export default function EventDetail() {
       {backLink}
 
       {user.role === 'event_organiser' && <OrganiserRegistrationAction eventId={event.id} token={token} />}
+      {coordinatorWorkspace && <CoordinatorRegistrations eventId={event.id} token={token} />}
 
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
 
