@@ -281,6 +281,37 @@ it('AC1 - marks equipment unavailable from the status dropdown and reports affec
   expect(screen.queryByRole('row', { name: /REPAIR-DEMO-002 Repair Demo Microphone/ })).toBeNull();
 });
 
+// AC1 - A successful transition with no impacted reservation keeps staff on inventory and reports that outcome.
+it('AC1 - reports when marking equipment unavailable affects no reservations', async () => {
+  api.put.mockImplementationOnce(async () => ({
+    equipment: {
+      ...availableEquipment,
+      availability_status: 'Unavailable',
+      status_history: [{
+        id: 9,
+        status: 'Unavailable',
+        note: 'Battery failed inspection',
+        changed_at: '2026-10-18T11:00:00.000Z',
+        changed_by_name: 'Taylor Support',
+      }],
+    },
+    affectedIssues: [],
+  }));
+  render(<TechSupportDashboard />);
+  const row = await screen.findByRole('row', { name: /REPAIR-DEMO-002 Repair Demo Microphone/ });
+  fireEvent.change(within(row).getByRole('combobox', { name: 'Status for REPAIR-DEMO-002' }), {
+    target: { value: 'Unavailable' },
+  });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Reason for unavailability of REPAIR-DEMO-002' }), {
+    target: { value: 'Battery failed inspection' },
+  });
+
+  fireEvent.click(within(row).getByRole('button', { name: 'Mark Unavailable' }));
+
+  expect(await screen.findByText('REPAIR-DEMO-002 marked unavailable. No upcoming reservations were affected.')).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+});
+
 // AC2 - Technical Support chooses an eligible replacement and sends it to the Event Coordinator.
 it('AC2 - sends the selected replacement for an affected reservation', async () => {
   // Arrange
@@ -304,6 +335,16 @@ it('AC2 - sends the selected replacement for an affected reservation', async () 
   expect(await screen.findByText('Replacement suggestion sent. Waiting for the Event Coordinator.')).toBeTruthy();
 });
 
+// AC2 - An awaiting-staff issue with no candidate must remain open and explain the next step.
+it('AC2 - explains when an awaiting-staff reservation has no replacement candidates', async () => {
+  affectedReservations = [affectedReservation({ alternatives: [] })];
+  render(<TechSupportDashboard />);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+
+  expect(await screen.findByText('No replacements found for this event slot. The reservation remains flagged for staff follow-up.')).toBeTruthy();
+  expect(screen.queryByRole('combobox', { name: /Replacement for REPAIR-DEMO-001/ })).toBeNull();
+});
+
 // AC2 - Affected reservations without an eligible alternative stay visibly open for staff follow-up.
 it('AC2 - tells Technical Support when no replacement is currently available', async () => {
   // Arrange
@@ -319,6 +360,37 @@ it('AC2 - tells Technical Support when no replacement is currently available', a
   // Assert: absence of candidates is explicit and does not present a misleading replacement selector.
   expect(await screen.findByText('No replacement equipment is currently available for this event slot.')).toBeTruthy();
   expect(screen.queryByRole('combobox', { name: /Replacement for REPAIR-DEMO-001/ })).toBeNull();
+});
+
+// AC2 - Staff cannot send an empty replacement choice to the coordinator.
+it('AC2 - requires a replacement selection before sending a suggestion', async () => {
+  affectedReservations = [affectedReservation({})];
+  render(<TechSupportDashboard />);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  await screen.findByRole('combobox', { name: 'Replacement for REPAIR-DEMO-001 at Town Hall' });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Send suggestion to coordinator' }));
+
+  expect((await screen.findByRole('alert')).textContent).toBe('Choose replacement equipment first.');
+  expect(api.put).not.toHaveBeenCalled();
+});
+
+// AC2 - A rejected offer remains visible for follow-up, and a message-less request error is surfaced explicitly.
+it('AC2 - keeps rejected suggestions actionable and reports a message-less send failure', async () => {
+  affectedReservations = [affectedReservation({ suggestion_status: 'rejected' })];
+  api.put.mockRejectedValueOnce({});
+  render(<TechSupportDashboard />);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  const replacement = await screen.findByRole('combobox', {
+    name: 'Replacement for REPAIR-DEMO-001 at Town Hall',
+  });
+  fireEvent.change(replacement, { target: { value: '92' } });
+
+  expect(await screen.findByText('The coordinator rejected the previous suggestion. Choose another replacement or follow up.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Send suggestion to coordinator' }));
+
+  expect((await screen.findByRole('alert')).textContent).toBe('Unable to send this replacement suggestion.');
+  expect(screen.getByRole('button', { name: 'Send suggestion to coordinator' })).toBeTruthy();
 });
 
 // AC1 - A failed reservation load must not be presented as a confirmed empty schedule.

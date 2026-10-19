@@ -91,6 +91,19 @@ it('ES AC1/AC3 - the coordinator sees a partially available request, which items
     .toBe('Request version 1: Confirmed (1 Jan 2030, 11:00 am, Taylor)');
 });
 
+// AC1 - Legacy partial reviews explain that older responses did not track affected items individually.
+it('ES AC1 - explains the legacy partial-review fallback when item-level statuses were not recorded', async () => {
+  status = {
+    ...partialView,
+    items: [{ key: 'legacy:0', label: 'Microphone', quantity: 4, status: 'not_recorded', availableQuantity: null }],
+    history: [],
+  };
+  open('/events/101');
+  const section = await panel();
+
+  expect(await within(section).findByText(/This review was recorded before affected items were tracked/)).toBeTruthy();
+});
+
 // AC3 - The assigned coordinator can accept a pending replacement and receives the updated reservation state.
 it('ES AC3 - accepts a pending replacement suggestion', async () => {
   // Arrange
@@ -158,6 +171,37 @@ it('ES AC3 - shows an error when accepting a replacement fails', async () => {
 
   // Assert: a stale offer stays unresolved and its service error is visible.
   expect((await within(section).findByRole('alert')).textContent).toBe('The replacement is no longer available.');
+  expect(within(section).getByRole('button', { name: 'Accept replacement' })).toBeTruthy();
+});
+
+// AC3: replacement states that need staff follow-up remain visible without offering a decision prematurely.
+it.each([
+  ['no_alternative', 'Technical Support has not found a replacement yet.'],
+  ['awaiting_staff', 'Waiting for Technical Support to suggest an available replacement.'],
+])('ES AC3 - explains a %s replacement state', async (replacementStatus, expectedMessage) => {
+  status = {
+    ...partialView,
+    replacementSuggestions: [{ ...pendingReplacement, status: replacementStatus }],
+  };
+  open('/events/101');
+  const section = await panel();
+
+  expect(await within(section).findByText(expectedMessage)).toBeTruthy();
+  expect(within(section).queryByRole('button', { name: 'Accept replacement' })).toBeNull();
+  expect(within(section).queryByRole('button', { name: 'Reject replacement' })).toBeNull();
+});
+
+// AC3: an API failure without a message uses the coordinator-facing fallback rather than disappearing.
+it('ES AC3 - shows a fallback error when the replacement decision fails without a message', async () => {
+  status = { ...partialView, replacementSuggestions: [pendingReplacement] };
+  api.post.mockRejectedValueOnce({});
+  open('/events/101');
+  const section = await panel();
+
+  fireEvent.click(await within(section).findByRole('button', { name: 'Accept replacement' }));
+
+  expect((await within(section).findByRole('alert')).textContent)
+    .toBe('Unable to save the replacement decision.');
   expect(within(section).getByRole('button', { name: 'Accept replacement' })).toBeTruthy();
 });
 

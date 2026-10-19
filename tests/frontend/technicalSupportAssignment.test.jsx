@@ -37,6 +37,30 @@ it('AC2 - assigns one or more Technical Support Staff members', async () => {
     { staffIds: [42] }, 'coordinator-token'));
 });
 
+// AC2: an event without a prior assignment starts with no selected staff and cannot save an empty team.
+it('AC2 - starts an unassigned event with no selected staff', async () => {
+  const unassignedEvent = { id: 8, name: 'Open House' };
+  render(<TechnicalSupportAssignment event={unassignedEvent} token="coordinator-token" staff={staff} onSaved={vi.fn()} />);
+
+  const taylorCheckbox = screen.getByLabelText(/Taylor Support/);
+  expect(taylorCheckbox.checked).toBe(false);
+  fireEvent.click(taylorCheckbox);
+  expect(taylorCheckbox.checked).toBe(true);
+  fireEvent.click(taylorCheckbox);
+
+  expect(taylorCheckbox.checked).toBe(false);
+  expect(screen.getByRole('button', { name: 'Assign staff' }).disabled).toBe(true);
+  expect(api.put).not.toHaveBeenCalled();
+});
+
+// AC2: when the staff directory is empty, the coordinator sees the empty state instead of unusable controls.
+it('AC2 - explains when no Technical Support Staff are available', () => {
+  render(<TechnicalSupportAssignment event={{ id: 8 }} token="coordinator-token" staff={[]} onSaved={vi.fn()} />);
+
+  expect(screen.getByText('No Technical Support Staff are available.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Assign staff' })).toBeNull();
+});
+
 // AC1: assigned staff see schedule, venue and all equipment facts in the operational view.
 it('AC1 - displays assigned event date time venue and equipment', async () => {
   api.get.mockResolvedValue({
@@ -55,6 +79,80 @@ it('AC1 - displays assigned event date time venue and equipment', async () => {
   expect(within(card).getByText('Innovation Hall · Level 3')).toBeTruthy();
   expect(within(card).getByText('Projector')).toBeTruthy();
   expect(within(card).getByText('Qty. 2')).toBeTruthy();
+});
+
+// AC1: absent optional assignment data remains explicit, while supplied support notes remain visible.
+it('AC1 - shows fallbacks for sparse on-site assignments and preserves supplied notes', async () => {
+  api.get.mockResolvedValue({
+    events: [
+      {
+        id: 8,
+        name: '',
+        purpose: null,
+        status: null,
+        proposed_date: null,
+        proposed_start_time: null,
+        proposed_end_time: null,
+        venue_name: 'Main Hall',
+        venue_location: '',
+        equipment_items: [],
+        equipment_notes: 'Bring the presentation adapter.',
+        technical_support_details: 'Check the projector before guests arrive.',
+      },
+      {
+        id: 9,
+        name: 'Equipment-free event',
+        equipment_items: [],
+        equipment_notes: '',
+      },
+    ],
+  });
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  const sparseCard = await screen.findByRole('article', { name: 'Untitled Event' });
+  expect(within(sparseCard).getByText('Assigned', { selector: '.status-badge' })).toBeTruthy();
+  expect(within(sparseCard).getByText('No purpose provided')).toBeTruthy();
+  expect(within(sparseCard).getByText('Not specified')).toBeTruthy();
+  expect(within(sparseCard).getByText('Not specified – Not specified')).toBeTruthy();
+  expect(within(sparseCard).getByText('Main Hall')).toBeTruthy();
+  expect(within(sparseCard).getByText('Bring the presentation adapter.')).toBeTruthy();
+  expect(within(sparseCard).getByText('Check the projector before guests arrive.')).toBeTruthy();
+  expect(await screen.findByText('No equipment details provided.')).toBeTruthy();
+});
+
+// AC1: the assigned-events panel reports retrieval failures instead of presenting an empty queue.
+it('AC1 - shows an error when on-site assignments cannot be loaded', async () => {
+  api.get.mockRejectedValue(new Error('Unable to load on-site assignments.'));
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  expect((await screen.findByRole('alert')).textContent).toBe('Unable to load on-site assignments.');
+});
+
+// AC1: a successful response with one assigned event uses singular wording in the badge.
+it('AC1 - shows singular wording for a single assigned event', async () => {
+  api.get.mockResolvedValue({
+    events: [{
+      id: 11,
+      name: 'Single Event',
+      proposed_date: '2026-10-12',
+      proposed_start_time: '09:00:00',
+      proposed_end_time: '12:00:00',
+      venue_name: 'Main Hall',
+      equipment_items: [],
+    }],
+  });
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  expect(await screen.findByText('1 event')).toBeTruthy();
+});
+
+// AC1: a successful response with no events is distinct from a loading or failed state.
+it('AC1 - shows an empty state when the response has no assigned events', async () => {
+  api.get.mockResolvedValue({});
+  render(<OnSiteSupportSection token="staff-token" />);
+
+  expect(await screen.findByText('No assigned events yet.')).toBeTruthy();
+  expect(screen.getByText('0 events')).toBeTruthy();
 });
 
 // AC3: a failed assignment is visible and does not claim that the team was saved.

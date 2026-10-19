@@ -1,9 +1,12 @@
 // File: Tests the fixed equipment catalogue, filters, and search-triggered availability calendar.
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
 import EquipmentInventorySection from '../../frontend/src/pages/tech-support/EquipmentInventorySection';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function getDateOffset(days) {
   const date = new Date();
@@ -217,6 +220,129 @@ it('AC1 - keeps the current month calendar compact from today onward', () => {
 
   // Assert: fully elapsed weeks should not consume vertical space in the current-month view.
   expect(calendar.querySelectorAll('tbody tr')).toHaveLength(expectedWeeks);
+});
+
+// AC1: the rolling calendar hides dates that fall outside its horizon after the month changes.
+it('AC1 - keeps an expired calendar month empty when the availability horizon advances', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2025-01-31T12:00:00Z'));
+  const { rerender } = render(<EquipmentInventorySection inventory={[inventory[0]]} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'PROJ-001' },
+  });
+
+  vi.setSystemTime(new Date('2025-02-01T12:00:00Z'));
+  rerender(<EquipmentInventorySection inventory={[inventory[0]]} error="" />);
+
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  expect(calendar.querySelectorAll('tbody tr')).toHaveLength(0);
+  expect(screen.getByRole('button', { name: 'Next month' }).disabled).toBe(false);
+});
+
+// AC2: legacy operational records and status-history reasons produce truthful calendar details.
+it('AC2 - uses legacy availability and audit details for calendar windows', () => {
+  const date = getDateOffset(1);
+  const statusFixtures = [
+    {
+      ...inventory[0],
+      id: 11,
+      asset_code: 'STATUS-OPERATIONAL',
+      status: 'operational',
+      availability_status: undefined,
+      status_history: [{ id: 1, status: 'Available', changed_at: null, note: 'Checked today.' }],
+      availabilities: [{ date, startTime: '09:00:00', endTime: '10:00:00', status: 'Available', availableQuantity: null }],
+    },
+    {
+      ...inventory[0],
+      id: 12,
+      asset_code: 'STATUS-HISTORY',
+      availability_status: 'Unavailable',
+      status_history: [{ id: 2, status: 'Unavailable', changed_at: null, note: 'Cable is damaged.' }],
+      availabilities: [{ date, startTime: '10:00:00', endTime: '11:00:00', status: 'Available', availableQuantity: 0 }],
+    },
+    {
+      ...inventory[0],
+      id: 13,
+      asset_code: 'STATUS-FALLBACK',
+      availability_status: 'Unavailable',
+      status_history: [],
+      availabilities: [{ date, startTime: '11:00:00', endTime: '12:00:00', status: 'Available', availableQuantity: 0 }],
+    },
+  ];
+  render(<EquipmentInventorySection inventory={statusFixtures} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'STATUS-' },
+  });
+
+  const operationalCalendar = screen.getByRole('table', { name: 'STATUS-OPERATIONAL monthly availability' });
+  const historyCalendar = screen.getByRole('table', { name: 'STATUS-HISTORY monthly availability' });
+  const fallbackCalendar = screen.getByRole('table', { name: 'STATUS-FALLBACK monthly availability' });
+  expect(within(operationalCalendar).getAllByText('Available').length).toBeGreaterThan(0);
+  expect(within(historyCalendar).getByText('Cable is damaged.')).toBeTruthy();
+  expect(within(fallbackCalendar).getByText('Equipment is unavailable.')).toBeTruthy();
+  expect(within(getAssetRow('STATUS-OPERATIONAL')).getByText('Date unavailable')).toBeTruthy();
+});
+
+// AC2: selecting the already-current status closes transition forms without requesting a write.
+it('AC2 - leaves an available asset unchanged when its current status is reselected', () => {
+  const onRepairEquipment = vi.fn();
+  const onMarkUnavailable = vi.fn();
+  render(<EquipmentInventorySection
+    inventory={[{ ...inventory[0], availability_status: 'Available' }]}
+    error=""
+    onRepairEquipment={onRepairEquipment}
+    onMarkUnavailable={onMarkUnavailable}
+  />);
+
+  fireEvent.change(screen.getByRole('combobox', { name: 'Status for PROJ-001' }), {
+    target: { value: 'Available' },
+  });
+
+  expect(screen.queryByRole('textbox', { name: 'Resolution note' })).toBeNull();
+  expect(screen.queryByRole('textbox', { name: 'Reason for unavailability of PROJ-001' })).toBeNull();
+  expect(onRepairEquipment).not.toHaveBeenCalled();
+  expect(onMarkUnavailable).not.toHaveBeenCalled();
+});
+
+// AC2 - A reason is mandatory before an unavailable equipment record is committed.
+it('AC2 - requires a reason before marking equipment unavailable', async () => {
+  const onMarkUnavailable = vi.fn();
+  render(<EquipmentInventorySection
+    inventory={[{ ...inventory[0], availability_status: 'Available' }]}
+    error=""
+    onMarkUnavailable={onMarkUnavailable}
+  />);
+
+  fireEvent.change(screen.getByRole('combobox', { name: 'Status for PROJ-001' }), {
+    target: { value: 'Unavailable' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Mark Unavailable' }));
+
+  expect((await screen.findByRole('alert')).textContent).toMatch(/Enter why this equipment is unavailable\./);
+  expect(onMarkUnavailable).not.toHaveBeenCalled();
+});
+
+// AC2 - A valid unavailability reason is sent to the status callback when the change is confirmed.
+it('AC2 - submits the unavailability reason to the inventory callback', async () => {
+  const onMarkUnavailable = vi.fn().mockResolvedValue();
+  render(<EquipmentInventorySection
+    inventory={[{ ...inventory[0], availability_status: 'Available' }]}
+    error=""
+    onMarkUnavailable={onMarkUnavailable}
+  />);
+
+  fireEvent.change(screen.getByRole('combobox', { name: 'Status for PROJ-001' }), {
+    target: { value: 'Unavailable' },
+  });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Reason for unavailability of PROJ-001' }), {
+    target: { value: 'Cable damaged during setup.' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Mark Unavailable' }));
+
+  await waitFor(() => expect(onMarkUnavailable).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 1, asset_code: 'PROJ-001' }),
+    'Cable damaged during setup.',
+  ));
 });
 
 // AC2 - The calendar shows reservation quantities without exposing event names.
