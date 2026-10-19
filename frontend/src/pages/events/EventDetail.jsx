@@ -19,6 +19,8 @@ import EquipmentStatusSection from './EquipmentStatusSection';
 import EquipmentReservationIssuesSection from './EquipmentReservationIssuesSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 
+import CoordinatorRegistrations from './CoordinatorRegistrations';
+
 import CancelEventAction from './CancelEventAction';
 
 
@@ -54,7 +56,8 @@ const STYLES = `
 
 .ed-root *, .ed-root *::before, .ed-root *::after { box-sizing: border-box; }
 
-.ed-back { display: inline-flex; margin-bottom: 16px; }
+/* Separate adjacent navigation buttons without changing their existing pill styling. */
+.ed-back { display: inline-flex; margin-bottom: 16px; margin-inline-end: 12px; }
 
 
 
@@ -862,6 +865,8 @@ export default function EventDetail() {
       <style>{STYLES}</style>
 
       {backLink}
+
+      {coordinatorWorkspace && <CoordinatorRegistrations eventId={event.id} token={token} />}
 
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
 

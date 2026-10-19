@@ -1,0 +1,21 @@
+const { pool } = require('../config/db');
+
+/** Returns attendance planning data only when the session owns the coordinator assignment. */
+async function getRegistrations(req, res) {
+  const id = req.params.id;
+  if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) return res.status(400).json({ message: 'Invalid event ID.' });
+  // Authorize before reading attendee identities; a missing or differently assigned event discloses no data.
+  const events = await pool.query('SELECT id, name FROM events WHERE id=$1 AND coordinator_id=$2', [id, req.user.id]);
+  if (!events.rows.length) return res.status(404).json({ message: 'Event not found or access denied.' });
+  const result = await pool.query(`SELECT r.id, attendee.full_name AS attendee_name, r.status, r.registered_at
+    FROM registrations r JOIN users attendee ON attendee.id=r.attendee_id
+    WHERE r.event_id=$1 AND r.status IN ('registered', 'waitlisted')
+      AND EXISTS (SELECT 1 FROM events e WHERE e.id=r.event_id AND e.coordinator_id=$2)
+    ORDER BY r.registered_at ASC, r.id ASC`, [id, req.user.id]);
+  // Stored statuses are authoritative: venue overflow must never double-count registered attendees as waitlisted.
+  const registered = result.rows.filter(row => row.status === 'registered');
+  const waitlist = result.rows.filter(row => row.status === 'waitlisted');
+  return res.json({ event: events.rows[0], registered, waitlist,
+    headcount: registered.length, waitlist_count: waitlist.length });
+}
+module.exports = { getRegistrations };
