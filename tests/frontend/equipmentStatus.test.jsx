@@ -104,6 +104,29 @@ it('ES AC1 - explains the legacy partial-review fallback when item-level statuse
   expect(await within(section).findByText(/This review was recorded before affected items were tracked/)).toBeTruthy();
 });
 
+// AC3 - Only the selected replacement is updated; the rest of the suggestion list stays unchanged.
+it('ES AC3 - updates only the chosen replacement suggestion in the coordinator review', async () => {
+  status = {
+    ...partialView,
+    replacementSuggestions: [
+      pendingReplacement,
+      { ...pendingReplacement, id: 72, original_asset_code: 'MIC-003', original_name: 'Wireless Microphone 3', quantity: 1 },
+    ],
+  };
+  api.post.mockResolvedValue({ message: 'Replacement accepted and reservation updated.' });
+  open('/events/101');
+  const section = await panel();
+
+  fireEvent.click((await within(section).findAllByRole('button', { name: 'Accept replacement' }))[0]);
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    '/events/101/equipment-reservation-issues/71/decision',
+    { outcome: 'accepted' },
+    'session-token',
+  ));
+  expect(within(section).getByText(/MIC-003.*Wireless Microphone 3/)).toBeTruthy();
+});
+
 // AC3 - The assigned coordinator can accept a pending replacement and receives the updated reservation state.
 it('ES AC3 - accepts a pending replacement suggestion', async () => {
   // Arrange

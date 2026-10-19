@@ -106,6 +106,26 @@ it('AC2 - labels date-only availability as an upper bound', () => {
   expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('Up to 1');
 });
 
+// AC2 - An explicitly available window without a quantity still counts as available and keeps default calendar logic green.
+it('AC2 - treats an available calendar window with no quantity as available', () => {
+  render(<EquipmentInventorySection inventory={[{
+    ...inventory[0],
+    availabilities: [{
+      date: getDateOffset(8),
+      startTime: '10:00:00',
+      endTime: '11:00:00',
+      status: 'Available',
+      availableQuantity: null,
+    }],
+  }]} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'PROJ-001' },
+  });
+
+  expect(screen.getByRole('table', { name: 'PROJ-001 monthly availability' })).toBeTruthy();
+  expect(within(screen.getByRole('table', { name: 'PROJ-001 monthly availability' })).getAllByText('Available').length).toBeGreaterThan(0);
+});
+
 // AC3 - Fully reserved equipment remains visible with zero available for its selected slot.
 it('AC3 - shows zero available when the selected date window is fully reserved', () => {
   render(<EquipmentInventorySection inventory={inventory} error="" />);
@@ -220,6 +240,21 @@ it('AC1 - keeps the current month calendar compact from today onward', () => {
 
   // Assert: fully elapsed weeks should not consume vertical space in the current-month view.
   expect(calendar.querySelectorAll('tbody tr')).toHaveLength(expectedWeeks);
+});
+
+// AC1 - The monthly calendar lets staff step back into the prior month while still inside the rolling horizon.
+it('AC1 - moves back to the previous month in the rolling availability horizon', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2025-04-15T12:00:00Z'));
+  render(<EquipmentInventorySection inventory={[inventory[0]]} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'PROJ-001' },
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+  expect(screen.getByText('May 2025')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+  expect(screen.getByText('April 2025')).toBeTruthy();
 });
 
 // AC1: the rolling calendar hides dates that fall outside its horizon after the month changes.
@@ -343,6 +378,26 @@ it('AC2 - submits the unavailability reason to the inventory callback', async ()
     expect.objectContaining({ id: 1, asset_code: 'PROJ-001' }),
     'Cable damaged during setup.',
   ));
+});
+
+// AC2 - A failed save without a message still surfaces a usable fallback error to the staff member.
+it('AC2 - shows a fallback error when the unavailable save fails without a message', async () => {
+  const onMarkUnavailable = vi.fn().mockRejectedValue(new Error(''));
+  render(<EquipmentInventorySection
+    inventory={[{ ...inventory[0], availability_status: 'Available' }]}
+    error=""
+    onMarkUnavailable={onMarkUnavailable}
+  />);
+
+  fireEvent.change(screen.getByRole('combobox', { name: 'Status for PROJ-001' }), {
+    target: { value: 'Unavailable' },
+  });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Reason for unavailability of PROJ-001' }), {
+    target: { value: 'Cable damaged during setup.' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Mark Unavailable' }));
+
+  expect((await screen.findByRole('alert')).textContent).toBe('Unable to mark equipment unavailable.');
 });
 
 // AC2 - The calendar shows reservation quantities without exposing event names.
