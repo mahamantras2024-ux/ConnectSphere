@@ -55,6 +55,8 @@ async function databaseQuery(sql, parameters = []) {
   // Simulate only a database write error; the handler must roll back and map an exclusion violation to a conflict.
   if (fixture.writeError && /^INSERT INTO venue_bookings/i.test(query)) throw Object.assign(new Error('Database write rejected'), { code: fixture.writeError });
   if (/^(BEGIN|COMMIT|ROLLBACK)/i.test(query)) return { rows: [] };
+  // SCRUM-43 adds an atomic coordinator notice; this lifecycle suite keeps database I/O simulated.
+  if (/WITH inserted/.test(query)) return { rows: [] };
   if (/FROM users\b/i.test(query)) return { rows: [{ id: 1, role: fixture.role }] };
   if (/^SELECT/i.test(query)) {
     if (/FROM venues\b/i.test(query)) return { rows: fixture.venue ? [fixture.venue] : [] };

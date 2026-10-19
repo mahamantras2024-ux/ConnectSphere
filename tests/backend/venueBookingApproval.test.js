@@ -1,0 +1,99 @@
+// File: SCRUM-43 HTTP tests execute real authorization, decisions and notification construction; only PostgreSQL I/O is replaced.
+const { test, before, beforeEach, afterEach, after, mock } = require('node:test');
+const assert = require('node:assert/strict');
+process.env.JWT_SECRET = 'approval-test-only';
+process.env.NODE_ENV = 'test';
+const jwt = require('../../backend/node_modules/jsonwebtoken');
+const { pool } = require('../../backend/src/config/db');
+const app = require('../../backend/src/index');
+let server, base, state;
+before(async () => {
+  server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  base = `http://127.0.0.1:${server.address().port}/api/venues`;
+});
+beforeEach(() => {
+  state = { role: 'venue_staff', coordinator: 4, calls: [], notes: [], request: { id: 20, venue_id: 7, event_id: 3, requested_by: 5, status: 'pending',
+    start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z' } };
+  mock.method(pool, 'query', query);
+  mock.method(pool, 'connect', async () => ({ query, release() {} }));
+});
+afterEach(() => mock.restoreAll());
+after(async () => { await new Promise(resolve => server.close(resolve)); await pool.end(); });
+/** Supplies raw records and captures transaction/notification parameters without implementing approval rules. */
+async function query(sql, values = []) {
+  state.calls.push(sql);
+  if (/^(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [] };
+  if (sql.includes('WITH inserted')) {
+    if (state.notificationFailure) throw new Error('Notification storage failed');
+    state.notes.push(values);
+    return { rows: [] };
+  }
+  if (sql.includes('FROM users')) return { rows: [{ id: 9, role: state.role }] };
+  if (sql.includes('JOIN venues')) return { rows: [{ ...state.request, venue_name: 'Hall A', event_name: 'Gala', expected_attendance: 100, room_layout_preference: 'Seminar' }] };
+  if (sql.includes('FROM venues')) return { rows: [{ id: 7, name: 'Hall A', is_active: true, setup_minutes: 0, turnaround_minutes: 0 }] };
+  if (sql.includes('FROM events')) return { rows: [{ id: 3, name: 'Gala', coordinator_id: state.coordinator }] };
+  if (sql.includes('FROM venue_bookings')) return { rows: sql.includes('UNION') ? [] : [state.request] };
+  if (sql.startsWith('UPDATE venue_bookings')) return { rows: [{ ...state.request, status: values[0], decision_by: values[1], updated_at: values[2], decision_notes: values[3] }] };
+  throw new Error(`Unexpected SQL: ${sql}`);
+}
+/** Calls the actual staff API using a signed session; identity supplied in JSON must never become the audit actor. */
+async function request(path = '/7/requests/20/decision', body) {
+  const response = await fetch(base + path, { method: body ? 'PUT' : 'GET', headers: {
+    'Content-Type': 'application/json', Authorization: `Bearer ${jwt.sign({ sub: 9 }, process.env.JWT_SECRET)}`,
+  }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  return { status: response.status, body: await response.json() };
+}
+test('SCRUM-43 AC1 - staff pending list includes event requirements and requested venue/time', async () => {
+  // Arrange/Act: the full HTTP route must read the pending queue, not the public catalogue.
+  const response = await request('/requests/pending');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.requests[0].venue_name, 'Hall A');
+  assert.equal(response.body.requests[0].expected_attendance, 100);
+  assert.equal(response.body.requests[0].room_layout_preference, 'Seminar');
+  assert.match(state.calls.find(sql => sql.includes('JOIN venues')), /status\s*=\s*'pending'/);
+});
+for (const role of ['event_coordinator', 'event_organiser', 'attendee', 'technical_support']) {
+  test(`SCRUM-43 AC1 AC2 AC3 - ${role} cannot read the staff queue or decide`, async () => {
+    state.role = role;
+    assert.equal((await request('/requests/pending')).status, 403);
+    assert.equal((await request(undefined, { decision: 'approved' })).status, 403);
+    assert.equal(state.calls.some(sql => sql.startsWith('UPDATE venue_bookings')), false);
+  });
+}
+for (const decision of ['approved', 'rejected']) {
+  test(`SCRUM-43 AC2 AC3 AC4 AC5 AC7 - ${decision} stores trusted audit and coordinator notification before commit`, async () => {
+    const response = await request(undefined, { decision, reason: '  Maintenance; try Hall B at 2pm.  ', decision_by: 999 });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.request.status, decision);
+    assert.equal(response.body.request.decision_by, 9);
+    assert.ok(Number.isFinite(Date.parse(response.body.request.updated_at)));
+    assert.equal(response.body.request.decision_notes, decision === 'rejected' ? 'Maintenance; try Hall B at 2pm.' : null);
+    const note = state.notes[0];
+    assert.deepEqual(note[0], [4]);
+    assert.match(note[5][0], new RegExp(`Gala.*${decision}`, 's'));
+    if (decision === 'rejected') assert.match(note[5][0], /Maintenance; try Hall B at 2pm\./);
+    const audit = JSON.parse(note[6][0]);
+    assert.equal(audit.decisionBy, 9); assert.equal(audit.bookingId, 20);
+    assert.equal(audit.decidedAt, response.body.request.updated_at);
+    assert.ok(state.calls.findIndex(sql => sql.includes('WITH inserted')) < state.calls.indexOf('COMMIT'));
+  });
+}
+test('SCRUM-43 AC3 AC4 - rejection without notes is allowed', async () => {
+  const response = await request(undefined, { decision: 'rejected' });
+  assert.equal(response.status, 200); assert.equal(response.body.request.decision_notes, null);
+});
+test('SCRUM-43 AC5 - notification persistence failure rolls the whole decision back', async () => {
+  state.notificationFailure = true;
+  assert.equal((await request(undefined, { decision: 'approved' })).status, 500);
+  assert.ok(state.calls.includes('ROLLBACK')); assert.ok(!state.calls.includes('COMMIT'));
+});
+test('SCRUM-43 AC5 - unassigned event notifies the requesting coordinator rather than losing the decision', async () => {
+  state.coordinator = null;
+  assert.equal((await request(undefined, { decision: 'rejected' })).status, 200);
+  assert.deepEqual(state.notes[0][0], [5]);
+});
+test('SCRUM-43 AC4 - structured rejection notes are rejected before any database mutation', async () => {
+  assert.equal((await request(undefined, { decision: 'rejected', reason: { text: 'Try Hall B' } })).status, 400);
+  assert.equal(state.calls.some(sql => sql.startsWith('UPDATE venue_bookings')), false);
+});

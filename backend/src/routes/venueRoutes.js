@@ -11,7 +11,8 @@ const { validateCoordinates, nearestMrt, geocode } = require('../services/venueL
 const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { venueSchedule, saveVenueSchedule } = require('../controllers/venueScheduleController');
-const { createRequest, decideRequest } = require('../controllers/venueRequestController');
+const { createRequest, decideRequest, listPendingRequests } = require('../controllers/venueRequestController');
+router.get('/requests/pending', requireAuth, requireRole('venue_staff'), asyncHandler(listPendingRequests));
 router.get('/:id/schedule', requireAuth, requireRole('venue_staff', 'event_coordinator'), asyncHandler(venueSchedule));
 router.put('/:id/schedule', requireAuth, requireRole('venue_staff'), asyncHandler(saveVenueSchedule));
 router.post('/:id/requests', requireAuth, requireRole('event_coordinator'), asyncHandler(createRequest));
