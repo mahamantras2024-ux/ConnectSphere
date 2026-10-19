@@ -224,6 +224,30 @@ it('AC3 - reports full stock for an unscheduled selected date and time', () => {
   expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('4');
 });
 
+// AC3 - Zero total stock stays eligible on an unscheduled date and is reported as zero in both views.
+it('AC3 - reports zero stock for an unscheduled date in inventory and calendar', () => {
+  const unscheduledDate = getDateOffset(4);
+  const item = { ...inventory[0], quantity: 0, availabilities: [] };
+  render(<EquipmentInventorySection inventory={[item]} error="" />);
+
+  // Arrange and Act: request a slot on a date with no schedule or reservation windows.
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: unscheduledDate } });
+  fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '13:00' } });
+  fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '15:00' } });
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), {
+    target: { value: 'PROJ-001' },
+  });
+
+  // Assert: zero stock is preserved rather than becoming an empty result or an undefined quantity.
+  expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('0');
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  const dateLabel = new Intl.DateTimeFormat('en-SG', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${unscheduledDate}T00:00:00Z`));
+  const day = within(calendar).getByLabelText(`Availability on ${dateLabel} for PROJ-001`);
+  expect(within(day).getByText('0 available')).toBeTruthy();
+});
+
 // AC2 - partial time filters and reserved calendar windows retain truthful availability states.
 it('AC2 - handles one-sided time filters, empty calendar days, and non-booked unavailable windows', () => {
   const edgeInventory = [{
