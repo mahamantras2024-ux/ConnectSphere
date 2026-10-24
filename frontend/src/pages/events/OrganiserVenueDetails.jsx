@@ -4,7 +4,7 @@ import { api } from '../../api/client';
 const dateOptions = { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' };
 const timeOptions = { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
 
-/** Shows the owner's latest confirmed venue and each pending request with its booked period in Singapore time. */
+/** Shows each of the owner's confirmed and pending arrangements with its booked period in Singapore time. */
 export default function OrganiserVenueDetails({ eventId, token }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -17,14 +17,10 @@ export default function OrganiserVenueDetails({ eventId, token }) {
       .then(data => {
         // A malformed response is a load failure, never evidence that no venue was selected.
         if (!Array.isArray(data.bookings)) throw new Error('Venue arrangements are unavailable.');
-        // Approval persists updated_at. Select by that decision time, never by the scheduled event date.
-        // Retain only one approval; the ID breaks equal timestamps consistently without changing stored bookings.
-        const latestConfirmed = data.bookings.filter(booking => booking.status === 'approved')
-          .sort((first, second) => Date.parse(second.updated_at) - Date.parse(first.updated_at) || second.id - first.id)
-          .slice(0, 1);
-        // Pending requests remain separate so organisers can identify every outstanding confirmation (AC2).
-        const pendingArrangements = data.bookings.filter(booking => booking.status === 'pending');
-        if (active) setResult([...latestConfirmed, ...pendingArrangements]);
+        // AC1 requires every active arrangement, even when multiple venues have been confirmed.
+        // Preserve the API's schedule order while excluding historical rejections and cancellations.
+        const arrangements = data.bookings.filter(booking => booking.status === 'approved' || booking.status === 'pending');
+        if (active) setResult(arrangements);
       })
       .catch(failure => { if (active) setError(failure.message); });
     return () => { active = false; };

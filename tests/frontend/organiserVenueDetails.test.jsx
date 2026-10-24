@@ -21,8 +21,8 @@ it('SCRUM-104 AC1 AC4 - reports malformed booking data as a load error', async (
   expect(screen.queryByText('No Venue Selected')).not.toBeInTheDocument();
 });
 
-// The clarified requirement permits only the latest approval even when historical approvals remain stored.
-it.each([0, 1, 2, 3])('SCRUM-104 AC1 AC3 AC4 clarification - shows only the latest of %i approved arrangements', async count => {
+// AC1 requires every approved arrangement, including older approvals, to remain separately visible.
+it.each([0, 1, 2, 3])('SCRUM-104 AC1 AC3 AC4 - displays all %i approved arrangements separately', async count => {
   // Arrange: IDs decrease as approval times increase; all bookings share a scheduled date.
   api.get.mockResolvedValue({ bookings: Array.from({ length: count }, (_, i) => ({ ...booking,
     id: 10 - i, venue_name: `Hall ${i}`, updated_at: `2030-04-0${i + 1}T10:00:00Z` })) });
@@ -32,9 +32,9 @@ it.each([0, 1, 2, 3])('SCRUM-104 AC1 AC3 AC4 clarification - shows only the late
   if (!count) expect(await screen.findByText('No Venue Selected')).toBeInTheDocument();
   else {
     const items = await screen.findAllByRole('listitem');
-    expect(items).toHaveLength(1);
-    for (const item of items) {
-      for (const text of [`Hall ${count - 1}`, '12 North Road', '120', '5 Apr 2030', '00:30 – 02:30 (SGT)', 'Confirmed']) {
+    expect(items).toHaveLength(count);
+    for (const [index, item] of items.entries()) {
+      for (const text of [`Hall ${index}`, '12 North Road', '120', '5 Apr 2030', '00:30 – 02:30 (SGT)', 'Confirmed']) {
         expect(within(item).getByText(text)).toBeInTheDocument();
       }
     }
@@ -54,22 +54,34 @@ it.each(['rejected', 'cancelled'])(
     expect(screen.queryByText('North Hall')).not.toBeInTheDocument();
   });
 
-// Pending requests remain visible without displacing the single confirmed arrangement.
-it('SCRUM-104 AC1 AC2 AC3 - displays pending requests alongside the latest tied approval', async () => {
-  // Arrange: equal approval timestamps use the greater booking ID; pending has the newest update of all.
+// Distinct facts and schedules catch dropped approvals and details accidentally copied between cards.
+it('SCRUM-104 AC1 AC2 AC3 - displays two approved arrangements and one pending request with their own details', async () => {
+  // Arrange: the older approval must remain visible even though the other bookings have newer updates.
   api.get.mockResolvedValue({ bookings: [
-    booking, { ...booking, id: 2, venue_name: 'Latest confirmed hall' },
-    { ...booking, id: 3, venue_name: 'Pending hall', status: 'pending', updated_at: '2030-04-03T10:00:00Z' },
+    { ...booking, start_datetime: '2030-04-04T02:00:00Z', end_datetime: '2030-04-04T04:00:00Z' },
+    { ...booking, id: 2, venue_name: 'South Hall', address: '34 South Road', capacity: 240,
+      start_datetime: '2030-04-05T05:30:00Z', end_datetime: '2030-04-05T07:00:00Z', updated_at: '2030-04-02T10:00:00Z' },
+    { ...booking, id: 3, venue_name: 'East Studio', address: '56 East Road', capacity: 80, status: 'pending',
+      start_datetime: '2030-04-06T01:00:00Z', end_datetime: '2030-04-06T02:30:00Z', updated_at: '2030-04-03T10:00:00Z' },
   ] });
   // Act
   render(<OrganiserVenueDetails eventId={44} token="token" />);
-  // Assert: choosing a pending request as the confirmation or hiding it entirely both fail.
-  expect(await screen.findByText('Latest confirmed hall')).toBeInTheDocument();
-  expect(screen.getAllByRole('listitem')).toHaveLength(2);
-  expect(screen.queryByText('North Hall')).not.toBeInTheDocument();
-  const pending = screen.getByRole('heading', { name: 'Pending hall' }).closest('li');
-  expect(within(pending).getByText('Pending Confirmation')).toBeInTheDocument();
-  expect(screen.getAllByText('Confirmed')).toHaveLength(1);
+  // Assert: literal Singapore dates/times are independent expectations, checked inside each venue's own card.
+  expect(await screen.findAllByRole('listitem')).toHaveLength(3);
+  for (const [name, address, capacity, date, time, status] of [
+    ['North Hall', '12 North Road', '120', '4 Apr 2030', '10:00 – 12:00 (SGT)', 'Confirmed'],
+    ['South Hall', '34 South Road', '240', '5 Apr 2030', '13:30 – 15:00 (SGT)', 'Confirmed'],
+    ['East Studio', '56 East Road', '80', '6 Apr 2030', '09:00 – 10:30 (SGT)', 'Pending Confirmation'],
+  ]) {
+    const card = screen.getByRole('heading', { name }).closest('li');
+    for (const value of [address, capacity, date, time, status]) {
+      expect(within(card).getByText(value)).toBeInTheDocument();
+    }
+    expect(within(card).queryByText(status === 'Confirmed' ? 'Pending Confirmation' : 'Confirmed')).not.toBeInTheDocument();
+  }
+  expect(screen.getAllByText('Confirmed')).toHaveLength(2);
+  expect(screen.getAllByText('Pending Confirmation')).toHaveLength(1);
+  expect(screen.queryByText('No Venue Selected')).not.toBeInTheDocument();
 });
 
 // AC2 applies even before any venue has been approved; every pending booking needs its own details.
