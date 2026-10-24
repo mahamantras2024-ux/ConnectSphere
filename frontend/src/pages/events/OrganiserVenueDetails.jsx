@@ -4,7 +4,7 @@ import { api } from '../../api/client';
 const dateOptions = { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' };
 const timeOptions = { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
 
-/** Shows the event owner's latest approved venue and its booked period in Singapore time. */
+/** Shows the owner's latest confirmed venue and each pending request with its booked period in Singapore time. */
 export default function OrganiserVenueDetails({ eventId, token }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -22,7 +22,9 @@ export default function OrganiserVenueDetails({ eventId, token }) {
         const latestConfirmed = data.bookings.filter(booking => booking.status === 'approved')
           .sort((first, second) => Date.parse(second.updated_at) - Date.parse(first.updated_at) || second.id - first.id)
           .slice(0, 1);
-        if (active) setResult(latestConfirmed);
+        // Pending requests remain separate so organisers can identify every outstanding confirmation (AC2).
+        const pendingArrangements = data.bookings.filter(booking => booking.status === 'pending');
+        if (active) setResult([...latestConfirmed, ...pendingArrangements]);
       })
       .catch(failure => { if (active) setError(failure.message); });
     return () => { active = false; };
@@ -45,7 +47,7 @@ export default function OrganiserVenueDetails({ eventId, token }) {
               <div className="ed-field"><dt>Capacity</dt><dd>{booking.capacity}</dd></div>
               <div className="ed-field"><dt>Date</dt><dd>{startDate === endDate ? startDate : `${startDate} – ${endDate}`}</dd></div>
               <div className="ed-field"><dt>Time</dt><dd>{start.toLocaleTimeString('en-SG', timeOptions)} – {end.toLocaleTimeString('en-SG', timeOptions)} (SGT)</dd></div>
-              <div className="ed-field"><dt>Booking status</dt><dd>Confirmed</dd></div>
+              <div className="ed-field"><dt>Booking status</dt><dd>{booking.status === 'pending' ? 'Pending Confirmation' : 'Confirmed'}</dd></div>
             </dl>
           </li>;
         })}</ol>}

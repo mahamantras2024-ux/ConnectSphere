@@ -43,8 +43,8 @@ it.each([0, 1, 2, 3])('SCRUM-104 AC1 AC3 AC4 clarification - shows only the late
   expect(api.get).toHaveBeenCalledWith('/events/44/organiser-venue-bookings', 'token');
 });
 
-// The user's clarification excludes every unconfirmed request from this section.
-it.each(['pending', 'rejected', 'cancelled'])(
+// Historical rejections and cancellations do not count as current venue arrangements.
+it.each(['rejected', 'cancelled'])(
   'SCRUM-104 AC3 AC4 clarification - hides a %s request when no venue is confirmed', async status => {
     // Arrange / Act
     api.get.mockResolvedValue({ bookings: [{ ...booking, status }] });
@@ -54,8 +54,8 @@ it.each(['pending', 'rejected', 'cancelled'])(
     expect(screen.queryByText('North Hall')).not.toBeInTheDocument();
   });
 
-// A newer unconfirmed request must not displace an approved arrangement.
-it('SCRUM-104 AC3 clarification - ignores newer pending requests and resolves equal approvals deterministically', async () => {
+// Pending requests remain visible without displacing the single confirmed arrangement.
+it('SCRUM-104 AC1 AC2 AC3 - displays pending requests alongside the latest tied approval', async () => {
   // Arrange: equal approval timestamps use the greater booking ID; pending has the newest update of all.
   api.get.mockResolvedValue({ bookings: [
     booking, { ...booking, id: 2, venue_name: 'Latest confirmed hall' },
@@ -63,11 +63,34 @@ it('SCRUM-104 AC3 clarification - ignores newer pending requests and resolves eq
   ] });
   // Act
   render(<OrganiserVenueDetails eventId={44} token="token" />);
-  // Assert: filtering after choosing the newest record or selecting the first approval both fail.
+  // Assert: choosing a pending request as the confirmation or hiding it entirely both fail.
   expect(await screen.findByText('Latest confirmed hall')).toBeInTheDocument();
-  expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  expect(screen.getAllByRole('listitem')).toHaveLength(2);
   expect(screen.queryByText('North Hall')).not.toBeInTheDocument();
-  expect(screen.queryByText('Pending hall')).not.toBeInTheDocument();
+  const pending = screen.getByRole('heading', { name: 'Pending hall' }).closest('li');
+  expect(within(pending).getByText('Pending Confirmation')).toBeInTheDocument();
+  expect(screen.getAllByText('Confirmed')).toHaveLength(1);
+});
+
+// AC2 applies even before any venue has been approved; every pending booking needs its own details.
+it.each([1, 2])('SCRUM-104 AC1 AC2 AC4 - displays %i pending arrangements without a confirmed venue', async count => {
+  // Arrange: distinct addresses and capacities detect accidental reuse of another request's details.
+  api.get.mockResolvedValue({ bookings: Array.from({ length: count }, (_, index) => ({ ...booking,
+    id: index + 1, status: 'pending', venue_name: `Pending hall ${index + 1}`,
+    address: `${index + 1} Pending Road`, capacity: 100 + index })) });
+  // Act
+  render(<OrganiserVenueDetails eventId={44} token="token" />);
+  // Assert: pending requests are selected arrangements, so neither the empty state nor Confirmed applies.
+  const items = await screen.findAllByRole('listitem');
+  expect(items).toHaveLength(count);
+  items.forEach((item, index) => {
+    for (const value of [`Pending hall ${index + 1}`, `${index + 1} Pending Road`, String(100 + index),
+      '5 Apr 2030', '00:30 – 02:30 (SGT)', 'Pending Confirmation']) {
+      expect(within(item).getByText(value)).toBeInTheDocument();
+    }
+  });
+  expect(screen.queryByText('Confirmed')).not.toBeInTheDocument();
+  expect(screen.queryByText('No Venue Selected')).not.toBeInTheDocument();
 });
 
 // Loading and denied requests must never masquerade as a successful empty result.
