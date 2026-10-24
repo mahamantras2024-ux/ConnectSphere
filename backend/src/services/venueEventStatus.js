@@ -4,19 +4,19 @@ const { insertNotifications } = require('./notificationService');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REMINDER_CHECK_MS = 60 * 60 * 1000;
 const REMINDER_FREQUENCIES = [1, 3, 7];
+const EVENT_STATUSES = ['planning', 'confirmed', 'completed', 'cancelled'];
 
 /** Restricts the venue dashboard to the four persisted booking-decision statuses. */
 function staffStatus(status) {
   return ['pending', 'approved', 'rejected', 'cancelled'].includes(status) ? status : 'pending';
 }
 
-/** Reads preparation details for assigned venues and decisions made by the authenticated Venue Staff member. */
+/** Reads current event lifecycle and preparation details for assigned venues and staff decisions. */
 async function listRelevantVenueEvents(db, staffUserId) {
   const result = await db.query(`SELECT booking.id AS booking_id, event.id AS event_id, event.name AS event_name,
-      booking.status AS booking_status, venue.name AS venue_name, booking.start_datetime, booking.end_datetime,
-      COALESCE(booking.requirements->>'capacity', event.expected_attendance::text)::integer AS expected_attendance,
-      COALESCE(NULLIF(booking.requirements->>'layout', ''), event.room_layout_preference) AS room_layout,
-      COALESCE(booking.requirements->'accessibility', event.accessibility_requirements, '[]'::jsonb) AS accessibility
+      booking.status AS booking_status, event.status AS event_status, venue.name AS venue_name,
+      booking.start_datetime, booking.end_datetime, event.expected_attendance,
+      event.room_layout_preference AS room_layout, event.accessibility_requirements AS accessibility
     FROM venue_bookings booking
     LEFT JOIN venue_staff_assignments assignment
       ON assignment.venue_id=booking.venue_id AND assignment.staff_user_id=$1
@@ -29,7 +29,7 @@ async function listRelevantVenueEvents(db, staffUserId) {
   return result.rows.map(row => ({ bookingId: row.booking_id, eventId: row.event_id, name: row.event_name,
     status: staffStatus(row.booking_status), venueName: row.venue_name, startDatetime: row.start_datetime,
     endDatetime: row.end_datetime, expectedAttendance: row.expected_attendance, roomLayout: row.room_layout,
-    accessibility: row.accessibility || [] }));
+    accessibility: row.accessibility || [], eventStatus: EVENT_STATUSES.includes(row.event_status) ? row.event_status : 'planning' }));
 }
 
 /** Saves an explicit opt-in and cadence; invalid cadence input is rejected instead of silently changing behavior. */
@@ -63,13 +63,13 @@ function isDailyReminderDue(lastSentAt, now = Date.now()) {
   return isReminderDue(lastSentAt, 1, now);
 }
 
-/** Stores a single status-change notice per staff member assigned to one of the event's booked venues. */
-async function notifyVenueStaffOfEventStatus(db, event) {
+/** Stores a single event-status notice per staff member assigned to one of the event's booked venues. */
+async function notifyVenueStaffOfEventStatus(db, event, eventStatus = event.status) {
   const recipients = await db.query(`SELECT DISTINCT assignment.staff_user_id
     FROM venue_staff_assignments assignment JOIN venue_bookings booking ON booking.venue_id=assignment.venue_id
     WHERE booking.event_id=$1 ORDER BY assignment.staff_user_id`, [event.id]);
   if (!recipients.rows.length) return [];
-  const status = staffStatus(event.status);
+  const status = EVENT_STATUSES.includes(eventStatus) ? eventStatus : 'planning';
   const cancellation = status === 'cancelled';
   const message = cancellation
     ? `${event.name} has been cancelled and will no longer proceed. Handle its venue reservation according to the cancellation rules.`

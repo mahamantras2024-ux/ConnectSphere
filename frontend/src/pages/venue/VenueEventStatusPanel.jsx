@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
 const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
+const eventStatusLabels = { planning: 'Planning', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
 
 /** Shows only server-authorized event details and reloads after a staff booking decision. */
 export default function VenueEventStatusPanel() {
@@ -37,7 +38,8 @@ export default function VenueEventStatusPanel() {
           : <div className="record-grid">{events.map(event => <article className="record-card" key={event.bookingId}>
             <span className="status-badge">{statusLabels[event.status] || 'Pending'}</span>
             <h3>{event.name}</h3><p>{event.venueName}</p>
-            {event.status === 'cancelled'
+            <p>Event status: <strong>{eventStatusLabels[event.eventStatus] || 'Planning'}</strong></p>
+            {event.eventStatus === 'cancelled'
               ? <p className="detail-note">This event will no longer proceed. Handle the associated venue reservation according to the cancellation rules.</p>
               : <dl className="detail-facts"><div><dt>Expected attendance</dt><dd>{event.expectedAttendance ?? 'Not specified'}</dd></div>
                 <div><dt>Room layout</dt><dd>{event.roomLayout || 'Not specified'}</dd></div>

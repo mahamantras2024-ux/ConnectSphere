@@ -17,10 +17,10 @@ test('AC1 AC2 AC3 AC4 - returns only safe preparation details with Pending, Appr
   const db = { query: async (sql, values) => {
     queries.push({ sql, values });
     return { rows: [
-      { booking_id: 1, event_id: 11, event_name: 'Pending workshop', booking_status: 'pending', venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z', expected_attendance: 20, room_layout: 'Seminar', accessibility: ['Ramp'], internal_notes: 'Do not disclose' },
-      { booking_id: 2, event_id: 12, event_name: 'Approved workshop', booking_status: 'approved', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
-      { booking_id: 3, event_id: 13, event_name: 'Rejected workshop', booking_status: 'rejected', venue_name: 'Hall A', start_datetime: '2031-10-22T02:00:00Z', end_datetime: '2031-10-22T03:00:00Z', expected_attendance: 40, room_layout: null, accessibility: null },
-      { booking_id: 4, event_id: 14, event_name: 'Cancelled workshop', booking_status: 'cancelled', venue_name: 'Hall A', start_datetime: '2031-10-23T02:00:00Z', end_datetime: '2031-10-23T03:00:00Z', expected_attendance: 50, room_layout: null, accessibility: null },
+      { booking_id: 1, event_id: 11, event_name: 'Pending workshop', booking_status: 'pending', event_status: 'planning', venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z', expected_attendance: 20, room_layout: 'Seminar', accessibility: ['Ramp'], internal_notes: 'Do not disclose' },
+      { booking_id: 2, event_id: 12, event_name: 'Approved workshop', booking_status: 'approved', event_status: 'confirmed', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
+      { booking_id: 3, event_id: 13, event_name: 'Rejected workshop', booking_status: 'rejected', event_status: 'planning', venue_name: 'Hall A', start_datetime: '2031-10-22T02:00:00Z', end_datetime: '2031-10-22T03:00:00Z', expected_attendance: 40, room_layout: null, accessibility: null },
+      { booking_id: 4, event_id: 14, event_name: 'Cancelled workshop', booking_status: 'approved', event_status: 'cancelled', venue_name: 'Hall A', start_datetime: '2031-10-23T02:00:00Z', end_datetime: '2031-10-23T03:00:00Z', expected_attendance: 50, room_layout: null, accessibility: null },
     ] };
   } };
 
@@ -29,9 +29,9 @@ test('AC1 AC2 AC3 AC4 - returns only safe preparation details with Pending, Appr
 
   // Assert: the booking decision is the staff-facing status, and private columns are excluded.
   assert.deepEqual(events.map(event => [event.name, event.status]), [
-    ['Pending workshop', 'pending'], ['Approved workshop', 'approved'], ['Rejected workshop', 'rejected'], ['Cancelled workshop', 'cancelled'],
+    ['Pending workshop', 'pending'], ['Approved workshop', 'approved'], ['Rejected workshop', 'rejected'], ['Cancelled workshop', 'approved'],
   ]);
-  assert.deepEqual(events[1], { bookingId: 2, eventId: 12, name: 'Approved workshop', status: 'approved', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [] });
+  assert.deepEqual(events[1], { bookingId: 2, eventId: 12, name: 'Approved workshop', status: 'approved', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [], eventStatus: 'confirmed' });
   assert.match(queries[0].sql, /venue_staff_assignments/);
   assert.deepEqual(queries[0].values, [7]);
 });
@@ -58,6 +58,7 @@ test('AC1 AC2 - includes an approved booking decided by the viewing Venue Staff 
     executed = { sql, values };
     return { rows: [{
       booking_id: 20, event_id: 44, event_name: 'Graduation party', booking_status: 'approved',
+      event_status: 'confirmed',
       venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z',
       expected_attendance: 100, room_layout: 'Theatre', accessibility: [],
     }] };
@@ -70,7 +71,7 @@ test('AC1 AC2 - includes an approved booking decided by the viewing Venue Staff 
   assert.deepEqual(events, [{
     bookingId: 20, eventId: 44, name: 'Graduation party', status: 'approved', venueName: 'Hall A',
     startDatetime: '2031-10-20T02:00:00Z', endDatetime: '2031-10-20T03:00:00Z',
-    expectedAttendance: 100, roomLayout: 'Theatre', accessibility: [],
+    expectedAttendance: 100, roomLayout: 'Theatre', accessibility: [], eventStatus: 'confirmed',
   }]);
   assert.match(executed.sql, /booking\.decision_by=\$1/);
   assert.deepEqual(executed.values, [9]);
@@ -96,6 +97,26 @@ test('AC6 - creates one venue-arrangement notification per assigned staff member
   assert.match(insert.values[5][0], /will no longer proceed/);
   const noAssignments = { query: async () => ({ rows: [] }) };
   await notifyVenueStaffOfEventStatus(noAssignments, { id: 11, name: 'Workshop', status: 'confirmed' });
+});
+
+test('AC3 AC4 AC6 - exposes the current event lifecycle and sends a confirmation notice separately from booking approval', async () => {
+  // Arrange: the venue booking remains approved while the event is cancelled, then a later event confirmation is sent.
+  const calls = [];
+  const db = { query: async (sql, values) => {
+    calls.push({ sql, values });
+    if (sql.includes('venue_staff_assignments')) return { rows: [{ staff_user_id: 7 }] };
+    if (sql.includes('INSERT INTO notifications')) return { rows: [] };
+    throw new Error(`Unexpected query: ${sql}`);
+  } };
+
+  // Act.
+  await notifyVenueStaffOfEventStatus(db, { id: 11, name: 'Workshop', status: 'approved' }, 'confirmed');
+
+  // Assert: the event lifecycle value is retained in the notification rather than inferred from booking status.
+  const insert = calls.find(call => call.sql.includes('INSERT INTO notifications'));
+  assert.equal(insert.values[3][0], 'venue_event_status_changed');
+  assert.equal(JSON.parse(insert.values[6][0]).status, 'confirmed');
+  assert.match(insert.values[5][0], /now confirmed/i);
 });
 
 test('AC7 - persists the opt-in preference and evaluates the daily boundary just below, at and above 24 hours', async () => {

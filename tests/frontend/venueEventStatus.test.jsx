@@ -10,10 +10,10 @@ import { api } from '../../frontend/src/api/client';
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 
 const events = [
-  { bookingId: 1, eventId: 11, name: 'Pending workshop', status: 'pending', venueName: 'Hall A', startDatetime: '2031-10-20T02:00:00Z', endDatetime: '2031-10-20T03:00:00Z', expectedAttendance: 20, roomLayout: 'Seminar', accessibility: ['Ramp'] },
-  { bookingId: 2, eventId: 12, name: 'Approved workshop', status: 'approved', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [] },
-  { bookingId: 3, eventId: 13, name: 'Rejected workshop', status: 'rejected', venueName: 'Hall A', startDatetime: '2031-10-22T02:00:00Z', endDatetime: '2031-10-22T03:00:00Z', expectedAttendance: 40, roomLayout: null, accessibility: [] },
-  { bookingId: 4, eventId: 14, name: 'Cancelled workshop', status: 'cancelled', venueName: 'Hall A', startDatetime: '2031-10-23T02:00:00Z', endDatetime: '2031-10-23T03:00:00Z', expectedAttendance: 50, roomLayout: null, accessibility: [] },
+  { bookingId: 1, eventId: 11, name: 'Pending workshop', status: 'pending', eventStatus: 'planning', venueName: 'Hall A', startDatetime: '2031-10-20T02:00:00Z', endDatetime: '2031-10-20T03:00:00Z', expectedAttendance: 20, roomLayout: 'Seminar', accessibility: ['Ramp'] },
+  { bookingId: 2, eventId: 12, name: 'Approved workshop', status: 'approved', eventStatus: 'confirmed', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [] },
+  { bookingId: 3, eventId: 13, name: 'Rejected workshop', status: 'rejected', eventStatus: 'planning', venueName: 'Hall A', startDatetime: '2031-10-22T02:00:00Z', endDatetime: '2031-10-22T03:00:00Z', expectedAttendance: 40, roomLayout: null, accessibility: [] },
+  { bookingId: 4, eventId: 14, name: 'Cancelled workshop', status: 'approved', eventStatus: 'cancelled', venueName: 'Hall A', startDatetime: '2031-10-23T02:00:00Z', endDatetime: '2031-10-23T03:00:00Z', expectedAttendance: 50, roomLayout: null, accessibility: [] },
 ];
 
 beforeEach(() => {
@@ -33,11 +33,46 @@ it('AC1 AC2 AC3 AC4 - displays the four booking decision statuses, preparation d
 
   // Assert: each business state is visible, confirmed data remains specific, and cancellation is unmistakable.
   expect(await screen.findByText('Pending')).toBeVisible();
-  expect(screen.getByText('Approved')).toBeVisible();
+  expect(screen.getAllByText('Approved')).toHaveLength(2);
   expect(screen.getByText('Rejected')).toBeVisible();
   expect(screen.getByText('Cancelled')).toBeVisible();
+  expect(screen.getAllByText('Event status:')).toHaveLength(4);
+  expect(screen.getByText('Confirmed')).toBeVisible();
   expect(screen.getByText('Theatre')).toBeVisible();
   expect(screen.getByText(/will no longer proceed/i)).toBeVisible();
+});
+
+it('AC1 AC3 AC4 - distinguishes a cancelled event from an approved venue booking and displays current preparation details', async () => {
+  // Arrange: the booking is approved, but the event lifecycle is cancelled and its latest details are changed.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : path === '/venues/relevant-events' ? { events: [
+      { ...events[1], expectedAttendance: 75, roomLayout: 'Classroom' },
+      events[3],
+    ] }
+      : { preference: { dailyPendingReminders: false } });
+
+  // Act.
+  renderWithSession(<VenueEventStatusPanel />);
+
+  // Assert: cancellation is shown as the event status, while the updated attendance/layout remain visible.
+  expect((await screen.findAllByText('Approved'))).toHaveLength(2);
+  expect(screen.getByText('Cancelled')).toBeVisible();
+  expect(screen.getByText('75')).toBeVisible();
+  expect(screen.getByText('Classroom')).toBeVisible();
+});
+
+it('AC2 - displays the completed lifecycle stage separately from the booking decision', async () => {
+  // Arrange: a completed event retains its approved venue decision for the staff record.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : path === '/venues/relevant-events' ? { events: [{ ...events[1], eventStatus: 'completed' }] }
+      : { preference: { dailyPendingReminders: false } });
+
+  // Act.
+  renderWithSession(<VenueEventStatusPanel />);
+
+  // Assert: the lifecycle stage is not inferred from or overwritten by the booking decision.
+  expect(await screen.findByText('Completed')).toBeVisible();
+  expect(screen.getByText('Approved')).toBeVisible();
 });
 
 it('AC5 - renders only the server-authorized relevant events and never renders internal information', async () => {
@@ -70,7 +105,7 @@ it('AC1 AC2 - refreshes the status panel after a booking decision without a page
 it('AC1 AC2 - never displays Status unavailable for malformed booking data and distinguishes empty and failed reads', async () => {
   // Arrange / Act: exercise the data-contract fallback, then separate empty and unavailable responses.
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
-    : path === '/venues/relevant-events' ? { events: [{ ...events[0], status: 'unexpected', expectedAttendance: null, roomLayout: '', accessibility: [] }] }
+    : path === '/venues/relevant-events' ? { events: [{ ...events[0], status: 'unexpected', eventStatus: 'unknown', expectedAttendance: null, roomLayout: '', accessibility: [] }] }
       : { preference: { dailyPendingReminders: false } });
   const unknown = renderWithSession(<VenueEventStatusPanel />);
   expect(await screen.findByText('Pending')).toBeVisible();
