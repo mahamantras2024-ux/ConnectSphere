@@ -99,7 +99,7 @@ it('AC7 - saves a changed reminder frequency for an enabled preference', async (
   renderWithSession(<VenueReminderPreferences />);
 
   // Act.
-  const frequency = await screen.findByRole('combobox', { name: 'Frequency' });
+  const frequency = await screen.findByRole('combobox', { name: 'frequency' });
   fireEvent.change(frequency, { target: { value: '7' } });
 
   // Assert: the selected cadence is persisted rather than only changing local UI state.
@@ -113,7 +113,7 @@ it('AC7 - restores the persisted frequency when a cadence update fails', async (
     : { preference: { dailyPendingReminders: true, reminderFrequencyDays: 1 } });
   api.put.mockRejectedValue(new Error('Frequency save failed'));
   renderWithSession(<VenueReminderPreferences />);
-  const frequency = await screen.findByRole('combobox', { name: 'Frequency' });
+  const frequency = await screen.findByRole('combobox', { name: 'frequency' });
 
   // Act.
   fireEvent.change(frequency, { target: { value: '7' } });

@@ -54,13 +54,18 @@ export default function VenueReminderPreferences() {
     <h2 id="venue-reminder-title">Pending request reminders</h2>
     {loading ? <p role="status">Loading reminder preference…</p>
       : <>
-        <label><input type="checkbox" checked={enabled} disabled={saving} onChange={changePreference} /> Receive periodic reminders for pending venue requests</label>
-        <label htmlFor="venue-reminder-frequency">Frequency</label>
-        <select id="venue-reminder-frequency" value={frequencyDays} disabled={saving} onChange={changeFrequency}>
-          <option value="1">Daily</option>
-          <option value="3">Every 3 days</option>
-          <option value="7">Weekly</option>
-        </select>
+        <label className="venue-reminder-toggle">
+          <input className="venue-reminder-checkbox" type="checkbox" checked={enabled} disabled={saving} onChange={changePreference} />
+          <span>Receive periodic reminders for pending venue requests</span>
+        </label>
+        <div className="venue-reminder-frequency">
+          <label htmlFor="venue-reminder-frequency">frequency</label>
+          <select id="venue-reminder-frequency" value={frequencyDays} disabled={saving} onChange={changeFrequency}>
+            <option value="1">Daily</option>
+            <option value="3">Every 3 days</option>
+            <option value="7">Weekly</option>
+          </select>
+        </div>
       </>}
     {message && <p role="status">{message}</p>}
     {error && <p role="alert" className="error-message">{error}</p>}
