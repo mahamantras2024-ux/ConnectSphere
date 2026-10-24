@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
-const statusLabels = { planning: 'Planning', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
+const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
 
 /** Shows only server-authorized event details and makes cancellation operationally distinct from completed history. */
 export default function VenueEventStatusPanel() {
@@ -28,7 +28,7 @@ export default function VenueEventStatusPanel() {
       : error ? <p role="alert" className="error-message">{error}</p>
         : events.length === 0 ? <p>No events are currently linked to your assigned venues.</p>
           : <div className="record-grid">{events.map(event => <article className="record-card" key={event.bookingId}>
-            <span className="status-badge">{statusLabels[event.status] || 'Status unavailable'}</span>
+            <span className="status-badge">{statusLabels[event.status] || 'Pending'}</span>
             <h3>{event.name}</h3><p>{event.venueName}</p>
             {event.status === 'cancelled'
               ? <p className="detail-note">This event will no longer proceed. Handle the associated venue reservation according to the cancellation rules.</p>

@@ -10,9 +10,9 @@ import { api } from '../../frontend/src/api/client';
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 
 const events = [
-  { bookingId: 1, eventId: 11, name: 'Planning workshop', status: 'planning', venueName: 'Hall A', startDatetime: '2031-10-20T02:00:00Z', endDatetime: '2031-10-20T03:00:00Z', expectedAttendance: 20, roomLayout: 'Seminar', accessibility: ['Ramp'] },
-  { bookingId: 2, eventId: 12, name: 'Confirmed workshop', status: 'confirmed', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [] },
-  { bookingId: 3, eventId: 13, name: 'Completed workshop', status: 'completed', venueName: 'Hall A', startDatetime: '2031-10-22T02:00:00Z', endDatetime: '2031-10-22T03:00:00Z', expectedAttendance: 40, roomLayout: null, accessibility: [] },
+  { bookingId: 1, eventId: 11, name: 'Pending workshop', status: 'pending', venueName: 'Hall A', startDatetime: '2031-10-20T02:00:00Z', endDatetime: '2031-10-20T03:00:00Z', expectedAttendance: 20, roomLayout: 'Seminar', accessibility: ['Ramp'] },
+  { bookingId: 2, eventId: 12, name: 'Approved workshop', status: 'approved', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [] },
+  { bookingId: 3, eventId: 13, name: 'Rejected workshop', status: 'rejected', venueName: 'Hall A', startDatetime: '2031-10-22T02:00:00Z', endDatetime: '2031-10-22T03:00:00Z', expectedAttendance: 40, roomLayout: null, accessibility: [] },
   { bookingId: 4, eventId: 14, name: 'Cancelled workshop', status: 'cancelled', venueName: 'Hall A', startDatetime: '2031-10-23T02:00:00Z', endDatetime: '2031-10-23T03:00:00Z', expectedAttendance: 50, roomLayout: null, accessibility: [] },
 ];
 
@@ -27,14 +27,14 @@ afterEach(() => { cleanup(); localStorage.clear(); });
 
 function renderWithSession(component) { return render(<AuthProvider>{component}</AuthProvider>); }
 
-it('AC1 AC2 AC3 AC4 - displays relevant lifecycle states, confirmed preparation details, and a cancellation instruction', async () => {
+it('AC1 AC2 AC3 AC4 - displays the four booking decision statuses, preparation details, and cancellation instruction', async () => {
   // Arrange / Act: the authenticated Venue Staff member opens the status panel.
   renderWithSession(<VenueEventStatusPanel />);
 
   // Assert: each business state is visible, confirmed data remains specific, and cancellation is unmistakable.
-  expect(await screen.findByText('Planning')).toBeVisible();
-  expect(screen.getByText('Confirmed')).toBeVisible();
-  expect(screen.getByText('Completed')).toBeVisible();
+  expect(await screen.findByText('Pending')).toBeVisible();
+  expect(screen.getByText('Approved')).toBeVisible();
+  expect(screen.getByText('Rejected')).toBeVisible();
   expect(screen.getByText('Cancelled')).toBeVisible();
   expect(screen.getByText('Theatre')).toBeVisible();
   expect(screen.getByText(/will no longer proceed/i)).toBeVisible();
@@ -45,19 +45,20 @@ it('AC5 - renders only the server-authorized relevant events and never renders i
   renderWithSession(<VenueEventStatusPanel />);
 
   // Act / Assert: a faulty UI that invents or retains prior private data fails these absence checks.
-  await screen.findByText('Confirmed workshop');
+  await screen.findByText('Approved workshop');
   expect(screen.queryByText('Unrelated secret event')).not.toBeInTheDocument();
   expect(screen.queryByText('Do not disclose')).not.toBeInTheDocument();
   expect(api.get).toHaveBeenCalledWith('/venues/relevant-events', 'staff-token');
 });
 
-it('AC1 AC2 - labels unknown lifecycle data safely and distinguishes empty and failed relevant-event reads', async () => {
+it('AC1 AC2 - never displays Status unavailable for malformed booking data and distinguishes empty and failed reads', async () => {
   // Arrange / Act: exercise the data-contract fallback, then separate empty and unavailable responses.
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
     : path === '/venues/relevant-events' ? { events: [{ ...events[0], status: 'unexpected', expectedAttendance: null, roomLayout: '', accessibility: [] }] }
       : { preference: { dailyPendingReminders: false } });
   const unknown = renderWithSession(<VenueEventStatusPanel />);
-  expect(await screen.findByText('Status unavailable')).toBeVisible();
+  expect(await screen.findByText('Pending')).toBeVisible();
+  expect(screen.queryByText('Status unavailable')).not.toBeInTheDocument();
   expect(screen.getAllByText('Not specified')).toHaveLength(2);
   expect(screen.getByText('None recorded')).toBeVisible();
   unknown.unmount();

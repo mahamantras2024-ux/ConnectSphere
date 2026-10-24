@@ -11,27 +11,27 @@ const {
   sendDailyPendingVenueReminders,
 } = require('../../backend/src/services/venueEventStatus');
 
-test('AC1 AC2 AC3 AC4 - returns only safe preparation details with Planning, Confirmed, Completed and Cancelled labels', async () => {
+test('AC1 AC2 AC3 AC4 - returns only safe preparation details with Pending, Approved, Rejected and Cancelled booking statuses', async () => {
   // Arrange: database rows deliberately include an internal note that Venue Staff must never receive.
   const queries = [];
   const db = { query: async (sql, values) => {
     queries.push({ sql, values });
     return { rows: [
-      { booking_id: 1, event_id: 11, event_name: 'Planning workshop', event_status: 'planning', venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z', expected_attendance: 20, room_layout: 'Seminar', accessibility: ['Ramp'], internal_notes: 'Do not disclose' },
-      { booking_id: 2, event_id: 12, event_name: 'Confirmed workshop', event_status: 'approved', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
-      { booking_id: 3, event_id: 13, event_name: 'Completed workshop', event_status: 'completed', venue_name: 'Hall A', start_datetime: '2031-10-22T02:00:00Z', end_datetime: '2031-10-22T03:00:00Z', expected_attendance: 40, room_layout: null, accessibility: null },
-      { booking_id: 4, event_id: 14, event_name: 'Cancelled workshop', event_status: 'cancelled', venue_name: 'Hall A', start_datetime: '2031-10-23T02:00:00Z', end_datetime: '2031-10-23T03:00:00Z', expected_attendance: 50, room_layout: null, accessibility: null },
+      { booking_id: 1, event_id: 11, event_name: 'Pending workshop', booking_status: 'pending', venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z', expected_attendance: 20, room_layout: 'Seminar', accessibility: ['Ramp'], internal_notes: 'Do not disclose' },
+      { booking_id: 2, event_id: 12, event_name: 'Approved workshop', booking_status: 'approved', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
+      { booking_id: 3, event_id: 13, event_name: 'Rejected workshop', booking_status: 'rejected', venue_name: 'Hall A', start_datetime: '2031-10-22T02:00:00Z', end_datetime: '2031-10-22T03:00:00Z', expected_attendance: 40, room_layout: null, accessibility: null },
+      { booking_id: 4, event_id: 14, event_name: 'Cancelled workshop', booking_status: 'cancelled', venue_name: 'Hall A', start_datetime: '2031-10-23T02:00:00Z', end_datetime: '2031-10-23T03:00:00Z', expected_attendance: 50, room_layout: null, accessibility: null },
     ] };
   } };
 
   // Act.
   const events = await listRelevantVenueEvents(db, 7);
 
-  // Assert: approved is the legacy stored value for the staff-facing Confirmed state, and private columns are excluded.
+  // Assert: the booking decision is the staff-facing status, and private columns are excluded.
   assert.deepEqual(events.map(event => [event.name, event.status]), [
-    ['Planning workshop', 'planning'], ['Confirmed workshop', 'confirmed'], ['Completed workshop', 'completed'], ['Cancelled workshop', 'cancelled'],
+    ['Pending workshop', 'pending'], ['Approved workshop', 'approved'], ['Rejected workshop', 'rejected'], ['Cancelled workshop', 'cancelled'],
   ]);
-  assert.deepEqual(events[1], { bookingId: 2, eventId: 12, name: 'Confirmed workshop', status: 'confirmed', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [] });
+  assert.deepEqual(events[1], { bookingId: 2, eventId: 12, name: 'Approved workshop', status: 'approved', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [] });
   assert.match(queries[0].sql, /venue_staff_assignments/);
   assert.deepEqual(queries[0].values, [7]);
 });

@@ -5,15 +5,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const REMINDER_CHECK_MS = 60 * 60 * 1000;
 const REMINDER_FREQUENCIES = [1, 3, 7];
 
-/** Converts legacy coordinator approval data into the staff-facing lifecycle vocabulary. */
+/** Restricts the venue dashboard to the four persisted booking-decision statuses. */
 function staffStatus(status) {
-  return ['approved', 'confirmed'].includes(status) ? 'confirmed' : status;
+  return ['pending', 'approved', 'rejected', 'cancelled'].includes(status) ? status : 'pending';
 }
 
 /** Reads only preparation details for events linked to a venue assigned to this Venue Staff member. */
 async function listRelevantVenueEvents(db, staffUserId) {
   const result = await db.query(`SELECT booking.id AS booking_id, event.id AS event_id, event.name AS event_name,
-      event.status AS event_status, venue.name AS venue_name, booking.start_datetime, booking.end_datetime,
+      booking.status AS booking_status, venue.name AS venue_name, booking.start_datetime, booking.end_datetime,
       COALESCE(booking.requirements->>'capacity', event.expected_attendance::text)::integer AS expected_attendance,
       COALESCE(NULLIF(booking.requirements->>'layout', ''), event.room_layout_preference) AS room_layout,
       COALESCE(booking.requirements->'accessibility', event.accessibility_requirements, '[]'::jsonb) AS accessibility
@@ -25,7 +25,7 @@ async function listRelevantVenueEvents(db, staffUserId) {
     ORDER BY booking.updated_at DESC, booking.id DESC`, [staffUserId]);
   // Build a deliberate allow-list so later event columns cannot leak into the staff preparation workspace.
   return result.rows.map(row => ({ bookingId: row.booking_id, eventId: row.event_id, name: row.event_name,
-    status: staffStatus(row.event_status), venueName: row.venue_name, startDatetime: row.start_datetime,
+    status: staffStatus(row.booking_status), venueName: row.venue_name, startDatetime: row.start_datetime,
     endDatetime: row.end_datetime, expectedAttendance: row.expected_attendance, roomLayout: row.room_layout,
     accessibility: row.accessibility || [] }));
 }
