@@ -1,4 +1,4 @@
-// File: Exposes the Venue Staff-only event-status and daily reminder-preference API.
+// File: Exposes the Venue Staff-only event-status and configurable reminder-preference API.
 const { pool } = require('../config/db');
 const venueEventStatus = require('../services/venueEventStatus');
 
@@ -13,9 +13,11 @@ async function getReminderPreference(req, res) {
   return res.json({ preference: await venueEventStatus.getVenueReminderPreference(pool, req.user.id) });
 }
 
-/** Persists the explicit daily reminder opt-in/out selection for the signed-in Venue Staff member. */
+/** Persists the signed-in Venue Staff member's opt-in and selected reminder cadence. */
 async function saveReminderPreference(req, res) {
-  return res.json({ preference: await venueEventStatus.updateVenueReminderPreference(pool, req.user.id, req.body.dailyPendingReminders) });
+  return res.json({ preference: await venueEventStatus.updateVenueReminderPreference(
+    pool, req.user.id, req.body.dailyPendingReminders, req.body.reminderFrequencyDays,
+  ) });
 }
 
 module.exports = { listRelevantEvents, getReminderPreference, saveReminderPreference };

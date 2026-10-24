@@ -6,6 +6,7 @@ const {
   listRelevantVenueEvents,
   updateVenueReminderPreference,
   isDailyReminderDue,
+  isReminderDue,
   notifyVenueStaffOfEventStatus,
   sendDailyPendingVenueReminders,
 } = require('../../backend/src/services/venueEventStatus');
@@ -75,18 +76,20 @@ test('AC6 - creates one venue-arrangement notification per assigned staff member
 test('AC7 - persists the opt-in preference and evaluates the daily boundary just below, at and above 24 hours', async () => {
   // Arrange: a Venue Staff member enables reminders; the timestamps are one second around the agreed daily cadence.
   const writes = [];
-  const db = { query: async (sql, values) => { writes.push({ sql, values }); return { rows: [{ daily_pending_reminders: true }] }; } };
+  const db = { query: async (sql, values) => { writes.push({ sql, values }); return { rows: [{ daily_pending_reminders: true, reminder_frequency_days: 3 }] }; } };
   const now = Date.parse('2031-10-02T00:00:00Z');
 
   // Act.
-  const preference = await updateVenueReminderPreference(db, 7, true);
+  const preference = await updateVenueReminderPreference(db, 7, true, 3);
 
   // Assert: a plausible implementation that stores the wrong user/value or uses a strict daily comparison fails here.
-  assert.deepEqual(preference, { dailyPendingReminders: true });
-  assert.deepEqual(writes[0].values, [7, true]);
+  assert.deepEqual(preference, { dailyPendingReminders: true, reminderFrequencyDays: 3 });
+  assert.deepEqual(writes[0].values, [7, true, 3]);
   assert.equal(isDailyReminderDue('2031-10-01T00:00:01Z', now), false);
   assert.equal(isDailyReminderDue('2031-10-01T00:00:00Z', now), true);
   assert.equal(isDailyReminderDue('2030-09-30T23:59:59Z', now), true);
+  assert.equal(isReminderDue('2031-09-29T00:00:01Z', 3, now), false);
+  assert.equal(isReminderDue('2031-09-29T00:00:00Z', 3, now), true);
 });
 
 test('AC7 - sends one due daily pending-request reminder and records its send time', async () => {
@@ -96,7 +99,7 @@ test('AC7 - sends one due daily pending-request reminder and records its send ti
   const db = { query: async (sql, values) => {
     calls.push({ sql, values });
     if (sql.includes('GROUP BY preference.user_id')) return { rows: [
-      { user_id: 7, last_pending_reminder_at: '2031-10-01T00:00:00Z', pending_count: 2 },
+      { user_id: 7, last_pending_reminder_at: '2031-09-29T00:00:00Z', reminder_frequency_days: 3, pending_count: 2 },
       { user_id: 8, last_pending_reminder_at: '2031-10-01T00:00:01Z', pending_count: 1 },
     ] };
     if (sql.includes('INSERT INTO notifications')) return { rows: [{ id: 1 }] };

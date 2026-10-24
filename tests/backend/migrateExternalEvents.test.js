@@ -89,9 +89,11 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner pr
   // Withdraw AC2/AC3: promotion notifications and deadlines follow registration.
   const withdrawalIndex = queries.indexOf(migrationSql('016-attendee-withdrawal.sql'));
   const venueStatusIndex = queries.indexOf(migrationSql('017-venue-staff-event-status.sql'));
+  const venueFrequencyIndex = queries.indexOf(migrationSql('018-venue-reminder-frequency.sql'));
   assert.ok(registrationIndex < withdrawalIndex, 'withdrawal follows registration');
   assert.ok(withdrawalIndex < venueStatusIndex, 'Venue Staff status follows withdrawal');
-  assert.equal(venueStatusIndex, queries.length - 1, 'Venue Staff status is the final migration');
+  assert.ok(venueStatusIndex < venueFrequencyIndex, 'reminder frequency follows Venue Staff status');
+  assert.equal(venueFrequencyIndex, queries.length - 1, 'reminder frequency is the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

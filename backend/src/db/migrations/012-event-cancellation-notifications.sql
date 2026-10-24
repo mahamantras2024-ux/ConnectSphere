@@ -7,6 +7,8 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN
   'change_request_submitted', 'change_request_approved', 'change_request_rejected', 'event_details_changed',
   'event_approved', 'event_rejected', 'safety_check_recorded',
   'technical_support_assigned', 'technical_support_unassigned',
-  'event_cancelled', 'equipment_status_changed', 'waitlist_promoted'
+  'event_cancelled', 'equipment_status_changed', 'waitlist_promoted',
+  'equipment_reservation_affected', 'equipment_alternative_proposed', 'equipment_alternative_decision',
+  'venue_event_status_changed', 'pending_venue_request_reminder'
 ));
 COMMIT;

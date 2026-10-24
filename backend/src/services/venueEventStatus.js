@@ -3,6 +3,7 @@ const { insertNotifications } = require('./notificationService');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REMINDER_CHECK_MS = 60 * 60 * 1000;
+const REMINDER_FREQUENCIES = [1, 3, 7];
 
 /** Converts legacy coordinator approval data into the staff-facing lifecycle vocabulary. */
 function staffStatus(status) {
@@ -29,26 +30,35 @@ async function listRelevantVenueEvents(db, staffUserId) {
     accessibility: row.accessibility || [] }));
 }
 
-/** Saves an explicit per-user choice; undefined is rejected so a malformed UI request cannot silently disable reminders. */
-async function updateVenueReminderPreference(db, staffUserId, dailyPendingReminders) {
-  if (typeof dailyPendingReminders !== 'boolean') throw Object.assign(new Error('Choose whether to receive daily pending-request reminders.'), { status: 400 });
-  const result = await db.query(`INSERT INTO venue_notification_preferences (user_id, daily_pending_reminders)
-    VALUES ($1, $2)
+/** Saves an explicit opt-in and cadence; invalid cadence input is rejected instead of silently changing behavior. */
+async function updateVenueReminderPreference(db, staffUserId, dailyPendingReminders, reminderFrequencyDays = 1) {
+  if (typeof dailyPendingReminders !== 'boolean' || !REMINDER_FREQUENCIES.includes(Number(reminderFrequencyDays))) {
+    throw Object.assign(new Error('Choose whether to receive reminders and a frequency of daily, every 3 days, or weekly.'), { status: 400 });
+  }
+  const frequencyDays = Number(reminderFrequencyDays);
+  const result = await db.query(`INSERT INTO venue_notification_preferences (user_id, daily_pending_reminders, reminder_frequency_days)
+    VALUES ($1, $2, $3)
     ON CONFLICT (user_id) DO UPDATE SET daily_pending_reminders=EXCLUDED.daily_pending_reminders,
+      reminder_frequency_days=EXCLUDED.reminder_frequency_days,
       last_pending_reminder_at=CASE WHEN EXCLUDED.daily_pending_reminders THEN venue_notification_preferences.last_pending_reminder_at ELSE NULL END
-    RETURNING daily_pending_reminders`, [staffUserId, dailyPendingReminders]);
-  return { dailyPendingReminders: result.rows[0].daily_pending_reminders };
+    RETURNING daily_pending_reminders, reminder_frequency_days`, [staffUserId, dailyPendingReminders, frequencyDays]);
+  return { dailyPendingReminders: result.rows[0].daily_pending_reminders, reminderFrequencyDays: result.rows[0].reminder_frequency_days };
 }
 
 /** Retrieves the preference, creating no record when the user has never made a choice. */
 async function getVenueReminderPreference(db, staffUserId) {
-  const result = await db.query(`SELECT daily_pending_reminders FROM venue_notification_preferences WHERE user_id=$1`, [staffUserId]);
-  return { dailyPendingReminders: result.rows[0]?.daily_pending_reminders || false };
+  const result = await db.query(`SELECT daily_pending_reminders, reminder_frequency_days FROM venue_notification_preferences WHERE user_id=$1`, [staffUserId]);
+  return { dailyPendingReminders: result.rows[0]?.daily_pending_reminders || false, reminderFrequencyDays: result.rows[0]?.reminder_frequency_days || 1 };
 }
 
-/** A reminder is due on its first enabled run and at or after exactly one elapsed day thereafter. */
+/** A reminder is due on its first enabled run and at or after the selected elapsed-day cadence. */
+function isReminderDue(lastSentAt, reminderFrequencyDays = 1, now = Date.now()) {
+  return !lastSentAt || now - Date.parse(lastSentAt) >= DAY_MS * reminderFrequencyDays;
+}
+
+/** Preserves the original daily helper for callers and tests that use the default cadence. */
 function isDailyReminderDue(lastSentAt, now = Date.now()) {
-  return !lastSentAt || now - Date.parse(lastSentAt) >= DAY_MS;
+  return isReminderDue(lastSentAt, 1, now);
 }
 
 /** Stores a single status-change notice per staff member assigned to one of the event's booked venues. */
@@ -70,13 +80,14 @@ async function notifyVenueStaffOfEventStatus(db, event) {
 /** Sends due daily reminders only to opted-in staff who currently have pending requests for an assigned venue. */
 async function sendDailyPendingVenueReminders(db, now = Date.now()) {
   const result = await db.query(`SELECT preference.user_id, preference.last_pending_reminder_at,
+    preference.reminder_frequency_days,
       count(DISTINCT booking.id)::int AS pending_count
     FROM venue_notification_preferences preference
     JOIN venue_staff_assignments assignment ON assignment.staff_user_id=preference.user_id
     JOIN venue_bookings booking ON booking.venue_id=assignment.venue_id AND booking.status='pending'
     WHERE preference.daily_pending_reminders=true
-    GROUP BY preference.user_id, preference.last_pending_reminder_at`);
-  const due = result.rows.filter(row => isDailyReminderDue(row.last_pending_reminder_at, now));
+    GROUP BY preference.user_id, preference.last_pending_reminder_at, preference.reminder_frequency_days`);
+  const due = result.rows.filter(row => isReminderDue(row.last_pending_reminder_at, row.reminder_frequency_days || 1, now));
   if (!due.length) return [];
   const notes = due.map(row => ({ userId: row.user_id, eventId: null, changeRequestId: null,
     type: 'pending_venue_request_reminder', title: 'Pending venue booking requests',
@@ -95,5 +106,5 @@ function startDailyVenueReminderScheduler(db) {
   return setInterval(run, REMINDER_CHECK_MS);
 }
 
-module.exports = { listRelevantVenueEvents, updateVenueReminderPreference, getVenueReminderPreference, isDailyReminderDue,
+module.exports = { listRelevantVenueEvents, updateVenueReminderPreference, getVenueReminderPreference, isDailyReminderDue, isReminderDue,
   notifyVenueStaffOfEventStatus, sendDailyPendingVenueReminders, startDailyVenueReminderScheduler };

@@ -78,17 +78,49 @@ it('AC1 AC2 - labels unknown lifecycle data safely and distinguishes empty and f
 
 it('AC7 - lets Venue Staff enable daily pending-request reminders with an explicit persisted preference', async () => {
   // Arrange: the preference begins disabled and the save endpoint confirms the enabled value.
-  api.put.mockResolvedValue({ preference: { dailyPendingReminders: true } });
+  api.put.mockResolvedValue({ preference: { dailyPendingReminders: true, reminderFrequencyDays: 3 } });
   renderWithSession(<VenueReminderPreferences />);
 
   // Act.
-  const checkbox = await screen.findByRole('checkbox', { name: /daily reminders for pending venue requests/i });
+  const checkbox = await screen.findByRole('checkbox', { name: /periodic reminders for pending venue requests/i });
   fireEvent.click(checkbox);
 
   // Assert: a plausible implementation that only changes local UI state or sends the inverse boolean fails.
-  expect(await screen.findByRole('status')).toHaveTextContent(/enabled/i);
-  expect(api.put).toHaveBeenCalledWith('/venues/notification-preferences', { dailyPendingReminders: true }, 'staff-token');
+  expect(await screen.findByRole('status')).toHaveTextContent(/every 3 days.*enabled/i);
+  expect(api.put).toHaveBeenCalledWith('/venues/notification-preferences', { dailyPendingReminders: true, reminderFrequencyDays: 1 }, 'staff-token');
   expect(checkbox).toBeChecked();
+});
+
+it('AC7 - saves a changed reminder frequency for an enabled preference', async () => {
+  // Arrange: the stored preference is enabled daily and the API accepts a weekly cadence.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : { preference: { dailyPendingReminders: true, reminderFrequencyDays: 1 } });
+  api.put.mockResolvedValue({ preference: { dailyPendingReminders: true, reminderFrequencyDays: 7 } });
+  renderWithSession(<VenueReminderPreferences />);
+
+  // Act.
+  const frequency = await screen.findByRole('combobox', { name: 'Frequency' });
+  fireEvent.change(frequency, { target: { value: '7' } });
+
+  // Assert: the selected cadence is persisted rather than only changing local UI state.
+  expect(await screen.findByRole('status')).toHaveTextContent(/weekly.*enabled/i);
+  expect(api.put).toHaveBeenCalledWith('/venues/notification-preferences', { dailyPendingReminders: true, reminderFrequencyDays: 7 }, 'staff-token');
+});
+
+it('AC7 - restores the persisted frequency when a cadence update fails', async () => {
+  // Arrange: the persisted cadence is daily and changing it to weekly fails.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : { preference: { dailyPendingReminders: true, reminderFrequencyDays: 1 } });
+  api.put.mockRejectedValue(new Error('Frequency save failed'));
+  renderWithSession(<VenueReminderPreferences />);
+  const frequency = await screen.findByRole('combobox', { name: 'Frequency' });
+
+  // Act.
+  fireEvent.change(frequency, { target: { value: '7' } });
+
+  // Assert: failed cadence changes must not leave an unpersisted selection visible.
+  expect(await screen.findByRole('alert')).toHaveTextContent('Frequency save failed');
+  expect(frequency).toHaveValue('1');
 });
 
 it('AC7 - defaults an incomplete preference safely and restores the persisted opt-in after a failed update', async () => {
@@ -96,7 +128,7 @@ it('AC7 - defaults an incomplete preference safely and restores the persisted op
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } } : {});
   api.put.mockRejectedValue(new Error('Preference save failed'));
   renderWithSession(<VenueReminderPreferences />);
-  const checkbox = await screen.findByRole('checkbox', { name: /daily reminders for pending venue requests/i });
+  const checkbox = await screen.findByRole('checkbox', { name: /periodic reminders for pending venue requests/i });
   expect(checkbox).not.toBeChecked();
 
   // Act.
@@ -110,10 +142,10 @@ it('AC7 - defaults an incomplete preference safely and restores the persisted op
 it('AC7 - confirms when an enabled daily reminder is disabled', async () => {
   // Arrange: the stored preference is enabled and the API accepts an explicit opt-out.
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
-    : { preference: { dailyPendingReminders: true } });
-  api.put.mockResolvedValue({ preference: { dailyPendingReminders: false } });
+    : { preference: { dailyPendingReminders: true, reminderFrequencyDays: 1 } });
+  api.put.mockResolvedValue({ preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } });
   renderWithSession(<VenueReminderPreferences />);
-  const checkbox = await screen.findByRole('checkbox', { name: /daily reminders for pending venue requests/i });
+  const checkbox = await screen.findByRole('checkbox', { name: /periodic reminders for pending venue requests/i });
 
   // Act.
   fireEvent.click(checkbox);
