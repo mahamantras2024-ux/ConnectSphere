@@ -59,6 +59,7 @@ function mockTransaction({ context = readyContext, failNotifications = false } =
       if (sql.includes('UPDATE events SET status')) {
         return { rows: [{ id: values[0], name: context.name, status: values[1], organiser_id: context.organiser_id, decision_reason: values[2], decided_at: '2030-01-02T03:04:05.000Z' }] };
       }
+      if (sql.includes('FROM venue_staff_assignments')) return { rows: [{ staff_user_id: 7 }] };
       if (sql.includes('INSERT INTO event_safety_checks')) return { rows: [{ id: 9, event_id: values[0], outcome: values[2], notes: values[3] }] };
       if (sql.includes('INSERT INTO notifications')) {
         if (failNotifications) throw new Error('database unavailable');
@@ -154,7 +155,7 @@ test('AR AC1/AC4/AC5/AC6 - approving records the decision on the event and notif
   assert.deepEqual([userIds, eventIds, types, titles], [[12], [101], ['event_approved'], ['Event approved: Workshop']]);
   assert.equal(messages[0], 'Your event request Workshop has been approved by the Event Coordinator and can proceed.');
   assert.deepEqual(transactionWords(tx), ['BEGIN', 'COMMIT']);
-  assert.deepEqual(send.mock.calls.map((call) => call.arguments[0]), ['user12@example.com']);
+  assert.deepEqual(send.mock.calls.map((call) => call.arguments[0]), ['user12@example.com', 'user7@example.com']);
   assert.equal(tx.client.released, true);
 });
 

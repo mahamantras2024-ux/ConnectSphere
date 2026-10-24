@@ -43,6 +43,8 @@ function mockCancellationTransaction({ context = event, recipients = attendees, 
         return { rows: updateMissed ? [] : [{ id: context.id, name: context.name, status: 'cancelled' }] };
       }
       if (normalized.includes('FROM registrations') && normalized.includes('attendee_id')) return { rows: recipients };
+      // Existing cancellation scenarios have no assigned Venue Staff; this keeps their attendee-only oracle focused.
+      if (normalized.includes('FROM venue_staff_assignments')) return { rows: [] };
       if (normalized.includes('INSERT INTO notifications')) {
         if (failNotifications) throw new Error('notification store unavailable');
         return { rows: values[0].map((userId, index) => ({ id: index + 1, user_id: userId,
