@@ -51,6 +51,31 @@ test('AC5 - scopes the event read to assigned venues and omits unrelated event a
   assert.deepEqual(executed.values, [99]);
 });
 
+test('AC1 AC2 - includes an approved booking decided by the viewing Venue Staff member', async () => {
+  // Arrange: approval removes the booking from the pending queue, but the approver remains responsible for its arrangement.
+  let executed;
+  const db = { query: async (sql, values) => {
+    executed = { sql, values };
+    return { rows: [{
+      booking_id: 20, event_id: 44, event_name: 'Graduation party', booking_status: 'approved',
+      venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z',
+      expected_attendance: 100, room_layout: 'Theatre', accessibility: [],
+    }] };
+  } };
+
+  // Act.
+  const events = await listRelevantVenueEvents(db, 9);
+
+  // Assert: a query that only retains venue assignments would drop the approved booking after approval.
+  assert.deepEqual(events, [{
+    bookingId: 20, eventId: 44, name: 'Graduation party', status: 'approved', venueName: 'Hall A',
+    startDatetime: '2031-10-20T02:00:00Z', endDatetime: '2031-10-20T03:00:00Z',
+    expectedAttendance: 100, roomLayout: 'Theatre', accessibility: [],
+  }]);
+  assert.match(executed.sql, /booking\.decision_by=\$1/);
+  assert.deepEqual(executed.values, [9]);
+});
+
 test('AC6 - creates one venue-arrangement notification per assigned staff member and none when no staff are assigned', async () => {
   // Arrange: two staff members are assigned to the affected venue.
   const calls = [];

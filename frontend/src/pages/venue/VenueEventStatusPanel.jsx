@@ -5,12 +5,19 @@ import { useAuth } from '../../context/AuthContext';
 
 const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
 
-/** Shows only server-authorized event details and makes cancellation operationally distinct from completed history. */
+/** Shows only server-authorized event details and reloads after a staff booking decision. */
 export default function VenueEventStatusPanel() {
   const { token } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshVersion, setRefreshVersion] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setRefreshVersion(version => version + 1);
+    window.addEventListener('venue-booking-decision', refresh);
+    return () => window.removeEventListener('venue-booking-decision', refresh);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -20,7 +27,7 @@ export default function VenueEventStatusPanel() {
       .catch(requestError => { if (active) setError(requestError.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [token]);
+  }, [token, refreshVersion]);
 
   return <section className="venue-event-status" aria-labelledby="venue-event-status-title">
     <div className="section-heading"><div><p className="eyebrow">Venue arrangements</p><h2 id="venue-event-status-title">Event status for your venue bookings</h2></div></div>

@@ -51,6 +51,22 @@ it('AC5 - renders only the server-authorized relevant events and never renders i
   expect(api.get).toHaveBeenCalledWith('/venues/relevant-events', 'staff-token');
 });
 
+it('AC1 AC2 - refreshes the status panel after a booking decision without a page reload', async () => {
+  // Arrange: the first read is empty while the approval response makes the booking visible.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : path === '/venues/relevant-events' ? { events: [] } : { preference: { dailyPendingReminders: false } });
+  renderWithSession(<VenueEventStatusPanel />);
+  expect(await screen.findByText(/no events are currently linked/i)).toBeVisible();
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : path === '/venues/relevant-events' ? { events: [events[1]] } : { preference: { dailyPendingReminders: false } });
+
+  // Act: the booking inbox broadcasts the persisted decision to mounted status panels.
+  window.dispatchEvent(new Event('venue-booking-decision'));
+
+  // Assert: a panel without the refresh dependency would continue showing the empty state.
+  expect(await screen.findByText('Approved workshop')).toBeVisible();
+});
+
 it('AC1 AC2 - never displays Status unavailable for malformed booking data and distinguishes empty and failed reads', async () => {
   // Arrange / Act: exercise the data-contract fallback, then separate empty and unavailable responses.
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }

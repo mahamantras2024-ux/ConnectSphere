@@ -10,18 +10,20 @@ function staffStatus(status) {
   return ['pending', 'approved', 'rejected', 'cancelled'].includes(status) ? status : 'pending';
 }
 
-/** Reads only preparation details for events linked to a venue assigned to this Venue Staff member. */
+/** Reads preparation details for assigned venues and decisions made by the authenticated Venue Staff member. */
 async function listRelevantVenueEvents(db, staffUserId) {
   const result = await db.query(`SELECT booking.id AS booking_id, event.id AS event_id, event.name AS event_name,
       booking.status AS booking_status, venue.name AS venue_name, booking.start_datetime, booking.end_datetime,
       COALESCE(booking.requirements->>'capacity', event.expected_attendance::text)::integer AS expected_attendance,
       COALESCE(NULLIF(booking.requirements->>'layout', ''), event.room_layout_preference) AS room_layout,
       COALESCE(booking.requirements->'accessibility', event.accessibility_requirements, '[]'::jsonb) AS accessibility
-    FROM venue_staff_assignments assignment
-    JOIN venue_bookings booking ON booking.venue_id=assignment.venue_id
+    FROM venue_bookings booking
+    LEFT JOIN venue_staff_assignments assignment
+      ON assignment.venue_id=booking.venue_id AND assignment.staff_user_id=$1
     JOIN events event ON event.id=booking.event_id
     JOIN venues venue ON venue.id=booking.venue_id
-    WHERE assignment.staff_user_id=$1
+    WHERE assignment.staff_user_id IS NOT NULL
+       OR booking.decision_by=$1
     ORDER BY booking.updated_at DESC, booking.id DESC`, [staffUserId]);
   // Build a deliberate allow-list so later event columns cannot leak into the staff preparation workspace.
   return result.rows.map(row => ({ bookingId: row.booking_id, eventId: row.event_id, name: row.event_name,
