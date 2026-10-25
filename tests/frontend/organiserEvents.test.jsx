@@ -18,7 +18,11 @@ const event = { id: 101, name: 'Community Workshop', purpose: 'Bring neighbours 
   equipment_notes: 'Two microphones', registration_required: true, registration_capacity: 35,
   special_arrangements: 'Vegetarian catering', organiser_id: 12, organiser_name: 'Alice', coordinator_name: 'Chris', status: 'submitted' };
 // Renders the application at a selected in-memory route with optional stored test-session credentials.
-function open(path, authenticated = true) {
+function open(path, authenticated = true, venueBookings = []) {
+  // Supply the new external boundary explicitly so unrelated event tests keep valid venue responses.
+  const getEventResource = api.get.getMockImplementation();
+  api.get.mockImplementation((resource, ...args) => resource.endsWith('/organiser-venue-bookings')
+    ? Promise.resolve({ bookings: venueBookings }) : getEventResource(resource, ...args));
   if (authenticated) localStorage.setItem('cs_token', 'organiser-token');
   render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><App /></AuthProvider></MemoryRouter>);
 }
@@ -38,6 +42,21 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+
+// SCRUM-104 must be reachable from the real organiser route, not only as an isolated component.
+it('SCRUM-104 AC1 AC3 - opens the managed event venue section through the organiser route', async () => {
+  // Arrange: retain real routing and authentication while replacing only API traffic.
+  const venueBookings = [{ id: 9, venue_name: 'North Hall', address: '12 North Road', capacity: 120,
+    start_datetime: '2030-04-04T02:00:00Z', end_datetime: '2030-04-04T04:00:00Z', status: 'approved' }];
+  // Act
+  open('/organizer/events/101', true, venueBookings);
+  // Assert: removing the integration or using a coordinator-only endpoint breaks this test.
+  const section = await screen.findByRole('region', { name: 'Venue arrangements' });
+  await within(section).findByText('North Hall');
+  expect(within(section).getByText('Confirmed')).toBeTruthy();
+  expect(within(section).getByText('12 North Road')).toBeTruthy();
+  expect(api.get).toHaveBeenCalledWith('/events/101/organiser-venue-bookings', 'organiser-token');
+});
 
 it.each(['light', 'dark'])('UI contrast AC1 AC2 - event text stays readable in the brand palette with %s system preference', async preference => {
   // Arrange: render real event styles. Read CSSOM explicitly because jsdom does not evaluate colour-scheme media queries.

@@ -21,6 +21,7 @@ import EventDecisionSection from './EventDecisionSection';
 import EquipmentStatusSection from './EquipmentStatusSection';
 import EquipmentReservationIssuesSection from './EquipmentReservationIssuesSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
+import OrganiserVenueDetails from './OrganiserVenueDetails';
 
 import CoordinatorRegistrations from './CoordinatorRegistrations';
 
@@ -1011,6 +1012,7 @@ export default function EventDetail() {
 
 
 
+        {user.role === 'event_organiser' && <OrganiserVenueDetails eventId={event.id} token={token} />}
         {!coordinatorWorkspace && <>        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
 
           onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>

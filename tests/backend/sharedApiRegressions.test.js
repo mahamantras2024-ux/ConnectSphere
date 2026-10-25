@@ -379,7 +379,8 @@ test('API startup waits for initialization before listening on a configured or d
    if(name==='dotenv')return {config(){}};
    if(name==='express')return express;
    if(name==='cors'||name==='morgan')return ()=>()=>{};
-   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;})};
+   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;}),pool:{}};
+   if(name==='./services/venueEventStatus')return {startDailyVenueReminderScheduler(){}};
    if(name==='./middleware/errorHandler')return {errorHandler(){}};
    if(name.startsWith('./routes/'))return {};
    throw new Error(`Unexpected startup dependency: ${name}`);

@@ -13,7 +13,11 @@ const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { venueSchedule, saveVenueSchedule } = require('../controllers/venueScheduleController');
 const { createRequest, decideRequest, listPendingRequests } = require('../controllers/venueRequestController');
+const venueEventStatus = require('../controllers/venueEventStatusController');
 router.get('/requests/pending', requireAuth, requireRole('venue_staff'), asyncHandler(listPendingRequests));
+router.get('/relevant-events', requireAuth, requireRole('venue_staff'), asyncHandler(venueEventStatus.listRelevantEvents));
+router.get('/notification-preferences', requireAuth, requireRole('venue_staff'), asyncHandler(venueEventStatus.getReminderPreference));
+router.put('/notification-preferences', requireAuth, requireRole('venue_staff'), asyncHandler(venueEventStatus.saveReminderPreference));
 const { searchVenues } = require('../services/venueSearch');
 // Coordinator-only search returns catalogue records, never other events' private booking metadata.
 router.get('/search', requireAuth, requireRole('event_coordinator'), asyncHandler(async (req, res) => {

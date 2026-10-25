@@ -47,6 +47,8 @@ beforeEach(() => {
   user = { id: 12, email: 'alice@example.com', full_name: 'Alice', role: 'event_organiser' };
   event = { ...baseEvent };
   api.get.mockImplementation(async (path) => {
+    // Keep the unrelated venue section on a valid empty response while testing equipment behavior.
+    if (path.endsWith('/organiser-venue-bookings')) return { bookings: [] };
     if (path === '/auth/me') return { user };
     if (path === '/events') return { events: [event] };
     if (path === '/events/change-requests') return { changeRequests: [] };

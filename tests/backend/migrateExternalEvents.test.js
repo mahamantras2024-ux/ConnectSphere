@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
 const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal } = require('../../backend/src/db/migrateExternalEvents');
+const { migrateVenueStaffEventStatus, migrateVenueReminderFrequency } = require('../../backend/src/db/migrateVenueStaffEventStatus');
 
 afterEach(() => mock.restoreAll());
 
@@ -88,13 +89,38 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner pr
   assert.ok(documentsIndex < registrationIndex, 'registration must follow venue documents');
   // Withdraw AC2/AC3: promotion notifications and deadlines follow registration.
   const withdrawalIndex = queries.indexOf(migrationSql('016-attendee-withdrawal.sql'));
+  const venueStatusIndex = queries.indexOf(migrationSql('017-venue-staff-event-status.sql'));
+  const venueFrequencyIndex = queries.indexOf(migrationSql('018-venue-reminder-frequency.sql'));
   assert.ok(registrationIndex < withdrawalIndex, 'withdrawal follows registration');
-  // Parent notification system: its notification types are added after every earlier upgrade, as the final migration.
+  assert.ok(withdrawalIndex < venueStatusIndex, 'Venue Staff status follows withdrawal');
+  assert.ok(venueStatusIndex < venueFrequencyIndex, 'reminder frequency follows Venue Staff status');
+  // Parent notification system: its notification types are set after every earlier type change, as the final migration.
   const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
-  assert.ok(withdrawalIndex < parentNotificationsIndex, 'parent notifications follow withdrawal');
+  assert.ok(venueFrequencyIndex < parentNotificationsIndex, 'parent notifications follow the Venue Staff migrations');
   assert.equal(parentNotificationsIndex, queries.length - 1, 'parent notifications is the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
+});
+
+test('AC7 - the Venue Staff upgrade applies reminder frequency and the standalone command can repair an existing status upgrade', async () => {
+  // Arrange: record the SQL sent to PostgreSQL without replaying unrelated migrations.
+  const fullUpgrade = [];
+  mock.method(pool, 'connect', async () => ({ query: async sql => { fullUpgrade.push(sql); }, release() {} }));
+
+  // Act.
+  await migrateVenueStaffEventStatus();
+
+  // Assert: the required frequency step follows the base status schema.
+  assert.equal(fullUpgrade.length, 2);
+  assert.match(fullUpgrade[0], /venue_staff_assignments/);
+  assert.match(fullUpgrade[1], /reminder_frequency_days/);
+
+  const frequencyOnly = [];
+  mock.restoreAll();
+  mock.method(pool, 'connect', async () => ({ query: async sql => { frequencyOnly.push(sql); }, release() {} }));
+  await migrateVenueReminderFrequency();
+  assert.equal(frequencyOnly.length, 1);
+  assert.match(frequencyOnly[0], /reminder_frequency_days/);
 });
 
 // Upload AC: upgrading an existing venue catalogue must not replay unrelated seed/demo migrations.
