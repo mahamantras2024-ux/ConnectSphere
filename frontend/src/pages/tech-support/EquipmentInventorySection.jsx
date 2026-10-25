@@ -36,11 +36,11 @@ function getMonthGridDates(monthDate, firstVisibleDate, lastVisibleDate) {
   });
 }
 
-// Scheduled windows must contain the requested range; reservation-only windows reduce stock when they overlap it.
+// Full ranges select overlapping segments; continuous schedule coverage is checked across them below.
 function matchesFilters(window, date, fromTime, toTime) {
   if (date && window.date !== date) return false;
-  if (window.isScheduled === false && fromTime && toTime) {
-    // Synthetic reservation windows block only overlapping slots; schedules must cover the complete requested range.
+  if (fromTime && toTime) {
+    // Half-open intervals exclude stock changes exactly at the requested end.
     return window.startTime.slice(0, 5) < toTime && window.endTime.slice(0, 5) > fromTime;
   }
   if (fromTime && window.startTime.slice(0, 5) > fromTime) return false;
@@ -51,6 +51,37 @@ function matchesFilters(window, date, fromTime, toTime) {
 }
 
 const getAvailabilityWindows = item => Array.isArray(item.availabilities) ? item.availabilities : [];
+/**
+ * Selects matching stock segments only when their scheduled pieces continuously
+ * cover the requested interval on one date. Synthetic reservation windows reduce
+ * stock but cannot fill a real schedule gap; unscheduled dates stay bookable.
+ */
+function getMatchingWindows(item, date, fromTime, toTime) {
+  const windows = getAvailabilityWindows(item);
+  const matching = windows.filter(window => matchesFilters(window, date, fromTime, toTime));
+  if (!fromTime || !toTime) return matching;
+  if (fromTime >= toTime) return [];
+  const dates = [...new Set(matching.map(window => window.date))];
+  return dates.flatMap(day => {
+    const dayWindows = matching.filter(window => window.date === day);
+    const hasSchedule = windows.some(window => window.date === day && window.isScheduled !== false);
+    if (hasSchedule) {
+      const scheduled = dayWindows.filter(window => window.isScheduled !== false)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      let coveredUntil = fromTime;
+      for (const window of scheduled) {
+        if (window.startTime.slice(0, 5) > coveredUntil) return [];
+        // Nested/overlapping segments must never move the coverage cursor backwards.
+        if (window.endTime.slice(0, 5) > coveredUntil) coveredUntil = window.endTime.slice(0, 5);
+      }
+      if (coveredUntil < toTime) return [];
+    }
+    // Dated searches retain exhausted stock as zero; time-only searches advertise usable ranges.
+    if (!date && dayWindows.some(window => (Number(window.availableQuantity) || 0) <= 0)) return [];
+    return dayWindows;
+  });
+}
+
 // Legacy stock health values map onto explicit availability until a record is transitioned by staff.
 const getAvailabilityStatus = item => item.availability_status ||
   (item.status && item.status !== 'operational' ? 'Unavailable' : 'Available');
@@ -111,7 +142,7 @@ function getWindowLabel(item, window, state) {
 
 /**
  * Filters inventory and shows availability windows; dates without a schedule use full stock unless the asset is blocked.
- * Scheduled windows must cover the requested range, while reservation-only windows reduce stock on overlap; status
+ * Scheduled segments must continuously cover the requested range; reservation-only windows reduce stock on overlap. Status
  * callbacks persist audited availability transitions and return the updated inventory row through the dashboard.
  */
 export default function EquipmentInventorySection({
@@ -146,10 +177,9 @@ export default function EquipmentInventorySection({
     : [];
   const searchCalendarAssets = searchCalendarMatches.map(item => ({
     ...item,
-    matchingWindows: getAvailabilityWindows(item).filter(window => (
+    matchingWindows: getMatchingWindows(item, dateFilter, fromTime, toTime).filter(window => (
       window.date >= calendarDateAtOffset(0) &&
-      window.date < calendarDateAtOffset(CALENDAR_HORIZON_DAYS) &&
-      matchesFilters(window, dateFilter, fromTime, toTime)
+      window.date < calendarDateAtOffset(CALENDAR_HORIZON_DAYS)
     )),
   }));
   const calendarGridDates = getMonthGridDates(
@@ -167,9 +197,7 @@ export default function EquipmentInventorySection({
   const assetsToFilter = search ? searchCalendarMatches : inventory;
   // No schedule rows means the whole date is bookable unless blocked; synthetic reservation windows still reduce stock.
   const filteredAssets = invalidTimeRange ? [] : assetsToFilter.flatMap(item => {
-    const matchingWindows = getAvailabilityWindows(item).filter(window => (
-      matchesFilters(window, dateFilter, fromTime, toTime)
-    ));
+    const matchingWindows = getMatchingWindows(item, dateFilter, fromTime, toTime);
     const availableWindows = matchingWindows.filter(window => window.status === 'Available');
     const hasScheduledWindowsForDate = dateFilter && getAvailabilityWindows(item).some(window => (
       window.date === dateFilter && window.isScheduled !== false
@@ -187,9 +215,7 @@ export default function EquipmentInventorySection({
   // Partial filters report the best matching slot; a complete interval must use its lowest available quantity.
   // If the selected date has no schedule or overlapping reservation window, backend availability is full stock.
   function getAvailableQuantity(item) {
-    const matchingWindows = getAvailabilityWindows(item).filter(window => (
-      matchesFilters(window, dateFilter, fromTime, toTime)
-    ));
+    const matchingWindows = getMatchingWindows(item, dateFilter, fromTime, toTime);
     const hasScheduledWindowsForDate = dateFilter && getAvailabilityWindows(item).some(window => (
       window.date === dateFilter && window.isScheduled !== false
     ));
