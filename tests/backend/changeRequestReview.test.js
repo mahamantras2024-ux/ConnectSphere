@@ -126,8 +126,10 @@ for (const role of ['event_organiser', 'attendee', 'venue_staff', 'technical_sup
 
 // ---------- AC2: notified when a change request is made ----------
 
-// Organiser submission fixture: event 101 with an approved venue, assigned to coordinator 30.
-const submittedEvent = { ...event, venue_confirmed: true, expected_attendance: 40 };
+// Organiser submission fixture: submitted event 101 assigned to coordinator 30. Since the post-submission amendments story,
+// every change to a submitted event is an amendment request with an explanation (POST /amendment-requests).
+const submittedEvent = { ...event, status: 'submitted', is_draft: false, venue_confirmed: true, expected_attendance: 40 };
+const amend = (changes) => ({ user: organiser, method: 'POST', body: { changes, explanation: 'More people signed up.' } });
 // Mocks the organiser's submission path and returns the recorded INSERT so its notification payload can be checked.
 function mockSubmission({ coordinatorId = 30 } = {}) {
   const inserts = [];
@@ -145,23 +147,24 @@ function mockSubmission({ coordinatorId = 30 } = {}) {
 }
 
 // Test case: Submits a critical change; the request and the coordinator's notification are written in one statement and an email follows.
-test('CR AC2 - submitting a change request notifies the assigned coordinator in the same write and by email', async () => {
+test('CR AC2 / AM AC4 - submitting a change request notifies the assigned coordinator in the same write and by email', async () => {
   // Arrange
   const inserts = mockSubmission();
   const send = mock.method(emailService, 'sendNotificationEmail', async () => {});
   // Act
-  const result = await request('/api/events/101/non-critical', { user: organiser, method: 'PUT', body: { expectedAttendance: 55 } });
+  const result = await request('/api/events/101/amendment-requests', amend({ expectedAttendance: 55 }));
   // Assert: one atomic statement holds both inserts; the notification targets the request's coordinator.
   assert.equal(result.status, 202);
   assert.equal(inserts.length, 1);
   assert.match(inserts[0].sql, /INSERT INTO event_change_requests[\s\S]*INSERT INTO notifications[\s\S]*SELECT cr\.coordinator_id/);
   assert.match(inserts[0].sql, /'change_request_submitted'/);
-  const [, , , , title, message, details] = inserts[0].values;
-  assert.equal(title, 'New change request: Workshop');
-  assert.equal(message, 'The Event Organiser requested changes to Workshop.\nExpected attendance: 40 → 55');
+  const [, , , , explanation, title, message, details] = inserts[0].values;
+  assert.equal(explanation, 'More people signed up.');
+  assert.equal(title, 'New amendment request: Workshop');
+  assert.equal(message, 'The Event Organiser requested amendments to Workshop.\nExpected attendance: 40 → 55\nExplanation: More people signed up.');
   assert.deepEqual(JSON.parse(details).changes, [{ field: 'expectedAttendance', label: 'Expected attendance', current: 40, requested: 55 }]);
   assert.deepEqual(send.mock.calls.map((call) => call.arguments), [['chris@example.com', title, message]]);
-  assert.equal(result.body.changeRequest.coordinator_email, undefined);
+  assert.equal(result.body.amendmentRequest.coordinator_email, undefined);
 });
 
 // Test case: Gmail is unavailable; the change request and in-app notification are already stored, so the organiser still gets 202.
@@ -169,7 +172,7 @@ test('CR AC2 - an email failure does not fail a submitted change request', async
   mockSubmission();
   mock.method(emailService, 'sendNotificationEmail', async () => { throw new Error('SMTP down'); });
   const logged = mock.method(console, 'error', () => {});
-  const result = await request('/api/events/101/non-critical', { user: organiser, method: 'PUT', body: { expectedAttendance: 55 } });
+  const result = await request('/api/events/101/amendment-requests', amend({ expectedAttendance: 55 }));
   assert.equal(result.status, 202);
   assert.deepEqual(logged.mock.calls.map((call) => call.arguments[0]), ['Notification email delivery failed for 1 of 1 recipients.']);
 });
@@ -177,7 +180,7 @@ test('CR AC2 - an email failure does not fail a submitted change request', async
 // Test case: No coordinator is assigned yet; there is nobody to notify, so nothing is written.
 test('CR AC2 - without an assigned coordinator no request or notification is created', async () => {
   const inserts = mockSubmission({ coordinatorId: null });
-  const result = await request('/api/events/101/non-critical', { user: organiser, method: 'PUT', body: { expectedAttendance: 55 } });
+  const result = await request('/api/events/101/amendment-requests', amend({ expectedAttendance: 55 }));
   assert.equal(result.status, 409);
   assert.equal(result.body.code, 'COORDINATOR_NOT_ASSIGNED');
   assert.equal(inserts.length, 0);
@@ -423,7 +426,7 @@ test('CR AC3 - approving an equipment change request applies the new equipment r
 
 // Test case: After confirmation an organiser's equipment edit becomes a change request; the coordinator is notified in the
 // same statement (AC2) with readable before/after lines, emailed, and the address is not returned to the organiser.
-test('CR AC2 - an equipment change request notifies the assigned coordinator', async () => {
+test('CR AC2 / AM AC2 AC4 - an equipment amendment request notifies the assigned coordinator', async () => {
   const inserts = [];
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
@@ -431,20 +434,23 @@ test('CR AC2 - an equipment change request notifies the assigned coordinator', a
       inserts.push({ sql, values });
       return { rows: [{ id: 502, event_id: 101, coordinator_id: 30, status: 'pending', coordinator_email: 'chris@example.com' }] };
     }
-    if (sql.includes('FROM events e')) return { rows: [{ ...event, equipment_confirmed: true, equipment_items: [{ item: 'Projector', quantity: 1 }],
+    if (sql.includes('FROM events e')) return { rows: [{ ...event, status: 'submitted', is_draft: false, equipment_confirmed: true, equipment_items: [{ item: 'Projector', quantity: 1 }],
       technical_support_required: false, technical_support_details: null, video_conferencing_required: false, technical_specifications: null }] };
     throw new Error(`Unexpected query: ${sql}`);
   });
   const send = mock.method(emailService, 'sendNotificationEmail', async () => {});
-  const result = await request('/api/events/101/equipment', { user: organiser, method: 'PUT', body: { equipmentItems: [{ item: 'Projector', quantity: 2 }] } });
+  // The equipment block is sent whole; only the field that differs is stored as the proposal.
+  const result = await request('/api/events/101/amendment-requests', amend({ equipmentItems: [{ item: 'Projector', quantity: 2 }],
+    technicalSupportRequired: false, technicalSupportDetails: null, videoConferencingRequired: false, technicalSpecifications: null }));
   assert.equal(result.status, 202);
   assert.equal(inserts.length, 1);
   assert.match(inserts[0].sql, /INSERT INTO event_change_requests[\s\S]*INSERT INTO notifications[\s\S]*'change_request_submitted'/);
-  const [, , , , title, message] = inserts[0].values;
-  assert.equal(title, 'New change request: Workshop');
-  assert.equal(message, 'The Event Organiser requested equipment changes to Workshop.\nEquipment items: Projector × 1 → Projector × 2');
+  const [, , , proposed, , title, message] = inserts[0].values;
+  assert.deepEqual(JSON.parse(proposed), { equipmentItems: [{ item: 'Projector', quantity: 2 }] });
+  assert.equal(title, 'New amendment request: Workshop');
+  assert.equal(message, 'The Event Organiser requested amendments to Workshop.\nEquipment items: Projector × 1 → Projector × 2\nExplanation: More people signed up.');
   assert.deepEqual(send.mock.calls.map((call) => call.arguments), [['chris@example.com', title, message]]);
-  assert.equal(result.body.changeRequest.coordinator_email, undefined);
+  assert.equal(result.body.amendmentRequest.coordinator_email, undefined);
 });
 
 // ---------- Parent notification system: an approved change can make the event ready for its safety check ----------

@@ -26,6 +26,9 @@ import OrganiserVenueDetails from './OrganiserVenueDetails';
 import CoordinatorRegistrations from './CoordinatorRegistrations';
 
 import CancelEventAction from './CancelEventAction';
+import { toEditValues, toApiChange } from './eventEditValues';
+import EventFieldInput from './EventFieldInput';
+import AmendmentRequestPanel from './AmendmentRequestPanel';
 
 
 
@@ -299,53 +302,6 @@ const Field = ({ label, children }) => (
 
 
 
-/**
-
- * Converts a stored event (snake_case API fields) into editor values keyed by edit field.
-
- * Missing values become empty inputs (or an unticked box) so editors never show "null"; zero stays zero.
-
- * Used when the event loads, after a save, and to restore a field when an edit is cancelled.
-
- */
-
-function toEditValues(event) {
-
-  return {
-
-    name: event.name || '',
-
-    purpose: event.purpose || '',
-
-    description: event.description || '',
-
-    eventType: event.event_type || '',
-
-    proposedDate: event.proposed_date?.slice(0, 10) || '',
-
-    proposedStartTime: event.proposed_start_time?.slice(0, 5) || '',
-
-    proposedEndTime: event.proposed_end_time?.slice(0, 5) || '',
-
-    expectedAttendance: event.expected_attendance ?? '',
-
-    programmeDetails: event.programme_details || '',
-
-    roomLayoutPreference: event.room_layout_preference || '',
-
-    equipmentNotes: event.equipment_notes || '',
-
-    accessibilityText: (event.accessibility_requirements || []).join('\n'),
-
-    specialArrangements: event.special_arrangements || '',
-
-    registrationRequired: event.registration_required ?? false,
-
-    registrationCapacity: event.registration_capacity ?? '',
-
-  };
-
-}
 
 
 
@@ -560,35 +516,15 @@ export default function EventDetail() {
 
     try {
 
-      const apiField = activeEditField === 'accessibilityText' ? 'accessibilityRequirements' : activeEditField;
-
-      let value = editValues[activeEditField];
-
-      if (activeEditField === 'accessibilityText') value = value.split('\n').map((item) => item.trim()).filter(Boolean);
-
-      if (['expectedAttendance', 'registrationCapacity'].includes(activeEditField)) value = value === '' ? null : Number(value);
-
-      const payload = activeEditField === 'attachments' ? { attachments: fileChanges } : { [apiField]: value };
+      // Drafts only: the converted value goes to the draft edit endpoint (a submitted request uses an amendment request).
+      const payload = activeEditField === 'attachments' ? { attachments: fileChanges } : Object.fromEntries([toApiChange(activeEditField, editValues[activeEditField])]);
 
       const data = await api.put(`/events/${id}/non-critical`, payload, token);
 
-      if (!data.changeRequest) {
-
-        const saved = { ...event, ...data.event };
-
-        setEvent(saved);
-
-        setEditValues(toEditValues(saved));
-
-      } else {
-
-        // A change request leaves the confirmed value in effect, so the editor returns to it.
-
-        resetEditValue(activeEditField);
-
-      }
-
-      setUpdateSuccess(data.message || 'Non-critical event information saved.');
+      const saved = { ...event, ...data.event };
+      setEvent(saved);
+      setEditValues(toEditValues(saved));
+      setUpdateSuccess(data.message || 'Event information saved.');
 
       setFileChanges({});
 
@@ -664,15 +600,12 @@ export default function EventDetail() {
 
 
 
-  const criticalFields = new Set(['name', 'purpose', 'eventType', 'proposedDate', 'proposedStartTime', 'proposedEndTime',
-
-    'expectedAttendance', 'roomLayoutPreference', 'registrationRequired', 'registrationCapacity']);
-
-  const editingAllowed = () => user.role === 'event_organiser';
+  // Only the organiser's own draft is edited directly; once submitted, changes go through an amendment request (AC1).
+  const editingAllowed = () => user.role === 'event_organiser' && Boolean(event.is_draft) && event.status === 'draft';
 
 
 
-  // Restores one editor to the event's stored value (used on Cancel and after a change request).
+  // Restores one editor to the event's stored value (used on Cancel).
 
   function resetEditValue(field) {
 
@@ -682,11 +615,9 @@ export default function EventDetail() {
 
 
 
-  // Pencil button for one field; its label becomes "Request change to ..." once a venue is confirmed.
-
-  function renderEditButton(field, label, requestMode) {
-
-    const text = requestMode ? `Request change to ${label}` : `Edit ${label}`;
+  // Pencil button that opens the editor for one draft field.
+  function renderEditButton(field, label) {
+    const text = `Edit ${label}`;
 
     return (
 
@@ -708,11 +639,7 @@ export default function EventDetail() {
 
   function renderEditableField(field, label, value, critical = false, displayValue = value) {
 
-    const canEdit = editingAllowed(field);
-
-    const requestMode = Boolean(event.venue_confirmed && criticalFields.has(field));
-
-    if (!canEdit) return fieldValue(displayValue);
+    if (!editingAllowed()) return fieldValue(displayValue);
 
     if (activeEditField !== field) {
 
@@ -722,7 +649,7 @@ export default function EventDetail() {
 
           <span>{fieldValue(displayValue)}</span>
 
-          {renderEditButton(field, label, requestMode)}
+          {renderEditButton(field, label)}
 
         </span>
 
@@ -730,59 +657,16 @@ export default function EventDetail() {
 
     }
 
-    const controlType = field === 'proposedDate' ? 'date' : ['proposedStartTime', 'proposedEndTime'].includes(field) ? 'time'
-
-      : ['expectedAttendance', 'registrationCapacity'].includes(field) ? 'number' : 'text';
-
-    const multiline = ['description', 'programmeDetails', 'accessibilityText', 'equipmentNotes', 'specialArrangements'].includes(field);
-
     const setValue = (next) => setEditValues((current) => ({ ...current, [field]: next }));
 
     return (
 
       <form className="ed-editor" onSubmit={(submitEvent) => { submitEvent.preventDefault(); setUpdateError(''); setConfirmUpdate(true); }}>
 
-        {field === 'registrationRequired'
-
-          ? (
-
-            <label className="ed-check">
-
-              <span>Registration required?</span>
-
-              <input className="registration-required-checkbox" type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
-
-                onChange={(changeEvent) => setValue(changeEvent.target.checked)} />
-
-            </label>
-
-          )
-
-          : multiline
-
-            ? (
-
-              <textarea className="ed-input" aria-label={`Edit ${label}`} value={editValues[field]} disabled={saving} rows={3}
-
-                onChange={(changeEvent) => setValue(changeEvent.target.value)} />
-
-            )
-
-            : (
-
-              <input className="ed-input" aria-label={`Edit ${label}`} type={controlType} min={controlType === 'number' ? 0 : undefined}
-
-                value={editValues[field]} disabled={saving}
-
-                onChange={(changeEvent) => setValue(changeEvent.target.value)} />
-
-            )}
-
+        <EventFieldInput field={field} label={label} ariaLabel={`Edit ${label}`} value={editValues[field]} disabled={saving} onChange={setValue} />
         <div className="ed-editor-actions">
 
-          <button type="submit" disabled={saving} className="button-primary">{saving ? 'Saving…'
-
-            : event.venue_confirmed && criticalFields.has(field) ? 'Submit change request' : 'Save changes'}</button>
+          <button type="submit" disabled={saving} className="button-primary">{saving ? 'Saving…' : 'Save changes'}</button>
 
           <button type="button" disabled={saving} className="button-secondary" onClick={() => {
 
@@ -881,15 +765,9 @@ export default function EventDetail() {
 
       {event.clarification_outstanding && <p className="ed-notice ed-notice--warn" role="status">Clarification outstanding — planning is waiting for the Event Organiser.</p>}
 
-      {user.role === 'event_organiser' && <p className="mb-4 text-sm text-slate-600">
-
-        {event.venue_confirmed
-
-          ? 'A venue is confirmed. Use the pencil icon to edit non-critical information or to submit a critical change request. The confirmed details stay in effect until review.'
-
-          : 'No venue is confirmed. Use the pencil icon to edit any event field.'}
-
-      </p>}
+      {user.role === 'event_organiser' && (editingAllowed()
+        ? <p className="mb-4 text-sm text-slate-600">This is a draft. Use the pencil icon to edit any event field before you submit it.</p>
+        : <AmendmentRequestPanel event={event} token={token} />)}
 
       <header className="ed-header">
 
@@ -905,7 +783,7 @@ export default function EventDetail() {
 
           <h1 className="ed-title">{fieldValue(event.name)}</h1>
 
-          {user.role === 'event_organiser' && activeEditField !== 'name' && renderEditButton('name', 'Event name', Boolean(event.venue_confirmed))}
+          {editingAllowed() && activeEditField !== 'name' && renderEditButton('name', 'Event name')}
 
         </div>
 
@@ -927,7 +805,7 @@ export default function EventDetail() {
 
       <div className="ed-card ed-attach">
 
-        <EventAttachments value={{ ...(event.attachments || {}), ...fileChanges }} onBusy={delta => setReadingFiles(current => current + delta)} onChange={user.role === 'event_organiser' ? (field, file) => { setFileChanges(current => ({ ...current, [field]: file })); setActiveEditField('attachments'); } : undefined} />
+        <EventAttachments value={{ ...(event.attachments || {}), ...fileChanges }} onBusy={delta => setReadingFiles(current => current + delta)} onChange={editingAllowed() ? (field, file) => { setFileChanges(current => ({ ...current, [field]: file })); setActiveEditField('attachments'); } : undefined} />
 
         {activeEditField === 'attachments' && <button className="button-primary ed-attach-save" disabled={readingFiles > 0 || saving} onClick={() => { setUpdateError(''); setConfirmUpdate(true); }}>Save attachments</button>}
 
@@ -1013,7 +891,7 @@ export default function EventDetail() {
 
 
         {user.role === 'event_organiser' && <OrganiserVenueDetails eventId={event.id} token={token} />}
-        {!coordinatorWorkspace && <>        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
+        {!coordinatorWorkspace && <>        <EquipmentRequirementsSection event={event} canEdit={editingAllowed()} token={token}
 
           onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>
 

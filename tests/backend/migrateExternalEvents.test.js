@@ -94,10 +94,13 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner pr
   assert.ok(registrationIndex < withdrawalIndex, 'withdrawal follows registration');
   assert.ok(withdrawalIndex < venueStatusIndex, 'Venue Staff status follows withdrawal');
   assert.ok(venueStatusIndex < venueFrequencyIndex, 'reminder frequency follows Venue Staff status');
-  // Parent notification system: its notification types are set after every earlier type change, as the final migration.
+  // Parent notification system: its notification types are set after every earlier type change.
   const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
   assert.ok(venueFrequencyIndex < parentNotificationsIndex, 'parent notifications follow the Venue Staff migrations');
-  assert.equal(parentNotificationsIndex, queries.length - 1, 'parent notifications is the final migration');
+  // Post-submission amendments: the explanation column is added after every earlier upgrade, as the final migration.
+  const amendmentIndex = queries.indexOf(migrationSql('019-amendment-explanations.sql'));
+  assert.ok(parentNotificationsIndex < amendmentIndex, 'amendment explanations follow the notification types');
+  assert.equal(amendmentIndex, queries.length - 1, 'amendment explanations are the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

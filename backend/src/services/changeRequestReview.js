@@ -45,6 +45,22 @@ function describeChanges(event, requestedChanges) {
   });
 }
 
+/**
+ * Lists what an amendment request asked for, without comparing to the event (whose values may since have changed), so
+ * the organiser can see each proposal and its outcome.
+ * @param {object} requestedChanges stored camelCase changes.
+ * @returns {{ field: string, label: string, requested: * }[]} in the event's standard field order; unknown keys last.
+ */
+function requestedChanges(requestedChanges) {
+  const known = Object.keys(EVENT_FIELDS).filter((field) => Object.hasOwn(requestedChanges, field));
+  const unknown = Object.keys(requestedChanges).filter((field) => !isSupportedField(field));
+  return [...known, ...unknown].map((field) => {
+    const definition = EVENT_FIELDS[field];
+    const shown = definition?.display || ((value) => value);
+    return { field, label: definition?.label || field, requested: shown(comparable(field, requestedChanges[field])) };
+  });
+}
+
 /** Produces the event as it would look after the requested changes, using the stored column names. */
 function applyToEvent(event, requestedChanges) {
   const next = { ...event };
@@ -146,6 +162,6 @@ function changeLines(changes) {
 }
 
 module.exports = {
-  TIME_FIELDS, isSupportedField, describeChanges, applyToEvent, eventPeriod, assessArrangements, recipientsFor,
+  TIME_FIELDS, isSupportedField, describeChanges, requestedChanges, applyToEvent, eventPeriod, assessArrangements, recipientsFor,
   displayValue, changeLines,
 };

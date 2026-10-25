@@ -74,14 +74,16 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
 
       // ---------- AC2: submitting notifies the assigned coordinator ----------
       // 150 guests exceed the 100-seat hall; ending at 12:16 plus 45 min turnaround overlaps the next booking's 13:00 setup start.
-      const submitted = await as('olivia', 'PUT', '/events/1/non-critical', { expectedAttendance: 150, proposedEndTime: '12:16' });
+      // Submitted events change only through amendment requests with an explanation (post-submission amendments story).
+      const submitted = await as('olivia', 'POST', '/events/1/amendment-requests',
+        { changes: { expectedAttendance: 150, proposedEndTime: '12:16' }, explanation: 'Ticket demand doubled.' });
       assert.equal(submitted.status, 202);
-      assert.equal(submitted.body.changeRequest.coordinator_email, undefined);
+      assert.equal(submitted.body.amendmentRequest.coordinator_email, undefined);
       assert.deepEqual((await client.query('SELECT expected_attendance FROM events WHERE id=1')).rows[0], { expected_attendance: 80 });
       const [coordinatorNote] = await notificationsFor('chris');
       assert.equal(coordinatorNote.type, 'change_request_submitted');
-      assert.equal(coordinatorNote.message, 'The Event Organiser requested changes to Workshop.\nEnd time: 12:00:00 → 12:16:00\nExpected attendance: 80 → 150');
-      assert.deepEqual(emails, [{ to: 'chris@example.test', subject: 'New change request: Workshop' }]);
+      assert.equal(coordinatorNote.message, 'The Event Organiser requested amendments to Workshop.\nEnd time: 12:00:00 → 12:16:00\nExpected attendance: 80 → 150\nExplanation: Ticket demand doubled.');
+      assert.deepEqual(emails, [{ to: 'chris@example.test', subject: 'New amendment request: Workshop' }]);
       const inbox = await as('chris', 'GET', '/notifications');
       assert.equal(inbox.body.unreadCount, 1);
       assert.equal((await as('chris', 'POST', `/notifications/${inbox.body.notifications[0].id}/read`)).status, 200);
@@ -134,7 +136,7 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       assert.equal((await notificationsFor('olivia')).length, 1);
 
       // ---------- AC3: rejecting keeps the event unchanged and tells the organiser why ----------
-      const renamed = await as('olivia', 'PUT', '/events/1/non-critical', { name: 'Renamed workshop' });
+      const renamed = await as('olivia', 'POST', '/events/1/amendment-requests', { changes: { name: 'Renamed workshop' }, explanation: 'New sponsor.' });
       assert.equal(renamed.status, 202);
       const second = (await as('chris', 'GET', '/events/change-requests')).body.changeRequests[0];
       const rejected = await as('chris', 'POST', `/events/change-requests/${second.id}/decision`, { decision: 'rejected', reason: '  Name is already in use.  ' });
@@ -146,7 +148,7 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       assert.equal(olivia[1].type, 'change_request_rejected');
       assert.equal(olivia[1].message, 'Your requested changes to Workshop were not approved. The confirmed details remain in effect.\nReason: Name is already in use.');
       // ---------- Reassignment (Coordinator Lead story): a pending request moves with the event ----------
-      assert.equal((await as('olivia', 'PUT', '/events/1/non-critical', { expectedAttendance: 120 })).status, 202);
+      assert.equal((await as('olivia', 'POST', '/events/1/amendment-requests', { changes: { expectedAttendance: 120 }, explanation: 'Venue limit.' })).status, 202);
       const handedOver = (await as('chris', 'GET', '/events/change-requests')).body.changeRequests[0];
       await client.query('UPDATE events SET coordinator_id = $1 WHERE id = 1', [id.cara]);
       assert.deepEqual((await as('chris', 'GET', '/events/change-requests')).body.changeRequests, []);

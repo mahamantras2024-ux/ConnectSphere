@@ -76,7 +76,7 @@ export default function ChangeRequestInbox() {
 
   return (
     <section className="change-request-inbox" aria-labelledby="change-requests-title">
-      <div className="section-heading"><h2 id="change-requests-title">Critical change requests</h2>{!loading && <span className="badge">{requests.length} pending</span>}</div>
+      <div className="section-heading"><h2 id="change-requests-title">Amendment requests</h2>{!loading && <span className="badge">{requests.length} pending</span>}</div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {loading ? <p role="status" className="loading-state">Loading change requests...</p>
@@ -85,6 +85,8 @@ export default function ChangeRequestInbox() {
         : <ul className="change-request-list">{requests.map((request) => (
           <li key={request.id} className="change-request-card">
             <div><strong>{request.event_name}</strong><span> from {request.organiser_name}</span><span className="status-badge status-under_review">Pending review</span></div>
+            {/* The organiser explains every amendment (amendment story AC2); requests made before then have none. */}
+            {request.explanation && <p className="change-explanation"><strong>Organiser&apos;s explanation:</strong> {request.explanation}</p>}
             <table className="change-table">
               <caption>Requested changes to {request.event_name}</caption>
               <thead><tr><th scope="col">Field</th><th scope="col">Current</th><th scope="col">Requested</th></tr></thead>

@@ -67,7 +67,9 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/018-venue-reminder-frequency.sql'), 'utf8'));
     // Parent notification system: Coordinator Lead and Safety Officer notification types (after every other type change).
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/017-parent-notifications.sql'), 'utf8'));
-    console.log('External event, equipment reservation and repair, venue safety, emergency-document, attendee-registration, Venue Staff status and notification migrations are ready.');
+    // Post-submission amendments: the organiser's explanation on each amendment (change) request.
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/019-amendment-explanations.sql'), 'utf8'));
+    console.log('External event, equipment reservation and repair, venue safety, emergency-document, attendee-registration, Venue Staff status, notification and amendment migrations are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

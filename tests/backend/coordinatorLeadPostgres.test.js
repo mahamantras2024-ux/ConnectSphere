@@ -64,6 +64,8 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
         'migrations/20261018064942_venue_booking_requests.sql','migrations/017-parent-notifications.sql']) {
         await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db',name),'utf8'));
       }
+      // The change-request inbox reads each request's explanation (post-submission amendments story).
+      await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db/migrations/019-amendment-explanations.sql'),'utf8'));
     } finally { client.release(); }
     // Redirect acquisition to isolated real tables. No mock decides authorization, filters, updates or lock outcomes.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));

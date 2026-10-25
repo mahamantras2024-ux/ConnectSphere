@@ -432,7 +432,7 @@ it('AC3 - assigned Event Coordinator sees pending critical change details and th
         changes: [{ field: 'expectedAttendance', label: 'Expected attendance', current: 40, requested: 55 }], arrangements: [] }] }
         : { event });
   open('/coordinator/dashboard');
-  expect(await screen.findByRole('heading', { name: 'Critical change requests' })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'Amendment requests' })).toBeTruthy();
   // The change is shown as a Current vs Requested row (Change Request Review AC1).
   const row = (await screen.findByRole('rowheader', { name: 'Expected attendance' })).closest('tr');
   expect(within(row).getAllByRole('cell').map(cell => cell.textContent)).toEqual(['40', '55']);

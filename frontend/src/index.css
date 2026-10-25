@@ -646,3 +646,19 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .venue-fit-grid .venue-card-footer { margin-top:auto; }
 /* The disclosure summary already names the other-venues group; do not repeat that heading above its cards. */
 .venue-other-body .venue-fit-group > h2 { display:none; }
+/* Post-submission amendments: the organiser's amendment request form and their list of requests. */
+.amendment-panel { display: grid; gap: 14px; margin-bottom: 18px; }
+.amendment-panel > .button-primary { justify-self: start; }
+.amendment-form { display: grid; gap: 16px; }
+.amendment-group { display: grid; gap: 12px; margin: 0; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }
+.amendment-group legend { padding: 0 6px; font-weight: 700; }
+.amendment-field { display: grid; gap: 6px; }
+.amendment-field > label { font-size: 0.85rem; font-weight: 600; color: #334155; }
+.amendment-items { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.amendment-item { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: white; }
+.amendment-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 0.85rem; color: #64748b; }
+.amendment-changes { display: grid; gap: 6px; margin: 0; }
+.amendment-changes div { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 10px; }
+.amendment-changes dt { font-weight: 600; color: #334155; }
+.amendment-changes dd { margin: 0; white-space: pre-wrap; }
+.change-explanation { margin: 8px 0; white-space: pre-wrap; }

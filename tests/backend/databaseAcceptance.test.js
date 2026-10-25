@@ -345,8 +345,10 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       const equipment = { equipmentItems: [{ item: 'Wireless microphone', quantity: 2 }, { item: 'Projector', quantity: 1 }],
         technicalSupportRequired: true, technicalSupportDetails: 'AV technician on site', videoConferencingRequired: true,
         technicalSpecifications: 'Zoom for 50 remote participants' };
-      // Act: save before confirmation, then read back.
+      // Act: save while the request is still a draft (only drafts are edited directly), then submit it and read back.
+      await client.query("UPDATE events SET is_draft=true, status='draft' WHERE id=$1", [eventId]);
       const saved = await request(`/api/events/${eventId}/equipment`, { method: 'PUT', token: aliceToken, body: equipment });
+      await client.query("UPDATE events SET is_draft=false, status='submitted' WHERE id=$1", [eventId]);
       const viewed = (await request(`/api/events/${eventId}`, { token: aliceToken })).body.event;
       // Assert: the confirmation message and every stored value round-trip through the real schema.
       assert.equal(saved.status, 200); assert.equal(saved.body.message, 'Equipment requirements saved.');
@@ -358,10 +360,10 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       // Re-running the migration keeps the saved requirements.
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-attachments.sql'), 'utf8'));
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-equipment-requirements.sql'), 'utf8'));
-      // Technical Support confirms; with no coordinator assigned there is nobody to review a change, so the edit is refused and nothing changes.
+      // Technical Support confirms; the submitted request is no longer edited directly (amendment story AC1), so nothing changes.
       await client.query('UPDATE events SET equipment_confirmed_at=now() WHERE id=$1', [eventId]);
       const afterConfirmation = await request(`/api/events/${eventId}/equipment`, { method: 'PUT', token: aliceToken, body: { equipmentItems: [] } });
-      assert.equal(afterConfirmation.status, 409); assert.equal(afterConfirmation.body.code, 'COORDINATOR_NOT_ASSIGNED');
+      assert.equal(afterConfirmation.status, 409); assert.equal(afterConfirmation.body.code, 'AMENDMENT_REQUIRED');
       const unchanged = (await request(`/api/events/${eventId}`, { token: aliceToken })).body.event;
       assert.deepEqual(unchanged.equipment_items, equipment.equipmentItems); assert.equal(unchanged.equipment_confirmed, true);
     });
