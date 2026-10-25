@@ -89,7 +89,10 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner pr
   // Withdraw AC2/AC3: promotion notifications and deadlines follow registration.
   const withdrawalIndex = queries.indexOf(migrationSql('016-attendee-withdrawal.sql'));
   assert.ok(registrationIndex < withdrawalIndex, 'withdrawal follows registration');
-  assert.equal(withdrawalIndex, queries.length - 1, 'withdrawal is the final migration');
+  // Parent notification system: its notification types are added after every earlier upgrade, as the final migration.
+  const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
+  assert.ok(withdrawalIndex < parentNotificationsIndex, 'parent notifications follow withdrawal');
+  assert.equal(parentNotificationsIndex, queries.length - 1, 'parent notifications is the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

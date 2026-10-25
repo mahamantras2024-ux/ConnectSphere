@@ -2,6 +2,7 @@
 const { pool } = require('../config/db');
 const eventDecisionModel = require('../models/eventDecisionModel');
 const notificationService = require('./notificationService');
+const { notifySafetyIfNewlyReady } = require('./roleNotifications');
 const { evaluateDecision, evaluateSafetyReview, needsTechnicalArrangements, resolutionBlocker } = require('./eventDecisionPolicy');
 
 /** Plain-language names of the planning stages a Safety Officer can reopen, used in notifications. */
@@ -124,7 +125,10 @@ async function resolveSafetyChange(eventId, coordinatorId, area) {
     if (!context) throw failure(404, 'Event not found.');
     const blocked = resolutionBlocker(area, { ...context, now: Date.now() });
     if (blocked) throw failure(409, blocked.message, blocked.code);
-    return { open: await eventDecisionModel.resolveStage(client, eventId, area), stored: [] };
+    const open = await eventDecisionModel.resolveStage(client, eventId, area);
+    // While a stage was open the event could not be checked, so completing the last one may make it ready again.
+    const stored = open.length ? [] : await notifySafetyIfNewlyReady(client, eventId, false);
+    return { open, stored };
   });
 }
 

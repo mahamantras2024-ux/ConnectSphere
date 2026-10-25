@@ -1,6 +1,8 @@
 const { pool } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { submissionError } = require('../services/eventRequestValidation');
+const notificationService = require('../services/notificationService');
+const { notifyLeadsOfSubmission } = require('../services/roleNotifications');
 
 /** Deletes only the authenticated organiser's still-unsubmitted draft, atomically against concurrent submission. */
 const remove = asyncHandler(async (req, res) => {
@@ -45,7 +47,10 @@ const submit = asyncHandler(async (req, res) => {
       "UPDATE events SET is_draft=false,status='submitted',coordinator_id=NULL,updated_at=now() WHERE id=$1 RETURNING *",
       [event.id],
     )).rows[0];
+    // Parent notification system: every Coordinator Lead learns a request is waiting to be assigned.
+    const stored = await notifyLeadsOfSubmission(client, updated);
     await client.query('COMMIT');
+    await notificationService.emailNotifications(stored);
     return res.json({ event: updated, message: 'Event request submitted.' });
   } catch (error) {
     await client.query('ROLLBACK');

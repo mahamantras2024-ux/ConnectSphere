@@ -12,12 +12,8 @@ const jwt = require('../../backend/node_modules/jsonwebtoken');
 const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 
-const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
-  'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
-  'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/005-technical-support-reviews.sql',
-  'migrations/006-event-decisions.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql',
-  // Technical Support reviews store affected items (equipment status story), so the review table needs migration 013.
-  'migrations/013-equipment-review-affected-items.sql'];
+// The current production schema (every runner migration), so later venue and notification columns always exist.
+const { liveSchemaFiles: migrations } = require('./support/liveSchema');
 const sqlFile = (file) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
 
 // Test case: Walks one event through safety review and decision and a second through rejection, checking every gate,
@@ -81,7 +77,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       const queue = (await as('sam', 'GET', '/safety/checks')).body.events;
       assert.deepEqual(queue.map((event) => [event.name, event.venues]), [['Workshop', [{ name: 'Hall A', capacity: 100, supported_layouts: ['Theatre'],
         accessibility_features: ['Ramp'], operating_hours: '08:00 - 22:00', setup_minutes: 30, turnaround_minutes: 15,
-        emergency_access: 'Two exits to Marina Road', known_restrictions: 'No open flames' }]]]);
+        // A venue with no emergency documents uploaded yet (SCRUM-98) reports an empty set.
+        emergency_access: 'Two exits to Marina Road', emergency_documents: {}, known_restrictions: 'No open flames' }]]]);
 
       // ---------- OFC AC2/AC3: the Safety Officer requests changes to the technical arrangements ----------
       assert.equal((await as('sam', 'POST', '/events/1/safety-checks', { outcome: 'changes_requested', notes: 'Widen the fire exit route' })).status, 400);

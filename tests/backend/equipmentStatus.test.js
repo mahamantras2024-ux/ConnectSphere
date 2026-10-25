@@ -51,6 +51,8 @@ function mockTransaction({ locked = { ...request101, reviewed: false }, reviewRo
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
       if (sql.includes('FOR UPDATE OF e')) return { rows: locked ? [locked] : [] };
       if (sql.includes('INSERT INTO event_equipment_reviews')) return { rows: reviewRows };
+      // Safety-check readiness (parent notification system): no decision context here, so the event is not ready.
+      if (sql.includes('AS pending_clarifications')) return { rows: [] };
       if (sql.includes('UPDATE events SET equipment_items')) return { rows: updated ? [updated] : [] };
       if (sql.includes('INSERT INTO notifications')) {
         if (failNotifications) throw new Error('database unavailable');

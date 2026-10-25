@@ -13,6 +13,7 @@ import ActionConfirmation from '../../components/ActionConfirmation';
 import EventAttachments from '../../components/EventAttachments';
 
 import { useAuth } from '../../context/AuthContext';
+import useNotificationOpened from '../../notifications/useNotificationOpened';
 
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
@@ -356,6 +357,7 @@ export default function EventDetail() {
   const { token, user } = useAuth();
 
   const location = useLocation();
+  const notificationOpened = useNotificationOpened();
 
   const [event, setEvent] = useState(null);
 
@@ -482,7 +484,8 @@ export default function EventDetail() {
 
     };
 
-  }, [id, token]);
+    // Opening a notification about this event while it is open re-reads it.
+  }, [id, token, notificationOpened]);
 
 
 

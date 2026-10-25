@@ -1,5 +1,7 @@
 // File: Covers the inventory impact action and both sides of the replacement proposal workflow.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+// The dashboard reads the router location (it re-reads its queues when a notification is opened onto it).
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
 import { useAuth } from '../../frontend/src/context/AuthContext';
@@ -231,7 +233,7 @@ it('AC1-AC3 - marks equipment unavailable and reports how many reservations were
     currentInventory[0] = { ...inventory[0], status: 'maintenance', availability_status: 'Unavailable' };
     return { equipment: currentInventory[0], affectedIssues: [issue] };
   });
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
 
   const row = await screen.findByRole('row', { name: /PROJ-001 Projector/ });
   fireEvent.change(within(row).getByLabelText('Status for PROJ-001'), { target: { value: 'Unavailable' } });
@@ -257,7 +259,7 @@ it('AC3 - refreshes affected reservations after a replacement proposal is sent',
   useAuth.mockReturnValue({ token: 'support-token' });
   configureDashboardApi({ affectedReservations: [issue] });
   api.post.mockResolvedValue({ proposal: { id: 701, status: 'pending' } });
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
 
   const card = await screen.findByRole('article', { name: 'Community Workshop' });

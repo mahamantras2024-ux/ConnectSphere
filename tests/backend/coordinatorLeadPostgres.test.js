@@ -59,7 +59,9 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
     const client = await database.connect();
     try {
       for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql','migrations/004-event-equipment-requirements.sql',
-        'migrations/005-change-request-review.sql','migrations/009-internal-single-role.sql','venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql']) {
+        'migrations/005-change-request-review.sql','migrations/009-internal-single-role.sql','venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql',
+        // Venue booking requests (own runner) and 017: submissions notify every Coordinator Lead (parent notification system).
+        'migrations/20261018064942_venue_booking_requests.sql','migrations/017-parent-notifications.sql']) {
         await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db',name),'utf8'));
       }
     } finally { client.release(); }
@@ -160,6 +162,8 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
   test('Lead AC5 - overlapping assignment transactions produce one persisted winner', async () => {
     // Arrange a real event lock so both HTTP decisions overlap before either can commit.
     const event = await submit();
+    // Submission runs its own transaction (it notifies the Coordinator Leads); only the two assignment writers are observed.
+    writerPids.clear();
     const blocker = await database.connect();
     let decisions;
     try {

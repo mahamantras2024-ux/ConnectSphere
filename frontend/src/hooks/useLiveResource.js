@@ -2,7 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 
-/** Reads a protected resource every five seconds and on focus; transient failures retain the last confirmed snapshot. */
+/**
+ * Reads a protected resource every five seconds and on focus; transient failures retain the last confirmed snapshot.
+ * A null `path` reads nothing (e.g. while signed out), so callers can keep a stable component tree.
+ */
 export default function useLiveResource(path, token) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -14,7 +17,9 @@ export default function useLiveResource(path, token) {
   const refresh = useCallback(() => setVersion(value => value + 1), []);
   useEffect(() => {
     let active = true, inFlight = false;
-    setData(null); setLoading(true); setError('');
+    setData(null); setError('');
+    if (!path) { setLoading(false); return undefined; }
+    setLoading(true);
     /** Serializes reads and discards responses from a previous identity, route or mutation revision. */
     async function read() {
       if (inFlight) return;

@@ -1,4 +1,6 @@
 // File: Verifies Technical Support assignment migration safety and backend-only table access in PostgreSQL.
+// The shared pool reads its connection settings once, when first required, so backend/.env must be loaded before it.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').resolve(__dirname, '../../backend/.env') });
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -46,6 +48,9 @@ test('AC3 migration - assignment notifications survive migration reruns and brow
       const browserRoles = (await client.query(
         `SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated')`,
       )).rows.map(row => row.rolname);
+      // Browser roles can see the public schema; give them the same schema access here, so only the table's own
+      // protection (revoked privileges / row-level security) can refuse the read, not a schema they cannot see.
+      for (const role of browserRoles) await client.query(`GRANT USAGE ON SCHEMA ${schema} TO ${role}`);
       for (const role of browserRoles) {
         await client.query(`SET ROLE ${role}`);
         await assert.rejects(
