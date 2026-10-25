@@ -25,6 +25,8 @@ function notifiedSummary(notified) {
   const groups = ['the organiser'];
   if (notified.venueStaff.length) groups.push(`Venue Staff (${notified.venueStaff.length})`);
   if (notified.technicalSupport.length) groups.push(`Technical Support (${notified.technicalSupport.length})`);
+  // Safety Officers hear when the change needs a new operational safety check (Record Offline Clarifications AC4/AC5).
+  if (notified.safetyOfficers?.length) groups.push(`Safety Officers (${notified.safetyOfficers.length})`);
   return `Notified: ${groups.join(', ')}.`;
 }
 

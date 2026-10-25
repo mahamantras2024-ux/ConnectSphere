@@ -8,7 +8,22 @@ const TEXT_FIELDS = { name: 255, purpose: 10000, description: 10000, eventType: 
   programmeDetails: 10000, equipmentNotes: 10000, specialArrangements: 10000 };
 /** Event information fields (everything except the equipment block). */
 const INFORMATION_FIELDS = [...Object.keys(TEXT_FIELDS), 'proposedDate', 'proposedStartTime', 'proposedEndTime',
-  'expectedAttendance', 'registrationRequired', 'registrationCapacity', 'accessibilityRequirements', 'attachments'];
+  'expectedAttendance', 'registrationRequired', 'registrationCapacity', 'accessibilityRequirements', 'attachments',
+  'registrationDeadline', 'withdrawalDeadline'];
+/** Attendee deadlines, entered as Singapore local date and time (YYYY-MM-DDTHH:MM). */
+const DEADLINE_FIELDS = { registrationDeadline: 'Registration deadline', withdrawalDeadline: 'Withdrawal deadline' };
+const SINGAPORE_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * Parses a Singapore local "YYYY-MM-DDTHH:MM" into an instant, or null when it is not a real date and time. The value is
+ * written back out and compared, because Date silently rolls impossible values such as 30 February over into March.
+ */
+function parseSingaporeLocal(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const instant = new Date(`${value}:00+08:00`);
+  if (!Number.isFinite(instant.getTime())) return null;
+  return new Date(instant.getTime() + SINGAPORE_OFFSET_MS).toISOString().slice(0, 16) === value ? instant : null;
+}
 /** The equipment block, validated as a whole because its fields depend on each other (support flag vs details). */
 const EQUIPMENT_FIELDS = ['equipmentItems', 'technicalSupportRequired', 'technicalSupportDetails', 'videoConferencingRequired',
   'technicalSpecifications'];
@@ -84,6 +99,18 @@ function validateEventChanges(input, current, { allowEquipment = false } = {}) {
   const resultingEnd = Object.hasOwn(data, 'proposedEndTime') ? data.proposedEndTime : current.proposed_end_time;
   if (resultingStart && resultingEnd && resultingStart.padEnd(8, ':00') >= resultingEnd.padEnd(8, ':00')) {
     return invalid('End time must be later than start time.');
+  }
+  // Attendee deadlines (AC6): a real Singapore date and time, or null to fall back to the event start; never after the
+  // event starts, since registration and withdrawal close at the start anyway.
+  const resultingDate = Object.hasOwn(data, 'proposedDate') ? data.proposedDate : current.proposed_date?.slice(0, 10);
+  const eventStart = resultingDate && resultingStart ? parseSingaporeLocal(`${resultingDate}T${resultingStart.slice(0, 5)}`) : null;
+  for (const [field, label] of Object.entries(DEADLINE_FIELDS)) {
+    if (!(field in input)) continue;
+    if (input[field] === null || input[field] === '') { data[field] = null; continue; }
+    const deadline = parseSingaporeLocal(input[field]);
+    if (!deadline) return invalid(`Enter the ${label.toLowerCase()} as a date and time.`);
+    if (eventStart && deadline > eventStart) return invalid(`The ${label.toLowerCase()} cannot be after the event starts.`);
+    data[field] = deadline.toISOString();
   }
   if (submitted && REQUIRED_AFTER_SUBMISSION.some((field) => Object.hasOwn(data, field)
       && (data[field] == null || data[field] === '' || (field === 'expectedAttendance' && data[field] < 1)))) {

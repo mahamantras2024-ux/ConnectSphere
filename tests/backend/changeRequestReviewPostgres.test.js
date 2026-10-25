@@ -114,7 +114,9 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       emails.length = 0;
       const approved = await as('chris', 'POST', `/events/change-requests/${pending.id}/decision`, { decision: 'approved' });
       assert.equal(approved.status, 200);
-      assert.deepEqual(approved.body.notified, { organiser: [id.olivia], venueStaff: [id.vera], technicalSupport: [id.tess] });
+      assert.deepEqual(approved.body.notified, { organiser: [id.olivia], venueStaff: [id.vera], technicalSupport: [id.tess],
+        // No safety check was recorded yet, so no Safety Officer needs to re-check (Record Offline AC5).
+        safetyOfficers: [] });
       const event = (await client.query('SELECT expected_attendance, proposed_end_time::text AS end_time FROM events WHERE id=1')).rows[0];
       assert.deepEqual(event, { expected_attendance: 150, end_time: '12:16:00' });
       const decided = (await client.query('SELECT status, reviewed_by, reviewed_at IS NOT NULL AS reviewed, decision_reason FROM event_change_requests WHERE id=$1', [pending.id])).rows[0];
@@ -124,7 +126,8 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       assert.deepEqual((await notificationsFor('olivia')).map((note) => note.type), ['change_request_approved']);
       const [veraNote] = await notificationsFor('vera');
       assert.equal(veraNote.type, 'event_details_changed');
-      assert.match(veraNote.message, /Hall A: .*150 expected guests exceed the venue capacity of 100\./);
+      // The confirmed booking is flagged for Vera to re-confirm, with the capacity problem as the reason (Record Offline AC5).
+      assert.match(veraNote.message, /Venue booking at Hall A must be re-confirmed by Venue Staff: .*150 expected guests exceed the venue capacity of 100\./);
       assert.deepEqual((await notificationsFor('tess')).map((note) => note.type), ['event_details_changed']);
       // Vic did not decide the booking, so is not notified.
       assert.deepEqual(await notificationsFor('vic'), []);
@@ -141,7 +144,7 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       const second = (await as('chris', 'GET', '/events/change-requests')).body.changeRequests[0];
       const rejected = await as('chris', 'POST', `/events/change-requests/${second.id}/decision`, { decision: 'rejected', reason: '  Name is already in use.  ' });
       assert.equal(rejected.status, 200);
-      assert.deepEqual(rejected.body.notified, { organiser: [id.olivia], venueStaff: [], technicalSupport: [] });
+      assert.deepEqual(rejected.body.notified, { organiser: [id.olivia], venueStaff: [], technicalSupport: [], safetyOfficers: [] });
       assert.equal((await client.query('SELECT name FROM events WHERE id=1')).rows[0].name, 'Workshop');
       assert.equal((await client.query('SELECT decision_reason FROM event_change_requests WHERE id=$1', [second.id])).rows[0].decision_reason, 'Name is already in use.');
       const olivia = await notificationsFor('olivia');

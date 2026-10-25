@@ -27,7 +27,9 @@ export default function EventFieldInput({ field, label, value, disabled = false,
     );
   }
   const type = field === 'proposedDate' ? 'date' : ['proposedStartTime', 'proposedEndTime'].includes(field) ? 'time'
-    : ['expectedAttendance', 'registrationCapacity'].includes(field) ? 'number' : 'text';
+    : ['expectedAttendance', 'registrationCapacity'].includes(field) ? 'number'
+      // Attendee deadlines are a Singapore date and time.
+      : ['registrationDeadline', 'withdrawalDeadline'].includes(field) ? 'datetime-local' : 'text';
   return (
     <input className="ed-input" id={id} aria-label={ariaLabel} type={type} min={type === 'number' ? 0 : undefined}
       value={value} disabled={disabled} onChange={(changeEvent) => onChange(changeEvent.target.value)} />

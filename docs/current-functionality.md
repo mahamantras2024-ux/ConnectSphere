@@ -48,6 +48,33 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 - The assigned coordinator is notified in-app (same database write) and by email, with each change and the explanation, and reviews it in the dashboard's **Amendment requests** inbox (Approve and apply / Reject), as for change requests. Approving equipment changes sends them back to Technical Support as a new request version.
 - Migration `019-amendment-explanations.sql` adds the explanation (requests made before it have none).
 
+## Offline clarifications and agreed amendments (Record Offline Clarifications and Apply Agreed Amendments)
+
+- **Offline clarifications:** on the event page's Activity tab the assigned coordinator can **Record an offline clarification**: the topics, the question, the organiser's answer and/or the agreed outcome, and comments. With **Mark resolved now**, an outcome alone is enough. The history labels each item Offline or in-app, with its times.
+- **Resolving:** any open clarification can be **Marked resolved**. A pending one needs its outcome; an answered one does not. The question and answer are kept, and the item shows who resolved it and when. A resolved clarification no longer blocks planning.
+- **Applying agreed amendments:** the coordinator can **Apply agreed amendment**, using the amendment form in coordinator mode. It needs a description of what was agreed and can link the clarification it came from. It applies at once and is recorded as approved.
+- **Amendment history:** the organiser, the assigned coordinator and the Coordinator Lead see, for every amendment:
+  - each change as before → after;
+  - whether the organiser requested it or the coordinator applied what was agreed;
+  - who decided it and when;
+  - the checks it reopened.
+- **Notifications:** when an amendment is applied (the coordinator's own, or an approved request), the organiser is told what changed. Affected staff are told what to check again:
+  - Venue Staff assigned to the venue, else the booking's decision-maker, else all Venue Staff;
+  - Technical Support assigned to the event, else all Technical Support;
+  - Safety Officers, when a new safety check is needed.
+
+  Attendees are not notified.
+- **Re-checks:**
+  - **Venue:** a change to the date, times, attendance, layout or accessibility flags each confirmed booking **Re-check required**, with the reason. Venue Staff **Re-confirm** it or **Reject** it from their inbox, and the coordinator is told.
+  - **Technical:** equipment changes, or a new time or audience for an event with technical needs, start a new Technical Support review.
+  - **Safety:** if the event already had a safety check, that check stops counting. An approved event returns to planning. Safety Officers are told again once the event is ready.
+- **Deadlines:** the registration and withdrawal deadlines are shown on the event page in Singapore time, or "Not set (closes when the event starts)". Organisers change them through an amendment request (or directly on a draft). A deadline cannot be after the event starts, and it can be cleared. The coordinator sees the current and proposed values with the explanation, and approves or rejects.
+- Migration `020-clarifications-and-amendment-history.sql` adds:
+  - the clarification source, outcome, comments and resolution;
+  - the amendment snapshot, source, clarification link and re-checks;
+  - the booking re-check flag;
+  - the event's safety re-check time.
+
 ## Event approval and rejection (Sprint 2)
 
 - The Safety Officer dashboard lists submitted events whose venue and technical arrangements are confirmed, with attendance and occupancy against venue capacity, requested and supported layouts, emergency access, accessibility (requested and available), equipment and its placement, crowd-movement timings (opening hours, setup, turnaround) and known venue restrictions. Venue Staff record emergency access and known restrictions on the venue form (optional, 2000 characters each). The officer records Approved, Rejected or Changes requested; notes are required unless approving. The assigned coordinator is notified.

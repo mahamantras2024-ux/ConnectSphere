@@ -47,6 +47,7 @@ async function findAccessibleById(id, user) {
       e.programme_details, e.room_layout_preference, e.accessibility_requirements,
       e.equipment_notes, e.registration_required, e.registration_capacity,
       e.special_arrangements, e.is_draft, e.status, e.created_at, e.updated_at,
+      e.registration_deadline, e.withdrawal_deadline, e.safety_recheck_required_at,
       e.equipment_items, e.technical_support_required, e.technical_support_details,
       e.video_conferencing_required, e.technical_specifications,
       e.equipment_confirmed_at IS NOT NULL AS equipment_confirmed,
@@ -55,9 +56,12 @@ async function findAccessibleById(id, user) {
       COALESCE((SELECT jsonb_agg(jsonb_build_object(
         'id', cr.id, 'coordinator_id', cr.coordinator_id, 'organiser_id', cr.organiser_id,
         'information_needed', cr.information_needed, 'message', cr.message, 'status', cr.status,
-        'organiser_response', cr.organiser_response, 'created_at', cr.created_at, 'responded_at', cr.responded_at
+        'organiser_response', cr.organiser_response, 'created_at', cr.created_at, 'responded_at', cr.responded_at,
+        'source', cr.source, 'outcome', cr.outcome, 'coordinator_comments', cr.coordinator_comments,
+        'resolved_at', cr.resolved_at, 'resolved_by_name', resolver.full_name
       ) ORDER BY cr.created_at DESC, cr.id DESC)
-        FROM event_clarification_requests cr WHERE cr.event_id=e.id), '[]'::jsonb) AS clarification_requests,
+        FROM event_clarification_requests cr LEFT JOIN users resolver ON resolver.id = cr.resolved_by
+        WHERE cr.event_id=e.id), '[]'::jsonb) AS clarification_requests,
       organiser.full_name AS organiser_name, organiser.email AS organiser_email, coordinator.full_name AS coordinator_name
     FROM events e
     JOIN users organiser ON organiser.id = e.organiser_id
@@ -139,15 +143,18 @@ async function createAmendmentRequest(id, organiserId, coordinatorId, changes, e
 }
 
 /**
- * The organiser's amendment requests for one of their own events, newest first, with the coordinator's decision.
- * @returns {Promise<Array<object>>} rows with requested_changes, explanation, status and review details.
+ * An event's amendment history, newest first: organiser requests and amendments the coordinator applied, with the
+ * decision, who made it, what an applied amendment changed and the checks it reopened. Callers check access first.
+ * @returns {Promise<Array<object>>} rows with requested/applied changes, explanation, status, source and review details.
  */
-async function listAmendmentRequests(eventId, organiserId) {
+async function listAmendmentRequests(eventId) {
   const result = await pool.query(`
-    SELECT r.id, r.requested_changes, r.explanation, r.status, r.submitted_at, r.reviewed_at, r.decision_reason
+    SELECT r.id, r.requested_changes, r.applied_changes, r.explanation, r.status, r.source, r.clarification_id, r.rechecks,
+      r.submitted_at, r.reviewed_at, r.decision_reason, reviewer.full_name AS reviewed_by_name
     FROM event_change_requests r
-    WHERE r.event_id=$1 AND r.organiser_id=$2
-    ORDER BY r.submitted_at DESC, r.id DESC`, [eventId, organiserId]);
+    LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
+    WHERE r.event_id=$1
+    ORDER BY r.submitted_at DESC, r.id DESC`, [eventId]);
   return result.rows;
 }
 
@@ -1411,6 +1418,54 @@ async function listPendingChangeRequests(coordinatorId) {
   return result.rows;
 }
 
+// Columns returned for a clarification, including where it took place and its resolution (offline clarifications story).
+const CLARIFICATION_COLUMNS = `id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response,
+  created_at, responded_at, source, outcome, coordinator_comments, resolved_at, resolved_by`;
+
+/**
+ * Records a clarification that took place offline (AC1) for an event assigned to the coordinator: the question, the
+ * organiser's answer and/or the agreed outcome, and comments. It is stored answered, or already resolved (AC2).
+ * @returns {Promise<object|null>} the record, or null when the event is not assigned to the coordinator.
+ */
+async function recordOfflineClarification(eventId, coordinatorId, { informationNeeded, message, response, outcome, comments, resolve }) {
+  const result = await pool.query(`
+    INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message, source, status,
+      organiser_response, responded_at, outcome, coordinator_comments, resolved_at, resolved_by)
+    SELECT e.id, e.coordinator_id, e.organiser_id, $3::jsonb, $4, 'offline', CASE WHEN $8 THEN 'resolved' ELSE 'responded' END,
+      $5::text, CASE WHEN $5::text IS NULL THEN NULL ELSE now() END, $6, $7,
+      CASE WHEN $8 THEN now() END, CASE WHEN $8 THEN e.coordinator_id END
+    FROM events e WHERE e.id=$1 AND e.coordinator_id=$2
+    RETURNING ${CLARIFICATION_COLUMNS}, (SELECT u.full_name FROM users u WHERE u.id = resolved_by) AS resolved_by_name`,
+  [eventId, coordinatorId, JSON.stringify(informationNeeded), message, response, outcome, comments, resolve]);
+  return result.rows[0] || null;
+}
+
+/** One clarification of an event assigned to the coordinator, or null. */
+async function findCoordinatorClarification(eventId, clarificationId, coordinatorId) {
+  const result = await pool.query(`
+    SELECT ${CLARIFICATION_COLUMNS.split(',').map((column) => `cr.${column.trim()}`).join(', ')}
+    FROM event_clarification_requests cr JOIN events e ON e.id = cr.event_id
+    WHERE cr.event_id=$1 AND cr.id=$2 AND e.coordinator_id=$3`, [eventId, clarificationId, coordinatorId]);
+  return result.rows[0] || null;
+}
+
+/**
+ * Marks a clarification resolved (AC2), adding the outcome and comments when given. The question, any answer and their
+ * times stay as they were, so the history is complete. Only an open (pending or answered) one can be resolved.
+ * @returns {Promise<object|null>} the resolved record, or null when it was resolved meanwhile.
+ */
+async function resolveClarification(eventId, clarificationId, coordinatorId, { outcome, comments }) {
+  const result = await pool.query(`
+    UPDATE event_clarification_requests cr SET status='resolved', resolved_at=now(), resolved_by=$3,
+      outcome=COALESCE($4, cr.outcome), coordinator_comments=COALESCE($5, cr.coordinator_comments)
+    FROM events e
+    WHERE e.id=cr.event_id AND cr.event_id=$1 AND cr.id=$2 AND e.coordinator_id=$3 AND cr.status IN ('pending', 'responded')
+    RETURNING ${CLARIFICATION_COLUMNS.split(',').map((column) => `cr.${column.trim()}`).join(', ')},
+      (SELECT u.full_name FROM users u WHERE u.id = cr.resolved_by) AS resolved_by_name`,
+  [eventId, clarificationId, coordinatorId, outcome, comments]);
+  return result.rows[0] || null;
+}
+
 // Saves a coordinator's clarification request only for an event assigned to them.
 async function createClarificationRequest(id, coordinatorId, informationNeeded, message) {
   const result = await pool.query(`
@@ -1453,6 +1508,9 @@ module.exports = {
   getEquipmentReservationAvailability,
   createEquipmentReservation,
   createClarificationRequest,
+  recordOfflineClarification,
+  findCoordinatorClarification,
+  resolveClarification,
   respondToClarification,
   findAccessibleById,
   listForOrganiser,

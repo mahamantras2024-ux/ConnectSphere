@@ -262,22 +262,8 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
     // Event detail now checks approved venue bookings and outstanding clarification requests.
     // Build those related tables in this disposable schema just as production migrations do.
     await client.query('CREATE TABLE venues (id SERIAL PRIMARY KEY)');
-    for (const file of [
-      'migrations/001-external-events.sql',
-      'migrations/002-event-change-requests.sql',
-      'migrations/003-event-clarifications.sql',
-      'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql',
-      'migrations/005-change-request-review.sql',
-      // Same order as backend/src/db/migrateExternalEvents.js, so this schema matches production.
-      'migrations/005-technical-support-reviews.sql', 'migrations/006-event-decisions.sql',
-      'migrations/006-equipment-inventory-reservations.sql', 'migrations/007-equipment-stock-quantities.sql',
-      'migrations/009-internal-single-role.sql',
-      'venueManagementSchema.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql',
-      'migrations/012-equipment-repair-history.sql', 'migrations/013-equipment-reservation-release-audit.sql'
-    ]) {
-      const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
-      await client.query(migration);
-    }
+    // Every production migration in runner order (shared helper), so this schema matches production.
+    await applyLiveSchema(client);
     const eventMigration = fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/001-external-events.sql'), 'utf8');
     mock.method(pool, 'query', (sql, values) => // Supplies controlled query behavior for this regression case, including its expected result or failure.
 

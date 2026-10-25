@@ -6,6 +6,7 @@ const eventModel = require('../models/eventModel');
 const notificationService = require('../services/notificationService');
 const { validateEventChanges } = require('../services/eventChangeValidation');
 const { describeChanges, requestedChanges, changeLines } = require('../services/changeRequestReview');
+const { applyAgreedAmendment } = require('../services/changeRequestDecisions');
 
 /** Longest explanation accepted (also enforced by the database constraint in migration 019). */
 const EXPLANATION_LIMIT = 2000;
@@ -65,15 +66,55 @@ const create = asyncHandler(async (req, res) => {
   });
 });
 
-// GET /api/events/:id/amendment-requests lists the organiser's own requests for their event with each outcome.
+// GET /api/events/:id/amendment-requests is the event's amendment history for its authorised users (the organiser, the
+// assigned coordinator and the Coordinator Lead; findAccessibleById scopes access). An applied amendment shows what
+// changed (before -> after) and the checks it reopened; any other shows what was requested (Record Offline AC3).
 const list = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!validId(id)) return res.status(400).json({ message: 'Choose a valid event.' });
   const event = await eventModel.findAccessibleById(id, req.user);
   if (!event) return res.status(404).json({ message: 'Event not found.' });
-  const rows = await eventModel.listAmendmentRequests(id, req.user.id);
-  const amendmentRequests = rows.map(({ requested_changes: requested, ...request }) => ({ ...request, changes: requestedChanges(requested) }));
+  const rows = await eventModel.listAmendmentRequests(id);
+  const amendmentRequests = rows.map(({ requested_changes: requested, applied_changes: applied, ...request }) => ({
+    ...request, changes: applied || requestedChanges(requested) }));
   return res.json({ amendmentRequests });
 });
 
-module.exports = { create, list, EXPLANATION_LIMIT };
+// POST /api/events/:id/agreed-amendments applies an amendment the assigned coordinator agreed with the organiser, for
+// example in an offline clarification (Record Offline AC3-AC5). It is validated like an organiser's request.
+const applyAgreed = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!validId(id)) return res.status(400).json({ message: 'Choose a valid event.' });
+  const { changes, explanation, clarificationId = null } = req.body;
+  if (changes == null || typeof changes !== 'object' || Array.isArray(changes)) {
+    return res.status(400).json({ message: 'Include the agreed changes.' });
+  }
+  // The history must say what was agreed, so the organiser and later reviewers can see why the event changed.
+  const agreed = typeof explanation === 'string' ? explanation.trim() : '';
+  if (!agreed || agreed.length > EXPLANATION_LIMIT) {
+    return res.status(400).json({ message: `Describe what was agreed in 1 to ${EXPLANATION_LIMIT} characters.` });
+  }
+  if (clarificationId !== null && (!Number.isInteger(clarificationId) || clarificationId < 1 || clarificationId > 2147483647)) {
+    return res.status(400).json({ message: 'Choose a clarification recorded for this event.' });
+  }
+  const current = await eventModel.findAccessibleById(id, req.user);
+  if (!current) return res.status(404).json({ message: 'Assigned event not found.' });
+  if (eventModel.AMENDMENT_CLOSED_STATUSES.includes(current.status)) {
+    return res.status(409).json({ code: 'AMENDMENT_CLOSED', message: `This event is ${current.status}, so it can no longer be amended.` });
+  }
+  const { data, error } = validateEventChanges(changes, current, { allowEquipment: true });
+  if (error) return res.status(400).json({ message: error });
+  const described = describeChanges(current, data);
+  if (!described.length) return res.status(400).json({ message: 'Change at least one detail before applying an amendment.' });
+  const proposed = Object.fromEntries(described.map(({ field }) => [field, data[field]]));
+  try {
+    const result = await applyAgreedAmendment(Number(id), req.user.id, { changes: proposed, explanation: agreed, clarificationId });
+    return res.status(201).json({ ...result, message: 'Agreed amendment applied. The organiser and affected staff have been notified.' });
+  } catch (failure) {
+    if (!failure.status) throw failure;
+    // An uncoded failure has code undefined, which JSON leaves out.
+    return res.status(failure.status).json({ message: failure.message, code: failure.code });
+  }
+});
+
+module.exports = { create, list, applyAgreed, EXPLANATION_LIMIT };

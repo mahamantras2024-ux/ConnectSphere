@@ -1,6 +1,13 @@
 // File: Converts between a stored event and the organiser's editable values, shared by draft editing and the
 // post-submission amendment request form so both send exactly the same field formats.
 
+const SINGAPORE_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/** A stored instant as the Singapore local "YYYY-MM-DDTHH:MM" a date-time input shows ("" when not set). */
+export function singaporeLocal(value) {
+  return value ? new Date(new Date(value).getTime() + SINGAPORE_OFFSET_MS).toISOString().slice(0, 16) : '';
+}
+
 /**
  * Converts a stored event (snake_case API fields) into editor values keyed by edit field.
  * Missing values become empty inputs (or an unticked box) so editors never show "null"; zero stays zero.
@@ -23,6 +30,8 @@ export function toEditValues(event) {
     specialArrangements: event.special_arrangements || '',
     registrationRequired: event.registration_required ?? false,
     registrationCapacity: event.registration_capacity ?? '',
+    registrationDeadline: singaporeLocal(event.registration_deadline),
+    withdrawalDeadline: singaporeLocal(event.withdrawal_deadline),
   };
 }
 
@@ -34,6 +43,8 @@ export function toEditValues(event) {
 export function toApiChange(field, value) {
   if (field === 'accessibilityText') return ['accessibilityRequirements', value.split('\n').map((item) => item.trim()).filter(Boolean)];
   if (['expectedAttendance', 'registrationCapacity'].includes(field)) return [field, value === '' ? null : Number(value)];
+  // An emptied deadline means "not set" (registration and withdrawal then close when the event starts).
+  if (['registrationDeadline', 'withdrawalDeadline'].includes(field)) return [field, value || null];
   return [field, value];
 }
 

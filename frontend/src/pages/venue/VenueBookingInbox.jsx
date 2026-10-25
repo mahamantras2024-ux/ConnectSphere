@@ -25,14 +25,20 @@ export default function VenueBookingInbox() {
   useEffect(() => { setSelectedId(null); setReason(''); setFailure(''); setMessage(''); }, [token]);
   /** Fresh selection clears feedback from another request so staff cannot accidentally reuse a rejection reason. */
   function review(request) { setSelectedId(request.id); setReason(''); setFailure(''); setMessage(''); }
-  /** Only a successful server decision removes the queue item; errors keep the staff member's notes for retry. */
+  /**
+   * Only a successful server decision removes the queue item; errors keep the staff member's notes for retry. A booking an
+   * applied amendment flagged (Record Offline Clarifications AC5) is re-confirmed or rejected through its re-check instead.
+   */
   async function decide(decision) {
     setSaving(true); setFailure('');
     try {
-      const result = await api.put(`/venues/${selected.venue_id}/requests/${selected.id}/decision`, { decision, reason }, token);
+      const flagged = Boolean(selected.recheck_required_at);
+      const result = await api.put(`/venues/${selected.venue_id}/requests/${selected.id}/${flagged ? 'recheck' : 'decision'}`,
+        { decision: flagged && decision === 'approved' ? 'confirmed' : decision, reason }, token);
       updateData(current => current && ({ ...current, requests: current.requests.filter(request => request.id !== selected.id) }));
       window.dispatchEvent(new Event('venue-booking-decision'));
-      setMessage(`${result.request.status === 'approved' ? 'Approved' : 'Rejected'}: ${selected.event_name} at ${selected.venue_name}. Recorded by staff #${result.request.decision_by} on ${singaporeTime(result.request.updated_at)}.`);
+      const outcome = result.request.status !== 'approved' ? 'Rejected' : flagged ? 'Re-confirmed' : 'Approved';
+      setMessage(`${outcome}: ${selected.event_name} at ${selected.venue_name}. Recorded by staff #${result.request.decision_by} on ${singaporeTime(result.request.updated_at)}.`);
       setSelectedId(null);
     } catch (err) { setFailure(err.message); }
     finally { setSaving(false); }
@@ -44,7 +50,7 @@ export default function VenueBookingInbox() {
     {error && <p role="alert" className="error-message">{error}</p>}
     {loading ? <p role="status">Loading booking requests…</p> : data && (!requests.length ? <p>No pending venue booking requests.</p>
       : <div className="record-grid">{requests.map(request => <article className="record-card" key={request.id}>
-        <span className="status-badge">Pending</span><h3>{request.event_name}</h3><p>{request.venue_name}</p>
+        <span className="status-badge">{request.recheck_required_at ? 'Re-check required' : 'Pending'}</span><h3>{request.event_name}</h3><p>{request.venue_name}</p>
         <p>{singaporeTime(request.start_datetime)} – {singaporeTime(request.end_datetime)}</p>
         <button className="button-secondary" aria-label={`Review ${request.event_name} at ${request.venue_name}`} onClick={() => review(request)}>Review request</button>
       </article>)}</div>)}
@@ -56,11 +62,12 @@ export default function VenueBookingInbox() {
           <div><dt>Expected attendance</dt><dd>{selected.expected_attendance ?? 'Not specified'}</dd></div>
           <div><dt>Room layout</dt><dd>{selected.room_layout_preference || 'Not specified'}</dd></div>
           <div><dt>Accessibility</dt><dd>{selected.accessibility_requirements?.join(', ') || 'None recorded'}</dd></div></dl>
+        {selected.recheck_required_at && <p className="detail-note"><strong>Re-check required:</strong> {selected.recheck_reason}</p>}
         <label>Reason or alternative arrangement (optional)<textarea value={reason} onChange={event => setReason(event.target.value)} disabled={saving} rows={4} /></label>
         <p className="detail-note">The coordinator receives the decision and any rejection notes. Approval rechecks the venue schedule.</p>
         {failure && <p role="alert" className="error-message">{failure}</p>}
-        <div className="booking-review-actions"><button className="button-primary" disabled={saving} onClick={() => decide('approved')}>Approve request</button>
-          <button className="button-secondary" disabled={saving} onClick={() => decide('rejected')}>Reject request</button></div>
+        <div className="booking-review-actions"><button className="button-primary" disabled={saving} onClick={() => decide('approved')}>{selected.recheck_required_at ? 'Re-confirm booking' : 'Approve request'}</button>
+          <button className="button-secondary" disabled={saving} onClick={() => decide('rejected')}>{selected.recheck_required_at ? 'Reject booking' : 'Reject request'}</button></div>
       </div></Modal>}
   </section>;
 }

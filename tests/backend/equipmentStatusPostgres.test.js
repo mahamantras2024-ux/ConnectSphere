@@ -12,12 +12,7 @@ const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 
 const sqlFile = (name) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', name), 'utf8');
-const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
-  'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
-  'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/005-technical-support-reviews.sql',
-  'migrations/006-event-decisions.sql', 'migrations/012-event-cancellation-notifications.sql', 'migrations/013-equipment-review-affected-items.sql',
-  // A full review can make the event ready for its safety check, which reads 010/011's safety facts and notifies with 017's type.
-  'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql', 'migrations/017-parent-notifications.sql'];
+const { applyLiveSchema } = require('./support/liveSchema');
 
 // Test case: Pending -> partially available (affected items) -> approved amendment -> pending -> confirmed -> approved amendment -> pending.
 test('ES AC1-AC3 - equipment request status, affected items and coordinator notifications follow the real workflow in PostgreSQL',
@@ -33,9 +28,8 @@ test('ES AC1-AC3 - equipment request status, affected items and coordinator noti
         role VARCHAR(50), roles TEXT[] NOT NULL DEFAULT '{}', organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
       await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[],
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-      for (const file of migrations) await client.query(sqlFile(file));
-      // Amendment requests carry the organiser's explanation (post-submission amendments story).
-      await client.query(sqlFile('migrations/019-amendment-explanations.sql'));
+      // Every production migration in runner order, so this schema never falls behind a later story's columns.
+      await applyLiveSchema(client);
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['tina', 'technical_support'], ['cara', 'event_coordinator']];
       for (const [name, role] of people) await client.query('INSERT INTO users (email, full_name, role, roles) VALUES ($1, $2, $3::text, ARRAY[$3::text])', [`${name}@example.test`, name, role]);
       const id = { olivia: 1, chris: 2, tina: 3, cara: 4 };

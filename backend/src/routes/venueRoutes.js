@@ -12,7 +12,7 @@ const { validateCoordinates, nearestMrt, geocode } = require('../services/venueL
 const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { venueSchedule, saveVenueSchedule } = require('../controllers/venueScheduleController');
-const { createRequest, decideRequest, listPendingRequests } = require('../controllers/venueRequestController');
+const { createRequest, decideRequest, listPendingRequests, recheckRequest } = require('../controllers/venueRequestController');
 const venueEventStatus = require('../controllers/venueEventStatusController');
 router.get('/requests/pending', requireAuth, requireRole('venue_staff'), asyncHandler(listPendingRequests));
 router.get('/relevant-events', requireAuth, requireRole('venue_staff'), asyncHandler(venueEventStatus.listRelevantEvents));
@@ -27,6 +27,8 @@ router.get('/:id/schedule', requireAuth, requireRole('venue_staff', 'event_coord
 router.put('/:id/schedule', requireAuth, requireRole('venue_staff'), asyncHandler(saveVenueSchedule));
 router.post('/:id/requests', requireAuth, requireRole('event_coordinator'), asyncHandler(createRequest));
 router.put('/:id/requests/:requestId/decision', requireAuth, requireRole('venue_staff'), asyncHandler(decideRequest));
+// A confirmed booking flagged after an applied amendment is re-confirmed or rejected by Venue Staff.
+router.put('/:id/requests/:requestId/recheck', requireAuth, requireRole('venue_staff'), asyncHandler(recheckRequest));
 // Bounds staff address lookups and nearest-station requests while protecting the public provider.
 const locationLimit = rateLimit({ windowMs:60_000, limit:30, standardHeaders:'draft-8', legacyHeaders:false, message:{message:'Too many map requests. Please try again shortly.'} });
 router.get('/stream', catalogueStream);

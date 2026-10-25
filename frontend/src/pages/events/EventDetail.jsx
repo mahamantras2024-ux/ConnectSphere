@@ -27,6 +27,10 @@ import CoordinatorRegistrations from './CoordinatorRegistrations';
 
 import CancelEventAction from './CancelEventAction';
 import { toEditValues, toApiChange } from './eventEditValues';
+import { CLARIFICATION_LABELS } from './clarificationLabels';
+import OfflineClarificationForm from './OfflineClarificationForm';
+import ClarificationResolution from './ClarificationResolution';
+import CoordinatorAmendments from './CoordinatorAmendments';
 import EventFieldInput from './EventFieldInput';
 import AmendmentRequestPanel from './AmendmentRequestPanel';
 
@@ -256,21 +260,15 @@ const PencilIcon = () => (
 
 
 
-const clarificationFieldLabels = {
-
-  name: 'Event name', purpose: 'Purpose', description: 'Description', event_type: 'Event type',
-
-  proposed_date: 'Date', proposed_start_time: 'Start time', proposed_end_time: 'End time',
-
-  expected_attendance: 'Expected attendance', programme_details: 'Programme',
-
-  room_layout_preference: 'Layout requirements', accessibility_requirements: 'Accessibility needs',
-
-  equipment_notes: 'Equipment requirements', registration_required: 'Registration required',
-
-  registration_capacity: 'Registration capacity', special_arrangements: 'Special arrangements',
-
-};
+// Clarification topics are shared with the offline clarification record (Record Offline Clarifications AC1).
+const clarificationFieldLabels = CLARIFICATION_LABELS;
+// How each clarification's state reads in the history (resolved: Record Offline Clarifications AC2).
+const CLARIFICATION_STATUS = { pending: ['Awaiting organiser response', 'ed-badge--warn'], responded: ['Organiser responded', 'ed-badge--ok'],
+  resolved: ['Resolved', 'ed-badge--ok'] };
+/** An attendee deadline in Singapore time, or the fallback the registration rules use when none is set (AC6). */
+const deadlineText = (value) => (value
+  ? `${new Date(value).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' })} (SGT)`
+  : 'Not set (closes when the event starts)');
 
 
 
@@ -317,6 +315,8 @@ export default function EventDetail() {
   const notificationOpened = useNotificationOpened();
 
   const [event, setEvent] = useState(null);
+  // Bumped after the coordinator applies an agreed amendment, so the page shows the changed event.
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [loading, setLoading] = useState(true);
 
@@ -442,7 +442,7 @@ export default function EventDetail() {
     };
 
     // Opening a notification about this event while it is open re-reads it.
-  }, [id, token, notificationOpened]);
+  }, [id, token, notificationOpened, reloadKey]);
 
 
 
@@ -543,6 +543,21 @@ export default function EventDetail() {
   }
 
 
+
+  // Adds a newly recorded clarification to the history; the outstanding flag follows the pending ones (AC1).
+  function addClarification(recorded) {
+    setEvent((current) => {
+      const requests = [recorded, ...(current.clarification_requests || [])];
+      return { ...current, clarification_requests: requests, clarification_outstanding: requests.some((item) => item.status === 'pending') };
+    });
+  }
+  // Replaces a clarification after it is resolved, keeping the rest of the history in place (AC2).
+  function replaceClarification(updated) {
+    setEvent((current) => {
+      const requests = current.clarification_requests.map((item) => (item.id === updated.id ? { ...item, ...updated } : item));
+      return { ...current, clarification_requests: requests, clarification_outstanding: requests.some((item) => item.status === 'pending') };
+    });
+  }
 
   async function sendClarificationRequest(submitEvent) {
 
@@ -928,6 +943,8 @@ export default function EventDetail() {
             </Field>
 
             <Field label="Registration Capacity">{renderEditableField('registrationCapacity', 'Registration capacity', event.registration_capacity, true)}</Field>
+            <Field label="Registration Deadline">{renderEditableField('registrationDeadline', 'Registration deadline', event.registration_deadline, true, deadlineText(event.registration_deadline))}</Field>
+            <Field label="Withdrawal Deadline">{renderEditableField('withdrawalDeadline', 'Withdrawal deadline', event.withdrawal_deadline, true, deadlineText(event.withdrawal_deadline))}</Field>
 
             <Field label="Organiser">{fieldValue(event.organiser_name)}</Field>
 
@@ -990,7 +1007,8 @@ export default function EventDetail() {
 
                   <p>{request.message}</p>
 
-                  <div><span className={`ed-badge ${request.status === 'pending' ? 'ed-badge--warn' : 'ed-badge--ok'}`}>{request.status === 'pending' ? 'Awaiting organiser response' : 'Organiser responded'}</span></div>
+                  <div><span className={`ed-badge ${CLARIFICATION_STATUS[request.status][1]}`}>{CLARIFICATION_STATUS[request.status][0]}</span>
+                    {request.source === 'offline' && <span className="ed-badge">Offline</span>}</div>
 
                   {request.organiser_response && (
 
@@ -998,6 +1016,8 @@ export default function EventDetail() {
 
                   )}
 
+                  <ClarificationResolution request={request} eventId={event.id} token={token} canResolve={user.role === 'event_coordinator'}
+                    onResolved={(updated, message) => { replaceClarification(updated); setSaveMessage(message); }} />
                   {user.role === 'event_organiser' && request.status === 'pending' && (
 
                     <form className="ed-editor" style={{ maxWidth: 'none' }} onSubmit={(submitEvent) => respondToClarification(submitEvent, request)}>
@@ -1053,8 +1073,15 @@ export default function EventDetail() {
           </form>
 
         )}
+        {user.role === 'event_coordinator' && (
+          <OfflineClarificationForm eventId={event.id} token={token} onRecorded={(recorded, message) => { addClarification(recorded); setSaveMessage(message); }} />
+        )}
 
       </section>
+      {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && (
+        <CoordinatorAmendments event={event} token={token} canApply={user.role === 'event_coordinator'}
+          onApplied={(message) => { setSaveMessage(message); setReloadKey((key) => key + 1); }} />
+      )}
 
 
 

@@ -217,7 +217,7 @@ test('AM AC2 - access is limited to the owning organiser and valid event ids', a
 // ---------- AC3: the organiser sees each request awaiting review ----------
 
 // Test case: The organiser's list shows each request's proposal, explanation and outcome, scoped to their own requests.
-test('AM AC3 - the organiser lists their amendment requests with each proposal and status', async () => {
+test('AM AC3 / OC AC3 - the amendment history lists each proposal, its status and what an applied one changed', async () => {
   // Arrange
   const reads = [];
   mock.method(pool, 'query', async (sql, values) => {
@@ -229,6 +229,9 @@ test('AM AC3 - the organiser lists their amendment requests with each proposal a
           explanation: 'More guests.', status: 'pending', submitted_at: '2030-01-02T00:00:00.000Z', reviewed_at: null, decision_reason: null },
         { id: 501, requested_changes: { name: 'Gala Night' }, explanation: null, status: 'rejected', submitted_at: '2030-01-01T00:00:00.000Z',
           reviewed_at: '2030-01-01T05:00:00.000Z', decision_reason: 'The name is already printed.' },
+        // Record Offline AC3: an applied amendment keeps what it changed, before -> after.
+        { id: 500, requested_changes: { expectedAttendance: 70 }, applied_changes: [{ field: 'expectedAttendance', label: 'Expected attendance', before: 60, after: 70 }],
+          explanation: 'Agreed by phone.', status: 'approved', source: 'coordinator_agreed', submitted_at: '2029-12-31T00:00:00.000Z' },
       ] };
     }
     if (sql.includes('FROM events e')) return { rows: [submitted] };
@@ -236,11 +239,13 @@ test('AM AC3 - the organiser lists their amendment requests with each proposal a
   });
   // Act
   const result = await call('/api/events/101/amendment-requests', { method: 'GET' });
-  // Assert: newest first, scoped to the organiser, with labelled and readable requested values.
+  // Assert: the event's whole history, newest first (access was checked on the event), with labelled readable values.
   assert.equal(result.status, 200);
-  assert.deepEqual(reads[0].values, ['101', 12]);
-  assert.match(reads[0].sql, /WHERE r\.event_id=\$1 AND r\.organiser_id=\$2\s+ORDER BY r\.submitted_at DESC/);
-  const [pending, rejected] = result.body.amendmentRequests;
+  assert.deepEqual(reads[0].values, ['101']);
+  assert.match(reads[0].sql, /WHERE r\.event_id=\$1\s+ORDER BY r\.submitted_at DESC/);
+  const [pending, rejected, applied] = result.body.amendmentRequests;
+  assert.deepEqual(applied.changes, [{ field: 'expectedAttendance', label: 'Expected attendance', before: 60, after: 70 }]);
+  assert.equal(applied.source, 'coordinator_agreed');
   assert.deepEqual(pending.changes, [
     { field: 'proposedStartTime', label: 'Start time', requested: '18:30:00' },
     { field: 'expectedAttendance', label: 'Expected attendance', requested: 90 },
@@ -252,14 +257,15 @@ test('AM AC3 - the organiser lists their amendment requests with each proposal a
   assert.equal(pending.requested_changes, undefined);
 });
 
-// Test case: The list is private to the event's organiser.
-test('AM AC3 - the list refuses other organisers, other roles and invalid ids', async () => {
+// Test case: The history is for the event's authorised users: its organiser, assigned coordinator and Coordinator Lead.
+test('AM AC3 / OC AC3 - the history refuses other organisers, unrelated roles and invalid ids', async () => {
   mockDatabase({ event: null });
   assert.equal((await call('/api/events/101/amendment-requests', { method: 'GET' })).status, 404);
   assert.equal((await call('/api/events/x/amendment-requests', { method: 'GET' })).status, 400);
   mock.restoreAll();
-  mockDatabase({ user: coordinator });
-  assert.equal((await call('/api/events/101/amendment-requests', { user: coordinator, method: 'GET' })).status, 403);
+  const attendee = { id: 80, email: 'ada@example.com', role: 'attendee', auth_version: 0 };
+  mockDatabase({ user: attendee });
+  assert.equal((await call('/api/events/101/amendment-requests', { user: attendee, method: 'GET' })).status, 403);
 });
 
 // ---------- AC4: the coordinator can review the request ----------

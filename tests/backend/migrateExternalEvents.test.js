@@ -100,7 +100,10 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner pr
   // Post-submission amendments: the explanation column is added after every earlier upgrade, as the final migration.
   const amendmentIndex = queries.indexOf(migrationSql('019-amendment-explanations.sql'));
   assert.ok(parentNotificationsIndex < amendmentIndex, 'amendment explanations follow the notification types');
-  assert.equal(amendmentIndex, queries.length - 1, 'amendment explanations are the final migration');
+  // Offline clarifications and amendment history extend the explanation column's table, as the final migration.
+  const historyIndex = queries.indexOf(migrationSql('020-clarifications-and-amendment-history.sql'));
+  assert.ok(amendmentIndex < historyIndex, 'clarification and amendment history follow the amendment explanations');
+  assert.equal(historyIndex, queries.length - 1, 'clarification and amendment history is the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

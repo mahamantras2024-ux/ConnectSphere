@@ -200,3 +200,32 @@ for (const [label, check, expected] of [
     assert.equal(evaluateSafetyReview({ ...unchecked, latest_safety_check: check })?.code ?? null, expected);
   });
 }
+
+// ---------- Record Offline Clarifications and Apply Agreed Amendments AC5: re-checks after an applied amendment ----------
+
+// Test case: A confirmed booking flagged by an applied amendment no longer confirms the venue until Venue Staff re-confirm it.
+for (const [label, bookings, expected] of [
+  ['a flagged confirmed booking', [{ status: 'approved', hold_expires_at: null, recheck_required_at: '2030-01-01T00:00:00Z' }], 'VENUE_RECHECK'],
+  ['one flagged and one clear booking', [{ status: 'approved', hold_expires_at: null }, { status: 'approved', hold_expires_at: null, recheck_required_at: '2030-01-01T00:00:00Z' }], 'VENUE_RECHECK'],
+  ['a re-confirmed booking', [{ status: 'approved', hold_expires_at: null, recheck_required_at: null }], null],
+]) {
+  test(`OC AC5 - ${label} ${expected ? 'blocks' : 'allows'} approval and the safety check`, () => {
+    assert.equal(codeFor('approved', { bookings }), expected);
+    assert.equal(evaluateSafetyReview({ ...unchecked, bookings })?.code ?? null, expected);
+  });
+}
+
+// Test case: A safety check recorded before the amendment changed the arrangements no longer counts: approval waits for a new
+// passed check, and the Safety Officer may check again. One recorded after the change counts as usual. Boundary: a check
+// at exactly the moment the re-check was required is the old check.
+for (const [label, checkedAt, approval, review] of [
+  ['before the change', '2030-01-01T00:00:00.000Z', 'SAFETY_NOT_COMPLETED', null],
+  ['at the moment of the change', '2030-01-02T00:00:00.000Z', 'SAFETY_NOT_COMPLETED', null],
+  ['after the change', '2030-01-02T00:00:01.000Z', null, 'SAFETY_CHECK_COMPLETE'],
+]) {
+  test(`OC AC5 - a passed safety check recorded ${label} ${approval ? 'no longer counts' : 'counts'}`, () => {
+    const context = { latest_safety_check: { outcome: 'approved', checked_at: checkedAt }, safety_recheck_required_at: '2030-01-02T00:00:00.000Z' };
+    assert.equal(codeFor('approved', context), approval);
+    assert.equal(evaluateSafetyReview({ ...ready, ...context })?.code ?? null, review);
+  });
+}

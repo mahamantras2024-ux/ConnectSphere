@@ -7,6 +7,7 @@ const eventModel = require('../models/eventModel');
 const db = require('../config/db');
 const notificationService = require('../services/notificationService');
 const { notifyLeadsOfSubmission } = require('../services/roleNotifications');
+const { validTopics } = require('../services/clarificationFields');
 const { decideChangeRequest } = require('../services/changeRequestDecisions');
 const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements } = require('../services/changeRequestReview');
 const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
@@ -102,19 +103,13 @@ const decideChangeRequestHandler = asyncHandler(async (req, res) => {
   }
 });
 
-const clarificationFields = new Set(['name', 'purpose', 'description', 'event_type', 'proposed_date',
-  'proposed_start_time', 'proposed_end_time', 'expected_attendance', 'programme_details',
-  'room_layout_preference', 'accessibility_requirements', 'equipment_notes', 'registration_required',
-  'registration_capacity', 'special_arrangements']);
 
 // POST /api/events/:id/clarifications sends an event-linked question to its organiser.
 const createClarificationRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) return res.status(400).json({ message: 'Choose a valid event.' });
   const { informationNeeded, message } = req.body || {};
-  if (!Array.isArray(informationNeeded) || !informationNeeded.length || informationNeeded.length > clarificationFields.size ||
-      informationNeeded.some((field) => typeof field !== 'string' || !clarificationFields.has(field)) ||
-      new Set(informationNeeded).size !== informationNeeded.length) {
+  if (!validTopics(informationNeeded)) {
     return res.status(400).json({ message: 'Select one or more valid event fields that need clarification.' });
   }
   if (typeof message !== 'string' || !message.trim() || message.length > 4000) {

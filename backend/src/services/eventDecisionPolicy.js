@@ -46,9 +46,21 @@ function needsTechnicalArrangements(event) {
 }
 
 /**
+ * The safety check that still counts: the latest one, unless an applied amendment changed the arrangements after it was
+ * recorded (Record Offline Clarifications and Apply Agreed Amendments AC5), in which case the event needs a new check.
+ * @returns {object|null} the latest check, or null when there is none or it predates the required re-check.
+ */
+function currentSafetyCheck(context) {
+  const check = context.latest_safety_check;
+  if (!check) return null;
+  const recheckFrom = context.safety_recheck_required_at;
+  return recheckFrom && new Date(check.checked_at).getTime() <= new Date(recheckFrom).getTime() ? null : check;
+}
+
+/**
  * Each requirement inspects the decision context and returns { met, code, message }.
- * Context: the event row (snake_case), `pending_clarifications` (count), `bookings` ({ status, hold_expires_at }[]),
- * `latest_safety_check` ({ outcome } | null) and `now` (ms).
+ * Context: the event row (snake_case), `pending_clarifications` (count), `bookings` ({ status, hold_expires_at,
+ * recheck_required_at }[]), `latest_safety_check` ({ outcome, checked_at } | null), `safety_recheck_required_at` and `now` (ms).
  */
 const REQUIREMENTS = {
   clarificationsResolved: (context) => (context.pending_clarifications > 0
@@ -64,6 +76,10 @@ const REQUIREMENTS = {
     if (live.some((booking) => booking.status === 'pending')) {
       return { met: false, code: 'VENUE_PENDING', message: 'A venue booking is still awaiting Venue Staff approval.' };
     }
+    // An applied amendment changed details this confirmed booking depended on: Venue Staff must re-confirm it (AC5).
+    if (live.some((booking) => booking.recheck_required_at)) {
+      return { met: false, code: 'VENUE_RECHECK', message: 'A venue booking must be re-confirmed by Venue Staff after the event changed.' };
+    }
     return { met: true, code: 'VENUE_CONFIRMED', message: 'Venue booking confirmed.' };
   },
 
@@ -77,7 +93,7 @@ const REQUIREMENTS = {
   },
 
   safetyPassed: (context) => {
-    const outcome = context.latest_safety_check?.outcome;
+    const outcome = currentSafetyCheck(context)?.outcome;
     if (outcome === 'approved') return { met: true, code: 'SAFETY_APPROVED', message: 'Operational safety check passed.' };
     if (outcome === 'rejected') return { met: false, code: 'SAFETY_FAILED', message: 'The event failed the operational safety check.' };
     if (outcome === 'changes_requested') {
@@ -96,7 +112,7 @@ const SAFETY_REVIEW_RULES = {
     ? { met: false, code: 'SAFETY_CHANGES_OUTSTANDING', message: 'Changes requested by the Safety Officer have not been completed yet.' }
     : { met: true, code: 'SAFETY_CHANGES_COMPLETE', message: 'No requested safety changes are outstanding.' }),
   // A check is due when none exists yet, or as the re-check after a change request (AC4).
-  safetyCheckDue: (context) => (['approved', 'rejected'].includes(context.latest_safety_check?.outcome)
+  safetyCheckDue: (context) => (['approved', 'rejected'].includes(currentSafetyCheck(context)?.outcome)
     ? { met: false, code: 'SAFETY_CHECK_COMPLETE', message: 'The operational safety check for this event has already been recorded.' }
     : { met: true, code: 'SAFETY_CHECK_DUE', message: 'An operational safety check is due.' }),
 };
