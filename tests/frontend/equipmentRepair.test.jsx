@@ -1,5 +1,7 @@
 // File: Verifies the Technical Support repair workflow from the inventory table through its authenticated API calls.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+// The dashboard reads the router location (it re-reads its queues when a notification is opened onto it).
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
 import { useAuth } from '../../frontend/src/context/AuthContext';
@@ -69,7 +71,7 @@ function repairedEquipment(note) {
 
 // Exercises the dashboard's inventory tab, not a detached form-only rendering.
 async function openRepairForm() {
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   const row = await screen.findByRole('row', { name: /REPAIR-DEMO-001 Repair Demo Laptop/ });
   fireEvent.change(within(row).getByLabelText('Status for REPAIR-DEMO-001'), { target: { value: 'Available' } });
   return row;

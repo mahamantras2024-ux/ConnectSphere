@@ -1,4 +1,6 @@
 // Sprint 2 SCRUM-39: checks search requirements using real filtering/conflict logic and a mocked database boundary.
+// The shared pool reads its connection settings once, when first required, so backend/.env must be loaded before it.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').resolve(__dirname, '../../backend/.env') });
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { searchVenues } = require('../../backend/src/services/venueSearch');

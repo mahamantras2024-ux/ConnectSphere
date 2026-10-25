@@ -72,12 +72,12 @@ test('Withdraw AC1/AC2/AC3 - PostgreSQL preserves capacity, FIFO order, notifica
 
       await t.test('Withdraw AC2 - earlier migration constraints preserve stored promotion notifications', async () => {
         await reset(); await withdraw(44, 8);
-        // Existing promotion notifications must survive the earlier fixed-list constraint migrations on rerun.
+        // Existing promotion notifications must survive the earlier migrations' notification constraints on rerun.
         for (const file of ['008-technical-support-assignments.sql', '012-event-cancellation-notifications.sql',
           '013-equipment-review-affected-items.sql', '014-equipment-reservation-unavailability.sql']) {
           const source = readFileSync(path.join(__dirname, '../../backend/src/db/migrations', file), 'utf8');
-          const constraint = source.match(/ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK \([\s\S]*?\);/)[0];
-          await isolated.query('ALTER TABLE notifications DROP CONSTRAINT notifications_type_check');
+          // Each migration rebuilds the type constraint in its own DO block (allowed types = stored ∪ known).
+          const constraint = source.match(/DO \$\$(?:(?!DO \$\$)[\s\S])*?notifications_type_check(?:(?!DO \$\$)[\s\S])*?END \$\$;/)[0];
           await isolated.query(constraint);
         }
         assert.equal((await isolated.query("SELECT count(*)::int AS n FROM notifications WHERE type='waitlist_promoted'")).rows[0].n, 1);

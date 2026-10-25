@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 // Story: Technical Support staff release equipment allocations when an event changes.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+// The dashboard reads the router location (it re-reads its queues when a notification is opened onto it).
+import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import TechSupportDashboard from '../../frontend/src/pages/tech-support/TechSupportDashboard';
@@ -96,7 +98,7 @@ afterEach(() => {
 // Act by using each row's release action as Technical Support.
 // Assert the authenticated API is called for both associated reservations.
 it('AC1 - lets staff release reservations for cancelled and rescheduled events', async () => {
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
 
   const cancelledRelease = await screen.findByRole('button', {
@@ -145,7 +147,7 @@ it('AC1 - keeps reservations for unchanged events protected from release', async
     throw new Error(`Unexpected GET ${path}`);
   });
 
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
 
   expect(screen.getByText('Reserved')).toBeTruthy();
@@ -160,7 +162,7 @@ it('AC1 - keeps reservations for unchanged events protected from release', async
 // Assert the failure is shown instead of silently presenting success.
 it('AC1 - surfaces a release conflict without hiding the active reservation', async () => {
   api.delete.mockRejectedValueOnce(new Error('This equipment reservation is no longer active.'));
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
@@ -178,7 +180,7 @@ it('AC1 - surfaces a release conflict without hiding the active reservation', as
 // Assert the component shows its user-facing fallback rather than a blank alert.
 it('AC1 - displays a useful fallback when a release error has no message', async () => {
   api.delete.mockRejectedValueOnce(new Error(''));
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
@@ -199,7 +201,7 @@ it('AC1 - disables competing release actions while one reservation is being rele
     finishRelease = resolve;
   }));
 
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
   const cancelledRelease = await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
@@ -240,7 +242,7 @@ it('AC2 - shows released equipment as available during a subsequent availability
     throw new Error(`Unexpected GET ${path}`);
   });
 
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
@@ -275,7 +277,7 @@ it('AC3 - displays who released the reservation and when for audit', async () =>
     throw new Error(`Unexpected GET ${path}`);
   });
 
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
@@ -310,7 +312,7 @@ it('AC3 - distinguishes a legacy cancelled reservation with no release audit', a
     throw new Error(`Unexpected GET ${path}`);
   });
 
-  render(<TechSupportDashboard />);
+  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
 
   expect(screen.getByText('Cancelled')).toBeTruthy();

@@ -6,6 +6,7 @@ const eventModel = require('../models/eventModel');
 const db = require('../config/db');
 const notificationService = require('../services/notificationService');
 const equipmentStatusService = require('../services/equipmentStatusService');
+const { notifyLeadsOfSubmission } = require('../services/roleNotifications');
 const { decideChangeRequest } = require('../services/changeRequestDecisions');
 const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements, changeLines } = require('../services/changeRequestReview');
 const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
@@ -316,8 +317,23 @@ const createEvent = asyncHandler(async (req, res) => {
   const equipment = validateEquipmentRequirements(input);
   if (equipment.error) return res.status(400).json({ message: equipment.error });
   Object.assign(data, equipment.data);
-  const event = await eventModel.create(data);
-  return res.status(201).json({ event, message: data.isDraft ? 'Draft saved.' : 'Event request submitted.' });
+  if (data.isDraft) return res.status(201).json({ event: await eventModel.create(data), message: 'Draft saved.' });
+  // A submitted request and the Coordinator Leads' notification commit together; email follows the commit.
+  const client = await db.pool.connect();
+  let event, stored;
+  try {
+    await client.query('BEGIN');
+    event = await eventModel.create(data, client);
+    stored = await notifyLeadsOfSubmission(client, event);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  await notificationService.emailNotifications(stored);
+  return res.status(201).json({ event, message: 'Event request submitted.' });
 });
 
 module.exports = { createEvent, updateEventInformation, updateEquipmentRequirements, listChangeRequests, decideChangeRequest: decideChangeRequestHandler, createClarificationRequest, respondToClarification, listEvents, getEvent };

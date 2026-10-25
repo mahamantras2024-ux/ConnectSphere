@@ -19,6 +19,7 @@ test('real venue changes preserve history, exclude inactive venues and serialize
    CREATE TABLE events(id SERIAL PRIMARY KEY,name TEXT,expected_attendance INTEGER,room_layout_preference TEXT,accessibility_requirements JSONB)`);
   const sql=fs.readFileSync(path.join(__dirname,'../../backend/src/db/venueManagementSchema.sql'),'utf8');await client.query(sql);await client.query(sql); // Verifies the additive upgrade is repeatable.
   await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db/migrations/010-venue-safety-facts.sql'),'utf8')); // Venue safety facts saved by updates.
+  await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db/migrations/20261018021358_venue_emergency_information.sql'),'utf8')); // Emergency documents saved with the venue (SCRUM-98).
   await client.query("INSERT INTO users(email,role,roles) VALUES ('staff@example.test','venue_staff','{venue_staff}');INSERT INTO events(name,expected_attendance,room_layout_preference) VALUES ('Upcoming meeting',80,'Theatre')");
   mock.method(pool,'query',(sql,values)=>client.query(sql,values)); // Restricts API reads to the disposable test schema.
   mock.method(pool,'connect',async()=>({query:(sql,values)=>client.query(sql,values),release(){}})); // Keeps route transactions on the isolated connection.

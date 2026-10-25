@@ -94,7 +94,10 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner pr
   assert.ok(registrationIndex < withdrawalIndex, 'withdrawal follows registration');
   assert.ok(withdrawalIndex < venueStatusIndex, 'Venue Staff status follows withdrawal');
   assert.ok(venueStatusIndex < venueFrequencyIndex, 'reminder frequency follows Venue Staff status');
-  assert.equal(venueFrequencyIndex, queries.length - 1, 'reminder frequency is the final migration');
+  // Parent notification system: its notification types are set after every earlier type change, as the final migration.
+  const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
+  assert.ok(venueFrequencyIndex < parentNotificationsIndex, 'parent notifications follow the Venue Staff migrations');
+  assert.equal(parentNotificationsIndex, queries.length - 1, 'parent notifications is the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

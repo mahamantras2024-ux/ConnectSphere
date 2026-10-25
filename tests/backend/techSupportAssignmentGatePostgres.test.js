@@ -5,18 +5,12 @@ require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
 const jwt = require('../../backend/node_modules/jsonwebtoken');
 const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 
-const sqlFile = (name) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', name), 'utf8');
-const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
-  'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
-  'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/005-technical-support-reviews.sql',
-  'migrations/006-event-decisions.sql', 'migrations/006-equipment-inventory-reservations.sql', 'migrations/007-equipment-stock-quantities.sql',
-  'migrations/013-equipment-review-affected-items.sql'];
+// The current production schema (every runner migration), so tables added by later migrations always exist.
+const { applyLiveSchema } = require('./support/liveSchema');
 
 // Test case: Unassigned requests are absent from every Technical Support queue and refused by every action; the same
 // actions work once a coordinator is assigned, so the assignment is what gates them.
@@ -33,7 +27,7 @@ test('Bug fix - Technical Support cannot view or act on equipment requests until
         role VARCHAR(50), roles TEXT[] NOT NULL DEFAULT '{}', organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
       await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[],
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-      for (const file of migrations) await client.query(sqlFile(file));
+      await applyLiveSchema(client);
       for (const [email, role] of [['olivia@example.test', 'event_organiser'], ['chris@example.test', 'event_coordinator'], ['tina@example.test', 'technical_support']]) {
         await client.query('INSERT INTO users (email, full_name, role, roles) VALUES ($1, $1, $2::text, ARRAY[$2::text])', [email, role]);
       }
@@ -88,6 +82,8 @@ test('Bug fix - Technical Support cannot view or act on equipment requests until
     } finally {
       mock.restoreAll();
       if (server?.listening) await new Promise((resolve) => server.close(resolve));
+      // A failed request can leave the shared client inside an aborted transaction; end it so cleanup still runs.
+      await client.query('ROLLBACK').catch(() => {});
       await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
       client.release();
       await pool.end();

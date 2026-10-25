@@ -223,7 +223,8 @@ describe('Safety Officer role-based access', () => {
     open(path, true);
     expect(await screen.findByRole('heading', { name: 'Safety Officer Dashboard' })).toBeTruthy();
     await screen.findByText('Annual Gala');
-    expect([...new Set(api.get.mock.calls.map(([endpoint]) => endpoint))].sort()).toEqual(['/auth/me', '/safety/checks']);
+    // Only the Safety Officer's own data: the session, their notifications and the safety queue.
+    expect([...new Set(api.get.mock.calls.map(([endpoint]) => endpoint))].sort()).toEqual(['/auth/me', '/notifications', '/safety/checks']);
     expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/safety/dashboard');
   });
   // Test case: Opens the Safety Officer dashboard as each other staff role and checks the safety queue is never requested.

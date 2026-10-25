@@ -173,15 +173,16 @@ it('CR AC2 - the coordinator is notified of new change requests and can mark the
   expect(unread.querySelector('b')).toBeNull();
   expect(within(unread).getByText('7 Oct 2026, 10:30 am')).toBeTruthy();
   const read = within(notificationsPanel()).getByText('New change request: Book Club').closest('li');
-  expect(within(read).queryByRole('button')).toBeNull();
+  // Each preview opens its page; only unread ones also offer Mark as read.
+  expect(within(read).queryByRole('button', { name: /^Mark / })).toBeNull();
   // Act
   fireEvent.click(within(unread).getByRole('button', { name: 'Mark New change request: Community Workshop as read' }));
   // Assert: the button locks while sending, then the count drops once and the marker disappears.
-  expect(within(unread).getByRole('button').disabled).toBe(true);
+  expect(within(unread).getByRole('button', { name: 'Mark New change request: Community Workshop as read' }).disabled).toBe(true);
   expect(api.post).toHaveBeenCalledWith('/notifications/3/read', {}, 'session-token');
   expect(await within(notificationsPanel()).findByText('0 unread')).toBeTruthy();
   expect(within(unread).queryByText('New')).toBeNull();
-  expect(within(unread).queryByRole('button')).toBeNull();
+  expect(within(unread).queryByRole('button', { name: /^Mark / })).toBeNull();
 });
 
 // Test case: Marking read fails; the error is shown and the count stays the same.

@@ -483,6 +483,21 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .notification-unread { border-color: #c9d79a; background: #fbfdf3; }
 .notification-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .notification-item .button-secondary { justify-self: start; }
+.notification-open { display: grid; justify-content: stretch; justify-items: stretch; gap: 4px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.notification-open:hover strong, .notification-open:focus-visible strong { text-decoration: underline; }
+/* The preview is a plain row, not a pill: undo the global button hover background. */
+.notification-open:hover, .notification-open:focus-visible { background: none; box-shadow: none; }
+.notification-open:focus-visible { outline: 3px solid #46511e; outline-offset: 3px; border-radius: 6px; }
+.notification-summary { color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notification-time { font-size: 0.8rem; color: #64748b; }
+.notification-details summary { cursor: pointer; font-size: 0.85rem; color: #475569; }
+.notification-details p { margin: 6px 0 0; }
+/* Parent notification system: the bell in the navbar and its dropdown of recent previews. */
+.notification-bell { position: relative; }
+.notification-bell-button { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: 999px; background: transparent; color: inherit; border: 1px solid transparent; }
+.notification-bell-button:hover, .notification-bell-button[aria-expanded="true"] { border-color: #d6dccd; background: #f6f7f2; }
+.notification-count { position: absolute; top: 2px; right: 0; min-width: 18px; padding: 0 5px; border-radius: 999px; background: #c2410c; color: white; font-size: 0.7rem; font-weight: 700; line-height: 18px; text-align: center; }
+.notification-dropdown { position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; width: min(380px, calc(100vw - 32px)); max-height: 70vh; overflow-y: auto; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: white; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16); }
 /* Event review decision: readiness checklist. */
 .decision-checklist { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .decision-checklist li { display: grid; grid-template-columns: minmax(150px, auto) auto 1fr; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }

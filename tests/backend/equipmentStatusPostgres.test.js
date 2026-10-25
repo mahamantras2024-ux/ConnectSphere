@@ -15,7 +15,9 @@ const sqlFile = (name) => fs.readFileSync(path.join(__dirname, '../../backend/sr
 const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
   'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
   'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/005-technical-support-reviews.sql',
-  'migrations/006-event-decisions.sql', 'migrations/012-event-cancellation-notifications.sql', 'migrations/013-equipment-review-affected-items.sql'];
+  'migrations/006-event-decisions.sql', 'migrations/012-event-cancellation-notifications.sql', 'migrations/013-equipment-review-affected-items.sql',
+  // A full review can make the event ready for its safety check, which reads 010/011's safety facts and notifies with 017's type.
+  'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql', 'migrations/017-parent-notifications.sql'];
 
 // Test case: Pending -> partially available (affected items) -> organiser edit -> pending -> confirmed -> approved change -> pending.
 test('ES AC1-AC3 - equipment request status, affected items and coordinator notifications follow the real workflow in PostgreSQL',

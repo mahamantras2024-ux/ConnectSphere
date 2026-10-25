@@ -29,6 +29,8 @@ async function query(sql, values = []) {
     state.notes.push(values);
     return { rows: [] };
   }
+  // Safety-check readiness before and after the decision (parent notification system); none means "not ready".
+  if (sql.includes('AS pending_clarifications')) return { rows: state.readiness?.length ? [state.readiness.shift()] : [] };
   if (sql.includes('FROM users')) return { rows: [{ id: 9, role: state.role }] };
   if (sql.includes('JOIN venues')) return { rows: [{ ...state.request, venue_name: 'Hall A', event_name: 'Gala', expected_attendance: 100, room_layout_preference: 'Seminar', accessibility_requirements: ['Ramp'] }] };
   if (sql.includes('FROM venues')) return { rows: [{ id: 7, name: 'Hall A', is_active: true, setup_minutes: 0, turnaround_minutes: 0 }] };
@@ -93,6 +95,38 @@ for (const decision of ['approved', 'rejected']) {
     assert.equal(audit.decisionBy, 9); assert.equal(audit.bookingId, 20);
     assert.equal(audit.decidedAt, response.body.request.updated_at);
     assert.ok(state.calls.findIndex(sql => sql.includes('WITH inserted')) < state.calls.indexOf('COMMIT'));
+  });
+}
+// Parent notification system AC1 (reviewer regression): one booking is approved and another is still pending, so the event
+// waits on Venue Staff. Rejecting the pending one leaves the approved booking as its only arrangement: the event is now ready
+// for its safety check, and every Safety Officer must hear about it even though the decision was a rejection.
+const context = (bookings) => ({ id: 3, name: 'Gala', status: 'submitted', is_draft: false, equipment_items: [], technical_support_required: false,
+  video_conferencing_required: false, equipment_notes: null, equipment_confirmed_at: null, pending_clarifications: 0, bookings,
+  safety_changes_open: [], latest_safety_check: null });
+const approvedBooking = { status: 'approved', hold_expires_at: null };
+const heldBooking = { status: 'pending', hold_expires_at: '2099-01-01T00:00:00Z' };
+test('NT AC1 - rejecting the last pending booking beside an approved one tells Safety Officers the event is ready', async () => {
+  // Arrange: waiting on the pending booking before; only the approved one remains after.
+  state.readiness = [context([approvedBooking, heldBooking]), context([approvedBooking])];
+  // Act
+  const response = await request(undefined, { decision: 'rejected', reason: 'Hall closed' });
+  // Assert: the coordinator's notice and the Safety Officer's ready notice are both stored before the commit.
+  assert.equal(response.status, 200);
+  const safety = state.notes.find((values) => values[3].includes('safety_check_ready'));
+  assert.ok(safety, 'Safety Officers must be notified when a rejection makes the event ready.');
+  assert.deepEqual([safety[0], safety[4]], [[9], ['Ready for safety check: Gala']]);
+  assert.ok(state.calls.lastIndexOf(state.calls.find((sql) => sql.includes('WITH inserted'))) < state.calls.indexOf('COMMIT'));
+});
+// Test case: Decisions that leave the event waiting (another booking still pending) or that find it already ready send nothing.
+for (const [label, decision, readiness] of [
+  ['a rejection that leaves another booking pending', 'rejected', [context([approvedBooking, heldBooking, heldBooking]), context([approvedBooking, heldBooking])]],
+  ['a rejection of the only booking', 'rejected', [context([heldBooking]), context([])]],
+  ['an approval for an event already ready', 'approved', [context([approvedBooking]), context([approvedBooking, approvedBooking])]],
+]) {
+  test(`NT AC1 - ${label} sends no safety notification`, async () => {
+    state.readiness = readiness;
+    assert.equal((await request(undefined, { decision })).status, 200);
+    assert.equal(state.notes.some((values) => values[3].includes('safety_check_ready')), false);
   });
 }
 test('SCRUM-43 AC3 AC4 - rejection without notes is allowed', async () => {
