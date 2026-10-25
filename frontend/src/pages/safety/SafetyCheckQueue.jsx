@@ -1,5 +1,6 @@
 // File: Lets the Safety Officer review events whose arrangements are confirmed and record an Operational Safety Check.
 import { useEffect, useState } from 'react';
+import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import SafetyEventFacts, { LATEST_LABELS, STAGE_LABELS } from './SafetyEventFacts';
@@ -19,6 +20,7 @@ function needsTechnical(event) {
  */
 export default function SafetyCheckQueue() {
   const { token } = useAuth();
+  const notificationOpened = useNotificationOpened();
   const [events, setEvents] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -30,7 +32,8 @@ export default function SafetyCheckQueue() {
   useEffect(() => {
     api.get('/safety/checks', token).then((data) => { setEvents(data.events); setLoadError(''); })
       .catch((err) => setLoadError(err.message));
-  }, [token, reloadKey]);
+    // Opening a "ready for safety check" notification here re-reads the queue.
+  }, [token, reloadKey, notificationOpened]);
 
   // Updates one event's draft outcome, notes or stages without touching the others.
   const setForm = (id, field, value) => setForms((current) => ({ ...current, [id]: { ...current[id], [field]: value } }));

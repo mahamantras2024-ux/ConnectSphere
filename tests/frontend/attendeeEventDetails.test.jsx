@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -16,6 +17,7 @@ const publishedEvent = {
 };
 
 let currentEvent;
+let currentRegistrations;
 
 /** Uses the real attendee routes and session gate while mocking only HTTP responses. */
 function open(path = '/attendee/dashboard') {
@@ -25,12 +27,13 @@ function open(path = '/attendee/dashboard') {
 
 beforeEach(() => {
   currentEvent = { ...publishedEvent };
+  currentRegistrations = [];
   localStorage.clear();
   vi.resetAllMocks();
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: { id: 8, full_name: 'Casey Attendee', role: 'attendee' } };
     if (path === '/notifications') return { notifications: [], unreadCount: 0 };
-    if (path === '/registrations/mine') return { registrations: [] };
+    if (path === '/registrations/mine') return { registrations: currentRegistrations };
     if (path === '/events/published') return { events: [publishedEvent] };
     if (path === '/events/published/44') return { event: currentEvent };
     throw new Error(`Unexpected GET ${path}`);
@@ -111,6 +114,55 @@ describe('SCRUM-35 Attendee View Event Details', () => {
     for (const value of ['2031-06-12', '09:30–16:00', /Riverside Hall · 18 River Road/,
       'A day of art workshops and performances.', 'Morgan Lee']) expect(screen.getByText(value)).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith('/events/published/44', 'attendee-session');
+  });
+
+  it('UI AC1/AC2 - presents the attendee overview below a coordinator-style event heading without staff controls', async () => {
+    // Arrange: staff-only values must not become visible when adopting the staff page's visual layout.
+    currentEvent = { ...publishedEvent, status: 'confirmed', internal_notes: 'Private review notes' };
+    // Act: use the actual attendee route and public event response.
+    open('/attendee/events/44');
+    const title = await screen.findByRole('heading', { level: 1, name: 'Community Arts Day' });
+    const overview = screen.getByRole('region', { name: 'Event overview' });
+    // Assert: a separate page header and named overview replace the former all-in-one record card.
+    expect(title.closest('header')).toHaveTextContent('Event Detail');
+    expect(title.closest('header')).toHaveTextContent('Confirmed');
+    expect(within(overview).getByText('09:30–16:00')).toBeInTheDocument();
+    expect(within(overview).getByText('Morgan Lee')).toBeInTheDocument();
+    expect(screen.queryByText('Private review notes')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Registration details|Approve|Edit event/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Equipment|Venue requests|Activity/i })).not.toBeInTheDocument();
+  });
+
+  it('UI AC3 - My registrations returns attendees to their homepage using an explicit back link', async () => {
+    // Arrange / Act: arrive at the same registrations route linked from event details.
+    open('/registrations');
+    const back = await screen.findByRole('link', { name: 'Back to events' });
+    expect(back).toHaveAttribute('href', '/attendee/dashboard');
+    fireEvent.click(back);
+    // Assert: the link goes to the attendee homepage even when there is no browser history.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Attendee Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Published events' })).toBeInTheDocument();
+  });
+
+  it('UI AC4 - the dashboard labels personal registrations above their event cards', async () => {
+    // Arrange: a real personal record separates this section from the published catalogue.
+    currentRegistrations = [{ id: 7, event_id: 44, event_name: 'My booked workshop', status: 'registered', event_status: 'confirmed' }];
+    // Act
+    open();
+    const cardTitle = await screen.findByRole('heading', { name: 'My booked workshop' });
+    const heading = screen.getByRole('heading', { level: 2, name: 'My registrations' });
+    // Assert: the section heading precedes the personal card, not the published events list alone.
+    expect(heading.compareDocumentPosition(cardTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('UI AC5 - published event status badges stay compact and align right like registration badges', async () => {
+    // Arrange / Act: open the public catalogue inside the actual attendee homepage.
+    open();
+    const catalogue = await screen.findByRole('region', { name: 'Published events' });
+    const badge = await within(catalogue).findByText('Confirmed');
+    // Assert: flex-end keeps the badge compact on the right, matching personal registration cards.
+    expect(getComputedStyle(badge).alignSelf).toBe('flex-end');
+    expect(badge.tagName).toBe('SPAN');
   });
 
   it('AC2 - revisiting event details fetches updated source data instead of stale values', async () => {

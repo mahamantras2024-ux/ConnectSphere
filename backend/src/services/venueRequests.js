@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 const { HOLD_DURATION_MS, hasConflict } = require('./venueAvailability');
-const { insertNotifications } = require('./notificationService');
+const { insertNotifications, emailNotifications } = require('./notificationService');
+const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
 const { requirements } = require('./venueRequestRequirements');
 
 /** Attaches an HTTP status to an expected domain error for the existing Express error boundary. */
@@ -81,10 +82,14 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason) 
   if (reason != null && typeof reason !== 'string') throw reject(400, 'The decision reason must be text.');
   // Rejection notes explain why the booking was declined; approvals never retain an irrelevant reason.
   const decisionNotes = decision === 'rejected' ? reason?.trim() || null : null;
-  return withVenue(Number(venueId), async (client, venue) => {
+  let safetyNotes = [];
+  const decided = await withVenue(Number(venueId), async (client, venue) => {
     const request = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
     if (!request) throw reject(404, 'Venue request not found.');
     if (request.status !== 'pending') throw reject(409, 'This request has already been decided.');
+    // Either decision can make the event ready for its safety check: an approval confirms its venue, and rejecting a
+    // still-pending booking can leave an already approved one as the only live arrangement (VENUE_PENDING clears).
+    const wasReady = await isReadyForSafetyCheck(client, request.event_id);
     if (decision === 'approved') {
       const periods = await recordedPeriods(client, venue.id);
       if (hasConflict(request, periods, venue, Date.now(), request.id)) throw reject(409, 'The requested period is no longer available.');
@@ -101,8 +106,12 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason) 
       details: { kind: 'venue_booking_decision', bookingId: request.id, venueId: venue.id, decision,
         decisionBy: userId, decidedAt: decided.updated_at, notes: decisionNotes },
     }]);
+    safetyNotes = await notifySafetyIfNewlyReady(client, event.id, wasReady);
     return decided;
   });
+  // Safety Officers are emailed only after the decision has committed.
+  await emailNotifications(safetyNotes);
+  return decided;
 }
 
 module.exports = { createVenueRequest, decideVenueRequest };

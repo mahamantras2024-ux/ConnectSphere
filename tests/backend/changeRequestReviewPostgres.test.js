@@ -11,9 +11,9 @@ const jwt = require('../../backend/node_modules/jsonwebtoken');
 const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 
-const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
-  'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
-  'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql'];
+// The current production schema (every runner migration): approving a change also re-checks safety-check readiness,
+// which reads the decision columns later migrations add.
+const { applyLiveSchema } = require('./support/liveSchema');
 
 // Test case: Organiser submits a critical change on a confirmed booking; the coordinator sees current vs requested values and the
 // affected booking, approves it, and the organiser, the booking's Venue Staff decision-maker and Technical Support are notified
@@ -31,7 +31,7 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
         role VARCHAR(50), roles TEXT[] NOT NULL DEFAULT '{}', organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
       await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[],
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-      for (const file of migrations) await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
+      await applyLiveSchema(client);
       // The review migration must be safe to re-run on a database that already has it.
       await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/005-change-request-review.sql'), 'utf8'));
 

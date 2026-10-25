@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { act, cleanup, fireEvent, render, screen, within, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
 import VenueBookingInbox from '../../frontend/src/pages/venue/VenueBookingInbox';
 import NotificationsPanel from '../../frontend/src/components/NotificationsPanel';
@@ -73,7 +74,7 @@ it('SCRUM-43 AC5 - coordinator sees a new decision at 5000ms, with boundaries be
   let notes = [];
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 4, role: 'event_coordinator' } }
     : { notifications: notes, unreadCount: notes.length });
-  render(<AuthProvider><NotificationsPanel /></AuthProvider>);
+  render(<MemoryRouter><AuthProvider><NotificationsPanel /></AuthProvider></MemoryRouter>);
   await screen.findByText('No notifications yet.');
   notes = [{ id: 1, title: 'Venue booking rejected: Gala', message: 'Maintenance; try Hall B.', created_at: '2031-10-01T00:00:00Z', read_at: null }];
   await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
@@ -131,7 +132,7 @@ it.each([401, 403, 404])('SCRUM-43 AC1 AC5 - access loss HTTP %s removes private
 });
 it('SCRUM-43 AC5 - transient notification failure labels retained data and later refresh recovers', async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-  render(<AuthProvider><NotificationsPanel /></AuthProvider>);
+  render(<MemoryRouter><AuthProvider><NotificationsPanel /></AuthProvider></MemoryRouter>);
   await screen.findByText('No notifications yet.');
   api.get.mockRejectedValueOnce(new Error('Network unavailable'));
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
@@ -153,7 +154,7 @@ it.each(['already read', 'access lost'])('SCRUM-43 AC5 - delayed mark-read respo
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 4, role: 'event_coordinator' } }
     : { notifications: [note, { ...note, id: 2, title: 'Earlier decision', read_at: '2031-10-01T00:00:00Z' }], unreadCount: 1 });
   let finish; api.post.mockReturnValue(new Promise(resolve => { finish = resolve; }));
-  render(<AuthProvider><NotificationsPanel /></AuthProvider>);
+  render(<MemoryRouter><AuthProvider><NotificationsPanel /></AuthProvider></MemoryRouter>);
   fireEvent.click(await screen.findByRole('button', { name: 'Mark Venue approved as read' }));
   if (scenario === 'already read') api.get.mockResolvedValue({ notifications: [{ ...note, read_at: '2031-10-01T00:00:00Z' }], unreadCount: 0 });
   else api.get.mockRejectedValue(Object.assign(new Error('Access lost'), { status: 403 }));

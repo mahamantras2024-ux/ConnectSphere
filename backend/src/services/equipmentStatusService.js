@@ -3,6 +3,7 @@ const { pool } = require('../config/db');
 const eventModel = require('../models/eventModel');
 const statusModel = require('../models/equipmentStatusModel');
 const notificationService = require('./notificationService');
+const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
 const { STATUS_LABELS, OUTCOME_STATUS, requestedItems, affectedItemsError, affectedSummary } = require('./equipmentStatus');
 
 /** Builds an expected business-rule failure carrying an HTTP status. */
@@ -54,6 +55,9 @@ async function recordReview(eventId, reviewerId, { outcome, reason, requestVersi
       if (problem) throw failure(400, problem);
     }
     const affected = outcome === 'partially_fulfillable' ? affectedItems : [];
+    // Only a full review confirms technical arrangements, which can make the event ready for its safety check.
+    const confirms = outcome === 'fully_fulfillable';
+    const wasReady = confirms && await isReadyForSafetyCheck(client, eventId);
     const review = await eventModel.createEquipmentReview(eventId, { outcome, reason, requestVersion, affectedItems: affected }, reviewerId, client);
     if (!review) return { review: null, notifiedCoordinator: false, stored: [] };
     const lines = [
@@ -62,7 +66,8 @@ async function recordReview(eventId, reviewerId, { outcome, reason, requestVersi
     ];
     const notes = coordinatorNotice(event, OUTCOME_STATUS[outcome], lines);
     const stored = notes.length ? await notificationService.insertNotifications(client, notes) : [];
-    return { review, notifiedCoordinator: notes.length > 0, stored };
+    const safety = confirms ? await notifySafetyIfNewlyReady(client, eventId, wasReady) : [];
+    return { review, notifiedCoordinator: notes.length > 0, stored: [...stored, ...safety] };
   });
 }
 

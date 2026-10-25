@@ -2,6 +2,8 @@
 const { pool } = require('../config/db');
 const eventDecisionModel = require('../models/eventDecisionModel');
 const notificationService = require('./notificationService');
+const { notifySafetyIfNewlyReady } = require('./roleNotifications');
+const { notifyVenueStaffOfEventStatus } = require('./venueEventStatus');
 const { evaluateDecision, evaluateSafetyReview, needsTechnicalArrangements, resolutionBlocker } = require('./eventDecisionPolicy');
 
 /** Plain-language names of the planning stages a Safety Officer can reopen, used in notifications. */
@@ -62,6 +64,8 @@ async function decideEvent(eventId, coordinatorId, decision, reason) {
     if (blocked) throw failure(409, blocked.message, blocked.code);
     const event = await eventDecisionModel.recordDecision(client, eventId, decision, reason, coordinatorId);
     const stored = await notificationService.insertNotifications(client, [decisionNotification(event, decision, reason)]);
+    // Coordinator approval confirms the event can proceed; venue staff need a separate arrangement notice.
+    if (decision === 'approved') stored.push(...await notifyVenueStaffOfEventStatus(client, event, 'confirmed'));
     return { event, stored };
   });
 }
@@ -124,7 +128,10 @@ async function resolveSafetyChange(eventId, coordinatorId, area) {
     if (!context) throw failure(404, 'Event not found.');
     const blocked = resolutionBlocker(area, { ...context, now: Date.now() });
     if (blocked) throw failure(409, blocked.message, blocked.code);
-    return { open: await eventDecisionModel.resolveStage(client, eventId, area), stored: [] };
+    const open = await eventDecisionModel.resolveStage(client, eventId, area);
+    // While a stage was open the event could not be checked, so completing the last one may make it ready again.
+    const stored = open.length ? [] : await notifySafetyIfNewlyReady(client, eventId, false);
+    return { open, stored };
   });
 }
 

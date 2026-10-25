@@ -2,6 +2,7 @@
 const { pool } = require('../config/db');
 const eventModel = require('../models/eventModel');
 const notificationService = require('./notificationService');
+const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
 const {
   isSupportedField, describeChanges, assessArrangements, recipientsFor, changeLines,
 } = require('./changeRequestReview');
@@ -71,7 +72,11 @@ async function decideChangeRequest(requestId, coordinatorId, decision, reason) {
     const changes = describeChanges(event, request.requested_changes);
     let arrangements = [];
     let recipients = { organiser: [request.organiser_id], venueStaff: [], technicalSupport: [] };
+    let safetyNotes = [];
     if (decision === 'approved') {
+      // Applying the change can make the event ready for its safety check (e.g. it no longer asks for anything technical),
+      // so readiness is measured before and after on this locked transaction (parent notification system AC1).
+      const wasReady = await isReadyForSafetyCheck(client, request.event_id);
       // A field this release cannot store (e.g. from a newer client) must not be half-applied.
       const unsupported = Object.keys(request.requested_changes).filter((field) => !isSupportedField(field));
       if (unsupported.length) {
@@ -91,14 +96,15 @@ async function decideChangeRequest(requestId, coordinatorId, decision, reason) {
       const venueStaffIds = arrangements.some((item) => !item.decisionBy) ? await eventModel.userIdsWithRole(client, 'venue_staff') : [];
       const technicalSupportIds = event.equipment_notes?.trim() ? await eventModel.userIdsWithRole(client, 'technical_support') : [];
       recipients = recipientsFor({ event, changedFields, arrangements, venueStaffIds, technicalSupportIds });
+      safetyNotes = await notifySafetyIfNewlyReady(client, request.event_id, wasReady);
     }
 
     const decided = (await client.query(`
       UPDATE event_change_requests SET status=$2, reviewed_at=now(), reviewed_by=$3, decision_reason=$4
       WHERE id=$1 RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at,
         reviewed_at, reviewed_by, decision_reason`, [request.id, decision, coordinatorId, reason])).rows[0];
-    const stored = await notificationService.insertNotifications(client,
-      notificationsFor({ request, decision, reason, changes, arrangements, recipients }));
+    const stored = [...await notificationService.insertNotifications(client,
+      notificationsFor({ request, decision, reason, changes, arrangements, recipients })), ...safetyNotes];
     await client.query('COMMIT');
     outcome = { changeRequest: decided, event, changes, arrangements, notified: recipients, stored };
   } catch (error) {

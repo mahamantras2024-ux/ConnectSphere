@@ -67,8 +67,9 @@ async function findAccessibleById(id, user) {
 }
 
 // Inserts an organiser-owned event with validated request fields and draft/submitted status.
-async function create(data) {
-  const result = await pool.query(`
+// `db` may be a transaction client so a submitted request and its Coordinator Lead notification commit together.
+async function create(data, db = pool) {
+  const result = await db.query(`
     INSERT INTO events (organiser_id, name, purpose, description, event_type,
       proposed_date, proposed_start_time, proposed_end_time, expected_attendance,
       programme_details, room_layout_preference, accessibility_requirements,

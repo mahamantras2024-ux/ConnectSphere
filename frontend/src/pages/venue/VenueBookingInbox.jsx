@@ -10,7 +10,7 @@ function singaporeTime(value) {
   return new Date(value).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short', hour12: false });
 }
 
-/** Shows the staff-only queue, an accessible review drawer and persisted decision feedback; the server owns conflicts and audit. */
+/** Shows the staff-only queue and notifies related dashboard views after a persisted decision. */
 export default function VenueBookingInbox() {
   const { token } = useAuth();
   const { data, loading, error, updateData, refresh } = useLiveResource('/venues/requests/pending', token);
@@ -31,6 +31,7 @@ export default function VenueBookingInbox() {
     try {
       const result = await api.put(`/venues/${selected.venue_id}/requests/${selected.id}/decision`, { decision, reason }, token);
       updateData(current => current && ({ ...current, requests: current.requests.filter(request => request.id !== selected.id) }));
+      window.dispatchEvent(new Event('venue-booking-decision'));
       setMessage(`${result.request.status === 'approved' ? 'Approved' : 'Rejected'}: ${selected.event_name} at ${selected.venue_name}. Recorded by staff #${result.request.decision_by} on ${singaporeTime(result.request.updated_at)}.`);
       setSelectedId(null);
     } catch (err) { setFailure(err.message); }

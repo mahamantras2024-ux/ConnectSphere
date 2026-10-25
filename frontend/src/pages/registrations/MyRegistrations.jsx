@@ -8,7 +8,7 @@ import PageIntro from '../../components/PageIntro';
 import Modal from '../../components/Modal';
 import WithdrawRegistrationAction from './WithdrawRegistrationAction';
 const publicStatusLabels = { confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
-// Loads personal registrations and presents only attendee-safe event statuses.
+// Loads personal registrations and presents only attendee-safe event statuses; standalone navigation returns to the attendee homepage.
 export default function MyRegistrations({ dashboard = false }) {
   const { token } = useAuth();
   const [selectedId, setSelectedId] = useState(null);
@@ -20,7 +20,11 @@ export default function MyRegistrations({ dashboard = false }) {
   function handleWithdrawal(updated) {
     updateData(current => ({ ...current, registrations: current.registrations.map(record => record.id === updated.id ? { ...record, ...updated } : record) }));
   }
-  return <div className="page"><PageIntro title={dashboard ? 'Attendee Dashboard' : 'My registrations'} eyebrow="Your event journey" description="Keep track of your existing registrations and their status." />
+  return <div className="page">
+    {/* Only the standalone page needs a return link; the dashboard already is the attendee homepage. */}
+    {!dashboard && <Link className="button-link button-secondary" to="/attendee/dashboard">Back to events</Link>}
+    <PageIntro title={dashboard ? 'Attendee Dashboard' : 'My registrations'} eyebrow="Your event journey" description="Keep track of your existing registrations and their status." />
+    {dashboard && <div className="section-heading"><h2>My registrations</h2></div>}
     {error && <p role="alert" className="error-message">{error}{data && ' Showing the last loaded registration information.'}</p>}
     {loading ? <p role="status" className="loading-state">Loading registrations...</p> : !data && error ? null : !registrations.length ? <section className="empty-state"><span className="empty-symbol" aria-hidden="true">◇</span><h2>No registrations yet</h2><p>You haven't registered for any events yet.</p></section> : <div className="record-grid">{registrations.map(record =>
       // Converts each record into its displayed or submitted representation.

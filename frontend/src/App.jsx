@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import { NotificationsProvider } from './context/NotificationsContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
@@ -36,6 +37,7 @@ export default function App() {
     main.current.scrollIntoView?.({ block: 'start' });
   }, [location.pathname, location.search]);
   return (
+    <NotificationsProvider>
     <div className="app-shell">
       <Navbar />
       <main ref={main} className="content" id="main-content">
@@ -106,5 +108,6 @@ export default function App() {
         </Routes>
       </main>
     </div>
+    </NotificationsProvider>
   );
 }

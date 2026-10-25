@@ -28,7 +28,8 @@ export default function PublishedEventList() {
           : events.length === 0 ? <p className="empty-state">No published events are open for registration.</p>
             : <div className="record-grid">{events.map(event => (
               <article className="record-card" key={event.id}>
-                <span className="status-badge status-confirmed">Confirmed</span>
+                {/* Keep the status compact and right-aligned, matching personal registration card badges. */}
+                <span className="status-badge status-confirmed" style={{ alignSelf: 'flex-end' }}>Confirmed</span>
                 <h3>{event.name}</h3>
                 <p>{event.proposed_date || 'Date not specified'}</p>
                 <Link className="button-link button-secondary record-action" to={`/attendee/events/${event.id}`}>View event details</Link>

@@ -14,11 +14,22 @@ ALTER TABLE event_equipment_reviews ADD CONSTRAINT event_equipment_reviews_affec
             ELSE jsonb_array_length(affected_items) = 0 END)) NOT VALID;
 
 -- AC2: keeps every existing notification type and adds equipment status changes.
--- Migrations re-run on every deploy, so notification migrations must allow the same complete list of notification types;
--- otherwise a re-run fails on stored notifications of a type a later migration added.
-ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
-ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN ('change_request_submitted', 'change_request_approved', 'change_request_rejected', 'event_details_changed',
-  'event_approved', 'event_rejected', 'safety_check_recorded',
-  'technical_support_assigned', 'technical_support_unassigned',
-  'event_cancelled', 'equipment_status_changed', 'equipment_reservation_affected', 'waitlist_promoted'));
+-- Migrations re-run on every deploy: the allowed list is every type already stored plus every known type, so neither a
+-- re-run nor a type added by a later migration can make this fail or drop a type another migration allows.
+DO $$
+DECLARE allowed_types TEXT[];
+BEGIN
+  SELECT array_agg(DISTINCT value ORDER BY value) INTO allowed_types FROM (
+    SELECT type AS value FROM notifications
+    UNION SELECT unnest(ARRAY[
+      'change_request_submitted', 'change_request_approved', 'change_request_rejected', 'event_details_changed',
+      'event_approved', 'event_rejected', 'safety_check_recorded', 'technical_support_assigned',
+      'technical_support_unassigned', 'event_cancelled', 'equipment_status_changed', 'waitlist_promoted',
+      'equipment_reservation_affected', 'equipment_alternative_proposed', 'equipment_alternative_decision', 'venue_event_status_changed',
+      'pending_venue_request_reminder', 'event_awaiting_assignment', 'safety_check_ready'
+    ]::text[])
+  ) supported;
+  ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+  EXECUTE format('ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type = ANY (%L::text[]))', allowed_types);
+END $$;
 COMMIT;

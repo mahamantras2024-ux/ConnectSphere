@@ -219,10 +219,11 @@ it('AR AC6 - the organiser receives the decision as a dashboard notification and
   expect(within(item).getByText(/Reason: Venue unavailable/)).toBeTruthy();
   expect(within(panel).getByText('1 unread')).toBeTruthy();
   fireEvent.click(within(item).getByRole('button', { name: 'Mark Event request not approved: Community Workshop as read' }));
-  expect(within(item).getByRole('button').disabled).toBe(true);
+  expect(within(item).getByRole('button', { name: /^Mark .* as read$/ }).disabled).toBe(true);
   expect(await within(panel).findByText('0 unread')).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/notifications/4/read', {}, 'session-token');
-  expect(within(item).queryByRole('button')).toBeNull();
+  // The preview still opens its page; the Mark as read control is gone once read.
+  expect(within(item).queryByRole('button', { name: /^Mark / })).toBeNull();
 });
 
 // ---------- Safety Officer queue (Week 7 change 6) ----------

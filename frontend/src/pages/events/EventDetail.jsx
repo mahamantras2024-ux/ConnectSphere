@@ -6,17 +6,23 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 
 import { api } from '../../api/client';
 
+import { OrganiserRegistrationAction } from '../event-organiser/OrganiserRegistrationDrawer';
+
 import ActionConfirmation from '../../components/ActionConfirmation';
 
 import EventAttachments from '../../components/EventAttachments';
 
 import { useAuth } from '../../context/AuthContext';
+import useNotificationOpened from '../../notifications/useNotificationOpened';
 
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
 import EquipmentStatusSection from './EquipmentStatusSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
+import OrganiserVenueDetails from './OrganiserVenueDetails';
+
+import CoordinatorRegistrations from './CoordinatorRegistrations';
 
 import CancelEventAction from './CancelEventAction';
 
@@ -53,7 +59,8 @@ const STYLES = `
 
 .ed-root *, .ed-root *::before, .ed-root *::after { box-sizing: border-box; }
 
-.ed-back { display: inline-flex; margin-bottom: 16px; }
+/* Keep neighbouring event action buttons visually separate. */
+.ed-back { display: inline-flex; margin-bottom: 16px; margin-inline-end: 12px; }
 
 
 
@@ -350,6 +357,7 @@ export default function EventDetail() {
   const { token, user } = useAuth();
 
   const location = useLocation();
+  const notificationOpened = useNotificationOpened();
 
   const [event, setEvent] = useState(null);
 
@@ -476,7 +484,8 @@ export default function EventDetail() {
 
     };
 
-  }, [id, token]);
+    // Opening a notification about this event while it is open re-reads it.
+  }, [id, token, notificationOpened]);
 
 
 
@@ -862,6 +871,9 @@ export default function EventDetail() {
 
       {backLink}
 
+      {user.role === 'event_organiser' && <OrganiserRegistrationAction eventId={event.id} token={token} />}
+      {coordinatorWorkspace && <CoordinatorRegistrations eventId={event.id} token={token} />}
+
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
 
       {saveMessage && <p className="ed-notice ed-notice--ok" role="status">{saveMessage}</p>}
@@ -999,6 +1011,7 @@ export default function EventDetail() {
 
 
 
+        {user.role === 'event_organiser' && <OrganiserVenueDetails eventId={event.id} token={token} />}
         {!coordinatorWorkspace && <>        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
 
           onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>
@@ -1043,11 +1056,7 @@ export default function EventDetail() {
 
           </dl>
 
-          {user.role === 'event_organiser' && (
-            <Link className="button-link button-secondary" to={`/organizer/events/${id}/registrations`}>
-              View registration details
-            </Link>
-          )}
+
 
         </section>
 

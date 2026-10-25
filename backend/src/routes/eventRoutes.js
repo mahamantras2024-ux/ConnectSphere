@@ -4,6 +4,7 @@ const router = express.Router();
 const eventController = require('../controllers/eventController');
 const eventReadController = require('../controllers/eventReadController');
 const attendeeEventController = require('../controllers/attendeeEventController');
+const coordinatorRegistrationController = require('../controllers/coordinatorRegistrationController');
 const eventRegistrationController = require('../controllers/eventRegistrationController');
 const eventCancellationController = require('../controllers/eventCancellationController');
 const technicalSupportController = require('../controllers/technicalSupportController');
@@ -13,8 +14,10 @@ const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
 const venueBookingDecisions = require('../controllers/venueBookingDecisionController');
 const asyncHandler = require('../utils/asyncHandler');
+const organiserVenues = require('../controllers/organiserVenueController');
 
 router.use(requireAuth);
+router.get('/:id/organiser-venue-bookings', requireRole('event_organiser'), asyncHandler(organiserVenues.listArrangements));
 router.get('/technical-support-staff', requireRole('event_coordinator'), technicalSupportAssignmentController.listStaff);
 router.get('/on-site-support', requireRole('technical_support'), technicalSupportAssignmentController.listAssigned);
 router.put('/:id/technical-support-assignment', requireRole('event_coordinator'), technicalSupportAssignmentController.assign);
@@ -34,6 +37,7 @@ router.post('/change-requests/:id/decision', requireRole('event_coordinator'), e
 router.get('/:id/venue-bookings', requireRole('event_coordinator'), venueBookingDecisions.listEventVenueBookings);
 router.get('/published', requireRole('attendee'), asyncHandler(attendeeEventController.listPublished));
 router.get('/published/:id', requireRole('attendee'), asyncHandler(attendeeEventController.getPublished));
+router.get('/:id/coordinator-registrations', requireRole('event_coordinator'), asyncHandler(coordinatorRegistrationController.getRegistrations));
 router.get('/:id/registrations', requireRole('event_organiser'), asyncHandler(eventRegistrationController.getEventRegistrations));
 router.post('/:id/cancel', requireRole('event_organiser', 'event_coordinator'), eventCancellationController.postCancellation);
 router.post('/:id/clarifications', requireRole('event_coordinator'), eventController.createClarificationRequest);

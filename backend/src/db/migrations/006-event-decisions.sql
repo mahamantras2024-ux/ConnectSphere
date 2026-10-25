@@ -44,14 +44,14 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_recent ON notifications(user_id, created_at DESC, id DESC);
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 -- Widen the allowed types to include event decisions and safety checks; keeps every change-request type.
--- Migrations re-run on every deploy, so notification migrations must allow the same complete list of notification types;
--- otherwise a re-run fails on stored notifications of a type a later migration added.
+-- Migrations re-run on every deploy: the allowed list always includes types already stored, so a type added by a later
+-- migration (e.g. 017's) never makes a re-run fail.
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 DO $$
 DECLARE
   allowed_types TEXT;
 BEGIN
-  -- Keep known types and any legacy types already present in notification history.
+  -- Include legacy types already stored so validation never requires deleting notification history.
   SELECT string_agg(quote_literal(type), ', ' ORDER BY type)
   INTO allowed_types
   FROM (
@@ -66,9 +66,7 @@ BEGIN
       'technical_support_assigned',
       'technical_support_unassigned',
       'event_cancelled',
-      'equipment_status_changed',
-      'equipment_reservation_affected',
-      'waitlist_promoted'
+      'equipment_status_changed', 'waitlist_promoted'
     ]::text[]) AS type
     UNION
     SELECT DISTINCT type FROM notifications

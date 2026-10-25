@@ -38,6 +38,9 @@ function mockCreate(user = organiser) {
     inserts.push(values);
     return { rows: [{ id: 101, name: values[1], is_draft: values[16] }] };
   });
+  // Submitting runs in a transaction with the Coordinator Lead notification: route it to this mock, with no Leads.
+  mock.method(pool, 'connect', async () => ({ release() {}, query: (sql, values) => (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())
+    || /FROM users\s+WHERE role=\$1/.test(sql) ? { rows: [] } : pool.query(sql, values)) }));
   return inserts;
 }
 // Mocks the database for PUT /equipment: the auth lookup, the scoped event read, then whichever write the handler issues.

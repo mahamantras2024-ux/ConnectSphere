@@ -1,5 +1,6 @@
 // File: Displays the Technical Support dashboard and its authenticated pending equipment-review queue.
 import { useEffect, useState } from 'react';
+import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
 import NotificationsPanel from '../../components/NotificationsPanel';
 import PageIntro from '../../components/PageIntro';
@@ -363,6 +364,7 @@ function EquipmentRequestCard({ request, onReview }) {
  */
 export default function TechSupportDashboard() {
   const { token } = useAuth();
+  const notificationOpened = useNotificationOpened();
   const [requests, setRequests] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [reservationRequests, setReservationRequests] = useState([]);
@@ -416,7 +418,8 @@ export default function TechSupportDashboard() {
     setLoading(false);
   }
 
-  useEffect(() => { loadDashboardData(); }, [token]);
+  // A new session, or opening a notification here, re-reads the queues.
+  useEffect(() => { loadDashboardData(); }, [token, notificationOpened]);
 
   // Pop-up notifications dismiss themselves after a few seconds (errors stay a little longer).
   useEffect(() => {

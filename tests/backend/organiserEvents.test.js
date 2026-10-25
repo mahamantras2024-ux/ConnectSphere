@@ -147,6 +147,9 @@ for (const isDraft of [true, false]) {
       assert.equal(values[16], isDraft); assert.equal(values[17], isDraft ? 'draft' : 'submitted');
       return { rows: [{ ...details, is_draft: isDraft }] };
     });
+    // Submitting runs in a transaction with the Coordinator Lead notification: route it to this mock, with no Leads.
+    mock.method(pool, 'connect', async () => ({ release() {}, query: (sql, values) => (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())
+      || /FROM users\s+WHERE role=\$1/.test(sql) ? { rows: [] } : pool.query(sql, values)) }));
     assert.equal((await request('/api/events', { method: 'POST', body: { ...submission, expectedAttendance: isDraft ? 0 : 40, isDraft, organiserId: 27, organiser_id: 27, status: 'approved' } })).status, 201);
   });
 }

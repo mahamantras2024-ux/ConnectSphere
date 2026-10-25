@@ -26,7 +26,8 @@ async function getEventRegistrations(req, res) {
     FROM registrations r
     JOIN users attendee ON attendee.id=r.attendee_id
     WHERE r.event_id=$1
-    ORDER BY r.registered_at ASC, r.id ASC`, [eventId]);
+      AND EXISTS (SELECT 1 FROM events e WHERE e.id=r.event_id AND e.organiser_id=$2)
+    ORDER BY r.registered_at ASC, r.id ASC`, [eventId, req.user.id]);
   const registrations = registrationsResult.rows;
   const registered = registrations.filter(registration => registration.status === 'registered');
   const withdrawn = registrations.filter(registration => registration.status === 'withdrawn');
@@ -49,8 +50,16 @@ async function getEventRegistrations(req, res) {
   waitlist.sort((first, second) => new Date(first.registered_at) - new Date(second.registered_at)
     || first.id - second.id);
 
+  // Preserve the existing combined waiting-list summary for callers while adding the coordinator-compatible drawer report.
+  const storedWaitlist = waitlist.filter(registration => registration.status === 'waitlisted');
+  const overflow = waitlist.filter(registration => registration.status === 'registered');
   return res.json({
     event,
+    details: {
+      event, registered, waitlist: storedWaitlist, overflow,
+      headcount: registered.length, waitlist_count: storedWaitlist.length, withdrawal_count: withdrawn.length,
+      venue_capacity: venueCapacity, overflow_count: venueCapacity === null ? null : overflow.length,
+    },
     summary: {
       headcount: registered.length,
       waitlist_count: waitlist.length,
