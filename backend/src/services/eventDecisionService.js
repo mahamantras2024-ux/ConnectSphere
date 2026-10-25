@@ -2,6 +2,7 @@
 const { pool } = require('../config/db');
 const eventDecisionModel = require('../models/eventDecisionModel');
 const notificationService = require('./notificationService');
+const { notifyVenueStaffOfEventStatus } = require('./venueEventStatus');
 const { evaluateDecision, evaluateSafetyReview, needsTechnicalArrangements, resolutionBlocker } = require('./eventDecisionPolicy');
 
 /** Plain-language names of the planning stages a Safety Officer can reopen, used in notifications. */
@@ -62,6 +63,8 @@ async function decideEvent(eventId, coordinatorId, decision, reason) {
     if (blocked) throw failure(409, blocked.message, blocked.code);
     const event = await eventDecisionModel.recordDecision(client, eventId, decision, reason, coordinatorId);
     const stored = await notificationService.insertNotifications(client, [decisionNotification(event, decision, reason)]);
+    // Coordinator approval confirms the event can proceed; venue staff need a separate arrangement notice.
+    if (decision === 'approved') stored.push(...await notifyVenueStaffOfEventStatus(client, event, 'confirmed'));
     return { event, stored };
   });
 }
