@@ -156,6 +156,9 @@ it('AC2 - treats an available calendar window with no quantity as available', ()
 // AC2 - A missing quantity is available only when the window explicitly has Available status.
 it('AC2 - keeps a null-quantity window unavailable when its status is not Available', () => {
   // Arrange: Pending avoids the explicit-available and blocked-status paths.
+  // Freeze only Date: the target remains in the displayed month and async waits keep real timers.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
   const date = getDateOffset(8);
   const item = {
     ...inventory[0],
@@ -189,6 +192,9 @@ it('AC2 - keeps a null-quantity window unavailable when its status is not Availa
 // AC2 - A missing status must not make a window with unknown stock look available.
 it('AC2 - defaults an unspecified status to unavailable when quantity is unknown', () => {
   // Arrange: omitting status exercises the empty-string fallback rather than an explicit status.
+  // Freeze only Date: the target remains in the displayed month and async waits keep real timers.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
   const date = getDateOffset(9);
   const item = {
     ...inventory[0],
