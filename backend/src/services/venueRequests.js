@@ -87,8 +87,9 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason) 
     const request = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
     if (!request) throw reject(404, 'Venue request not found.');
     if (request.status !== 'pending') throw reject(409, 'This request has already been decided.');
-    // An approval can confirm the event's venue arrangements and so make it ready for its safety check.
-    const wasReady = decision === 'approved' && await isReadyForSafetyCheck(client, request.event_id);
+    // Either decision can make the event ready for its safety check: an approval confirms its venue, and rejecting a
+    // still-pending booking can leave an already approved one as the only live arrangement (VENUE_PENDING clears).
+    const wasReady = await isReadyForSafetyCheck(client, request.event_id);
     if (decision === 'approved') {
       const periods = await recordedPeriods(client, venue.id);
       if (hasConflict(request, periods, venue, Date.now(), request.id)) throw reject(409, 'The requested period is no longer available.');
@@ -105,7 +106,7 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason) 
       details: { kind: 'venue_booking_decision', bookingId: request.id, venueId: venue.id, decision,
         decisionBy: userId, decidedAt: decided.updated_at, notes: decisionNotes },
     }]);
-    if (decision === 'approved') safetyNotes = await notifySafetyIfNewlyReady(client, event.id, wasReady);
+    safetyNotes = await notifySafetyIfNewlyReady(client, event.id, wasReady);
     return decided;
   });
   // Safety Officers are emailed only after the decision has committed.

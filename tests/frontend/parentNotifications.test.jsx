@@ -230,6 +230,76 @@ it('NT AC4 - a failed mark-read still opens the related page', async () => {
   await waitFor(() => expect(page()).toBe('/organizer/events/101'));
 });
 
+// Test case (reviewer regression): a mark-read request that never answers must not keep the user from the page (AC4).
+it('NT AC4 - a mark-read request that stalls still opens the related page at once', async () => {
+  // Arrange: the server never answers the mark-read request.
+  api.post.mockImplementation(() => new Promise(() => {}));
+  open('/organizer/dashboard');
+  fireEvent.click(await bell());
+  // Act
+  fireEvent.click(within(screen.getByRole('region', { name: 'Recent notifications' })).getByRole('button', { name: 'Venue booking approved: Gala (new)' }));
+  // Assert: the page opens without waiting, and the read was still requested.
+  await waitFor(() => expect(page()).toBe('/organizer/events/101'));
+  expect(api.post).toHaveBeenCalledWith('/notifications/9/read', {}, 'session');
+});
+
+// ---------- AC1 timing when a refresh stalls (reviewer regression) ----------
+describe('stalled refreshes', () => {
+  // Every timer is fake here (polls and the stalled-read retry), so Testing Library's waits are replaced by flushing the
+  // clock and pending promises explicitly.
+  const flush = (ms = 0) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  const bellLabel = () => screen.getByRole('button', { name: /^Notifications/ }).getAttribute('aria-label');
+  beforeEach(() => { vi.useRealTimers(); vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] }); vi.setSystemTime(NOW); });
+
+  // Test case: The 5-second poll hangs; the 3-second retry still shows the new notification before the 10-second limit, and
+  // the hung read's late (older) answer does not replace it.
+  it('NT AC1 - a change still appears within ten seconds when the next refresh stalls', async () => {
+    // Arrange: the first read finds nothing; the next one hangs; the retry finds the new notification.
+    let releaseStalled;
+    const replies = [{ notifications: [], unreadCount: 0 }, new Promise((resolve) => { releaseStalled = resolve; }), { notifications: [note()], unreadCount: 1 }];
+    inbox = () => replies.shift();
+    open('/organizer/dashboard');
+    await flush(); await flush(); await flush();
+    expect(bellLabel()).toBe('Notifications');
+    // Act / Assert: at 7.999 s the stalled poll (started at 5 s) has not been retried yet; at 8 s the retry shows it.
+    await flush(7999);
+    expect(bellLabel()).toBe('Notifications');
+    await flush(1);
+    expect(bellLabel()).toBe('Notifications, 1 unread');
+    // The hung read finally answers with what it saw at 5 s (nothing); that older answer is ignored.
+    await act(async () => { releaseStalled({ notifications: [], unreadCount: 0 }); });
+    await flush();
+    expect(bellLabel()).toBe('Notifications, 1 unread');
+  });
+
+  // Test case: A late failure of an overtaken read does not report an error over newer data.
+  it('NT AC1 - a late failure from an overtaken refresh is ignored', async () => {
+    let failStalled;
+    const replies = [{ notifications: [], unreadCount: 0 }, new Promise((_, reject) => { failStalled = reject; }), { notifications: [note()], unreadCount: 1 }];
+    inbox = () => replies.shift();
+    open('/organizer/dashboard');
+    await flush(); await flush(); await flush();
+    await flush(8000);
+    expect(bellLabel()).toBe('Notifications, 1 unread');
+    await act(async () => { failStalled(new Error('Timed out')); });
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: /^Notifications/ }));
+    expect(within(screen.getByRole('region', { name: 'Recent notifications' })).queryByText(/could not be/)).toBeNull();
+  });
+
+  // Test case: A hung server is retried, but no more than three reads are left open at once.
+  it('NT AC1 - a hung server never has more than three notification reads open', async () => {
+    let first = true;
+    inbox = () => (first ? ((first = false), { notifications: [], unreadCount: 0 }) : new Promise(() => {}));
+    open('/organizer/dashboard');
+    await flush(); await flush(); await flush();
+    const before = notificationCalls();
+    // Polls at 5, 10, 15 and 20 s and retries every 3 s would add far more; only three stay open.
+    await flush(20000);
+    expect(notificationCalls() - before).toBe(3);
+  });
+});
+
 // Test case: Only the pressed notification changes, and a refresh that already showed it read does not lower the count twice.
 it('NT AC4 - marking one notification read leaves the others unread and never double-counts', async () => {
   vi.useRealTimers();

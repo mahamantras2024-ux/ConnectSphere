@@ -6,6 +6,8 @@ import useLiveResource from '../hooks/useLiveResource';
 
 // null outside any provider, so a component used on its own can tell it needs its own list (NotificationsBoundary).
 const NotificationsContext = createContext(null);
+/** How long a notification read may stay unanswered before another one is started (see LiveNotifications). */
+export const NOTIFICATION_RETRY_MS = 3000;
 // No notifications means nothing can be pressed, so the empty list needs no markRead.
 const EMPTY = { notifications: [], unreadCount: 0, loading: false, error: '', hasData: false };
 
@@ -14,7 +16,9 @@ const EMPTY = { notifications: [], unreadCount: 0, loading: false, error: '', ha
  * reaches any open page within the ten-second AC1 limit. The bell and the dashboard panels share this one request.
  */
 function LiveNotifications({ token, enabled, children }) {
-  const { data, loading, error, updateData } = useLiveResource(enabled ? '/notifications' : null, token);
+  // A read that has not answered within three seconds is retried, so even when a poll stalls a change is shown within the
+  // ten-second limit: the next poll starts within five seconds and its retry within eight.
+  const { data, loading, error, updateData } = useLiveResource(enabled ? '/notifications' : null, token, { retryAfterMs: NOTIFICATION_RETRY_MS });
 
   // Marks one notification read. The local update invalidates older reads, so a delayed refresh cannot bring back
   // its unread state, and the unread count only drops if it was still unread.

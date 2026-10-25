@@ -8,7 +8,8 @@ import { OPENED_KEY } from '../notifications/useNotificationOpened';
 
 /**
  * A preview: the title, a one-line summary (AC2) and when the update happened, relative with the exact time (AC3).
- * Pressing it marks it read and opens the related page (AC4); a failed mark-read still opens the page.
+ * Pressing it opens the related page straight away and marks it read in the background (AC4), so a slow, stalled or
+ * failed mark-read never delays or blocks the page.
  * @param {{ notification: object, onOpen?: () => void, details?: boolean, children?: import('react').ReactNode }} props
  *   `onOpen` lets a dropdown close itself; `details` adds the full message under an expandable "Details" when the preview
  *   shortens it (dashboard panels); `children` are extra controls shown beside the preview (e.g. Mark as read).
@@ -23,9 +24,11 @@ export default function NotificationItem({ notification, onOpen, details = false
   // The full message is offered only when the preview leaves something out (extra lines or a shortened sentence).
   const hasMore = details && summary !== notification.message.trim();
 
-  async function open() {
+  function open() {
     onOpen?.();
-    if (unread) await markRead(notification).catch(() => {});
+    // Marking read runs in the background: a slow, stalled or failed request must never keep the organiser off the page
+    // the notification is about (AC4). The shared list updates when the request completes.
+    if (unread) markRead(notification).catch(() => {});
     // The timestamp lets the target page re-read its data even when it is the page already open.
     navigate(notificationTarget(notification, user.role), { state: { [OPENED_KEY]: Date.now() } });
   }

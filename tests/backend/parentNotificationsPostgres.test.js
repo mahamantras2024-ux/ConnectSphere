@@ -99,6 +99,18 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       assert.deepEqual(await notesOf('sid', 'safety_check_ready'), ['Ready for safety check: Gala', 'Ready for safety check: Gala', 'Ready for safety check: Talk']);
       assert.ok(emails.some(([to, subject]) => to === 'sid@example.test' && subject === 'Ready for safety check: Talk'));
 
+      // Reviewer regression: Expo has one approved and one still-pending booking, so it waits on Venue Staff. Rejecting the
+      // pending one leaves the approved booking as its only arrangement; Expo is now ready, and Safety Officers are told.
+      const expo = await as('olivia', 'POST', '/events', { name: 'Expo', proposedDate: '2030-10-17', proposedStartTime: '10:00', proposedEndTime: '12:00', expectedAttendance: 20, isDraft: false });
+      assert.equal((await as('lee', 'PUT', `/events/${expo.body.event.id}/assignment`, { coordinatorId: id.chris, expectedCoordinatorId: null })).status, 200);
+      const expoMorning = await as('chris', 'POST', '/venues/1/requests', { eventId: expo.body.event.id, startDatetime: '2030-10-17T10:00:00+08:00', endDatetime: '2030-10-17T12:00:00+08:00' });
+      const expoEvening = await as('chris', 'POST', '/venues/1/requests', { eventId: expo.body.event.id, startDatetime: '2030-10-17T18:00:00+08:00', endDatetime: '2030-10-17T19:00:00+08:00' });
+      assert.equal((await as('vera', 'PUT', `/venues/1/requests/${expoMorning.body.request.id}/decision`, { decision: 'approved' })).status, 200);
+      assert.equal((await notesOf('sam', 'safety_check_ready')).includes('Ready for safety check: Expo'), false);
+      assert.equal((await as('vera', 'PUT', `/venues/1/requests/${expoEvening.body.request.id}/decision`, { decision: 'rejected', reason: 'Hall closed' })).status, 200);
+      assert.deepEqual((await notesOf('sam', 'safety_check_ready')).filter((title) => title.endsWith('Expo')), ['Ready for safety check: Expo']);
+      assert.ok(emails.some(([to, subject]) => to === 'sam@example.test' && subject === 'Ready for safety check: Expo'));
+
       // ---------- Every migration re-runs with the new types (and older ones) stored ----------
       for (const file of runnerOrder) await client.query(sqlFile(file));
       await client.query("INSERT INTO notifications (user_id, type, title, message) VALUES ($1, 'safety_check_ready', 't', 'm'), ($1, 'event_awaiting_assignment', 't', 'm')", [id.sam]);
