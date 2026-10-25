@@ -1,8 +1,9 @@
 // File: Lets an Event Coordinator review pending change requests field by field and approve (apply) or reject them.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import useNotificationOpened from '../../notifications/useNotificationOpened';
 
 /** Formats a stored or requested value for the comparison table without inventing data for empty values. */
 export function formatChangeValue(value) {
@@ -45,6 +46,10 @@ export default function ChangeRequestInbox() {
   const [reason, setReason] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  // Opening a new-amendment notification lands here: the inbox re-reads (the request may have arrived after this page
+  // loaded) and scrolls into view so the request and its Approve/Reject controls are what the coordinator sees.
+  const notificationOpened = useNotificationOpened();
+  const section = useRef(null);
 
   useEffect(() => {
     // Reloads after a 404/409 decision (reloadKey). Decisions are only possible once a load has finished,
@@ -54,7 +59,12 @@ export default function ChangeRequestInbox() {
     }).catch((err) => {
       setLoadError(err.message || 'Unable to load change requests.');
     }).finally(() => setLoading(false));
-  }, [token, reloadKey]);
+  }, [token, reloadKey, notificationOpened]);
+
+  // Once the list has loaded after a notification was opened, bring the inbox into view.
+  useEffect(() => {
+    if (notificationOpened && !loading) section.current.scrollIntoView({ block: 'start' });
+  }, [notificationOpened, loading]);
 
   // Sends the decision; buttons stay disabled while `deciding` is set, so one click sends one decision.
   async function decide(request, decision) {
@@ -75,7 +85,7 @@ export default function ChangeRequestInbox() {
   }
 
   return (
-    <section className="change-request-inbox" aria-labelledby="change-requests-title">
+    <section ref={section} className="change-request-inbox" aria-labelledby="change-requests-title">
       <div className="section-heading"><h2 id="change-requests-title">Amendment requests</h2>{!loading && <span className="badge">{requests.length} pending</span>}</div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}

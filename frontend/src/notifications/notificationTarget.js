@@ -12,6 +12,8 @@ const EVENT_PAGES = {
 /**
  * The page where a notification's update happened, for the signed-in role.
  * - A new request to assign opens the Coordinator Lead's assignment queue.
+ * - A new amendment (change) request opens the coordinator's dashboard, whose Amendment requests inbox is where it is
+ *   approved or rejected (the event page has no decision controls).
  * - A safety-check notification opens the Safety Officer's queue.
  * - Otherwise the related event's page for that role, or the role's dashboard when it has no event page or no event.
  * @param {{ type: string, event_id: number|null }} notification stored notification.
@@ -20,6 +22,7 @@ const EVENT_PAGES = {
  */
 export function notificationTarget(notification, role) {
   if (notification.type === 'event_awaiting_assignment') return '/coordinator-lead/dashboard';
+  if (notification.type === 'change_request_submitted' && role === 'event_coordinator') return '/coordinator/dashboard';
   if (role === 'safety_officer') return '/safety/dashboard';
   const eventPage = EVENT_PAGES[role];
   return notification.event_id != null && eventPage ? eventPage(notification.event_id) : getDashboardRoute(role);
