@@ -18,7 +18,7 @@ test('AC1 AC2 AC3 AC4 - returns only safe preparation details with Pending, Appr
     queries.push({ sql, values });
     return { rows: [
       { booking_id: 1, event_id: 11, event_name: 'Pending workshop', booking_status: 'pending', event_status: 'planning', venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z', expected_attendance: 20, room_layout: 'Seminar', accessibility: ['Ramp'], internal_notes: 'Do not disclose' },
-      { booking_id: 2, event_id: 12, event_name: 'Approved workshop', booking_status: 'approved', event_status: 'confirmed', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
+      { booking_id: 2, event_id: 12, event_name: 'Approved workshop', booking_status: 'approved', event_status: 'approved', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
       { booking_id: 3, event_id: 13, event_name: 'Rejected workshop', booking_status: 'rejected', event_status: 'planning', venue_name: 'Hall A', start_datetime: '2031-10-22T02:00:00Z', end_datetime: '2031-10-22T03:00:00Z', expected_attendance: 40, room_layout: null, accessibility: null },
       { booking_id: 4, event_id: 14, event_name: 'Cancelled workshop', booking_status: 'approved', event_status: 'cancelled', venue_name: 'Hall A', start_datetime: '2031-10-23T02:00:00Z', end_datetime: '2031-10-23T03:00:00Z', expected_attendance: 50, room_layout: null, accessibility: null },
     ] };
@@ -32,7 +32,7 @@ test('AC1 AC2 AC3 AC4 - returns only safe preparation details with Pending, Appr
     ['Pending workshop', 'pending'], ['Approved workshop', 'approved'], ['Rejected workshop', 'rejected'], ['Cancelled workshop', 'approved'],
   ]);
   assert.deepEqual(events[1], { bookingId: 2, eventId: 12, name: 'Approved workshop', status: 'approved', venueName: 'Hall A', startDatetime: '2031-10-21T02:00:00Z', endDatetime: '2031-10-21T03:00:00Z', expectedAttendance: 30, roomLayout: 'Theatre', accessibility: [], eventStatus: 'confirmed' });
-  assert.match(queries[0].sql, /venue_staff_assignments/);
+  assert.match(queries[0].sql, /WHERE \(assignment\.staff_user_id IS NOT NULL\s+OR booking\.decision_by=\$1\)/);
   assert.deepEqual(queries[0].values, [7]);
 });
 
@@ -58,7 +58,7 @@ test('AC1 AC2 - includes an approved booking decided by the viewing Venue Staff 
     executed = { sql, values };
     return { rows: [{
       booking_id: 20, event_id: 44, event_name: 'Graduation party', booking_status: 'approved',
-      event_status: 'confirmed',
+      event_status: 'approved',
       venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z',
       expected_attendance: 100, room_layout: 'Theatre', accessibility: [],
     }] };
@@ -136,6 +136,31 @@ test('AC7 - persists the opt-in preference and evaluates the daily boundary just
   assert.equal(isDailyReminderDue('2030-09-30T23:59:59Z', now), true);
   assert.equal(isReminderDue('2031-09-29T00:00:01Z', 3, now), false);
   assert.equal(isReminderDue('2031-09-29T00:00:00Z', 3, now), true);
+});
+
+test('AC5 AC7 - rejects unsupported reminder frequencies without writing a preference', async () => {
+  // Arrange: invalid values below, between and above the supported 1/3/7-day choices must never reach PostgreSQL.
+  let queryCount = 0;
+  const db = { query: async () => { queryCount += 1; return { rows: [] }; } };
+
+  // Act / Assert: the lower boundary, unsupported middle value and upper boundary are all refused.
+  for (const frequency of [0, 2, 8]) {
+    await assert.rejects(updateVenueReminderPreference(db, 7, true, frequency), { status: 400 });
+  }
+  assert.equal(queryCount, 0);
+});
+
+test('AC7 - evaluates every supported reminder cadence at just below, exactly at and just above its boundary', () => {
+  // Arrange: use one stable clock so each supported cadence has a precise threshold.
+  const now = Date.parse('2031-10-08T00:00:00Z');
+
+  // Act / Assert: no cadence may notify early, and each must notify at and after its boundary.
+  for (const days of [1, 3, 7]) {
+    const boundary = now - days * 24 * 60 * 60 * 1000;
+    assert.equal(isReminderDue(new Date(boundary + 1).toISOString(), days, now), false);
+    assert.equal(isReminderDue(new Date(boundary).toISOString(), days, now), true);
+    assert.equal(isReminderDue(new Date(boundary - 1).toISOString(), days, now), true);
+  }
 });
 
 test('AC7 - sends one due daily pending-request reminder and records its send time', async () => {

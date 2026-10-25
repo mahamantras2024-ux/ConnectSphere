@@ -11,6 +11,12 @@ function staffStatus(status) {
   return ['pending', 'approved', 'rejected', 'cancelled'].includes(status) ? status : 'pending';
 }
 
+/** Converts the coordinator's persisted approval into the venue-facing confirmed lifecycle stage. */
+function eventLifecycleStatus(status) {
+  if (status === 'approved') return 'confirmed';
+  return EVENT_STATUSES.includes(status) ? status : 'planning';
+}
+
 /** Reads current event lifecycle and preparation details for assigned venues and staff decisions. */
 async function listRelevantVenueEvents(db, staffUserId) {
   const result = await db.query(`SELECT booking.id AS booking_id, event.id AS event_id, event.name AS event_name,
@@ -22,14 +28,14 @@ async function listRelevantVenueEvents(db, staffUserId) {
       ON assignment.venue_id=booking.venue_id AND assignment.staff_user_id=$1
     JOIN events event ON event.id=booking.event_id
     JOIN venues venue ON venue.id=booking.venue_id
-    WHERE assignment.staff_user_id IS NOT NULL
-       OR booking.decision_by=$1
+    WHERE (assignment.staff_user_id IS NOT NULL
+       OR booking.decision_by=$1)
     ORDER BY booking.updated_at DESC, booking.id DESC`, [staffUserId]);
   // Build a deliberate allow-list so later event columns cannot leak into the staff preparation workspace.
   return result.rows.map(row => ({ bookingId: row.booking_id, eventId: row.event_id, name: row.event_name,
     status: staffStatus(row.booking_status), venueName: row.venue_name, startDatetime: row.start_datetime,
     endDatetime: row.end_datetime, expectedAttendance: row.expected_attendance, roomLayout: row.room_layout,
-    accessibility: row.accessibility || [], eventStatus: EVENT_STATUSES.includes(row.event_status) ? row.event_status : 'planning' }));
+    accessibility: row.accessibility || [], eventStatus: eventLifecycleStatus(row.event_status) }));
 }
 
 /** Saves an explicit opt-in and cadence; invalid cadence input is rejected instead of silently changing behavior. */
@@ -69,7 +75,7 @@ async function notifyVenueStaffOfEventStatus(db, event, eventStatus = event.stat
     FROM venue_staff_assignments assignment JOIN venue_bookings booking ON booking.venue_id=assignment.venue_id
     WHERE booking.event_id=$1 ORDER BY assignment.staff_user_id`, [event.id]);
   if (!recipients.rows.length) return [];
-  const status = EVENT_STATUSES.includes(eventStatus) ? eventStatus : 'planning';
+  const status = eventLifecycleStatus(eventStatus);
   const cancellation = status === 'cancelled';
   const message = cancellation
     ? `${event.name} has been cancelled and will no longer proceed. Handle its venue reservation according to the cancellation rules.`
