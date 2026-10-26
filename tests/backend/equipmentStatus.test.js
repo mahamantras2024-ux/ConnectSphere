@@ -34,6 +34,7 @@ function mockReads({ user = coordinator, found = request101, reviews = [] } = {}
     queries.push({ sql, values });
     if (sql.includes('WHERE e.id = $1 AND e.coordinator_id = $2')) return { rows: found ? [found] : [] };
     if (sql.includes('FROM event_equipment_reviews r LEFT JOIN users reviewer')) return { rows: reviews };
+    if (sql.includes('FROM equipment_reservation_unavailability impact')) return { rows: [] };
     throw new Error(`Unexpected query: ${sql}`);
   });
   return queries;
@@ -101,6 +102,7 @@ test('ES AC1/AC3 - the assigned coordinator sees the request status, each item\'
       { key: 'equipment:0', label: 'Microphone', quantity: 4, status: 'affected', availableQuantity: 2 },
       { key: 'technical_support', label: 'On-site technical support', quantity: null, status: 'available', availableQuantity: null },
     ],
+    replacementSuggestions: [],
     history: [{ version: 1, status: 'confirmed', outcome: 'fully_fulfillable', reason: null, reviewedAt: '2030-01-01T03:00:00.000Z', reviewedBy: 'Taylor', affectedCount: 0 }],
   });
   assert.deepEqual(queries[0].values, [101, 30]);
