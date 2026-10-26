@@ -158,7 +158,7 @@ it('OC AC2 - the coordinator resolves a pending clarification with its outcome a
   const older = { ...pendingClarification, id: 600, status: 'responded', message: 'Which hall?', organiser_response: 'Hall A.', responded_at: '2030-01-01T01:00:00.000Z' };
   event = { ...baseEvent, clarification_outstanding: true, clarification_requests: [pendingClarification, older] };
   api.post.mockResolvedValue({ message: 'Clarification marked as resolved.', clarificationRequest: { ...pendingClarification, status: 'resolved',
-    outcome: 'Agreed 90 by phone.', coordinator_comments: 'Call notes in file.', resolved_at: '2030-01-02T02:00:00.000Z', resolved_by_name: 'Chris' } });
+    resolution_outcome: 'Agreed 90 by phone.', resolution_comments: 'Call notes in file.', resolved_at: '2030-01-02T02:00:00.000Z', resolved_by_name: 'Chris' } });
   await openActivity();
   expect(screen.getByText('Clarification outstanding — planning is waiting for the Event Organiser.')).toBeTruthy();
   fireEvent.click(within(clarificationItems()[0]).getByRole('button', { name: 'Mark resolved' }));
@@ -166,8 +166,8 @@ it('OC AC2 - the coordinator resolves a pending clarification with its outcome a
   fireEvent.click(within(form).getByRole('button', { name: 'Confirm resolved' }));
   expect(within(form).getByRole('alert').textContent).toBe('Record the outcome: the organiser has not responded.');
   expect(api.post).not.toHaveBeenCalled();
-  fireEvent.change(within(form).getByLabelText('Outcome (required)'), { target: { value: 'Agreed 90 by phone.' } });
-  fireEvent.change(within(form).getByLabelText('Comments (optional)'), { target: { value: 'Call notes in file.' } });
+  fireEvent.change(within(form).getByLabelText('Resolution outcome (required)'), { target: { value: 'Agreed 90 by phone.' } });
+  fireEvent.change(within(form).getByLabelText('Resolution comments (optional)'), { target: { value: 'Call notes in file.' } });
   fireEvent.click(within(form).getByRole('button', { name: 'Confirm resolved' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/101/clarifications/601/resolve',
     { outcome: 'Agreed 90 by phone.', comments: 'Call notes in file.' }, 'session'));
@@ -191,13 +191,25 @@ it('OC AC2 - an answered clarification is resolved without an outcome; failures 
   await openActivity();
   fireEvent.click(screen.getByRole('button', { name: 'Mark resolved' }));
   const form = screen.getByRole('form', { name: 'Resolve clarification 601' });
-  expect(within(form).getByLabelText('Outcome (optional)')).toBeTruthy();
+  expect(within(form).getByLabelText('Resolution outcome (optional)')).toBeTruthy();
   fireEvent.click(within(form).getByRole('button', { name: 'Confirm resolved' }));
   expect((await within(form).findByRole('alert')).textContent).toBe('This clarification is already resolved.');
   fireEvent.click(within(form).getByRole('button', { name: 'Confirm resolved' }));
   await waitFor(() => expect(within(form).getByRole('alert').textContent).toBe('Unable to resolve the clarification.'));
   fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }));
   expect(screen.getByRole('button', { name: 'Mark resolved' })).toBeTruthy();
+});
+// Test case (reviewer AC2): the outcome and comments recorded earlier stay visible beside the resolution added later.
+it('OC AC2 - the earlier outcome and comments stay beside the resolution in the history', async () => {
+  event = { ...baseEvent, clarification_requests: [{ ...pendingClarification, source: 'offline', status: 'resolved', organiser_response: 'About 90.',
+    responded_at: '2030-01-01T02:00:00.000Z', outcome: 'Attendance to become 90.', coordinator_comments: 'Phone call.',
+    resolution_outcome: 'Final: 90 guests.', resolution_comments: 'Confirmed in writing.', resolved_at: '2030-01-02T02:00:00.000Z', resolved_by_name: 'Chris' }] };
+  await openActivity();
+  const [item] = clarificationItems();
+  const lines = within(item).getAllByText((_, node) => node.tagName === 'P' && /^(Outcome|Coordinator comments|Resolution outcome|Resolution comments):/.test(node.textContent))
+    .map((node) => node.textContent);
+  expect(lines).toEqual(['Outcome: Attendance to become 90.', 'Coordinator comments: Phone call.', 'Resolution outcome: Final: 90 guests.',
+    'Resolution comments: Confirmed in writing.']);
 });
 // Test case: The organiser sees resolutions but cannot resolve.
 it('OC AC2 - the organiser sees the resolution but has no resolve control', async () => {
@@ -342,10 +354,30 @@ it.each([['Re-confirm booking', 'confirmed', 'approved', 'Re-confirmed'], ['Reje
     expect(await within(inbox).findByText('Re-check required')).toBeTruthy();
     fireEvent.click(within(inbox).getByRole('button', { name: 'Review Gala at Hall A' }));
     expect(screen.getByText('150 expected guests exceed the venue capacity of 100.')).toBeTruthy();
+    // A booking without a requirements snapshot adds no comparison line.
+    expect(screen.queryByText('Originally requested:')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: button }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/5/requests/9/recheck', { decision, reason: '' }, 'session'));
     expect(await screen.findByText(new RegExp(`^${outcome}: Gala at Hall A\\.`))).toBeTruthy();
   });
+// Test case (reviewer AC5): a flagged booking lists the amended requirements, with what was first requested for comparison.
+it('OC AC5 - a flagged booking shows the amended requirements and what was originally requested', async () => {
+  user = venueStaff;
+  const amended = { ...flaggedBooking, room_layout_preference: 'Banquet', accessibility_requirements: ['Ramp'],
+    original_requirements: { capacity: 60, layout: 'Theatre', accessibility: [] } };
+  const base = api.get.getMockImplementation();
+  api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [amended, { ...amended, id: 10, event_name: 'Fair',
+    original_requirements: { accessibility: ['Lift'] } }] } : base(path)));
+  open('/venue/dashboard');
+  fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
+  const facts = (term) => screen.getByText(term).nextSibling.textContent;
+  expect([facts('Expected attendance'), facts('Room layout'), facts('Accessibility')]).toEqual(['150', 'Banquet', 'Ramp']);
+  expect(screen.getByText((_, node) => node.tagName === 'P' && node.textContent === 'Originally requested: 60 guests; Theatre layout')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+  // Only what the snapshot recorded is listed.
+  fireEvent.click(await screen.findByRole('button', { name: 'Review Fair at Hall A' }));
+  expect(screen.getByText((_, node) => node.tagName === 'P' && node.textContent === 'Originally requested: accessibility: Lift')).toBeTruthy();
+});
 // Test case: An ordinary pending request is still approved through the normal decision.
 it('OC AC5 - an unflagged pending request still uses the normal approval', async () => {
   user = venueStaff;
@@ -361,16 +393,16 @@ it('OC AC5 - an unflagged pending request still uses the normal approval', async
   expect(await screen.findByText(/^Approved: Gala at Hall A\./)).toBeTruthy();
 });
 // Test case: When an approval reopens the safety check, the coordinator's confirmation names the Safety Officers told.
-it('OC AC4 - approving a change that reopens the safety check reports the Safety Officers notified', async () => {
+it('OC AC4 - approving a change reports the Safety Officers and registered attendees notified', async () => {
   const change = { id: 501, event_id: 101, event_name: 'Gala', organiser_name: 'Olivia', explanation: 'More guests', requested_changes: { expectedAttendance: 90 },
     changes: [{ field: 'expectedAttendance', label: 'Expected attendance', current: 60, requested: 90 }], arrangements: [] };
   const base = api.get.getMockImplementation();
   api.get.mockImplementation(async (path) => (path === '/events/change-requests' ? { changeRequests: [change] } : base(path)));
   api.post.mockResolvedValue({ message: 'Change approved and applied. Relevant staff have been notified.',
-    notified: { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [50, 51] } });
+    notified: { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [50, 51], attendees: [70, 71, 72] } });
   open('/coordinator/dashboard');
   fireEvent.click(await screen.findByRole('button', { name: 'Approve and apply' }));
-  expect(await screen.findByText('Change approved and applied. Relevant staff have been notified. Notified: the organiser, Safety Officers (2).')).toBeTruthy();
+  expect(await screen.findByText('Change approved and applied. Relevant staff have been notified. Notified: the organiser, Safety Officers (2), registered attendees (3).')).toBeTruthy();
 });
 
 // ---------- AC6: registration and withdrawal deadlines ----------

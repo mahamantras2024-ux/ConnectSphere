@@ -44,8 +44,11 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
         expected_attendance, room_layout_preference, equipment_items, equipment_confirmed_at, withdrawal_deadline, is_draft, status)
         VALUES ($1, $2, 'Gala', '2030-10-15', '18:00', '20:00', 60, 'Theatre', '[{"item":"Projector","quantity":1}]', now(),
           '2030-10-14T10:00:00Z', false, 'approved')`, [id.olivia, id.chris]);
-      await client.query(`INSERT INTO venue_bookings (event_id, venue_id, requested_by, start_datetime, end_datetime, status, decision_by)
-        VALUES (1, 1, $1, '2030-10-15T10:00:00Z', '2030-10-15T12:00:00Z', 'approved', $2)`, [id.chris, id.vera]);
+      // The booking was confirmed against the original requirements (60 guests, Theatre).
+      await client.query(`INSERT INTO venue_bookings (event_id, venue_id, requested_by, start_datetime, end_datetime, status, decision_by, requirements)
+        VALUES (1, 1, $1, '2030-10-15T10:00:00Z', '2030-10-15T12:00:00Z', 'approved', $2, '{"capacity":60,"layout":"Theatre","accessibility":[]}')`, [id.chris, id.vera]);
+      // Ann is registered for the Gala.
+      await client.query("INSERT INTO registrations (event_id, attendee_id, status) VALUES (1, $1, 'registered')", [id.ann]);
       await client.query("INSERT INTO event_safety_checks (event_id, safety_officer_id, outcome, checked_at) VALUES (1, $1, 'approved', now() - interval '1 day')", [id.sam]);
       await client.query('INSERT INTO event_technical_support_assignments (event_id, staff_id) VALUES (1, $1)', [id.tess]);
 
@@ -79,11 +82,14 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       const resolved = await as('chris', 'POST', `/events/1/clarifications/${clarificationId}/resolve`, { comments: 'Confirmed in writing.' });
       assert.equal(resolved.status, 200);
       assert.equal((await as('chris', 'POST', `/events/1/clarifications/${clarificationId}/resolve`, {})).status, 409);
-      const [row] = (await client.query('SELECT status, message, organiser_response, outcome, coordinator_comments, resolved_by FROM event_clarification_requests')).rows;
+      // The comment recorded earlier ("Phone call.") is kept; the resolution comment is stored beside it.
+      const [row] = (await client.query(`SELECT status, message, organiser_response, outcome, coordinator_comments, resolution_outcome,
+        resolution_comments, resolved_by FROM event_clarification_requests`)).rows;
       assert.deepEqual(row, { status: 'resolved', message: 'How many guests now?', organiser_response: 'About 90.', outcome: 'Attendance to become 90.',
-        coordinator_comments: 'Confirmed in writing.', resolved_by: id.chris });
+        coordinator_comments: 'Phone call.', resolution_outcome: null, resolution_comments: 'Confirmed in writing.', resolved_by: id.chris });
       const [shown] = (await as('olivia', 'GET', '/events/1')).body.event.clarification_requests;
-      assert.deepEqual([shown.status, shown.source, shown.resolved_by_name], ['resolved', 'offline', 'chris']);
+      assert.deepEqual([shown.status, shown.source, shown.coordinator_comments, shown.resolution_comments, shown.resolved_by_name],
+        ['resolved', 'offline', 'Phone call.', 'Confirmed in writing.', 'chris']);
 
       // ---------- AC3-AC5: the coordinator applies the agreed amendment ----------
       const applied = await as('chris', 'POST', '/events/1/agreed-amendments', { changes: { expectedAttendance: 90 },
@@ -105,13 +111,19 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       }
       assert.equal((await as('otto', 'GET', '/events/1/amendment-requests')).status, 404);
       assert.equal((await as('ann', 'GET', '/events/1/amendment-requests')).status, 403);
-      // AC4: the organiser, the booking's Venue Staff, the assigned Technical Support and Safety Officers - never attendees.
+      // AC4: the organiser, the booking's Venue Staff, the assigned Technical Support and Safety Officers. Ann is not told:
+      // the expected attendance is planning information attendees never see.
       const told = await notes();
       assert.deepEqual(told.map((note) => [note.user_id, note.type]), [[id.olivia, 'change_request_approved'], [id.vera, 'event_details_changed'],
         [id.tess, 'event_details_changed'], [id.sam, 'event_details_changed']]);
       assert.match(told[0].message, /^The Event Coordinator applied the amendment agreed with you to Gala\.\nExpected attendance: 60 → 90\nWhat was agreed: Agreed by phone\./);
       assert.match(told[1].message, /Venue booking at Hall A must be re-confirmed by Venue Staff[\s\S]*A new operational safety check is needed\./);
       assert.deepEqual(emails.map(([to]) => to), ['olivia@example.test', 'vera@example.test', 'tess@example.test', 'sam@example.test']);
+
+      // ---------- AC5: Venue Staff see the amended requirements, not the booking's outdated snapshot ----------
+      const [flaggedListing] = (await as('vera', 'GET', '/venues/requests/pending')).body.requests;
+      assert.deepEqual([flaggedListing.expected_attendance, flaggedListing.room_layout_preference, flaggedListing.original_requirements.capacity],
+        [90, 'Theatre', 60]);
 
       // ---------- AC5: the event is ready again only after every reopened check is done ----------
       const blocker = async () => evaluateSafetyReview({ ...await loadDecisionContext(client, 1), now: Date.now() })?.code ?? null;
@@ -137,6 +149,11 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       assert.deepEqual(inbox.changes.map((change) => change.label), ['Withdrawal deadline']);
       assert.equal((await as('chris', 'POST', `/events/change-requests/${inbox.id}/decision`, { decision: 'approved' })).status, 200);
       assert.equal((await client.query('SELECT withdrawal_deadline::text FROM events WHERE id = 1')).rows[0].withdrawal_deadline.slice(0, 16), '2030-10-13 04:00');
+      // AC4: an earlier withdrawal deadline matters to Ann, who is told what changed (and emailed after commit).
+      const [annNote] = (await client.query("SELECT title, message FROM notifications WHERE user_id = $1", [id.ann])).rows;
+      assert.deepEqual(annNote, { title: 'Event updated: Gala',
+        message: 'Gala has been updated.\nWithdrawal deadline: 14 Oct 2030, 6:00 pm (SGT) → 13 Oct 2030, 12:00 pm (SGT)\nPlease check the event details in ConnectSphere.' });
+      assert.ok(emails.some(([to, subject]) => to === 'ann@example.test' && subject === 'Event updated: Gala'));
       // A deadline after the event starts is refused.
       const late = await as('olivia', 'POST', '/events/1/amendment-requests', { changes: { registrationDeadline: '2030-10-15T18:01' }, explanation: 'Late.' });
       assert.equal(late.status, 400);
@@ -146,6 +163,9 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       await assert.rejects(client.query(`INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message, source)
         VALUES (1, $1, $2, '["name"]', 'x', 'offline')`, [id.chris, id.olivia]), { code: '23514' });
       await assert.rejects(client.query("UPDATE event_clarification_requests SET resolved_by = NULL"), { code: '23514' });
+      // Resolution details belong only to a resolved clarification.
+      await assert.rejects(client.query(`INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message, resolution_comments)
+        VALUES (1, $1, $2, '["name"]', 'x', 'early')`, [id.chris, id.olivia]), { code: '23514' });
       await assert.rejects(client.query(`INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes, source, status)
         VALUES (1, $1, $2, '{}', 'coordinator_agreed', 'pending')`, [id.olivia, id.chris]), { code: '23514' });
       await client.query(sqlFile('migrations/020-clarifications-and-amendment-history.sql'));

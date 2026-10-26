@@ -47,7 +47,7 @@ function mockAuth(user = coordinator) {
 // `updatedEvent` is the event row the database returns after applying the approved changes (literal per scenario).
 function mockTransaction({ lockedRequest = pendingRequest, bookings = [booking], roleMembers = { venue_staff: [41, 42], technical_support: [61] },
   failNotifications = false, updatedEvent = { ...event, expected_attendance: 150, proposed_end_time: '12:30:00' }, readiness = [],
-  safetyChecked = false, venueAssignments = {}, technicalAssignments = [] } = {}) {
+  safetyChecked = false, venueAssignments = {}, technicalAssignments = [], attendees = [] } = {}) {
   const statements = [];
   const client = {
     released: false,
@@ -67,6 +67,8 @@ function mockTransaction({ lockedRequest = pendingRequest, bookings = [booking],
       if (sql.includes('UPDATE event_change_requests SET applied_changes')) return { rows: [] };
       if (sql.includes('FROM venue_staff_assignments')) return { rows: (venueAssignments[values[0]] || []).map((id) => ({ staff_user_id: id })) };
       if (sql.includes('FROM event_technical_support_assignments')) return { rows: technicalAssignments.map((id) => ({ staff_id: id })) };
+      // Registered and waitlisted attendees of the event (Record Offline Clarifications AC4).
+      if (sql.includes('FROM registrations')) return { rows: attendees.map((id) => ({ attendee_id: id })) };
       if (sql.includes('UPDATE events SET')) return { rows: [{ event: updatedEvent }] };
       if (sql.includes('FROM venue_bookings vb JOIN venues')) return { rows: bookings };
       if (sql.includes('UNION ALL')) return { rows: [] };
@@ -210,7 +212,7 @@ test('CR AC3 - approving applies the exact changes and notifies the organiser, t
   // Assert: response
   assert.equal(result.status, 200);
   assert.equal(result.body.message, 'Change approved and applied. Relevant staff have been notified.');
-  assert.deepEqual(result.body.notified, { organiser: [12], venueStaff: [41], technicalSupport: [61], safetyOfficers: [] });
+  assert.deepEqual(result.body.notified, { organiser: [12], venueStaff: [41], technicalSupport: [61], safetyOfficers: [], attendees: [] });
   assert.deepEqual(result.body.changes.map((change) => [change.field, change.current, change.requested]),
     [['proposedEndTime', '12:00:00', '12:30:00'], ['expectedAttendance', 80, 150]]);
   assert.deepEqual(result.body.arrangements[0].reasons.at(-1), '150 expected guests exceed the venue capacity of 100.');
@@ -243,6 +245,18 @@ test('CR AC3 - approving applies the exact changes and notifies the organiser, t
   assert.equal(tx.client.released, true);
 });
 
+// Test case (Record Offline Clarifications AC4): approving an organiser's later end time also tells the event's attendees.
+test('OC AC4 - approving a time change notifies the registered and waitlisted attendees', async () => {
+  mockAuth();
+  const tx = mockTransaction({ attendees: [80, 81] });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+  const result = await decide({ decision: 'approved' });
+  assert.deepEqual(result.body.notified.attendees, [80, 81]);
+  const [userIds, , , , titles, messages] = tx.find('INSERT INTO notifications')[0].values;
+  assert.deepEqual([userIds.slice(-2), titles.slice(-2)], [[80, 81], ['Event updated: Workshop', 'Event updated: Workshop']]);
+  // Only the visible change is announced: the new attendance figure is planning information.
+  assert.equal(messages.at(-1), 'Workshop has been updated.\nEnd time: 12:00:00 → 12:30:00\nPlease check the event details in ConnectSphere.');
+});
 // Test case: Approves a rename with a note on an event without equipment needs or affected bookings; only the organiser is told.
 test('CR AC3 - a change that affects no arrangements notifies only the organiser, including the coordinator note', async () => {
   // Arrange: no equipment notes and nothing booked, so no staff group is relevant and no role lists are read.
@@ -255,7 +269,7 @@ test('CR AC3 - a change that affects no arrangements notifies only the organiser
   const result = await decide({ decision: 'approved', reason: 'Approved as discussed.' });
   // Assert
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.notified, { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [] });
+  assert.deepEqual(result.body.notified, { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [], attendees: [] });
   assert.equal(tx.find('SELECT id FROM users').length, 0);
   const [userIds, , , , , messages] = tx.find('INSERT INTO notifications')[0].values;
   assert.deepEqual(userIds, [12]);

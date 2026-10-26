@@ -10,6 +10,10 @@ ALTER TABLE event_clarification_requests ADD COLUMN IF NOT EXISTS outcome TEXT;
 ALTER TABLE event_clarification_requests ADD COLUMN IF NOT EXISTS coordinator_comments TEXT;
 ALTER TABLE event_clarification_requests ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
 ALTER TABLE event_clarification_requests ADD COLUMN IF NOT EXISTS resolved_by INTEGER REFERENCES users(id);
+-- What was recorded when it was resolved is kept apart from the outcome and comments recorded earlier, so resolving
+-- never replaces earlier history.
+ALTER TABLE event_clarification_requests ADD COLUMN IF NOT EXISTS resolution_outcome TEXT;
+ALTER TABLE event_clarification_requests ADD COLUMN IF NOT EXISTS resolution_comments TEXT;
 -- The original checks (migration 003) only knew pending and responded; they are replaced by named ones that add resolved.
 ALTER TABLE event_clarification_requests DROP CONSTRAINT IF EXISTS event_clarification_requests_status_check;
 ALTER TABLE event_clarification_requests DROP CONSTRAINT IF EXISTS event_clarification_requests_check;
@@ -26,6 +30,10 @@ ALTER TABLE event_clarification_requests ADD CONSTRAINT event_clarification_requ
   source IN ('in_app', 'offline')
   AND (outcome IS NULL OR char_length(outcome) BETWEEN 1 AND 10000)
   AND (coordinator_comments IS NULL OR char_length(coordinator_comments) BETWEEN 1 AND 4000)
+  AND (resolution_outcome IS NULL OR char_length(resolution_outcome) BETWEEN 1 AND 10000)
+  AND (resolution_comments IS NULL OR char_length(resolution_comments) BETWEEN 1 AND 4000)
+  -- Resolution details exist only once it is resolved.
+  AND (status = 'resolved' OR (resolution_outcome IS NULL AND resolution_comments IS NULL))
   -- An offline record always carries what was said or decided.
   AND (source = 'in_app' OR organiser_response IS NOT NULL OR outcome IS NOT NULL)
 );

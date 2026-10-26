@@ -58,7 +58,8 @@ async function findAccessibleById(id, user) {
         'information_needed', cr.information_needed, 'message', cr.message, 'status', cr.status,
         'organiser_response', cr.organiser_response, 'created_at', cr.created_at, 'responded_at', cr.responded_at,
         'source', cr.source, 'outcome', cr.outcome, 'coordinator_comments', cr.coordinator_comments,
-        'resolved_at', cr.resolved_at, 'resolved_by_name', resolver.full_name
+        'resolved_at', cr.resolved_at, 'resolved_by_name', resolver.full_name,
+        'resolution_outcome', cr.resolution_outcome, 'resolution_comments', cr.resolution_comments
       ) ORDER BY cr.created_at DESC, cr.id DESC)
         FROM event_clarification_requests cr LEFT JOIN users resolver ON resolver.id = cr.resolved_by
         WHERE cr.event_id=e.id), '[]'::jsonb) AS clarification_requests,
@@ -1420,7 +1421,7 @@ async function listPendingChangeRequests(coordinatorId) {
 
 // Columns returned for a clarification, including where it took place and its resolution (offline clarifications story).
 const CLARIFICATION_COLUMNS = `id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response,
-  created_at, responded_at, source, outcome, coordinator_comments, resolved_at, resolved_by`;
+  created_at, responded_at, source, outcome, coordinator_comments, resolved_at, resolved_by, resolution_outcome, resolution_comments`;
 
 /**
  * Records a clarification that took place offline (AC1) for an event assigned to the coordinator: the question, the
@@ -1450,14 +1451,15 @@ async function findCoordinatorClarification(eventId, clarificationId, coordinato
 }
 
 /**
- * Marks a clarification resolved (AC2), adding the outcome and comments when given. The question, any answer and their
- * times stay as they were, so the history is complete. Only an open (pending or answered) one can be resolved.
+ * Marks a clarification resolved (AC2) with its resolution outcome and comments, stored apart from everything recorded
+ * earlier: the question, any answer, the earlier outcome and comments and their times stay as they were, so the history is
+ * complete. Only an open (pending or answered) one can be resolved.
  * @returns {Promise<object|null>} the resolved record, or null when it was resolved meanwhile.
  */
 async function resolveClarification(eventId, clarificationId, coordinatorId, { outcome, comments }) {
   const result = await pool.query(`
     UPDATE event_clarification_requests cr SET status='resolved', resolved_at=now(), resolved_by=$3,
-      outcome=COALESCE($4, cr.outcome), coordinator_comments=COALESCE($5, cr.coordinator_comments)
+      resolution_outcome=$4, resolution_comments=$5
     FROM events e
     WHERE e.id=cr.event_id AND cr.event_id=$1 AND cr.id=$2 AND e.coordinator_id=$3 AND cr.status IN ('pending', 'responded')
     RETURNING ${CLARIFICATION_COLUMNS.split(',').map((column) => `cr.${column.trim()}`).join(', ')},

@@ -1,6 +1,6 @@
 // File: A clarification's outcome and resolution in its history (Record Offline Clarifications and Apply Agreed Amendments
-// AC1/AC2), with the assigned coordinator's "Mark resolved" form while it is still open. Resolving adds the outcome and
-// comments; the question and any answer above it stay unchanged.
+// AC1/AC2), with the assigned coordinator's "Mark resolved" form while it is still open. Resolving adds a separate
+// resolution outcome and comments; the question, any answer and the outcome and comments recorded earlier stay unchanged.
 import { useState } from 'react';
 import { api } from '../../api/client';
 
@@ -42,16 +42,18 @@ export default function ClarificationResolution({ request, eventId, token, canRe
       </p>
       {request.outcome && <p><strong>Outcome:</strong> {request.outcome}</p>}
       {request.coordinator_comments && <p><strong>Coordinator comments:</strong> {request.coordinator_comments}</p>}
+      {request.resolution_outcome && <p><strong>Resolution outcome:</strong> {request.resolution_outcome}</p>}
+      {request.resolution_comments && <p><strong>Resolution comments:</strong> {request.resolution_comments}</p>}
       {request.resolved_at && <p className="ed-muted">Resolved by {request.resolved_by_name} on {singaporeTime(request.resolved_at)}</p>}
       {canResolve && request.status !== 'resolved' && !open && (
         <button type="button" className="button-secondary ed-justify-start" onClick={() => setOpen(true)}>Mark resolved</button>
       )}
       {open && (
         <form className="ed-editor" style={{ maxWidth: 'none' }} aria-label={`Resolve clarification ${request.id}`} onSubmit={resolve}>
-          <label className="ed-label" htmlFor={`resolve-outcome-${request.id}`}>{request.status === 'pending' ? 'Outcome (required)' : 'Outcome (optional)'}
+          <label className="ed-label" htmlFor={`resolve-outcome-${request.id}`}>{request.status === 'pending' ? 'Resolution outcome (required)' : 'Resolution outcome (optional)'}
             <textarea className="ed-input" id={`resolve-outcome-${request.id}`} rows={2} maxLength={10000} value={outcome} disabled={saving} onChange={(changeEvent) => setOutcome(changeEvent.target.value)} />
           </label>
-          <label className="ed-label" htmlFor={`resolve-comments-${request.id}`}>Comments (optional)
+          <label className="ed-label" htmlFor={`resolve-comments-${request.id}`}>Resolution comments (optional)
             <textarea className="ed-input" id={`resolve-comments-${request.id}`} rows={2} maxLength={4000} value={comments} disabled={saving} onChange={(changeEvent) => setComments(changeEvent.target.value)} />
           </label>
           {error && <p role="alert" className="ed-notice ed-notice--bad">{error}</p>}

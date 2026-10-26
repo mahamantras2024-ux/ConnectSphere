@@ -116,7 +116,7 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       assert.equal(approved.status, 200);
       assert.deepEqual(approved.body.notified, { organiser: [id.olivia], venueStaff: [id.vera], technicalSupport: [id.tess],
         // No safety check was recorded yet, so no Safety Officer needs to re-check (Record Offline AC5).
-        safetyOfficers: [] });
+        safetyOfficers: [], attendees: [] });
       const event = (await client.query('SELECT expected_attendance, proposed_end_time::text AS end_time FROM events WHERE id=1')).rows[0];
       assert.deepEqual(event, { expected_attendance: 150, end_time: '12:16:00' });
       const decided = (await client.query('SELECT status, reviewed_by, reviewed_at IS NOT NULL AS reviewed, decision_reason FROM event_change_requests WHERE id=$1', [pending.id])).rows[0];

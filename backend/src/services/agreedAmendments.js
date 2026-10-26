@@ -2,6 +2,7 @@
 // changed (AC3), reopens the venue, technical and safety checks the change affects (AC5) and decides who must be told
 // (AC4). Shared by the approval of an organiser's amendment request and by an amendment the coordinator applies directly.
 const eventModel = require('../models/eventModel');
+const { listActiveAttendees } = require('../models/eventCancellationModel');
 const { needsTechnicalArrangements } = require('./eventDecisionPolicy');
 const { TIME_FIELDS, isSupportedField, describeChanges, assessArrangements, changeLines } = require('./changeRequestReview');
 
@@ -12,6 +13,12 @@ const EQUIPMENT_FIELDS = ['equipmentItems', 'technicalSupportRequired', 'technic
 const VENUE_FIELDS = [...TIME_FIELDS, 'expectedAttendance', 'roomLayoutPreference', 'accessibilityRequirements'];
 /** Equipment and on-site support are reserved for a time slot and sized to the audience. */
 const TECHNICAL_TIMING_FIELDS = [...TIME_FIELDS, 'expectedAttendance'];
+/**
+ * What registered attendees see on their event page or rely on to attend: name, timing, description, access and special
+ * arrangements, whether registration is needed, and the registration and withdrawal deadlines.
+ */
+const ATTENDEE_FIELDS = ['name', ...TIME_FIELDS, 'description', 'accessibilityRequirements', 'specialArrangements', 'registrationRequired',
+  'registrationDeadline', 'withdrawalDeadline'];
 /** What an operational safety check considers (crowd size, timings, layout, access, equipment, special arrangements). */
 const SAFETY_FIELDS = [...VENUE_FIELDS, 'specialArrangements', ...EQUIPMENT_FIELDS];
 
@@ -90,9 +97,10 @@ const unique = (ids) => [...new Set(ids)];
  * - Venue Staff for each booking to re-confirm or warn about: the staff assigned to that venue, else whoever decided the
  *   booking, else every Venue Staff account;
  * - Technical Support when their review is reopened: the staff assigned to the event, else every Technical Support account;
- * - Safety Officers when a new safety check is needed.
+ * - Safety Officers when a new safety check is needed;
+ * - registered and waitlisted attendees when something they see or rely on changed (time, deadlines, details).
  */
-async function amendmentRecipients(client, event, { arrangements, rechecks }) {
+async function amendmentRecipients(client, event, { changes, arrangements, rechecks }) {
   const venueBookings = [...rechecks.venueBookings,
     ...arrangements.filter((item) => !rechecks.venueBookings.some((flagged) => flagged.bookingId === item.bookingId))];
   const venueStaff = [];
@@ -111,8 +119,10 @@ async function amendmentRecipients(client, event, { arrangements, rechecks }) {
     if (!technicalSupport.length) technicalSupport = await eventModel.userIdsWithRole(client, 'technical_support');
   }
   const safetyOfficers = rechecks.safety ? await eventModel.userIdsWithRole(client, 'safety_officer') : [];
+  const attendees = changes.some((change) => ATTENDEE_FIELDS.includes(change.field))
+    ? (await listActiveAttendees(client, event.id)).map((row) => row.attendee_id) : [];
   return { organiser: [event.organiser_id], venueStaff: unique(venueStaff), technicalSupport: unique(technicalSupport),
-    safetyOfficers: unique(safetyOfficers) };
+    safetyOfficers: unique(safetyOfficers), attendees };
 }
 
 /** Plain-language lines naming each check the amendment reopened. */
@@ -127,7 +137,8 @@ function recheckLines(rechecks) {
 
 /**
  * Builds the notifications for an applied amendment. The organiser hears what changed (and why, for one the coordinator
- * applied); staff hear what changed and what they must check again.
+ * applied); staff hear what changed and what they must check again; attendees hear only the changes they can see, without
+ * internal planning details.
  * @param {{ eventId: number, changeRequestId: number, eventName: string, source: 'organiser_request'|'coordinator_agreed',
  *   reason: string|null, explanation: string|null, changes: object[], arrangements: object[], rechecks: object,
  *   recipients: object }} input
@@ -148,11 +159,17 @@ function amendmentNotifications({ eventId, changeRequestId, eventName, source, r
   const staffMessage = `The Event Coordinator ${agreed ? 'applied an agreed amendment to' : 'approved changes to'} ${eventName}. Review your arrangements.\n${lines}`
     + checkText + (warnings.length ? `\nArrangements needing attention:\n${warnings.join('\n')}` : '');
   const staff = unique([...recipients.venueStaff, ...recipients.technicalSupport, ...recipients.safetyOfficers]);
+  const attendeeChanges = changes.filter((change) => ATTENDEE_FIELDS.includes(change.field));
+  const attendees = recipients.attendees.filter((userId) => userId !== recipients.organiser[0] && !staff.includes(userId));
   return [
     { ...base, userId: recipients.organiser[0], ...organiser, details: { changes, reason, explanation, rechecks } },
     ...staff.map((userId) => ({ ...base, userId, type: 'event_details_changed', title: `Event details changed: ${eventName}`,
       message: staffMessage, details: { changes, arrangements, rechecks } })),
+    // Attendees are not linked to the internal amendment record.
+    ...attendees.map((userId) => ({ ...base, changeRequestId: null, userId, type: 'event_details_changed', title: `Event updated: ${eventName}`,
+      message: `${eventName} has been updated.\n${changeLines(attendeeChanges).join('\n')}\nPlease check the event details in ConnectSphere.`,
+      details: { changes: attendeeChanges } })),
   ];
 }
 
-module.exports = { applyAmendment, amendmentRecipients, amendmentNotifications, EQUIPMENT_FIELDS, VENUE_FIELDS, SAFETY_FIELDS };
+module.exports = { applyAmendment, amendmentRecipients, amendmentNotifications, EQUIPMENT_FIELDS, VENUE_FIELDS, SAFETY_FIELDS, ATTENDEE_FIELDS };

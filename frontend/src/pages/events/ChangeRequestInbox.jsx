@@ -27,6 +27,8 @@ function notifiedSummary(notified) {
   if (notified.technicalSupport.length) groups.push(`Technical Support (${notified.technicalSupport.length})`);
   // Safety Officers hear when the change needs a new operational safety check (Record Offline Clarifications AC4/AC5).
   if (notified.safetyOfficers?.length) groups.push(`Safety Officers (${notified.safetyOfficers.length})`);
+  // Registered and waitlisted attendees hear about changes they can see, such as a new time or deadline.
+  if (notified.attendees?.length) groups.push(`registered attendees (${notified.attendees.length})`);
   return `Notified: ${groups.join(', ')}.`;
 }
 

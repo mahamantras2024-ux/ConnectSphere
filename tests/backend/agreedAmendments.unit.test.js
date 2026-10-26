@@ -19,7 +19,7 @@ const approvedBooking = { id: 9, venue_id: 5, venue_name: 'Hall A', status: 'app
  * `after` is the event the database returns once the changes are applied.
  */
 function fakeClient({ after, bookings = [approvedBooking], safetyChecked = false, reread = after, venueAssignments = {},
-  technicalAssignments = [], roles = {} } = {}) {
+  technicalAssignments = [], roles = {}, attendees = [] } = {}) {
   const statements = [];
   const query = async (sql, values) => {
     statements.push({ sql, values });
@@ -31,6 +31,7 @@ function fakeClient({ after, bookings = [approvedBooking], safetyChecked = false
     if (sql.includes('FROM venue_staff_assignments')) return { rows: (venueAssignments[values[0]] || []).map((id) => ({ staff_user_id: id })) };
     if (sql.includes('FROM event_technical_support_assignments')) return { rows: technicalAssignments.map((id) => ({ staff_id: id })) };
     if (sql.includes('SELECT id FROM users')) return { rows: (roles[values[0]] || []).map((id) => ({ id })) };
+    if (sql.includes('FROM registrations')) return { rows: attendees.map((id) => ({ attendee_id: id })) };
     return { rows: [] };
   };
   return { query, statements, find: (text) => statements.filter((statement) => statement.sql.includes(text)) };
@@ -124,11 +125,13 @@ test('OC AC5 - an event without a recorded safety check needs no re-check', asyn
 // ---------- AC4: who is told ----------
 
 const noRechecks = { venueBookings: [], technical: false, safety: false, returnedToPlanning: false };
+// A change attendees never see (the expected audience is a planning figure).
+const internal = [{ field: 'expectedAttendance', label: 'Expected attendance', current: 60, requested: 90 }];
 // Test case: The organiser always hears; no staff group is involved when no check was reopened.
 test('OC AC4 - only the organiser hears about an amendment that reopens no check', async () => {
   const client = fakeClient({ after: event });
-  assert.deepEqual(await amendmentRecipients(client, event, { arrangements: [], rechecks: noRechecks }),
-    { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [] });
+  assert.deepEqual(await amendmentRecipients(client, event, { changes: internal, arrangements: [], rechecks: noRechecks }),
+    { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [], attendees: [] });
   assert.equal(client.statements.length, 0);
 });
 // Test case: Venue Staff: the venue's assigned staff first, then whoever decided the booking, then every Venue Staff account.
@@ -138,31 +141,66 @@ for (const [label, assignments, decisionBy, expected] of [
   test(`OC AC4 - a booking to re-confirm is sent to ${label}`, async () => {
     const client = fakeClient({ after: event, venueAssignments: assignments, roles: { venue_staff: [41, 42] } });
     const rechecks = { ...noRechecks, venueBookings: [{ bookingId: 9, venueId: 5, venueName: 'Hall A', decisionBy, reason: 'x' }] };
-    assert.deepEqual((await amendmentRecipients(client, event, { arrangements: [], rechecks })).venueStaff, expected);
+    assert.deepEqual((await amendmentRecipients(client, event, { changes: internal, arrangements: [], rechecks })).venueStaff, expected);
   });
 }
 // Test case: A pending booking the change affects is also brought to Venue Staff's attention.
 test('OC AC4 - Venue Staff also hear about an affected pending booking', async () => {
   const client = fakeClient({ after: event, roles: { venue_staff: [41, 42] } });
   const arrangements = [{ bookingId: 10, venueId: 6, venueName: 'Room B', decisionBy: null, reasons: ['Too small'] }];
-  assert.deepEqual((await amendmentRecipients(client, event, { arrangements, rechecks: noRechecks })).venueStaff, [41, 42]);
+  assert.deepEqual((await amendmentRecipients(client, event, { changes: internal, arrangements, rechecks: noRechecks })).venueStaff, [41, 42]);
 });
 // Test case: Technical Support: the staff assigned to the event, else every Technical Support account; Safety Officers on a re-check.
 for (const [label, assigned, expected] of [['assigned staff', [61], [61]], ['everyone when nobody is assigned', [], [61, 62]]]) {
   test(`OC AC4 - a reopened technical review goes to ${label}, and a safety re-check to Safety Officers`, async () => {
     const client = fakeClient({ after: event, technicalAssignments: assigned, roles: { technical_support: [61, 62], safety_officer: [50] } });
-    const recipients = await amendmentRecipients(client, event, { arrangements: [], rechecks: { ...noRechecks, technical: true, safety: true } });
+    const recipients = await amendmentRecipients(client, event, { changes: internal, arrangements: [], rechecks: { ...noRechecks, technical: true, safety: true } });
     assert.deepEqual([recipients.technicalSupport, recipients.safetyOfficers], [expected, [50]]);
   });
 }
 
+// Test case: Registered and waitlisted attendees are told about each change they can see or rely on (AC4).
+for (const [label, field] of [['a new start time', 'proposedStartTime'], ['a new date', 'proposedDate'], ['an earlier withdrawal deadline', 'withdrawalDeadline'],
+  ['a new registration deadline', 'registrationDeadline'], ['a new name', 'name'], ['new accessibility arrangements', 'accessibilityRequirements']]) {
+  test(`OC AC4 - ${label} is sent to the event's registered and waitlisted attendees`, async () => {
+    const client = fakeClient({ after: event, attendees: [70, 71] });
+    const changes = [{ field, label: 'x', current: 'a', requested: 'b' }];
+    assert.deepEqual((await amendmentRecipients(client, event, { changes, arrangements: [], rechecks: noRechecks })).attendees, [70, 71]);
+    assert.deepEqual(client.find('FROM registrations')[0].values, [101]);
+    assert.match(client.find('FROM registrations')[0].sql, /status IN \('registered', 'waitlisted'\)/);
+  });
+}
+// Test case: Planning-only changes (audience size, equipment, layout) are not announced to attendees, so no list is read.
+for (const [label, field] of [['the expected attendance', 'expectedAttendance'], ['equipment', 'equipmentItems'], ['the room layout', 'roomLayoutPreference']]) {
+  test(`OC AC4 - a change to ${label} is not sent to attendees`, async () => {
+    const client = fakeClient({ after: event, attendees: [70] });
+    const changes = [{ field, label: 'x', current: 'a', requested: 'b' }];
+    assert.deepEqual((await amendmentRecipients(client, event, { changes, arrangements: [], rechecks: noRechecks })).attendees, []);
+    assert.equal(client.find('FROM registrations').length, 0);
+  });
+}
+// Test case: Attendees hear only the changes they can see, without internal re-checks or what was agreed.
+test('OC AC4 - attendees are told only the changes they can see', () => {
+  const changes = [{ field: 'proposedStartTime', label: 'Start time', current: '18:00:00', requested: '19:00:00' },
+    { field: 'expectedAttendance', label: 'Expected attendance', current: 60, requested: 90 }];
+  const rechecks = { ...noRechecks, safety: true, returnedToPlanning: true };
+  const notes = amendmentNotifications({ eventId: 101, changeRequestId: 7, eventName: 'Gala', source: 'coordinator_agreed', reason: null,
+    explanation: 'Agreed by phone', changes, arrangements: [], rechecks,
+    recipients: { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [50], attendees: [70, 50] } });
+  // Safety Officer 50 already hears as staff, so is not told twice.
+  assert.deepEqual(notes.map((note) => note.userId), [12, 50, 70]);
+  const attendee = notes[2];
+  assert.deepEqual([attendee.type, attendee.title, attendee.changeRequestId], ['event_details_changed', 'Event updated: Gala', null]);
+  assert.equal(attendee.message, 'Gala has been updated.\nStart time: 18:00:00 → 19:00:00\nPlease check the event details in ConnectSphere.');
+  assert.deepEqual(attendee.details, { changes: [changes[0]] });
+});
 // Test case: The organiser hears what changed and, for an agreed amendment, what was agreed; staff hear what to re-check.
 test('OC AC4 - notices say what changed, what was agreed and which checks must be completed again', () => {
   const changes = [{ field: 'expectedAttendance', label: 'Expected attendance', current: 60, requested: 150 }];
   const rechecks = { venueBookings: [{ bookingId: 9, venueId: 5, venueName: 'Hall A', decisionBy: 41, reason: 'Too many guests.' }],
     technical: true, safety: true, returnedToPlanning: true };
   const arrangements = [{ bookingId: 9, venueName: 'Hall A', reasons: ['Too many guests.'] }, { bookingId: 10, venueName: 'Room B', reasons: ['Held for later.'] }];
-  const recipients = { organiser: [12], venueStaff: [41], technicalSupport: [61], safetyOfficers: [50, 41] };
+  const recipients = { organiser: [12], venueStaff: [41], technicalSupport: [61], safetyOfficers: [50, 41], attendees: [] };
   const [organiser, ...staff] = amendmentNotifications({ eventId: 101, changeRequestId: 7, eventName: 'Gala', source: 'coordinator_agreed',
     reason: null, explanation: 'Agreed by phone', changes, arrangements, rechecks, recipients });
   assert.deepEqual([organiser.userId, organiser.type, organiser.title], [12, 'change_request_approved', 'Agreed amendment applied: Gala']);

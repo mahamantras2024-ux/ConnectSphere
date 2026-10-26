@@ -109,7 +109,9 @@ const applyAgreed = asyncHandler(async (req, res) => {
   const proposed = Object.fromEntries(described.map(({ field }) => [field, data[field]]));
   try {
     const result = await applyAgreedAmendment(Number(id), req.user.id, { changes: proposed, explanation: agreed, clarificationId });
-    return res.status(201).json({ ...result, message: 'Agreed amendment applied. The organiser and affected staff have been notified.' });
+    const told = result.notified.attendees.length ? 'The organiser, affected staff and registered attendees have been notified.'
+      : 'The organiser and affected staff have been notified.';
+    return res.status(201).json({ ...result, message: `Agreed amendment applied. ${told}` });
   } catch (failure) {
     if (!failure.status) throw failure;
     // An uncoded failure has code undefined, which JSON leaves out.

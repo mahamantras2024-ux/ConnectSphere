@@ -41,7 +41,7 @@ function mockDatabase({ user = coordinator, current = event, clarification = nul
         outcome: values[5], coordinator_comments: values[6], information_needed: JSON.parse(values[2]), message: values[3] }] };
     }
     if (sql.includes('UPDATE event_clarification_requests')) {
-      return { rows: resolved === null ? [] : [{ ...clarification, status: 'resolved', outcome: values[3] ?? clarification.outcome, coordinator_comments: values[4] }] };
+      return { rows: resolved === null ? [] : [{ ...clarification, status: 'resolved', resolution_outcome: values[3], resolution_comments: values[4] }] };
     }
     if (sql.includes('FROM event_clarification_requests cr JOIN events e')) return { rows: clarification ? [clarification] : [] };
     if (sql.includes('FROM events e')) return { rows: current ? [current] : [] };
@@ -124,18 +124,28 @@ test('OC AC1 - other coordinators get 404, other roles 403 and invalid ids 400',
 const pendingClarification = { id: 601, event_id: 101, status: 'pending', message: 'How many guests?', organiser_response: null, outcome: null };
 const resolve = (body = {}, id = 601) => call(`/api/events/101/clarifications/${id}/resolve`, { body });
 
-// Test case: An answered clarification is resolved; only the resolution columns are set, so the question and answer stay.
-test('OC AC2 - an answered clarification is marked resolved and keeps its question and answer', async () => {
-  const answered = { ...pendingClarification, status: 'responded', organiser_response: 'About 90.' };
+// Test case: Resolving an answered offline record stores its resolution separately: the question, the answer and the outcome
+// and comments recorded earlier are never overwritten (reviewer: "Phone call." must survive "Confirmed in writing.").
+test('OC AC2 - resolving keeps the earlier outcome and comments and stores the resolution separately', async () => {
+  const answered = { ...pendingClarification, status: 'responded', source: 'offline', organiser_response: 'About 90.',
+    outcome: 'Attendance to become 90.', coordinator_comments: 'Phone call.' };
   const db = mockDatabase({ clarification: answered });
-  const result = await resolve({ comments: 'Confirmed on the phone.' });
+  const result = await resolve({ outcome: 'Final: 90 guests.', comments: 'Confirmed in writing.' });
   assert.deepEqual([result.status, result.body.message], [200, 'Clarification marked as resolved.']);
   const [update] = db.find('UPDATE event_clarification_requests');
-  assert.match(update.sql, /SET status='resolved', resolved_at=now\(\), resolved_by=\$3,\s+outcome=COALESCE\(\$4, cr\.outcome\), coordinator_comments=COALESCE\(\$5, cr\.coordinator_comments\)/);
-  assert.doesNotMatch(update.sql, /message=|organiser_response=|responded_at=/);
+  assert.match(update.sql, /SET status='resolved', resolved_at=now\(\), resolved_by=\$3,\s+resolution_outcome=\$4, resolution_comments=\$5\s/);
+  assert.doesNotMatch(update.sql, /message=|organiser_response=|responded_at=|[^_]outcome=|coordinator_comments=/);
   assert.match(update.sql, /cr\.status IN \('pending', 'responded'\)/);
-  assert.deepEqual(update.values, ['101', '601', 30, null, 'Confirmed on the phone.']);
-  assert.equal(result.body.clarificationRequest.organiser_response, 'About 90.');
+  assert.deepEqual(update.values, ['101', '601', 30, 'Final: 90 guests.', 'Confirmed in writing.']);
+  const stored = result.body.clarificationRequest;
+  assert.deepEqual([stored.organiser_response, stored.outcome, stored.coordinator_comments, stored.resolution_outcome, stored.resolution_comments],
+    ['About 90.', 'Attendance to become 90.', 'Phone call.', 'Final: 90 guests.', 'Confirmed in writing.']);
+});
+// Test case: An answered clarification needs no resolution outcome; nothing given is stored as none.
+test('OC AC2 - an answered clarification is resolved without a resolution outcome', async () => {
+  const db = mockDatabase({ clarification: { ...pendingClarification, status: 'responded', organiser_response: 'About 90.' } });
+  assert.equal((await resolve({ comments: '   ' })).status, 200);
+  assert.deepEqual(db.find('UPDATE event_clarification_requests')[0].values.slice(3), [null, null]);
 });
 // Test case: Nobody answered a pending question in ConnectSphere, so resolving it requires the outcome.
 test('OC AC2 - a pending clarification is resolved only with its outcome', async () => {
@@ -172,7 +182,7 @@ test('OC AC2 - resolving with an invalid id returns 400', async () => {
  * Mocks the event read (pool.query) and the transaction that applies an agreed amendment: the locked event, the linked
  * clarification check, the recorded amendment and the statements applyAmendment sends.
  */
-function mockAgreed({ current = event, linked = true, safetyChecked = false, roles = {} } = {}) {
+function mockAgreed({ current = event, linked = true, safetyChecked = false, roles = {}, attendees = [] } = {}) {
   mockDatabase({ current });
   const statements = [];
   mock.method(pool, 'connect', async () => ({
@@ -191,6 +201,7 @@ function mockAgreed({ current = event, linked = true, safetyChecked = false, rol
       if (sql.includes('FROM event_safety_checks')) return { rows: [], rowCount: safetyChecked ? 1 : 0 };
       if (sql.includes('SELECT to_jsonb(events.*) AS event FROM events')) return { rows: [{ event: { ...current, expected_attendance: 90 } }] };
       if (sql.includes('SELECT id FROM users')) return { rows: (roles[values[0]] || []).map((id) => ({ id })) };
+      if (sql.includes('FROM registrations')) return { rows: attendees.map((id) => ({ attendee_id: id })) };
       if (sql.includes('INSERT INTO notifications')) {
         return { rows: values[0].map((userId, index) => ({ id: index + 1, user_id: userId, title: values[4][index], message: values[5][index], email: `user${userId}@example.com` })) };
       }
@@ -219,11 +230,26 @@ test('OC AC3 AC4 - the coordinator applies an agreed amendment linked to its cla
   assert.deepEqual(JSON.parse(applied), [{ field: 'expectedAttendance', label: 'Expected attendance', before: 60, after: 90 }]);
   assert.equal(JSON.parse(rechecks).safety, true);
   // AC4: the organiser and the Safety Officer are told in the same transaction, then emailed.
-  assert.deepEqual(result.body.notified, { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [50] });
+  // Attendance is not shown to attendees, so none is told (the event has none registered anyway).
+  assert.deepEqual(result.body.notified, { organiser: [12], venueStaff: [], technicalSupport: [], safetyOfficers: [50], attendees: [] });
   const [userIds, , , , titles] = tx.find('INSERT INTO notifications')[0].values;
   assert.deepEqual([userIds, titles], [[12, 50], ['Agreed amendment applied: Gala', 'Event details changed: Gala']]);
   assert.ok(tx.statements.findIndex((s) => s.sql.includes('INSERT INTO notifications')) < tx.statements.findIndex((s) => s.sql === 'COMMIT'));
   assert.equal(sent.mock.callCount(), 2);
+});
+// Test case (reviewer AC4): an agreed later start reaches the event's registered attendees, who hear only that change.
+test('OC AC4 - an agreed time change notifies registered attendees, and the coordinator is told they were', async () => {
+  const tx = mockAgreed({ attendees: [70, 71] });
+  const sent = mock.method(emailService, 'sendNotificationEmail', async () => {});
+  const result = await agree({ changes: { proposedStartTime: '19:00', proposedEndTime: '21:00' } });
+  assert.equal(result.status, 201);
+  assert.equal(result.body.message, 'Agreed amendment applied. The organiser, affected staff and registered attendees have been notified.');
+  assert.deepEqual(result.body.notified.attendees, [70, 71]);
+  const [userIds, , , , titles, messages] = tx.find('INSERT INTO notifications')[0].values;
+  assert.deepEqual(userIds, [12, 70, 71]);
+  assert.deepEqual(titles.slice(1), ['Event updated: Gala', 'Event updated: Gala']);
+  assert.equal(messages[1], 'Gala has been updated.\nStart time: 18:00:00 → 19:00:00\nEnd time: 20:00:00 → 21:00:00\nPlease check the event details in ConnectSphere.');
+  assert.equal(sent.mock.callCount(), 3);
 });
 // Test case: Invalid requests are refused before anything is written; the explanation boundary is 2000 characters.
 for (const [label, body, status] of [

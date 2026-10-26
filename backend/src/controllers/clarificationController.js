@@ -47,7 +47,8 @@ const recordOffline = asyncHandler(async (req, res) => {
   return res.status(201).json({ clarificationRequest, message: resolve ? 'Offline clarification recorded and resolved.' : 'Offline clarification recorded.' });
 });
 
-// POST /api/events/:id/clarifications/:clarificationId/resolve marks a clarification resolved, keeping its history (AC2).
+// POST /api/events/:id/clarifications/:clarificationId/resolve marks a clarification resolved, keeping its history (AC2):
+// the resolution outcome and comments are stored apart from the outcome and comments recorded earlier.
 const resolve = asyncHandler(async (req, res) => {
   const { id, clarificationId } = req.params;
   if (!validId(id) || !validId(clarificationId)) return res.status(400).json({ message: 'Choose a valid event and clarification.' });

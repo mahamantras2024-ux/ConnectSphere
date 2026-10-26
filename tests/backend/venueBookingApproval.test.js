@@ -229,3 +229,16 @@ test('OC AC5 - the Venue Staff inbox lists flagged bookings with the reason', as
   assert.match(state.calls.find((sql) => sql.includes('booking.recheck_reason')), /WHERE booking\.status='pending' OR \(booking\.status='approved' AND booking\.recheck_required_at IS NOT NULL\)/);
   assert.equal(response.body.requests[0].recheck_reason, 'Event details relevant to the venue changed: Expected attendance.');
 });
+// Test case (reviewer regression): the booking was confirmed for 40 guests in a Theatre layout without access needs, then
+// an amendment changed the event to 100 / Seminar / Ramp. Venue Staff must re-confirm against the amended requirements,
+// with the original snapshot kept only for comparison.
+test('OC AC5 - a flagged booking shows the amended event requirements, not its outdated snapshot', async () => {
+  state.request = { ...flagged(), requirements: { capacity: 40, layout: 'Theatre', accessibility: [] } };
+  const [listed] = (await request('/requests/pending')).body.requests;
+  assert.deepEqual([listed.expected_attendance, listed.room_layout_preference, listed.accessibility_requirements], [100, 'Seminar', ['Ramp']]);
+  assert.deepEqual(listed.original_requirements, { capacity: 40, layout: 'Theatre', accessibility: [] });
+  // An unflagged pending request in the same state still shows what it asked for.
+  state.request = { ...state.request, status: 'pending', recheck_required_at: null };
+  const [pending] = (await request('/requests/pending')).body.requests;
+  assert.deepEqual([pending.expected_attendance, pending.room_layout_preference, pending.original_requirements], [40, 'Theatre', undefined]);
+});

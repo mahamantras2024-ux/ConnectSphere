@@ -10,6 +10,12 @@ function singaporeTime(value) {
   return new Date(value).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short', hour12: false });
 }
 
+/** The capacity, layout and accessibility a booking was first requested with ('' when its snapshot recorded none). */
+function originalText({ capacity, layout, accessibility } = {}) {
+  return [capacity != null && `${capacity} guests`, layout && `${layout} layout`, accessibility?.length && `accessibility: ${accessibility.join(', ')}`]
+    .filter(Boolean).join('; ');
+}
+
 /** Shows the staff-only queue and notifies related dashboard views after a persisted decision. */
 export default function VenueBookingInbox() {
   const { token } = useAuth();
@@ -63,6 +69,8 @@ export default function VenueBookingInbox() {
           <div><dt>Room layout</dt><dd>{selected.room_layout_preference || 'Not specified'}</dd></div>
           <div><dt>Accessibility</dt><dd>{selected.accessibility_requirements?.join(', ') || 'None recorded'}</dd></div></dl>
         {selected.recheck_required_at && <p className="detail-note"><strong>Re-check required:</strong> {selected.recheck_reason}</p>}
+        {/* A flagged booking lists the amended event's requirements above; what was first requested is shown for comparison. */}
+        {originalText(selected.original_requirements) && <p className="detail-note"><strong>Originally requested:</strong> {originalText(selected.original_requirements)}</p>}
         <label>Reason or alternative arrangement (optional)<textarea value={reason} onChange={event => setReason(event.target.value)} disabled={saving} rows={4} /></label>
         <p className="detail-note">The coordinator receives the decision and any rejection notes. Approval rechecks the venue schedule.</p>
         {failure && <p role="alert" className="error-message">{failure}</p>}

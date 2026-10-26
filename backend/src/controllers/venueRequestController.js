@@ -2,8 +2,10 @@ const { createVenueRequest, decideVenueRequest, recheckVenueBooking } = require(
 const { pool } = require('../config/db');
 
 /**
- * Returns pending requests, and confirmed bookings an applied amendment flagged for re-confirmation (Record Offline AC5),
- * with submitted requirements; older unspecified fields fall back to the event record.
+ * Returns pending requests with their submitted requirements (older unspecified fields fall back to the event record),
+ * and confirmed bookings an applied amendment flagged for re-confirmation (Record Offline AC5). A flagged booking shows
+ * the event's current, amended requirements, since that is what Venue Staff re-confirm, with the original snapshot kept
+ * alongside for comparison.
  */
 async function listPendingRequests(req, res) {
   const result = await pool.query(`SELECT booking.id, booking.venue_id, booking.event_id, booking.start_datetime,
@@ -14,12 +16,17 @@ async function listPendingRequests(req, res) {
     JOIN events event ON event.id=booking.event_id
     WHERE booking.status='pending' OR (booking.status='approved' AND booking.recheck_required_at IS NOT NULL)
     ORDER BY booking.created_at, booking.id`);
-  // Coordinators may edit a request's requirements independently of the event; never replace a specified snapshot with current event values.
-  const requests = result.rows.map(request => ({ ...request,
-    expected_attendance: request.requirements?.capacity ?? request.expected_attendance,
-    room_layout_preference: request.requirements?.layout || request.room_layout_preference,
-    accessibility_requirements: request.requirements?.accessibility ?? request.accessibility_requirements,
-  }));
+  const requests = result.rows.map((request) => {
+    // The amendment changed the event after this booking was confirmed, so its snapshot is out of date.
+    if (request.recheck_required_at) return { ...request, original_requirements: request.requirements };
+    // Coordinators may edit a pending request's requirements independently of the event; never replace a specified
+    // snapshot with current event values.
+    return { ...request,
+      expected_attendance: request.requirements?.capacity ?? request.expected_attendance,
+      room_layout_preference: request.requirements?.layout || request.room_layout_preference,
+      accessibility_requirements: request.requirements?.accessibility ?? request.accessibility_requirements,
+    };
+  });
   return res.json({ requests });
 }
 
