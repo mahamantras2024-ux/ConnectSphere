@@ -2,6 +2,7 @@
 const pool = require('../config/db');
 const { pool: databasePool } = require('../config/db');
 const { EVENT_FIELDS } = require('../services/eventFields');
+const { responsibilityScope } = require('../services/technicalEventStatus');
 
 // Lists events owned by the supplied organiser, newest first.
 async function listForOrganiser(organiserId) {
@@ -432,6 +433,8 @@ async function releaseEquipmentReservation(reservationId, staffId) {
         SET status='cancelled', released_by=$2, released_at=now()
         FROM events event_record
         WHERE allocation.id=$1 AND allocation.status='reserved'
+          -- Release permission follows the same current responsibility scope as the event-status view.
+          AND ${responsibilityScope('event_record', '$2')}
           AND event_record.id=allocation.event_id
           AND (
             event_record.status='cancelled'

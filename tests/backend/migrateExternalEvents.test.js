@@ -97,7 +97,10 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 - migration runner pr
   // Parent notification system: its notification types are set after every earlier type change, as the final migration.
   const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
   assert.ok(venueFrequencyIndex < parentNotificationsIndex, 'parent notifications follow the Venue Staff migrations');
-  assert.equal(parentNotificationsIndex, queries.length - 1, 'parent notifications is the final migration');
+  // TS status AC5: install the lifecycle trigger after every responsibility and notification table exists.
+  const technicalStatusIndex = queries.indexOf(migrationSql('019-technical-support-event-status.sql'));
+  assert.ok(parentNotificationsIndex < technicalStatusIndex, 'technical status follows the shared notification migrations');
+  assert.equal(technicalStatusIndex, queries.length - 1, 'technical status trigger is the final migration');
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

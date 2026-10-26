@@ -40,6 +40,8 @@ test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
       await client.query(migration);
     }
+    // TS status AC6: production release SQL also checks explicit assignments; include that relation in this partial schema.
+    await client.query('CREATE TABLE event_technical_support_assignments (event_id INTEGER, staff_id INTEGER)');
     // Build only the equipment tables used by the scenario; this avoids invoking inventory seeding that targets public.
     await client.query(`CREATE TABLE equipments (
       id SERIAL PRIMARY KEY, asset_code VARCHAR(20) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL,
