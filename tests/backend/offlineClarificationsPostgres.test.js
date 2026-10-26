@@ -14,7 +14,7 @@ const { applyLiveSchema, sqlFile } = require('./support/liveSchema');
 const { loadDecisionContext } = require('../../backend/src/models/eventDecisionModel');
 const { evaluateSafetyReview } = require('../../backend/src/services/eventDecisionPolicy');
 
-// Test case: The coordinator records a phone call offline, resolves it and applies what was agreed to an approved event.
+// Test case: The coordinator records a phone call offline, resolves it and applies what was agreed to a confirmed event.
 // Its booking waits for Venue Staff, its equipment for Technical Support and it returns to planning for a new safety
 // check; once Venue Staff re-confirm, Safety Officers hear it is ready again. A deadline change is then approved.
 test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-checks in PostgreSQL',
@@ -23,7 +23,7 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
     const client = await pool.connect();
     let server;
     try {
-      // ---------- Arrange: disposable schema, people, an approved event with a confirmed booking and safety check ----------
+      // ---------- Arrange: disposable schema, people, a confirmed event with a confirmed booking and safety check ----------
       await client.query(`CREATE SCHEMA ${schema}`);
       await client.query(`SET search_path TO ${schema}`);
       await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255),
@@ -38,12 +38,13 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       }
       const id = Object.fromEntries(people.map(([name], index) => [name, index + 1]));
       await client.query(`INSERT INTO venues (name, location, capacity, supported_layouts) VALUES ('Hall A', 'Level 1', 100, ARRAY['Theatre'])`);
-      // Gala runs 18:00-20:00 Singapore time on 15 Oct 2030 (10:00-12:00 UTC) with a confirmed projector, and was approved
-      // after Vera confirmed the hall and Sam passed its safety check.
+      // Gala runs 18:00-20:00 Singapore time on 15 Oct 2030 (10:00-12:00 UTC) with a confirmed projector. It was approved after
+      // Vera confirmed the hall and Sam passed its safety check, and is now confirmed (reviewer regression: a confirmed
+      // event must not stay confirmed while its arrangements are re-checked).
       await client.query(`INSERT INTO events (organiser_id, coordinator_id, name, proposed_date, proposed_start_time, proposed_end_time,
         expected_attendance, room_layout_preference, equipment_items, equipment_confirmed_at, withdrawal_deadline, is_draft, status)
         VALUES ($1, $2, 'Gala', '2030-10-15', '18:00', '20:00', 60, 'Theatre', '[{"item":"Projector","quantity":1}]', now(),
-          '2030-10-14T10:00:00Z', false, 'approved')`, [id.olivia, id.chris]);
+          '2030-10-14T10:00:00Z', false, 'confirmed')`, [id.olivia, id.chris]);
       // The booking was confirmed against the original requirements (60 guests, Theatre).
       await client.query(`INSERT INTO venue_bookings (event_id, venue_id, requested_by, start_datetime, end_datetime, status, decision_by, requirements)
         VALUES (1, 1, $1, '2030-10-15T10:00:00Z', '2030-10-15T12:00:00Z', 'approved', $2, '{"capacity":60,"layout":"Theatre","accessibility":[]}')`, [id.chris, id.vera]);

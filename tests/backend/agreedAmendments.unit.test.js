@@ -103,17 +103,35 @@ for (const [label, before, changes, after, technical] of [
   });
 }
 
-// Test case: A recorded safety check stops counting once the arrangements change; an approved event goes back to planning.
-for (const [status, returned] of [['approved', true], ['planning', false]]) {
+// Test case: A recorded safety check stops counting once the arrangements change. An approved or a confirmed event goes
+// back to planning (reviewer regression: confirmed events stayed confirmed); one still being planned stays as it is.
+for (const [status, returned] of [['approved', true], ['confirmed', true], ['planning', false], ['submitted', false]]) {
   test(`OC AC5 - a ${status} event with a recorded safety check needs a new check${returned ? ' and returns to planning' : ''}`, async () => {
     const before = { ...event, status };
-    const client = fakeClient({ after: { ...before, special_arrangements: 'Fireworks' }, safetyChecked: true, bookings: [],
-      reread: { ...before, special_arrangements: 'Fireworks', status: 'planning' } });
+    const client = fakeClient({ after: { ...before, special_arrangements: 'Fireworks' }, safetyChecked: true, bookings: [] });
     const result = await applyAmendment(client, before, { specialArrangements: 'Fireworks' });
-    assert.deepEqual([result.rechecks.safety, result.rechecks.returnedToPlanning, result.event.status], [true, returned, 'planning']);
-    assert.match(client.find('safety_recheck_required_at = now()')[0].sql, /status = CASE WHEN status = 'approved' THEN 'planning' ELSE status END/);
+    assert.deepEqual([result.rechecks.safety, result.rechecks.returnedToPlanning], [true, returned]);
+    assert.deepEqual(client.find('SET safety_recheck_required_at = now()')[0].values, [101]);
+    const moved = client.find("UPDATE events SET status = $2");
+    assert.deepEqual(moved.map((statement) => statement.values), returned ? [[101, 'planning', ['approved', 'confirmed']]] : []);
   });
 }
+// Test case: A confirmed event whose booking must be re-confirmed returns to planning even before any safety check exists.
+test('OC AC5 - a confirmed event whose venue booking is reopened returns to planning', async () => {
+  const before = { ...event, status: 'confirmed' };
+  const client = fakeClient({ after: { ...before, expected_attendance: 90 }, safetyChecked: false });
+  const result = await applyAmendment(client, before, { expectedAttendance: 90 });
+  assert.deepEqual([result.rechecks.venueBookings.length, result.rechecks.safety, result.rechecks.returnedToPlanning], [1, false, true]);
+  assert.equal(client.find("UPDATE events SET status = $2").length, 1);
+});
+// Test case: A change that reopens nothing leaves a confirmed event confirmed.
+test('OC AC5 - a confirmed event stays confirmed after a change that reopens no check', async () => {
+  const before = { ...event, status: 'confirmed' };
+  const client = fakeClient({ after: { ...before, description: 'Gala dinner' }, safetyChecked: true });
+  const result = await applyAmendment(client, before, { description: 'Gala dinner' });
+  assert.equal(result.rechecks.returnedToPlanning, false);
+  assert.equal(client.find('UPDATE events SET status').length, 0);
+});
 // Test case: An event never safety checked is simply still due a check, so nothing is reset.
 test('OC AC5 - an event without a recorded safety check needs no re-check', async () => {
   const client = fakeClient({ after: { ...event, special_arrangements: 'Fireworks' }, safetyChecked: false, bookings: [] });

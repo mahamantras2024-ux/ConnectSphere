@@ -22,6 +22,9 @@ const ATTENDEE_FIELDS = ['name', ...TIME_FIELDS, 'description', 'accessibilityRe
 /** What an operational safety check considers (crowd size, timings, layout, access, equipment, special arrangements). */
 const SAFETY_FIELDS = [...VENUE_FIELDS, 'specialArrangements', ...EQUIPMENT_FIELDS];
 
+/** Statuses of an event that has been approved for running; neither may stand while its arrangements are re-checked. */
+const FINAL_STATUSES = ['approved', 'confirmed'];
+
 /** Builds an error carrying the HTTP status and optional machine-readable code for the controller. */
 function failure(status, message, code) { return Object.assign(new Error(message), { status, code }); }
 
@@ -34,8 +37,8 @@ async function readEvent(client, eventId) {
  * Applies the requested values to the event inside the caller's transaction and reopens the affected checks (AC5):
  * - Venue: if a detail a booking depends on changed, every confirmed booking waits for Venue Staff to re-confirm it.
  * - Technical: changed equipment, or a new time or audience for an event with technical needs, is reviewed again.
- * - Safety: if a safety check was already recorded and anything it considers changed, a new check is needed, and an
- *   approved event returns to planning until it is approved again.
+ * - Safety: if a safety check was already recorded and anything it considers changed, a new check is needed.
+ * - Status: an approved or confirmed event whose arrangements were reopened returns to planning until approved again.
  * @param {{ query: Function }} client transaction client; the event row is already locked by the caller.
  * @param {object} before the event as stored before the change (to_jsonb form).
  * @param {object} requested camelCase values to apply (validated).
@@ -77,14 +80,19 @@ async function applyAmendment(client, before, requested) {
   }
 
   // Safety (AC5): only an event that already had a check needs it redone; one never checked is simply still due.
+  const arrangementsReopened = rechecks.venueBookings.length > 0 || rechecks.technical;
   const checked = (await client.query('SELECT 1 FROM event_safety_checks WHERE event_id = $1 LIMIT 1', [before.id])).rowCount > 0;
-  if (checked && (rechecks.venueBookings.length || rechecks.technical || touches(SAFETY_FIELDS))) {
-    rechecks.returnedToPlanning = event.status === 'approved';
-    await client.query(`UPDATE events SET safety_recheck_required_at = now(),
-      status = CASE WHEN status = 'approved' THEN 'planning' ELSE status END WHERE id = $1`, [before.id]);
+  if (checked && (arrangementsReopened || touches(SAFETY_FIELDS))) {
+    await client.query('UPDATE events SET safety_recheck_required_at = now() WHERE id = $1', [before.id]);
     rechecks.safety = true;
   }
-  if (rechecks.technical || rechecks.safety) event = await readEvent(client, before.id);
+  // An approved or confirmed event cannot stay final while its arrangements are being revalidated: it returns to planning
+  // until the re-checks are done and it is approved again.
+  if ((arrangementsReopened || rechecks.safety) && FINAL_STATUSES.includes(event.status)) {
+    await client.query('UPDATE events SET status = $2 WHERE id = $1 AND status = ANY($3::text[])', [before.id, 'planning', FINAL_STATUSES]);
+    rechecks.returnedToPlanning = true;
+  }
+  if (rechecks.technical || rechecks.safety || rechecks.returnedToPlanning) event = await readEvent(client, before.id);
   return { event, changes, arrangements, rechecks };
 }
 

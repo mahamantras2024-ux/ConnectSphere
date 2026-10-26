@@ -67,7 +67,7 @@ Baseline: six stories and 30 acceptance criteria in **SPM Project (2).pdf**. [Ea
 - **Re-checks:**
   - **Venue:** a change to the date, times, attendance, layout or accessibility flags each confirmed booking **Re-check required**, with the reason. Venue Staff **Re-confirm** it or **Reject** it from their inbox, and the coordinator is told. A flagged booking shows the amended event's requirements, with what was originally requested beside them for comparison.
   - **Technical:** equipment changes, or a new time or audience for an event with technical needs, start a new Technical Support review.
-  - **Safety:** if the event already had a safety check, that check stops counting. An approved event returns to planning. Safety Officers are told again once the event is ready.
+  - **Safety:** if the event already had a safety check, that check stops counting. An approved or confirmed event whose venue, technical or safety arrangements were reopened returns to planning until it is approved again. Safety Officers are told again once the event is ready.
 - **Deadlines:** the registration and withdrawal deadlines are shown on the event page in Singapore time, or "Not set (closes when the event starts)". Organisers change them through an amendment request (or directly on a draft). A deadline cannot be after the event starts, and it can be cleared. The coordinator sees the current and proposed values with the explanation, and approves or rejects.
 - Migration `020-clarifications-and-amendment-history.sql` adds:
   - the clarification source, outcome, comments, and its separate resolution outcome and comments;
