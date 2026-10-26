@@ -36,6 +36,8 @@ app.use('/api/safety', require('./routes/safetyRoutes'));
 app.use('/api/venues', venueRoutes);
 app.use('/api/registrations', require('./routes/registrationRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+// TEMPORARY MOCK: in-memory tech-support reminder preference so the frontend control works end-to-end; remove when the real backend lands.
+app.use('/api/tech-support', require('./routes/techSupportReminderPreferenceRoutes'));
 
 // 404 & Error Handling
 app.use((req, res) => // Returns the JSON 404 response for an unmatched API route.
