@@ -26,6 +26,18 @@ const partialView = {
   ],
   history: [{ version: 1, status: 'confirmed', outcome: 'fully_fulfillable', reason: null, reviewedAt: '2030-01-01T03:00:00.000Z', reviewedBy: 'Taylor', affectedCount: 0 }],
 };
+const pendingReplacement = {
+  id: 71,
+  status: 'pending',
+  reason: 'Battery failed inspection',
+  event_date: '2030-10-15',
+  start_time: '09:00:00',
+  quantity: 2,
+  original_asset_code: 'MIC-001',
+  original_name: 'Wireless Microphone',
+  replacement_asset_code: 'MIC-002',
+  replacement_name: 'Wireless Microphone 2',
+};
 // Technical Support's queue entry for the same kind of request (version 3).
 const queued = { id: 501, name: 'Gala', proposed_date: '2030-10-15', proposed_start_time: '09:00:00', proposed_end_time: '12:00:00',
   venue_name: 'Hall A', venue_location: 'Level 1', equipment_items: [{ item: 'Microphone', quantity: 4 }], equipment_notes: null,
@@ -78,6 +90,143 @@ it('ES AC1/AC3 - the coordinator sees a partially available request, which items
   // Earlier versions remain visible.
   expect(within(within(section).getByRole('list', { name: 'Earlier reviews' })).getByRole('listitem').textContent)
     .toBe('Request version 1: Confirmed (1 Jan 2030, 11:00 am, Taylor)');
+});
+
+// AC1 - Legacy partial reviews explain that older responses did not track affected items individually.
+it('ES AC1 - explains the legacy partial-review fallback when item-level statuses were not recorded', async () => {
+  status = {
+    ...partialView,
+    items: [{ key: 'legacy:0', label: 'Microphone', quantity: 4, status: 'not_recorded', availableQuantity: null }],
+    history: [],
+  };
+  open('/events/101');
+  const section = await panel();
+
+  expect(await within(section).findByText(/This review was recorded before affected items were tracked/)).toBeTruthy();
+});
+
+// AC3 - Only the selected replacement is updated; the rest of the suggestion list stays unchanged.
+it('ES AC3 - updates only the chosen replacement suggestion in the coordinator review', async () => {
+  status = {
+    ...partialView,
+    replacementSuggestions: [
+      pendingReplacement,
+      { ...pendingReplacement, id: 72, original_asset_code: 'MIC-003', original_name: 'Wireless Microphone 3', quantity: 1 },
+    ],
+  };
+  api.post.mockResolvedValue({ message: 'Replacement accepted and reservation updated.' });
+  open('/events/101');
+  const section = await panel();
+
+  fireEvent.click((await within(section).findAllByRole('button', { name: 'Accept replacement' }))[0]);
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    '/events/101/equipment-reservation-issues/71/decision',
+    { outcome: 'accepted' },
+    'session-token',
+  ));
+  expect(within(section).getByText(/MIC-003.*Wireless Microphone 3/)).toBeTruthy();
+});
+
+// AC3 - The assigned coordinator can accept a pending replacement and receives the updated reservation state.
+it('ES AC3 - accepts a pending replacement suggestion', async () => {
+  // Arrange
+  status = { ...partialView, replacementSuggestions: [pendingReplacement] };
+  api.post.mockImplementation(async () => {
+    status = {
+      ...status,
+      replacementSuggestions: [{ ...pendingReplacement, status: 'accepted' }],
+    };
+    return { message: 'Replacement accepted and reservation updated.' };
+  });
+  open('/events/101');
+  const section = await panel();
+
+  // Act
+  fireEvent.click(await within(section).findByRole('button', { name: 'Accept replacement' }));
+
+  // Assert: the coordinator decision is sent for the correct event and the accepted outcome is visible.
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    '/events/101/equipment-reservation-issues/71/decision',
+    { outcome: 'accepted' },
+    'session-token',
+  ));
+  expect(await within(section).findByText('Replacement accepted and reservation updated.')).toBeTruthy();
+  expect(within(section).queryByRole('button', { name: 'Accept replacement' })).toBeNull();
+});
+
+// AC3 - The assigned coordinator can reject a pending replacement without hiding the follow-up state.
+it('ES AC3 - rejects a pending replacement suggestion and sees staff follow-up', async () => {
+  // Arrange
+  status = { ...partialView, replacementSuggestions: [pendingReplacement] };
+  api.post.mockImplementation(async () => {
+    status = {
+      ...status,
+      replacementSuggestions: [{ ...pendingReplacement, status: 'rejected' }],
+    };
+    return { message: 'Replacement rejected. Technical Support has been asked to follow up.' };
+  });
+  open('/events/101');
+  const section = await panel();
+
+  // Act
+  fireEvent.click(await within(section).findByRole('button', { name: 'Reject replacement' }));
+
+  // Assert: rejection does not become acceptance and explicitly tells the coordinator that support will follow up.
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    '/events/101/equipment-reservation-issues/71/decision',
+    { outcome: 'rejected' },
+    'session-token',
+  ));
+  expect(await within(section).findByText('Replacement rejected. Technical Support has been asked to follow up.')).toBeTruthy();
+  expect(await within(section).findByText('Suggestion rejected. Technical Support will follow up.')).toBeTruthy();
+});
+
+// AC3 - An API decision failure is surfaced and does not convert the suggestion into a completed choice.
+it('ES AC3 - shows an error when accepting a replacement fails', async () => {
+  // Arrange
+  status = { ...partialView, replacementSuggestions: [pendingReplacement] };
+  api.post.mockRejectedValueOnce(new Error('The replacement is no longer available.'));
+  open('/events/101');
+  const section = await panel();
+
+  // Act
+  fireEvent.click(await within(section).findByRole('button', { name: 'Accept replacement' }));
+
+  // Assert: a stale offer stays unresolved and its service error is visible.
+  expect((await within(section).findByRole('alert')).textContent).toBe('The replacement is no longer available.');
+  expect(within(section).getByRole('button', { name: 'Accept replacement' })).toBeTruthy();
+});
+
+// AC3: replacement states that need staff follow-up remain visible without offering a decision prematurely.
+it.each([
+  ['no_alternative', 'Technical Support has not found a replacement yet.'],
+  ['awaiting_staff', 'Waiting for Technical Support to suggest an available replacement.'],
+])('ES AC3 - explains a %s replacement state', async (replacementStatus, expectedMessage) => {
+  status = {
+    ...partialView,
+    replacementSuggestions: [{ ...pendingReplacement, status: replacementStatus }],
+  };
+  open('/events/101');
+  const section = await panel();
+
+  expect(await within(section).findByText(expectedMessage)).toBeTruthy();
+  expect(within(section).queryByRole('button', { name: 'Accept replacement' })).toBeNull();
+  expect(within(section).queryByRole('button', { name: 'Reject replacement' })).toBeNull();
+});
+
+// AC3: an API failure without a message uses the coordinator-facing fallback rather than disappearing.
+it('ES AC3 - shows a fallback error when the replacement decision fails without a message', async () => {
+  status = { ...partialView, replacementSuggestions: [pendingReplacement] };
+  api.post.mockRejectedValueOnce({});
+  open('/events/101');
+  const section = await panel();
+
+  fireEvent.click(await within(section).findByRole('button', { name: 'Accept replacement' }));
+
+  expect((await within(section).findByRole('alert')).textContent)
+    .toBe('Unable to save the replacement decision.');
+  expect(within(section).getByRole('button', { name: 'Accept replacement' })).toBeTruthy();
 });
 
 // AC1: each status reads correctly, without an affected-items note.

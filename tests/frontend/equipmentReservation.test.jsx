@@ -553,6 +553,7 @@ it('AC4 - confirms a reservation through the dashboard and refreshes its audit r
         items: [{ assetCode: 'PROJ-001', name: 'Projector', quantity: 2 }],
       }] }
       : { requests: [{ ...request, review_outcome: 'fully_fulfillable' }], reservations: [] };
+    if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/501/equipment-availability') return { availability: { items: availableItems } };
     throw new Error(`Unexpected API route: ${path}`);
   });

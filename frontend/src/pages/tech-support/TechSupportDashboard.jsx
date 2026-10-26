@@ -406,6 +406,7 @@ export default function TechSupportDashboard() {
     if (reservationResult.status === 'fulfilled') {
       setReservationRequests(reservationResult.value.requests);
       setReservations(reservationResult.value.reservations);
+      setAffectedReservations(reservationResult.value.affectedReservations || []);
     } else {
       setReservationError(reservationResult.reason.message || 'Unable to load equipment reservations.');
     }
@@ -462,11 +463,18 @@ export default function TechSupportDashboard() {
       { reason },
       token,
     );
+    const unavailableEquipment = { ...item, ...result.equipment };
     setInventory(current => current.map(currentItem => (
-      currentItem.id === item.id ? { ...currentItem, ...result.equipment } : currentItem
+      currentItem.id === item.id ? unavailableEquipment : currentItem
     )));
     await loadDashboardData();
-    showSuccess(`${item.asset_code} marked unavailable. ${result.affectedIssues.length} reservation(s) flagged.`);
+    if (result.affectedIssues.length > 0) setActiveTab('reservations');
+    showSuccess(
+      result.affectedIssues.length > 0
+        ? `${item.asset_code} marked unavailable. Choose replacement suggestions for ${result.affectedIssues.length} affected reservation(s).`
+        : `${item.asset_code} marked unavailable. No upcoming reservations were affected.`,
+    );
+    return unavailableEquipment;
   }
 
   async function handleReservationConfirmed(reservation) {
@@ -562,7 +570,6 @@ export default function TechSupportDashboard() {
             onRepairEquipment={repairEquipment}
             onMarkUnavailable={markEquipmentUnavailable}
           />
-
         </div>
         )}
         {activeTab === 'review' && (
@@ -605,7 +612,7 @@ export default function TechSupportDashboard() {
             affectedReservations={affectedReservations}
             token={token}
             onReserved={handleReservationConfirmed}
-            onAlternativeProposed={handleAlternativeProposed}
+            onSuggestionSubmitted={handleAlternativeProposed}
             onRelease={releaseReservation}
             error={reservationError || issueError}
             onGoToReviews={() => setActiveTab('review')}
