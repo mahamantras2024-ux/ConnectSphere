@@ -1,94 +1,78 @@
-// File: Lets a Technical Support Staff member opt in to periodic reminders about pending technical support and
-// equipment requests, and choose a daily or weekly cadence (AC4). The control loads the stored preference, lets the
-// member edit it, and saves it; it mirrors OnSiteSupportSection's loading/error pattern and the "don't claim success
-// on failure" rule used across the tech-support dashboard.
+// File: Lets a Technical Support Staff member opt in or out of periodic reminders for pending technical support and
+// equipment requests, and choose a reminder cadence (AC4). The UI mirrors the Venue Staff reminder control
+// (VenueReminderPreferences) so the two dashboards stay consistent: the choice is saved immediately on change, with a
+// status confirmation and an error that rolls the cadence back if a save fails.
 import { useEffect, useState } from 'react';
-import { reminderPreferenceClient } from '../../api/reminderPreferenceClient';
+import { api } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 
-// The cadences a member can choose. A short, fixed list keeps the selector and its tests in step.
-const CADENCES = [['daily', 'Daily'], ['weekly', 'Weekly']];
-// When no preference is stored yet, reminders start off at a conservative weekly cadence so the control is usable.
-const DEFAULT_FREQUENCY = 'weekly';
-
-/**
- * Reminder preference control for the Technical Support dashboard.
- * @param {{ token: string }} props the member's session token, used for the load/save calls.
- */
-export default function ReminderPreference({ token }) {
-  const [state, setState] = useState('loading'); // loading | ready | error
-  const [error, setError] = useState('');
+/** Persists the reminder choice immediately so a refresh or another device cannot silently change it. */
+export default function ReminderPreference() {
+  const { token } = useAuth();
   const [enabled, setEnabled] = useState(false);
-  const [frequency, setFrequency] = useState(DEFAULT_FREQUENCY);
+  const [frequencyDays, setFrequencyDays] = useState(1);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    // An active guard stops a late response (after the token changed or the control unmounted) updating stale state.
     let active = true;
-    reminderPreferenceClient.get(token).then((pref) => {
-      if (!active) return;
-      // A missing preference (null) means "none stored yet"; fall back to the disabled/weekly default.
-      setEnabled(Boolean(pref?.enabled));
-      setFrequency(pref?.frequency === 'daily' ? 'daily' : DEFAULT_FREQUENCY);
-      setState('ready');
-    }).catch((err) => {
-      if (!active) return;
-      setError(err.message);
-      setState('error');
-    });
+    api.get('/tech-support/reminder-preference', token)
+      // An incomplete preference payload falls back to the disabled/daily default, matching the venue control.
+      .then(data => { if (active) {
+        setEnabled(data.preference?.dailyPendingReminders ?? false);
+        setFrequencyDays(data.preference?.reminderFrequencyDays ?? 1);
+      }})
+      .catch(requestError => { if (active) setError(requestError.message); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token]);
 
-  // Persists the current choice. On failure it surfaces the error and keeps the member's edits so they can retry; it
-  // never shows "Preference saved" unless the save actually resolved.
-  async function save() {
-    setSaving(true);
-    setSaveError('');
-    setSaved(false);
+  // Saves the choice and, on failure, restores the previous cadence so the UI never shows an unsaved selection.
+  async function savePreference(nextEnabled, nextFrequencyDays, previousFrequencyDays = frequencyDays) {
+    setSaving(true); setError(''); setMessage('');
     try {
-      await reminderPreferenceClient.save({ enabled, frequency }, token);
-      setSaved(true);
-    } catch (err) {
-      setSaveError(err.message || 'Unable to save reminder preference.');
-    } finally {
-      setSaving(false);
-    }
+      const data = await api.put('/tech-support/reminder-preference', {
+        dailyPendingReminders: nextEnabled, reminderFrequencyDays: nextFrequencyDays,
+      }, token);
+      setEnabled(data.preference.dailyPendingReminders);
+      setFrequencyDays(data.preference.reminderFrequencyDays);
+      setMessage(`${frequencyLabel(data.preference.reminderFrequencyDays)} pending-request reminders ${data.preference.dailyPendingReminders ? 'enabled' : 'disabled'}.`);
+    } catch (requestError) {
+      setFrequencyDays(previousFrequencyDays);
+      setError(requestError.message);
+    } finally { setSaving(false); }
   }
 
-  return (
-    <section className="reminder-preference" aria-labelledby="reminder-preference-title">
-      <h2 id="reminder-preference-title">Periodic reminders</h2>
-      <p className="onsite-support-description">Get periodic reminders about pending technical support and equipment requests.</p>
-      {state === 'loading' && <p role="status">Loading reminder preference…</p>}
-      {state === 'error' && <p role="alert" className="error-message">{error}</p>}
-      {state === 'ready' && (
-        <div className="reminder-preference-controls">
-          <label>
-            <input
-              type="checkbox"
-              checked={enabled}
-              // Editing clears the last "saved" confirmation so stale success text never sits over a fresh change.
-              onChange={(e) => { setSaved(false); setEnabled(e.target.checked); }}
-            />
-            Periodic reminders
-          </label>
-          <label>
-            Reminder cadence
-            <select
-              aria-label="Reminder cadence"
-              value={frequency}
-              onChange={(e) => { setSaved(false); setFrequency(e.target.value); }}
-            >
-              {CADENCES.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-            </select>
-          </label>
-          {saveError && <p role="alert" className="error-message">{saveError}</p>}
-          <button type="button" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : saved ? 'Preference saved' : 'Save preference'}
-          </button>
+  function frequencyLabel(days) { return days === 7 ? 'Weekly' : days === 3 ? 'Every 3 days' : 'Daily'; }
+  function changePreference(event) { savePreference(event.target.checked, frequencyDays); }
+  function changeFrequency(event) {
+    const nextFrequencyDays = Number(event.target.value);
+    const previousFrequencyDays = frequencyDays;
+    setFrequencyDays(nextFrequencyDays);
+    // Changing cadence only persists while reminders are on; off means there is nothing to reschedule.
+    if (enabled) savePreference(true, nextFrequencyDays, previousFrequencyDays);
+  }
+
+  return <section className="venue-reminder-preferences" aria-labelledby="tech-support-reminder-title">
+    <h2 id="tech-support-reminder-title">Pending request reminders</h2>
+    {loading ? <p role="status">Loading reminder preference…</p>
+      : <>
+        <label className="venue-reminder-toggle">
+          <input className="venue-reminder-checkbox" type="checkbox" checked={enabled} disabled={saving} onChange={changePreference} />
+          <span>Receive periodic reminders for pending technical support and equipment requests</span>
+        </label>
+        <div className="venue-reminder-frequency">
+          <label htmlFor="tech-support-reminder-frequency">frequency</label>
+          <select id="tech-support-reminder-frequency" value={frequencyDays} disabled={saving} onChange={changeFrequency}>
+            <option value="1">Daily</option>
+            <option value="3">Every 3 days</option>
+            <option value="7">Weekly</option>
+          </select>
         </div>
-      )}
-    </section>
-  );
+      </>}
+    {message && <p role="status">{message}</p>}
+    {error && <p role="alert" className="error-message">{error}</p>}
+  </section>;
 }

@@ -294,7 +294,7 @@ beforeEach(()=>{
   api.get.mockImplementation(async(path)=>{
     if(path === '/auth/me') return {user};
     if(path === '/events/on-site-support') return {events:[]};
-    if(path === '/tech-support/reminder-preference') return null;
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if(path === '/events/assignments') return {events:[],coordinators:[]};
     if(path === '/events/equipment-requests') return {requests:[]};
     if(path === '/events/equipment-inventory') return {inventory:[]};

@@ -18,7 +18,8 @@ beforeEach(() => {
   useAuth.mockReturnValue({ token: 'staff-token', user: { id: 60, role: 'technical_support' } });
   // Every dashboard read returns a well-formed empty workspace; the reminder preference starts unset.
   api.get.mockImplementation(async (endpoint) => {
-    if (endpoint === '/tech-support/reminder-preference') return null;
+    // The reminder control reads this endpoint; return the venue-consistent { preference } shape.
+    if (endpoint === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (endpoint === '/notifications') return { notifications: [], unreadCount: 0 };
     if (endpoint === '/events/on-site-support') return { events: [] };
     return { requests: [], reservations: [], inventory: [], affectedReservations: [] };
@@ -28,9 +29,9 @@ beforeEach(() => {
 // AC4.1: the dashboard renders the reminder preference control so the member can opt in from where they work.
 it('TS AC4.1 - the tech support dashboard renders the reminder preference control', async () => {
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  // Assert: the Periodic reminders control is present (its heading and the enabled toggle appear once loaded).
-  expect(await screen.findByRole('heading', { name: 'Periodic reminders' })).toBeTruthy();
-  await waitFor(() => expect(screen.getByRole('checkbox', { name: /periodic reminders/i })).toBeTruthy());
+  // Assert: the reminder control is present (its heading and the opt-in toggle appear once loaded).
+  expect(await screen.findByRole('heading', { name: 'Pending request reminders' })).toBeTruthy();
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: /periodic reminders for pending technical support and equipment requests/i })).toBeTruthy());
   // The existing on-site support section is still present, so the control did not displace other dashboard work.
   expect(screen.getByRole('heading', { name: 'Assigned events' })).toBeTruthy();
 });

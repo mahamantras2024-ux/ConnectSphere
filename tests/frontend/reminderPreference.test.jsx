@@ -1,194 +1,156 @@
-// File: Tests the ReminderPreference control (AC4.1–AC4.6): loading, load-failure, empty-default, enabling/disabling,
-// cadence selection, save success, save failure, and the persistence round-trip.
-// Test scope: the control is rendered with the client wrapper mocked so load/save outcomes are driven deterministically.
-// The wrapper's own endpoint/payload contract is covered separately in reminderPreferenceClient.test.js.
+// File: Tests the Technical Support ReminderPreference control (AC4). The control mirrors the Venue Staff reminder UI,
+// so these tests follow venueEventStatus.test.jsx: a real AuthProvider with only the api client mocked, save-on-change
+// behavior, a status confirmation, and an error that rolls the cadence back on a failed save.
+// Test scope: ReminderPreference rendered under AuthProvider; the api client is the only replaced boundary.
+import '@testing-library/jest-dom/vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
-// Mock the wrapper so the control tests drive load/save outcomes without a real network.
-vi.mock('../../frontend/src/api/reminderPreferenceClient', () => ({ reminderPreferenceClient: { get: vi.fn(), save: vi.fn() } }));
-
-import { reminderPreferenceClient } from '../../frontend/src/api/reminderPreferenceClient';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { AuthProvider } from '../../frontend/src/context/AuthContext';
 import ReminderPreference from '../../frontend/src/pages/tech-support/ReminderPreference';
+import { api } from '../../frontend/src/api/client';
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 
-describe('ReminderPreference control', () => {
-  // Reads the enabled checkbox and the cadence selector once the control is ready.
-  const toggle = () => screen.getByRole('checkbox', { name: /periodic reminders/i });
-  const cadence = () => screen.getByRole('combobox', { name: /reminder cadence/i });
-  const saveButton = () => screen.getByRole('button', { name: /save preference|saving|preference saved/i });
+const ENDPOINT = '/tech-support/reminder-preference';
+// The authenticated member every test signs in as; the control reads the token from AuthContext.
+const authMe = { user: { id: 60, role: 'technical_support' } };
 
-  // AC4.1 happy: the control reflects the stored enabled flag and cadence.
-  it('TS AC4.1 - the control reflects the stored enabled flag and cadence', async () => {
-    // Arrange: a stored, enabled, daily preference.
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: true, frequency: 'daily' });
-    // Act
-    render(<ReminderPreference token="staff-token" />);
-    // Assert: once loaded, the toggle is on and the cadence shows daily.
-    await waitFor(() => expect(toggle().checked).toBe(true));
-    expect(cadence().value).toBe('daily');
-  });
+beforeEach(() => {
+  vi.resetAllMocks();
+  localStorage.setItem('cs_token', 'staff-token');
+});
+afterEach(() => { cleanup(); localStorage.clear(); });
 
-  // AC4.1 error: a failed load shows an alert and hides the controls (no guessed preference presented as current).
-  it('TS AC4.1 - a failed preference load shows an alert and hides the controls', async () => {
-    reminderPreferenceClient.get.mockRejectedValue(new Error('Preference unavailable.'));
-    render(<ReminderPreference token="staff-token" />);
-    expect((await screen.findByRole('alert')).textContent).toBe('Preference unavailable.');
-    // The toggle and selector must not render while the load failed.
-    expect(screen.queryByRole('checkbox', { name: /periodic reminders/i })).toBeNull();
-    expect(screen.queryByRole('combobox', { name: /reminder cadence/i })).toBeNull();
-  });
+// Renders the control inside a real AuthProvider so it resolves the session token the way the app does.
+function renderWithSession() { return render(<AuthProvider><ReminderPreference /></AuthProvider>); }
+// Stubs GET /auth/me (for AuthProvider) and the reminder-preference GET with the supplied stored preference.
+function stubLoad(preference) {
+  api.get.mockImplementation(async path => path === '/auth/me' ? authMe : { preference });
+}
+const toggle = () => screen.getByRole('checkbox', { name: /periodic reminders for pending technical support and equipment requests/i });
+const frequency = () => screen.getByRole('combobox', { name: 'frequency' });
 
-  // AC4.1 boundary: no stored preference shows the default (disabled, weekly) so the control is always usable.
-  it('TS AC4.1 - no stored preference shows the default (disabled, weekly)', async () => {
-    reminderPreferenceClient.get.mockResolvedValue(null);
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle().checked).toBe(false));
-    expect(cadence().value).toBe('weekly');
-  });
+// AC4.1: the control reflects the member's stored enabled flag and cadence once loaded.
+it('TS AC4.1 - reflects the stored enabled flag and cadence', async () => {
+  // Arrange: a stored, enabled, weekly (7-day) preference.
+  stubLoad({ dailyPendingReminders: true, reminderFrequencyDays: 7 });
+  // Act
+  renderWithSession();
+  // Assert: a control that ignored the stored values would not show enabled + weekly.
+  await waitFor(() => expect(toggle()).toBeChecked());
+  expect(frequency()).toHaveValue('7');
+});
 
-  // AC4.2 happy: enabling and saving persists { enabled: true, frequency } via the client.
-  it('TS AC4.2 - enabling and saving persists { enabled: true, frequency } via the client', async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: false, frequency: 'weekly' });
-    reminderPreferenceClient.save.mockResolvedValue({ enabled: true, frequency: 'weekly' });
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle()).toBeTruthy());
-    // Act: turn reminders on and save.
-    fireEvent.click(toggle());
-    fireEvent.click(saveButton());
-    // Assert: the saved payload records enabled true with the selected cadence and the token.
-    await waitFor(() => expect(reminderPreferenceClient.save).toHaveBeenCalledWith({ enabled: true, frequency: 'weekly' }, 'staff-token'));
-  });
+// AC4.1 boundary: an incomplete/empty preference payload shows the safe default (disabled, daily).
+it('TS AC4.1 - shows the disabled daily default when no preference is stored', async () => {
+  // Arrange: an empty payload, as a never-configured member would receive.
+  api.get.mockImplementation(async path => path === '/auth/me' ? authMe : {});
+  renderWithSession();
+  await waitFor(() => expect(toggle()).not.toBeChecked());
+  expect(frequency()).toHaveValue('1');
+});
 
-  // AC4.2 error: a failed save shows an error and does not claim the preference was saved.
-  it('TS AC4.2 - a failed save shows an error and does not claim the preference was saved', async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: false, frequency: 'weekly' });
-    reminderPreferenceClient.save.mockRejectedValue(new Error('Could not save preference.'));
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle()).toBeTruthy());
-    fireEvent.click(toggle());
-    fireEvent.click(saveButton());
-    // Assert: the error is surfaced and the button never reads "Preference saved".
-    expect((await screen.findByRole('alert')).textContent).toBe('Could not save preference.');
-    expect(screen.queryByRole('button', { name: 'Preference saved' })).toBeNull();
-    // The member's edit is retained so they can retry.
-    expect(toggle().checked).toBe(true);
-  });
+// AC4.1 error: a failed load surfaces an alert rather than presenting a guessed preference as current.
+it('TS AC4.1 - a failed preference load shows an alert', async () => {
+  api.get.mockImplementation(async path => path === '/auth/me' ? authMe : Promise.reject(new Error('Preference unavailable.')));
+  renderWithSession();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Preference unavailable.');
+});
 
-  // AC4.3: selecting a cadence persists the chosen value.
-  it('TS AC4.3 - selecting daily or weekly persists the chosen cadence', async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: true, frequency: 'weekly' });
-    reminderPreferenceClient.save.mockResolvedValue({ enabled: true, frequency: 'daily' });
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(cadence()).toBeTruthy());
-    fireEvent.change(cadence(), { target: { value: 'daily' } });
-    fireEvent.click(saveButton());
-    await waitFor(() => expect(reminderPreferenceClient.save).toHaveBeenCalledWith({ enabled: true, frequency: 'daily' }, 'staff-token'));
-  });
+// AC4.2 / AC4.6: enabling persists the opt-in and cadence immediately (save-on-change), with a confirmation.
+it('TS AC4.2 - enabling persists the opt-in with its cadence and confirms', async () => {
+  // Arrange: begins disabled; the save endpoint confirms the enabled value.
+  stubLoad({ dailyPendingReminders: false, reminderFrequencyDays: 1 });
+  api.put.mockResolvedValue({ preference: { dailyPendingReminders: true, reminderFrequencyDays: 1 } });
+  renderWithSession();
+  await waitFor(() => expect(toggle()).not.toBeChecked());
+  // Act: opt in.
+  fireEvent.click(toggle());
+  // Assert: the exact payload is persisted (a UI-only toggle or an inverted boolean would fail) and confirmed.
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith(ENDPOINT, { dailyPendingReminders: true, reminderFrequencyDays: 1 }, 'staff-token'));
+  expect(await screen.findByRole('status')).toHaveTextContent(/daily.*enabled/i);
+  expect(toggle()).toBeChecked();
+});
 
-  // AC4.4: disabling and saving persists { enabled: false }.
-  it('TS AC4.4 - disabling and saving persists { enabled: false }', async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: true, frequency: 'weekly' });
-    reminderPreferenceClient.save.mockResolvedValue({ enabled: false, frequency: 'weekly' });
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle().checked).toBe(true));
-    fireEvent.click(toggle());
-    fireEvent.click(saveButton());
-    await waitFor(() => expect(reminderPreferenceClient.save).toHaveBeenCalledWith({ enabled: false, frequency: 'weekly' }, 'staff-token'));
-  });
+// AC4.3: changing the cadence while enabled persists the chosen number of days.
+it('TS AC4.3 - changing the cadence while enabled persists the chosen days', async () => {
+  // Arrange: enabled daily; the API accepts a weekly cadence.
+  stubLoad({ dailyPendingReminders: true, reminderFrequencyDays: 1 });
+  api.put.mockResolvedValue({ preference: { dailyPendingReminders: true, reminderFrequencyDays: 7 } });
+  renderWithSession();
+  await waitFor(() => expect(toggle()).toBeChecked());
+  // Act: pick Weekly.
+  fireEvent.change(frequency(), { target: { value: '7' } });
+  // Assert: the selected cadence is persisted, not merely shown.
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith(ENDPOINT, { dailyPendingReminders: true, reminderFrequencyDays: 7 }, 'staff-token'));
+  expect(await screen.findByRole('status')).toHaveTextContent(/weekly.*enabled/i);
+});
 
-  // AC4.5: while disabled the saved preference records disabled (frontend persistence; emission is backend).
-  it('TS AC4.5 - while disabled the saved preference records disabled (frontend persistence; emission is backend)', async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: false, frequency: 'weekly' });
-    reminderPreferenceClient.save.mockResolvedValue({ enabled: false, frequency: 'weekly' });
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle().checked).toBe(false));
-    fireEvent.click(saveButton());
-    await waitFor(() => expect(reminderPreferenceClient.save).toHaveBeenCalledWith({ enabled: false, frequency: 'weekly' }, 'staff-token'));
-  });
+// AC4.5 boundary: changing the cadence while disabled does NOT persist, because there is nothing to reschedule.
+it('TS AC4.3 - changing the cadence while disabled does not persist', async () => {
+  stubLoad({ dailyPendingReminders: false, reminderFrequencyDays: 1 });
+  renderWithSession();
+  await waitFor(() => expect(toggle()).not.toBeChecked());
+  // Act: change cadence while opted out.
+  fireEvent.change(frequency(), { target: { value: '3' } });
+  // Assert: the selection updates locally but no save is sent while disabled.
+  expect(frequency()).toHaveValue('3');
+  expect(api.put).not.toHaveBeenCalled();
+});
 
-  // AC4.6: while enabled the saved preference records enabled with the cadence (frontend persistence; emission is backend).
-  it('TS AC4.6 - while enabled the saved preference records enabled and the cadence (frontend persistence; emission is backend)', async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: true, frequency: 'daily' });
-    reminderPreferenceClient.save.mockResolvedValue({ enabled: true, frequency: 'daily' });
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle().checked).toBe(true));
-    fireEvent.click(saveButton());
-    await waitFor(() => expect(reminderPreferenceClient.save).toHaveBeenCalledWith({ enabled: true, frequency: 'daily' }, 'staff-token'));
-  });
+// AC4.4 / AC4.5: disabling persists the explicit opt-out.
+it('TS AC4.4 - disabling persists the explicit opt-out', async () => {
+  stubLoad({ dailyPendingReminders: true, reminderFrequencyDays: 1 });
+  api.put.mockResolvedValue({ preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } });
+  renderWithSession();
+  await waitFor(() => expect(toggle()).toBeChecked());
+  // Act: opt out.
+  fireEvent.click(toggle());
+  // Assert: the opt-out is persisted (false sent) and confirmed as disabled.
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith(ENDPOINT, { dailyPendingReminders: false, reminderFrequencyDays: 1 }, 'staff-token'));
+  expect(await screen.findByRole('status')).toHaveTextContent(/disabled/i);
+  expect(toggle()).not.toBeChecked();
+});
 
-  // AC4.2 feedback: a successful save confirms success to the member.
-  it('TS AC4.2 - a successful save confirms the preference was saved', async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: false, frequency: 'weekly' });
-    reminderPreferenceClient.save.mockResolvedValue({ enabled: true, frequency: 'weekly' });
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle()).toBeTruthy());
-    fireEvent.click(toggle());
-    fireEvent.click(saveButton());
-    expect(await screen.findByRole('button', { name: 'Preference saved' })).toBeTruthy();
-  });
+// AC4.2 error: a failed save shows an error, restores the previous cadence, and does not claim success.
+it('TS AC4.2 - a failed cadence save shows an error and restores the previous cadence', async () => {
+  // Arrange: enabled daily; changing to weekly fails.
+  stubLoad({ dailyPendingReminders: true, reminderFrequencyDays: 1 });
+  api.put.mockRejectedValue(new Error('Frequency save failed'));
+  renderWithSession();
+  await waitFor(() => expect(frequency()).toHaveValue('1'));
+  // Act: attempt to switch to weekly.
+  fireEvent.change(frequency(), { target: { value: '7' } });
+  // Assert: the error surfaces, no success status appears, and the cadence rolls back to daily.
+  expect(await screen.findByRole('alert')).toHaveTextContent('Frequency save failed');
+  expect(screen.queryByRole('status')).toBeNull();
+  await waitFor(() => expect(frequency()).toHaveValue('1'));
+});
 
-  // Feature: tech-support-assignment-notifications, Property 5: Reminder preference persistence round-trip.
-  // For any representable { enabled, frequency }, loading reflects that value and saving sends exactly it.
-  it('TS AC4.3 - Property 5: any representable { enabled, frequency } reloads unchanged and saves exactly', async () => {
-    const enabledValues = [true, false];
-    const frequencies = ['daily', 'weekly'];
-    let checked = 0;
-    for (const enabled of enabledValues) {
-      for (const frequency of frequencies) {
-        // Arrange: a fresh render per representable value (small finite domain, each combination exercised).
-        cleanup();
-        vi.clearAllMocks();
-        reminderPreferenceClient.get.mockResolvedValue({ enabled, frequency });
-        reminderPreferenceClient.save.mockResolvedValue({ enabled, frequency });
-        render(<ReminderPreference token="staff-token" />);
-        // Assert load reflects the persisted value exactly.
-        await waitFor(() => expect(toggle().checked).toBe(enabled));
-        expect(cadence().value).toBe(frequency);
-        // Act: save without edits and assert the exact same payload is sent back.
-        fireEvent.click(saveButton());
-        await waitFor(() => expect(reminderPreferenceClient.save).toHaveBeenCalledWith({ enabled, frequency }, 'staff-token'));
-        checked += 1;
-      }
-    }
-    expect(checked).toBe(4);
-  });
+// AC4.3 boundary: the middle cadence (every 3 days) persists and is confirmed with its own label.
+it('TS AC4.3 - selecting the every-3-days cadence persists and confirms that label', async () => {
+  // Arrange: enabled daily; the API accepts the 3-day cadence.
+  stubLoad({ dailyPendingReminders: true, reminderFrequencyDays: 1 });
+  api.put.mockResolvedValue({ preference: { dailyPendingReminders: true, reminderFrequencyDays: 3 } });
+  renderWithSession();
+  await waitFor(() => expect(toggle()).toBeChecked());
+  // Act: pick Every 3 days.
+  fireEvent.change(frequency(), { target: { value: '3' } });
+  // Assert: the 3-day cadence is persisted and labelled distinctly from Daily/Weekly.
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith(ENDPOINT, { dailyPendingReminders: true, reminderFrequencyDays: 3 }, 'staff-token'));
+  expect(await screen.findByRole('status')).toHaveTextContent(/every 3 days.*enabled/i);
+});
 
-  // AC4.1: a load response that resolves after the control unmounts must not attempt a state update (stale guard).
-  it("TS AC4.1 - a load resolving after unmount does not update state", async () => {
-    // Arrange: a deferred get so we can unmount before it resolves.
-    let resolveGet;
-    reminderPreferenceClient.get.mockReturnValue(new Promise((resolve) => { resolveGet = resolve; }));
-    const { unmount } = render(<ReminderPreference token="staff-token" />);
-    // Act: unmount first, then let the load resolve.
-    unmount();
-    await act(async () => { resolveGet({ enabled: true, frequency: "daily" }); });
-    // Assert: no error is thrown and nothing from the unmounted tree renders.
-    expect(screen.queryByRole("checkbox", { name: /periodic reminders/i })).toBeNull();
-  });
-
-  // AC4.1: a load that rejects after the control unmounts must not attempt a state update (stale guard on error).
-  it("TS AC4.1 - a load rejecting after unmount does not update state", async () => {
-    let rejectGet;
-    reminderPreferenceClient.get.mockReturnValue(new Promise((_, reject) => { rejectGet = reject; }));
-    const { unmount } = render(<ReminderPreference token="staff-token" />);
-    unmount();
-    // Act: reject after unmount; the catch must early-return without setting error state.
-    await act(async () => { rejectGet(new Error("late failure")); });
-    // Assert: no alert from the unmounted tree is present.
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  // AC4.2: a save error with no message falls back to a clear default message rather than showing blank.
-  it("TS AC4.2 - a save error without a message shows a default error", async () => {
-    reminderPreferenceClient.get.mockResolvedValue({ enabled: false, frequency: "weekly" });
-    // Arrange: reject with an error whose message is empty, exercising the fallback branch.
-    reminderPreferenceClient.save.mockRejectedValue(new Error(""));
-    render(<ReminderPreference token="staff-token" />);
-    await waitFor(() => expect(toggle()).toBeTruthy());
-    fireEvent.click(toggle());
-    fireEvent.click(saveButton());
-    expect((await screen.findByRole("alert")).textContent).toBe("Unable to save reminder preference.");
-  });
+// AC4.1: a load resolving after the control unmounts must not update state (stale-response guard).
+it('TS AC4.1 - a load resolving after unmount does not update state', async () => {
+  // Arrange: a deferred reminder-preference read so we can unmount before it resolves.
+  let resolvePref;
+  api.get.mockImplementation(async path => path === '/auth/me' ? authMe
+    : new Promise(resolve => { resolvePref = resolve; }));
+  const { unmount } = renderWithSession();
+  // Act: unmount, then let the late read resolve.
+  unmount();
+  await act(async () => { resolvePref({ preference: { dailyPendingReminders: true, reminderFrequencyDays: 7 } }); });
+  // Assert: nothing from the unmounted tree is present (no error thrown by a stale state update).
+  expect(screen.queryByRole('checkbox')).toBeNull();
 });

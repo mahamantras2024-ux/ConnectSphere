@@ -505,7 +505,7 @@ export default function TechSupportDashboard() {
       <NotificationsPanel />
       <OnSiteSupportSection token={token} />
       {/* Opt-in periodic reminders for pending technical support and equipment requests (AC4). */}
-      <ReminderPreference token={token} />
+      <ReminderPreference />
       {toast && (
         <div
           role="status"

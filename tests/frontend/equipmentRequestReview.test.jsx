@@ -38,7 +38,7 @@ beforeEach(() => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
     if (path === '/events/on-site-support') return { events: [] };
-    if (path === '/tech-support/reminder-preference') return null;
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-requests') return { requests: pendingRequest ? [pendingRequest] : [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
     if (path === '/events/equipment-reservations') {
@@ -85,7 +85,7 @@ it('AC1 - displays review fallbacks for partial event details', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
     if (path === '/events/on-site-support') return { events: [] };
-    if (path === '/tech-support/reminder-preference') return null;
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-requests') return {
       requests: [
         { ...eventRequest, proposed_date: null, proposed_start_time: '09:00:00', proposed_end_time: null, equipment_items: [], equipment_notes: 'Additional cable' },
@@ -190,7 +190,7 @@ it('AC1 - shows queue errors and permits retry', async () => {
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
     if (path === '/events/on-site-support') return { events: [] };
-    if (path === '/tech-support/reminder-preference') return null;
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-requests' && queueFails) {
       queueFails = false;
       throw new Error('The request queue is unavailable.');
@@ -211,7 +211,7 @@ it('AC1 - shows a fallback queue error when no error message is supplied', async
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
     if (path === '/events/on-site-support') return { events: [] };
-    if (path === '/tech-support/reminder-preference') return null;
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     throw {};
   });
   await openDashboard();
@@ -304,7 +304,7 @@ it('AC1 - reports inventory and reservation load errors in their respective tabs
   api.get.mockImplementation(async path => {
     if (path === '/auth/me') return { user: supportUser };
     if (path === '/events/on-site-support') return { events: [] };
-    if (path === '/tech-support/reminder-preference') return null;
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-requests') throw new Error('Request queue unavailable.');
     if (path === '/events/equipment-inventory') throw new Error('Catalogue unavailable.');
     if (path === '/events/equipment-reservations') throw new Error('Reservation list unavailable.');
