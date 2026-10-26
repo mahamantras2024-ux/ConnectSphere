@@ -97,7 +97,8 @@ describe('previews and targets', () => {
     ['event_organiser', note(), '/organizer/events/101'], ['attendee', note(), '/attendee/events/101'],
     ['event_coordinator', note(), '/events/101'], ['event_coordinator_lead', note(), '/events/101'],
     ['event_coordinator_lead', note({ type: 'event_awaiting_assignment' }), '/coordinator-lead/dashboard'],
-    ['safety_officer', note({ type: 'safety_check_ready' }), '/safety/dashboard'],
+    ['safety_officer', note({ type: 'safety_check_ready' }), '/safety/dashboard#safety-event-101'],
+    ['safety_officer', note({ type: 'safety_check_ready', event_id: null }), '/safety/dashboard'],
     ['venue_staff', note(), '/venue/dashboard'], ['technical_support', note(), '/tech-support/dashboard'],
     ['event_organiser', note({ event_id: null }), '/organizer/dashboard'],
   ])('NT AC4 - a %s opens the right page', (role, notification, path) => {
