@@ -83,11 +83,14 @@ beforeEach(() => {
     // The integrated dashboard also loads unrelated panels; keep those external responses empty and successful.
     if (endpoint === '/notifications') return { notifications: [] };
     if (endpoint === '/events/on-site-support') return { events: [] };
+    if (endpoint === '/tech-support/reminder-preference') return null;
     if (endpoint === '/events/equipment-requests') return { requests: [] };
     if (endpoint === '/events/on-site-support') return { events: [] };
+    if (endpoint === '/tech-support/reminder-preference') return null;
     if (endpoint === '/events/equipment-inventory') return { inventory: [unavailableEquipment, availableEquipment] };
     if (endpoint === '/events/equipment-reservations') return { requests: [], reservations: [] };
     if (endpoint === '/events/on-site-support') return { events: [] };
+    if (endpoint === '/tech-support/reminder-preference') return null;
     throw new Error(`Unexpected GET ${endpoint}`);
   });
   vi.spyOn(api, 'put').mockImplementation(async (_endpoint, body) => ({
