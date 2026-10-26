@@ -19,7 +19,6 @@ import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
 import EquipmentStatusSection from './EquipmentStatusSection';
-import EquipmentReservationIssuesSection from './EquipmentReservationIssuesSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 import OrganiserVenueDetails from './OrganiserVenueDetails';
 
@@ -1072,7 +1071,6 @@ export default function EventDetail() {
         </section>
         <section role="tabpanel" id="workspace-panel-equipment" aria-labelledby="workspace-tab-equipment" hidden={workspaceTab !== 'equipment'}>
           <EquipmentStatusSection eventId={event.id} token={token} />
-          <EquipmentReservationIssuesSection eventId={event.id} token={token} />
         {/* Coordinator equipment is read-only; edit callbacks belong only to the organiser's overview. */}
         <EquipmentRequirementsSection event={event} canEdit={false}>
 

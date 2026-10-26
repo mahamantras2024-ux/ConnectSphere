@@ -2,6 +2,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const statusModel = require('../models/equipmentStatusModel');
 const { requestedItems, statusOf, itemStatuses, OUTCOME_STATUS } = require('../services/equipmentStatus');
+const reservationUnavailability = require('../services/equipmentReservationUnavailability');
 
 // Event ids are PostgreSQL INTEGER keys.
 const validId = (id) => /^[1-9]\d*$/.test(id) && Number(id) <= 2147483647;
@@ -21,11 +22,13 @@ const getEquipmentStatus = asyncHandler(async (req, res) => {
   const version = event.equipment_requirements_version;
   const current = reviews.find((review) => review.request_version === version) || null;
   const items = requestedItems(event);
+  const replacementSuggestions = await reservationUnavailability.listEventIssues(event.id);
   return res.json({
     status: statusOf(items, current),
     version,
     review: reviewView(current),
     items: itemStatuses(items, current),
+    replacementSuggestions,
     // Earlier versions' requirements are not stored, so their affected items are shown by count, not name.
     history: reviews.filter((review) => review.request_version < version).map((review) => ({
       version: review.request_version, status: OUTCOME_STATUS[review.outcome], ...reviewView(review), affectedCount: review.affected_items.length,
