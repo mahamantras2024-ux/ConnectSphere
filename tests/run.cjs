@@ -7,7 +7,7 @@ const options = process.argv.slice(2);
 // Maps each implemented story to its shared and feature-specific regression suites.
 const stories = {
   // Technical Support event status AC1-AC6: private lifecycle facts, release and transactional notifications.
-  'technical-event-status': ['technicalEventStatus', 'technicalEventStatusPostgres', 'technicalSupportAssignment'],
+  'technical-event-status': ['technicalEventStatus', 'technicalEventStatusPostgres', 'technicalSupportAssignment', 'eventCompletion'],
   // Coordinator reporting keeps real access middleware and drawer interactions in the story suite.
   'coordinator-view-registration-information': ['coordinatorRegistrations', 'coordinatorRegistrationAccess', 'coordinatorRegistrationNavigation'],
   // Sprint 3 SCRUM-43: staff review/decisions, notifications, trusted audit and existing occupancy/concurrency guards.

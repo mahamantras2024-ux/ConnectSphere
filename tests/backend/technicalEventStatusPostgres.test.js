@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
 const { listRelevantEvents } = require('../../backend/src/services/technicalEventStatus');
+const { completePastEvents } = require('../../backend/src/services/eventCompletion');
 const eventModel = require('../../backend/src/models/eventModel');
 after(async () => { mock.restoreAll(); await pool.end(); });
 
@@ -97,6 +98,30 @@ test('TS status AC1-AC6 - current facts and lifecycle notices stay scoped and tr
       await client.query('INSERT INTO event_technical_support_assignments VALUES (12,6)');
       await client.query("UPDATE events SET status='confirmed' WHERE id=12");
       assert.deepEqual((await client.query('SELECT user_id FROM notifications WHERE event_id=12 ORDER BY user_id')).rows.map(row => row.user_id), [1,6]);
+      // Completion AC: use an explicit instant to prove the Singapore end boundary without wall-clock races.
+      await client.query("TRUNCATE notifications; DELETE FROM event_technical_support_assignments; DELETE FROM events");
+      const statuses = ['approved', 'confirmed', 'cancelled', 'draft', 'rejected', 'submitted', 'under_review', 'planning', 'completed'];
+      for (const [index, status] of statuses.entries()) {
+        await client.query(`INSERT INTO events (id,name,status,is_draft,proposed_date,proposed_end_time)
+          VALUES ($1,'Completion boundary',$2,$3,'2030-11-01','11:00')`, [100 + index, status, status === 'draft']);
+        await client.query('INSERT INTO event_technical_support_assignments VALUES ($1,1)', [100 + index]);
+      }
+      // Draft flags and incomplete schedules must never be mistaken for an event that has taken place.
+      await client.query(`INSERT INTO events (id,name,status,is_draft,proposed_date,proposed_end_time) VALUES
+        (200,'Missing date','approved',false,NULL,'11:00'),
+        (201,'Missing time','confirmed',false,'2030-11-01',NULL),
+        (202,'Unpublished','confirmed',true,'2030-11-01','11:00')`);
+      assert.deepEqual(await completePastEvents(client, new Date('2030-11-01T02:59:59.999Z')), []);
+      assert.deepEqual(await completePastEvents(client, new Date('2030-11-01T03:00:00.000Z')), []);
+      assert.deepEqual((await completePastEvents(client, new Date('2030-11-01T03:00:00.001Z'))).map(row => row.id).sort(), [100,101]);
+      const persisted = (await client.query('SELECT id,status FROM events ORDER BY id')).rows;
+      assert.deepEqual(persisted.map(row => row.status), ['completed','completed',...statuses.slice(2),'approved','confirmed','confirmed']);
+      assert.equal((await listRelevantEvents(client, 1, 100))[0].status, 'completed');
+      const completionNotes = (await client.query('SELECT user_id,event_id,details FROM notifications ORDER BY event_id')).rows;
+      assert.deepEqual(completionNotes.map(row => [row.user_id,row.event_id,row.details.status]), [[1,100,'completed'],[1,101,'completed']]);
+      // Repeated or concurrent workers cannot transition an already completed row or duplicate its notice.
+      assert.deepEqual(await completePastEvents(client, new Date('2030-11-02T03:00:00Z')), []);
+      assert.equal((await client.query('SELECT count(*)::int AS n FROM notifications')).rows[0].n, 2);
     } finally {
       mock.restoreAll();
       await client.query('ROLLBACK');
