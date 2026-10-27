@@ -44,6 +44,7 @@ beforeEach(() => {
     if (path === '/events/equipment-reservations') {
       return { requests: reservationRequest ? [reservationRequest] : [], reservations: [] };
     }
+    if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     throw new Error(`Unexpected API route: ${path}`);
   });
   api.post.mockImplementation(async (path, body) => {

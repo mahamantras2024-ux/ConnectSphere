@@ -103,16 +103,58 @@ p { line-height: 1.65; }
 .equipment-inventory-table tbody th { color: var(--teal); white-space: nowrap; }
 .equipment-inventory-table td ul { margin: 0; padding-left: 18px; }
 .equipment-inventory-table td li + li { margin-top: 5px; }
-.equipment-availability-calendar { min-width: 1180px; }
-.equipment-availability-calendar thead th:nth-child(n+2) { min-width: 145px; text-align: center; }
-.equipment-availability-calendar th.is-filtered-date,
-.equipment-availability-calendar td.is-filtered-date { background: #fffbe4; }
-.equipment-calendar-windows { display: grid; gap: 6px; margin: 0; padding: 0 !important; list-style: none; }
-.equipment-calendar-window { display: grid; gap: 3px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: #f7f7f1; color: var(--muted); font-size: 12px; }
-.equipment-calendar-window.is-available { border-color: #bed6ab; background: #f1f7e9; color: #36542f; }
-.equipment-calendar-window span { font-weight: 700; white-space: nowrap; }
-.equipment-calendar-window small { font-size: 10px; }
-.equipment-calendar-empty { color: #a3a497; }
+.equipment-status-control { display: grid; justify-items: start; gap: 8px; min-width: 140px; }
+.equipment-status-control select { min-width: 132px; padding: 8px 10px; border: 1px solid #c8cec1; border-radius: 8px; background: #fff; color: var(--ink); }
+.equipment-status-control form { display: grid; gap: 6px; min-width: 180px; }
+.equipment-status-control form label { display: grid; gap: 5px; font-size: 11px; font-weight: 600; }
+.equipment-status-control textarea { width: 100%; min-height: 64px; }
+.equipment-status-history { display: grid; min-width: 190px; gap: 7px; margin: 0; padding: 0 !important; list-style: none; }
+.equipment-status-history li { padding: 10px 11px; border: 1px solid #e4e9df; border-left: 3px solid #78976b; border-radius: 9px; background: #fbfcf8; }
+.equipment-status-history-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+.equipment-status-history-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; background: #edf2e8; color: #43694c; font-size: 10px; font-weight: 700; }
+.equipment-status-history-status.is-unavailable { background: #f9e2df; color: #8b3931; }
+.equipment-status-history-status.is-available { background: #e2f1db; color: #365c31; }
+.equipment-status-history-note { margin: 7px 0 0; color: var(--ink); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.equipment-status-history-meta { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; }
+.equipment-calendar-section { margin-top: 26px; padding: 22px; border: 1px solid var(--border); border-radius: 16px; background: #fffefa; box-shadow: 0 6px 22px #30391c0a; }
+.equipment-calendar-section .section-heading { margin: 0 0 8px; }
+.equipment-calendar-section .section-heading h3 { margin: 0; color: var(--ink); }
+.equipment-calendar-note { margin: 0 0 13px; color: var(--muted); font-size: 13px; }
+.equipment-calendar-navigation { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 14px; }
+.equipment-calendar-navigation > span { color: var(--ink); text-align: center; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.equipment-calendar-navigation button { padding: 9px 13px; font-size: 12px; }
+.equipment-calendar-assets { display: grid; gap: 18px; }
+.equipment-calendar-asset { min-width: 0; }
+.equipment-calendar-asset h4 { margin: 0 0 8px; color: var(--ink); font-size: 13px; }
+.equipment-availability-calendar { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.equipment-availability-calendar th { padding: 8px 4px; color: var(--muted); text-align: center; font-size: 11px; }
+.equipment-availability-calendar td { height: 68px; padding: 9px 10px; border-bottom: 1px solid #e9ece4; vertical-align: top; }
+.equipment-availability-calendar tbody tr:last-child td { border-bottom: 0; }
+.equipment-availability-calendar td.is-outside-range { background: transparent; }
+.equipment-availability-calendar td.is-filtered-date { box-shadow: inset 0 0 0 2px #d9bd5a; }
+.equipment-calendar-day-number { display: block; margin-bottom: 7px; color: var(--ink); font-size: 11px; font-weight: 700; }
+.equipment-calendar-windows { display: grid; gap: 5px; margin: 0; padding: 0 !important; list-style: none; }
+.equipment-calendar-window { display: grid; justify-items: start; gap: 4px; min-width: 0; padding: 4px 0; color: var(--ink); font-size: 10px; }
+.equipment-calendar-window + .equipment-calendar-window { border-top: 1px solid #e9ece4; }
+.equipment-calendar-time { color: inherit; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.equipment-calendar-status { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 0; color: #36542f; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: normal; }
+.equipment-calendar-status::before { width: 7px; height: 7px; border-radius: 50%; background: #68a84c; content: ""; }
+.equipment-calendar-status.is-available { color: #365c31; }
+.equipment-calendar-status.is-available::before { background: #68a84c; }
+.equipment-calendar-status.is-unavailable { color: #8b3931; }
+.equipment-calendar-status.is-unavailable::before { background: #c85a50; }
+.equipment-calendar-window small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+.equipment-calendar-event { max-width: 100%; overflow-wrap: anywhere; font-weight: 600; }
+.equipment-status-history time { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 640px) {
+  .equipment-calendar-section { padding: 14px; }
+  .equipment-calendar-navigation { grid-template-columns: 1fr 1fr; }
+  .equipment-calendar-navigation > span { grid-row: 1; grid-column: 1 / -1; }
+  .equipment-calendar-navigation button { width: 100%; }
+  .equipment-availability-calendar td { height: 60px; padding: 7px 5px; }
+  .equipment-calendar-status { gap: 4px; font-size: 9px; }
+  .equipment-calendar-status::before { width: 6px; height: 6px; }
+}
 .badge, .status-badge { display: inline-flex; align-items: center; border-radius: 20px; padding: 6px 10px; background: #edf2e8; color: #43694c; font-size: 11px; font-weight: 600; text-transform: capitalize; }
 .status-draft { background: #f0f1ed; color: #6a776c; }
 .status-submitted, .status-under_review { background: #f9efdb; color: #89601c; }

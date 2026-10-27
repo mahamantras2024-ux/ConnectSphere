@@ -66,7 +66,10 @@ test('AC1 - lists the pre-provisioned equipment inventory and availability windo
     specification: 'Full HD 1080p, 4,000 lumens, HDMI',
     status: 'operational',
     quantity: 3,
-    availabilities: [{ date: '2026-10-12', startTime: '09:00:00', endTime: '17:00:00', status: 'Available', availableQuantity: 3 }],
+    availabilities: [{
+      date: '2026-10-12', startTime: '09:00:00', endTime: '17:00:00',
+      status: 'Available', availableQuantity: 2, reservedQuantity: 1, eventName: 'Town Hall',
+    }],
   };
   let inventorySql;
   mock.method(pool, 'query', async sql => {
@@ -81,7 +84,17 @@ test('AC1 - lists the pre-provisioned equipment inventory and availability windo
   assert.deepEqual(result.body.inventory, [item]);
   assert.match(inventorySql, /FROM equipments stock/i);
   assert.match(inventorySql, /technical_equipment_availability/i);
-  assert.match(inventorySql, /reserved_item\.quantity/i);
+  assert.match(inventorySql, /SELECT schedule\.id,\s*schedule\.available_date/i);
+  assert.match(inventorySql, /'isScheduled',\s*availability\.is_scheduled/i);
+  assert.match(inventorySql, /TRUE AS is_scheduled/i);
+  assert.match(inventorySql, /FALSE AS is_scheduled/i);
+  assert.match(inventorySql, /sum\(reserved_item\.quantity\)/i);
+  assert.match(inventorySql, /'reservedQuantity',\s*COALESCE\(reserved\.quantity,\s*0\)/i);
+  assert.match(inventorySql, /'blockReason'/i);
+  assert.match(inventorySql, /stock\.availability_status/i);
+  assert.match(inventorySql, /UNION ALL/i);
+  assert.match(inventorySql, /reservation\.event_date AS available_date/i);
+  assert.match(inventorySql, /NOT EXISTS\s*\([\s\S]*scheduled_date\.available_date=reservation_slot\.available_date/i);
   assert.doesNotMatch(inventorySql, /INSERT INTO equipments|UPDATE equipments/i);
 });
 
@@ -121,12 +134,54 @@ test('AC2 - checks matching stock and subtracts reservations overlapping the eve
     availableAssets: [asset],
   }]);
   assert.match(stockQuery.sql, /FROM equipments stock/i);
-  assert.match(stockQuery.sql, /calendar\.start_time <= \$3::time/i);
-  assert.match(stockQuery.sql, /calendar\.end_time >= \$4::time/i);
+  assert.match(stockQuery.sql, /schedule\.start_time <= \$3::time/i);
+  assert.match(stockQuery.sql, /schedule\.end_time >= \$4::time/i);
   assert.match(stockQuery.sql, /LEFT JOIN LATERAL/i);
+  // No schedule for the date allows the asset; an existing schedule must cover the event slot.
+  assert.match(stockQuery.sql, /NOT EXISTS\s*\(\s*SELECT 1 FROM technical_equipment_availability schedule\s+WHERE schedule\.inventory_id=stock\.id AND schedule\.available_date=\$2::date\s*\)/i);
+  assert.match(stockQuery.sql, /availability\.id IS NOT NULL OR NOT EXISTS/i);
   assert.match(stockQuery.sql, /reservation\.start_time < \$4::time/i);
   assert.match(stockQuery.sql, /reservation\.end_time > \$3::time/i);
+  assert.match(stockQuery.sql, /MAX\(concurrent\.quantity\)/i);
+  assert.match(stockQuery.sql, /GREATEST\(reservation\.start_time,\s*\$3::time\)/i);
+  assert.match(stockQuery.sql, /active_reservation\.start_time <= reservation_points\.point_time/i);
   assert.deepEqual(stockQuery.values, [['projector'], '2026-10-12', '09:00:00', '12:00:00']);
+});
+
+// SCRUM-54 AC3 - An unscheduled date is bookable in the reservation preview unless it has blocking reservations.
+test('SCRUM-54 AC3 - returns full stock in the reservation preview on an unscheduled date', async () => {
+  const asset = {
+    id: 1,
+    asset_code: 'PROJ-001',
+    name: 'Projector',
+    specification: 'Full HD',
+    status: 'operational',
+    quantity: 3,
+    available_quantity: 3,
+    available_date: null,
+    available_start_time: null,
+    available_end_time: null,
+  };
+  let stockQuery;
+  mock.method(pool, 'query', async (sql, values) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    if (sql.includes('FROM events e')) return { rows: [event] };
+    if (sql.includes('FROM unnest($1::text[])')) {
+      return { rows: [{ requested_item: 'projector', canonical_item: 'Projector' }] };
+    }
+    stockQuery = { sql, values };
+    return { rows: [asset] };
+  });
+
+  // Act: load the API-backed reservation preview for a date with no schedule rows.
+  const result = await request('/api/events/501/equipment-availability');
+
+  // Assert: the preview reports stock and the query distinguishes an unscheduled date from a schedule mismatch.
+  assert.equal(result.status, 200);
+  assert.equal(result.body.availability.items[0].availableQuantity, 3);
+  assert.deepEqual(result.body.availability.items[0].availableAssets, [asset]);
+  assert.match(stockQuery.sql, /CASE WHEN availability\.available_date IS NULL AND EXISTS\s*\([\s\S]*schedule\.available_date=\$2::date[\s\S]*\)\s*THEN 0/i);
+  assert.match(stockQuery.sql, /ELSE GREATEST\(stock\.quantity - COALESCE\(booked\.quantity, 0\), 0\)/i);
 });
 
 // AC4 - Staff-added items are checked alongside equipment detected in the event request.
@@ -302,5 +357,56 @@ test('AC6 - returns one unavailable category result when the requested date has 
   }]);
   assert.match(stockQuery, /LEFT JOIN LATERAL/i);
   assert.match(stockQuery, /technical_equipment_availability/i);
-  assert.match(stockQuery, /CASE WHEN availability\.available_date IS NULL THEN 0/i);
+  assert.match(stockQuery, /CASE WHEN availability\.available_date IS NULL AND EXISTS\s*\([\s\S]*schedule\.available_date=\$2::date[\s\S]*\)\s*THEN 0/i);
+});
+
+// SCRUM-54 AC4 - A short reservation is shown only for its actual interval within a scheduled window.
+test('SCRUM-54 AC4 - splits scheduled availability around short reservation periods', async () => {
+  const item = {
+    id: 1,
+    asset_code: 'PROJ-001',
+    name: 'Projector',
+    specification: 'Full HD',
+    status: 'operational',
+    availability_status: 'Available',
+    quantity: 1,
+    availabilities: [
+      {
+        date: '2026-10-12', startTime: '09:00:00', endTime: '10:00:00',
+        isScheduled: true, status: 'Available', availableQuantity: 1, reservedQuantity: 0,
+      },
+      {
+        date: '2026-10-12', startTime: '10:00:00', endTime: '11:00:00',
+        isScheduled: true, status: 'Reserved', availableQuantity: 0, reservedQuantity: 1,
+      },
+      {
+        date: '2026-10-12', startTime: '11:00:00', endTime: '17:00:00',
+        isScheduled: true, status: 'Available', availableQuantity: 1, reservedQuantity: 0,
+      },
+    ],
+  };
+  let inventorySql;
+  mock.method(pool, 'query', async sql => {
+    if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
+    inventorySql = sql;
+    return { rows: [item] };
+  });
+
+  // Act: load the inventory calendar for a scheduled window with one hour reserved.
+  const result = await request('/api/events/equipment-inventory');
+
+  // Assert: free periods remain available before and after the fully booked segment.
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.inventory[0].availabilities.map(window => [
+    window.startTime, window.endTime, window.availableQuantity, window.status,
+  ]), [
+    ['09:00:00', '10:00:00', 1, 'Available'],
+    ['10:00:00', '11:00:00', 0, 'Reserved'],
+    ['11:00:00', '17:00:00', 1, 'Available'],
+  ]);
+  assert.match(inventorySql, /LEAD\(availability_boundaries\.point_time\) OVER\s*\(\s*ORDER BY availability_boundaries\.point_time/i);
+  assert.match(inventorySql, /GREATEST\(reservation\.start_time,\s*schedule\.start_time\)/i);
+  assert.match(inventorySql, /LEAST\(reservation\.end_time,\s*schedule\.end_time\)/i);
+  assert.match(inventorySql, /reservation\.start_time <= availability\.start_time/i);
+  assert.match(inventorySql, /reservation\.end_time >= availability\.end_time/i);
 });
