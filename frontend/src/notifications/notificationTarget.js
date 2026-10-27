@@ -19,6 +19,8 @@ const EVENT_PAGES = {
  * @returns {string} an in-app path.
  */
 export function notificationTarget(notification, role) {
+  // Organisation colleagues have status-only access; this target never opens another organiser’s private detail page.
+  if (notification.type === 'event_request_status_changed' && role === 'event_organiser' && notification.event_id != null) return `/organizer/events/${notification.event_id}/status`;
   if (notification.type === 'event_awaiting_assignment') return '/coordinator-lead/dashboard';
   if (role === 'safety_officer') return '/safety/dashboard';
   const eventPage = EVENT_PAGES[role];
