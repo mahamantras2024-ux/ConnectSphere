@@ -47,8 +47,8 @@ function safetyChangesView(context, coordinatorView) {
 
 /** The recorded outcome every viewer may see (AC5/AC6), or null while the decision is still pending. */
 function outcomeOf(context) {
-  if (!['approved', 'rejected'].includes(context.status)) return null;
-  return { decision: context.status, reason: context.decision_reason, decidedAt: context.decided_at, decidedBy: context.decided_by_name };
+  if (!context.decided_at) return null;
+  return { decision: context.status === 'rejected' ? 'rejected' : 'approved', reason: context.decision_reason, decidedAt: context.decided_at, decidedBy: context.decided_by_name };
 }
 
 // GET /api/events/:id/decision - organisers see the outcome of their own request; the assigned coordinator also sees
@@ -64,12 +64,14 @@ const getDecision = asyncHandler(async (req, res) => {
   if (safetyChanges) view.safetyChanges = safetyChanges;
   if (req.user.role !== 'event_coordinator') return res.json(view);
   const now = { ...context, now: Date.now() };
+  const { evaluateTransition, SOURCES } = require('../services/eventLifecyclePolicy');
   return res.json({
     ...view,
     readiness: readiness(now),
     allowed: { approved: !evaluateDecision('approved', now), rejected: !evaluateDecision('rejected', now) },
     blocked: { approved: evaluateDecision('approved', now), rejected: evaluateDecision('rejected', now) },
     safetyCheck: context.latest_safety_check,
+    transitions: Object.keys(SOURCES).map((status) => ({ status, blocked: evaluateTransition(status, now) })),
   });
 });
 
@@ -143,4 +145,15 @@ const postSafetyChangeResolution = asyncHandler(async (req, res) => {
   } catch (error) { return sendFailure(res, error); }
 });
 
-module.exports = { getDecision, postDecision, getSafetyQueue, postSafetyCheck, postSafetyChangeResolution };
+/** Validates the requested lifecycle action; the service rechecks assignment and prerequisites inside its transaction. */
+const postStatus = asyncHandler(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ message: 'Choose a valid event.' });
+  const { SOURCES } = require('../services/eventLifecyclePolicy');
+  if (!Object.hasOwn(SOURCES, req.body.status)) return res.status(400).json({ message: 'Choose a valid event status action.' });
+  try {
+    const { transitionEvent } = require('../services/eventDecisionService');
+    const { event } = await transitionEvent(Number(req.params.id), req.user.id, req.body.status);
+    return res.json({ event, message: 'Event status updated.' });
+  } catch (error) { return sendFailure(res, error); }
+});
+module.exports = { getDecision, postDecision, getSafetyQueue, postSafetyCheck, postSafetyChangeResolution, postStatus };

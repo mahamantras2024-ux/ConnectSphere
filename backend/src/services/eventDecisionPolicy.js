@@ -3,11 +3,11 @@
 /**
  * Which requirements each decision needs, in the order they are reported. This is the single place to change the
  * business rule once the customer clarifies it: add or remove requirement names from a list (see REQUIREMENTS below).
- * Current agreement: approval needs every arrangement and a passed safety check; rejection is possible even when
- * arrangements fail, but never while the organiser still owes a clarification (AC7).
+ * SCRUM-92: initial decisions need resolved clarifications. Arrangement and safety clearance
+ * gate final confirmation separately, so initial approval can precede planning.
  */
 const DECISION_REQUIREMENTS = {
-  approved: ['clarificationsResolved', 'venueConfirmed', 'technicalConfirmed', 'safetyPassed'],
+  approved: ['clarificationsResolved'],
   rejected: ['clarificationsResolved'],
 };
 
@@ -124,7 +124,7 @@ function readiness(context) {
  * Status is checked first: only a request still awaiting a decision can be approved or rejected.
  */
 function evaluateDecision(decision, context, requirements = DECISION_REQUIREMENTS) {
-  if (['approved', 'rejected'].includes(context.status)) {
+  if (context.decided_at || ['approved', 'rejected'].includes(context.status)) {
     return { code: 'ALREADY_DECIDED', message: `This event has already been ${context.status}.` };
   }
   if (context.is_draft || !DECIDABLE_STATUSES.includes(context.status)) {
@@ -139,7 +139,7 @@ function evaluateDecision(decision, context, requirements = DECISION_REQUIREMENT
 
 /** Returns the first arrangement still blocking a Safety Officer review, or null when the event can be reviewed. */
 function evaluateSafetyReview(context) {
-  if (context.is_draft || !DECIDABLE_STATUSES.includes(context.status)) {
+  if (context.is_draft || ![...DECIDABLE_STATUSES, 'approved'].includes(context.status)) {
     return { code: 'NOT_REVIEWABLE', message: 'Only submitted events awaiting a decision can be safety checked.' };
   }
   for (const name of SAFETY_REVIEW_REQUIREMENTS) {

@@ -118,8 +118,8 @@ test('AR AC1 - the coordinator sees readiness, allowed decisions and the latest 
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.readiness.map((item) => [item.name, item.met]),
     [['clarificationsResolved', true], ['venueConfirmed', true], ['technicalConfirmed', true], ['safetyPassed', false]]);
-  assert.deepEqual(result.body.allowed, { approved: false, rejected: true });
-  assert.equal(result.body.blocked.approved.code, 'SAFETY_NOT_COMPLETED');
+  assert.deepEqual(result.body.allowed, { approved: true, rejected: true });
+  assert.equal(result.body.transitions.find(action => action.status === 'confirmed').blocked.code, 'INVALID_TRANSITION');
   assert.equal(result.body.blocked.rejected, null);
   assert.equal(result.body.safetyCheck, null);
 });
@@ -183,7 +183,7 @@ test('AR AC3 - a rejection without a reason is accepted and the notification has
   assert.equal(tx.find('INSERT INTO notifications')[0].values[5][0], 'Your event request Workshop was not approved by the Event Coordinator.');
 });
 
-// AC1/AC2: each single unmet requirement blocks approval with its own reason, writes nothing and rolls back.
+// SCRUM-92 AC6: each unmet prerequisite blocks final confirmation without writes.
 for (const [label, changes, code] of [
   ['no confirmed venue', { bookings: [] }, 'VENUE_NOT_CONFIRMED'],
   ['a second venue still on hold', { bookings: [{ status: 'approved' }, { status: 'pending', hold_expires_at: '2999-01-01T00:00:00Z' }] }, 'VENUE_PENDING'],
@@ -192,11 +192,11 @@ for (const [label, changes, code] of [
   ['a failed safety check', { latest_safety_check: { outcome: 'rejected' } }, 'SAFETY_FAILED'],
   ['safety changes requested', { latest_safety_check: { outcome: 'changes_requested' } }, 'SAFETY_CHANGES_REQUESTED'],
 ]) {
-  // Test case: Approves with one requirement unmet and checks the refusal, the reason code and that nothing is written.
-  test(`AR AC1/AC2 - approval is refused with ${label}`, async () => {
+  // Arrange one missing prerequisite; Act: confirm; Assert: reason, no writes and rollback.
+  test(`SCRUM-92 AC6 - confirmation is refused with ${label}`, async () => {
     mockAuth();
-    const tx = mockTransaction({ context: { ...readyContext, ...changes } });
-    const result = await decide({ decision: 'approved' });
+    const tx = mockTransaction({ context: { ...readyContext, ...changes, status: 'planning' } });
+    const result = await request('/api/events/101/status', { method: 'POST', body: { status: 'confirmed' }, user: coordinator });
     assert.equal(result.status, 409);
     assert.equal(result.body.code, code);
     assert.equal(tx.find('UPDATE events').length + tx.find('INSERT INTO notifications').length, 0);
@@ -392,7 +392,7 @@ test('AR AC1 - a check on an unassigned event is recorded without a notification
 for (const [label, context, status, code] of [
   ['before the venue is confirmed', { ...readyContext, bookings: [] }, 409, 'VENUE_NOT_CONFIRMED'],
   ['before technical arrangements are confirmed', { ...readyContext, equipment_notes: 'Two microphones' }, 409, 'TECHNICAL_NOT_CONFIRMED'],
-  ['on an already decided event', { ...readyContext, status: 'approved' }, 409, 'NOT_REVIEWABLE'],
+  ['on a confirmed event', { ...readyContext, status: 'confirmed' }, 409, 'NOT_REVIEWABLE'],
   ['on a missing event', null, 404, undefined],
 ]) {
   // Test case: Tries to record a check when the prerequisite is not met and checks nothing is written.
@@ -423,3 +423,54 @@ for (const [label, body, id, status] of [
     assert.equal(tx.find('INSERT INTO event_safety_checks').length, status === 201 ? 1 : 0);
   });
 }
+
+// SCRUM-92: lifecycle HTTP actions retain authentication, assignment scoping and transactional persistence.
+for (const [from, status] of [['submitted', 'under_review'], ['approved', 'planning'], ['planning', 'confirmed'], ['confirmed', 'completed']]) {
+  test(`SCRUM-92 AC3/AC5/AC6/AC7/AC8 - saves ${from} to ${status} under the assigned row lock`, async () => {
+    // Arrange a past event for completion; other actions depend only on current readiness.
+    mockAuth();
+    const tx = mockTransaction({ context: { ...readyContext, status: from, proposed_date: '2020-01-01', proposed_end_time: '10:00:00' } });
+    const result = await request('/api/events/101/status', { method: 'POST', body: { status }, user: coordinator });
+    // Assert: the actual SQL mutation and response agree, commit happens and the assignment is enforced in SQL.
+    assert.equal(result.status, 200);
+    assert.equal(result.body.event.status, status);
+    assert.deepEqual(tx.find('UPDATE events')[0].values, [101, status]);
+    assert.deepEqual(transactionWords(tx), ['BEGIN', 'COMMIT']);
+    assert.ok(tx.find('FOR UPDATE OF e')[0].sql.includes('e.coordinator_id = $2'));
+    assert.deepEqual(tx.find('FOR UPDATE OF e')[0].values, [101, 30]);
+    assert.equal(tx.client.released, true);
+  });
+}
+test('SCRUM-92 AC9 - an unassigned coordinator cannot mutate status', async () => {
+  mockAuth();
+  const tx = mockTransaction({ context: null });
+  const result = await request('/api/events/101/status', { method: 'POST', body: { status: 'under_review' }, user: coordinator });
+  assert.equal(result.status, 404);
+  assert.equal(tx.find('UPDATE events').length, 0);
+  assert.deepEqual(transactionWords(tx), ['BEGIN', 'ROLLBACK']);
+});
+for (const [id, status] of [['0', 'planning'], ['101', 'cancelled'], ['101', '__proto__']]) {
+  test(`SCRUM-92 AC8 - invalid lifecycle input ${id}/${status} is rejected before transaction`, async () => {
+    mockAuth();
+    const tx = mockTransaction();
+    const result = await request(`/api/events/${id}/status`, { method: 'POST', body: { status }, user: coordinator });
+    assert.equal(result.status, 400);
+    assert.equal(tx.statements.length, 0);
+  });
+}
+test('SCRUM-92 AC4/AC8 - initial approval remains visible during planning', async () => {
+  mockReads({ context: { ...readyContext, status: 'planning', decided_at: '2030-01-01', decided_by_name: 'Chris' } });
+  const result = await request('/api/events/101/decision');
+  assert.equal(result.body.status, 'planning');
+  assert.equal(result.body.outcome.decision, 'approved');
+  assert.equal(result.body.outcome.decidedBy, 'Chris');
+});
+
+test('SCRUM-92 AC9 - organiser cannot call the lifecycle management endpoint', async () => {
+  // Arrange / Act: an authenticated organiser sends a coordinator action; Assert: role middleware denies it.
+  mockAuth(organiser);
+  const tx = mockTransaction();
+  const result = await request('/api/events/101/status', { method: 'POST', body: { status: 'under_review' }, user: organiser });
+  assert.equal(result.status, 403);
+  assert.equal(tx.statements.length, 0);
+});
