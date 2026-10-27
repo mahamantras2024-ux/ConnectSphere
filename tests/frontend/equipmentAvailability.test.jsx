@@ -307,6 +307,10 @@ it('AC2 - handles one-sided time filters, empty calendar days, and non-booked un
   fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
   expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
   fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: maintenanceDate } });
+  // The visible month is a separate control; this fixture can fall in the next month near month end.
+  if (maintenanceDate.slice(0, 7) !== getDateOffset(0).slice(0, 7)) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+  }
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   expect(within(calendar).getAllByText(/Maintenance/).length).toBeGreaterThan(0);
 });
