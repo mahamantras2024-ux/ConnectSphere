@@ -155,7 +155,7 @@ test('AR AC1/AC4/AC5/AC6 - approving records the decision on the event and notif
   assert.deepEqual([userIds, eventIds, types, titles], [[12], [101], ['event_approved'], ['Event approved: Workshop']]);
   assert.equal(messages[0], 'Your event request Workshop has been approved by the Event Coordinator and can proceed.');
   assert.deepEqual(transactionWords(tx), ['BEGIN', 'COMMIT']);
-  assert.deepEqual(send.mock.calls.map((call) => call.arguments[0]), ['user12@example.com', 'user7@example.com']);
+  assert.deepEqual(send.mock.calls.map((call) => call.arguments[0]), ['user12@example.com']);
   assert.equal(tx.client.released, true);
 });
 
@@ -430,6 +430,7 @@ for (const [from, status] of [['submitted', 'under_review'], ['approved', 'plann
     // Arrange a past event for completion; other actions depend only on current readiness.
     mockAuth();
     const tx = mockTransaction({ context: { ...readyContext, status: from, proposed_date: '2020-01-01', proposed_end_time: '10:00:00' } });
+    mock.method(emailService, 'sendNotificationEmail', async () => {});
     const result = await request('/api/events/101/status', { method: 'POST', body: { status }, user: coordinator });
     // Assert: the actual SQL mutation and response agree, commit happens and the assignment is enforced in SQL.
     assert.equal(result.status, 200);
@@ -439,6 +440,8 @@ for (const [from, status] of [['submitted', 'under_review'], ['approved', 'plann
     assert.ok(tx.find('FOR UPDATE OF e')[0].sql.includes('e.coordinator_id = $2'));
     assert.deepEqual(tx.find('FOR UPDATE OF e')[0].values, [101, 30]);
     assert.equal(tx.client.released, true);
+    assert.equal(tx.find('FROM venue_staff_assignments').length, status === 'confirmed' ? 1 : 0);
+    if (status === 'confirmed') assert.equal(JSON.parse(tx.find('INSERT INTO notifications')[0].values[6][0]).status, 'confirmed');
   });
 }
 test('SCRUM-92 AC9 - an unassigned coordinator cannot mutate status', async () => {
