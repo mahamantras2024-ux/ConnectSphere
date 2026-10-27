@@ -11,7 +11,11 @@ let review;
 const onDecided = vi.fn();
 // Arrange a server response with a real stored status and its permitted manual action.
 function open(status, transitions = [], coordinatorId = 30) {
-  review = { status, outcome: { decision: 'approved', decidedAt: '2030-01-01', decidedBy: 'Chris' }, readiness: [], transitions };
+  // Submitted and Under Review have no initial decision yet; later stages retain the recorded outcome.
+  const outcome = ['submitted', 'under_review'].includes(status) ? null
+    : { decision: status === 'rejected' ? 'rejected' : 'approved', decidedAt: '2030-01-01', decidedBy: 'Chris' };
+  review = { status, outcome, readiness: [], transitions, allowed: { approved: !outcome, rejected: !outcome },
+    blocked: { approved: outcome ? { message: 'Already decided.' } : null, rejected: outcome ? { message: 'Already decided.' } : null } };
   render(<EventDecisionSection event={{ id: 101, coordinator_id: coordinatorId }} onDecided={onDecided} />);
 }
 beforeEach(() => {
