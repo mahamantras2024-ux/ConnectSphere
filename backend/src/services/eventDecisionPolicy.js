@@ -16,9 +16,8 @@ const DECIDABLE_STATUSES = ['submitted', 'under_review', 'planning'];
 
 /**
  * Requirements the Safety Officer needs before reviewing (Week 7: the check follows confirmed venue and technical
- * arrangements). Operational Feasibility Check AC3/AC4: stages reopened by a change request must be completed first,
- * so the re-check looks at the changed event rather than the one that was sent back. Once a check has passed or failed
- * the event's check is complete (AC5: it proceeds, or the coordinator rejects it), so it is not reviewed again.
+ * arrangements). Reopened stages must be completed first. A rejected check is terminal only when no revision stages
+ * were requested; a rejected check with reopened stages is eligible for reassessment after those stages are complete.
  */
 const SAFETY_REVIEW_REQUIREMENTS = ['safetyChangesResolved', 'venueConfirmed', 'technicalConfirmed', 'safetyCheckDue'];
 
@@ -95,8 +94,10 @@ const SAFETY_REVIEW_RULES = {
   safetyChangesResolved: (context) => (context.safety_changes_open?.length
     ? { met: false, code: 'SAFETY_CHANGES_OUTSTANDING', message: 'Changes requested by the Safety Officer have not been completed yet.' }
     : { met: true, code: 'SAFETY_CHANGES_COMPLETE', message: 'No requested safety changes are outstanding.' }),
-  // A check is due when none exists yet, or as the re-check after a change request (AC4).
-  safetyCheckDue: (context) => (['approved', 'rejected'].includes(context.latest_safety_check?.outcome)
+  // Approved checks are final. Rejected checks are final only when no revision stages were requested; a rejected
+  // check with change areas is due again once those stages are resolved.
+  safetyCheckDue: (context) => (context.latest_safety_check?.outcome === 'approved'
+    || (context.latest_safety_check?.outcome === 'rejected' && !context.latest_safety_check?.change_areas?.length)
     ? { met: false, code: 'SAFETY_CHECK_COMPLETE', message: 'The operational safety check for this event has already been recorded.' }
     : { met: true, code: 'SAFETY_CHECK_DUE', message: 'An operational safety check is due.' }),
 };
