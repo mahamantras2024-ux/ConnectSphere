@@ -19,12 +19,18 @@ function sendFailure(res, error) {
 
 /**
  * Validates the planning stages a change request reopens (Operational Feasibility Check AC3): a change request must
- * name at least one known stage, once each; approvals and rejections name none. Returns an error message or null.
+ * Requested safety changes may be named for a changes_requested or revisable rejected check; a rejection with no areas remains terminal.
+ * Returns an error message or null.
  */
 function changeAreasError(outcome, changeAreas) {
-  if (outcome !== 'changes_requested') return changeAreas == null ? null : 'Planning stages can only be chosen when requesting changes.';
-  if (!Array.isArray(changeAreas) || !changeAreas.length) return 'Choose which planning stages need changes.';
-  if (changeAreas.some((area) => !Object.hasOwn(SAFETY_CHANGE_AREAS, area)) || new Set(changeAreas).size !== changeAreas.length) {
+  const revisable = ['rejected', 'changes_requested'].includes(outcome);
+  if (!revisable) return changeAreas == null ? null : 'Planning stages can only be chosen when requesting changes.';
+  // A rejected check may be revised only when the Safety Officer identifies the arrangements to revisit; a rejection
+  // without areas remains terminal. Changes requested still require at least one reopened stage.
+  if (outcome === 'changes_requested' && (!Array.isArray(changeAreas) || !changeAreas.length)) return 'Choose which planning stages need changes.';
+  if (changeAreas == null) return null;
+  if (!Array.isArray(changeAreas) || changeAreas.some((area) => !Object.hasOwn(SAFETY_CHANGE_AREAS, area))
+      || new Set(changeAreas).size !== changeAreas.length) {
     return 'Choose each planning stage once: venue arrangements, technical arrangements or event details.';
   }
   return null;
@@ -120,9 +126,10 @@ const postSafetyCheck = asyncHandler(async (req, res) => {
   try {
     const { safetyCheck, notifiedCoordinator } = await recordSafetyCheck(Number(id), req.user.id, outcome, cleanNotes, changeAreas ?? []);
     const recorded = notifiedCoordinator ? 'Safety check recorded. The Event Coordinator has been notified.' : 'Safety check recorded.';
+    const returnedForRevision = (outcome === 'changes_requested' || (outcome === 'rejected' && changeAreas?.length));
     return res.status(201).json({
       safetyCheck,
-      message: outcome === 'changes_requested' ? `${recorded} The event has returned to planning for the requested changes.` : recorded,
+      message: returnedForRevision ? `${recorded} The event has returned to planning for the requested changes.` : recorded,
     });
   } catch (error) { return sendFailure(res, error); }
 });

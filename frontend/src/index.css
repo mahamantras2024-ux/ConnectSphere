@@ -551,6 +551,9 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 /* Safety Officer queue. */
 .safety-queue { margin-top: 24px; }
 .safety-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+/* Safety Officer review notification AC3: the event a notification opened onto is highlighted and names its review requirement. */
+.highlighted-safety-event { border-color: #9cc48a; border-left: 6px solid #4f8a35; background: #f4faf0; }
+.safety-review-requirement { margin: 0; padding: 8px 12px; border-radius: 8px; background: #eef6e6; color: #38521f; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
 
 /* SCRUM-43 keeps the queue distinct from the catalogue and gives the review drawer comfortable, readable spacing. */

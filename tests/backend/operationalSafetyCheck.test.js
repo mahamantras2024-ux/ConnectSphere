@@ -53,6 +53,8 @@ function mockPool(user, other = (sql) => { throw new Error(`Unexpected pool quer
  * array_remove would; the live test checks the real statement.
  */
 function mockTransaction(context) {
+  // Clone mutable stage state so a transaction simulation cannot alter fixtures shared by later tests.
+  context = context && { ...context, safety_changes_open: [...(context.safety_changes_open || [])] };
   const statements = [];
   mock.method(pool, 'connect', async () => ({
     release() {},
@@ -61,8 +63,12 @@ function mockTransaction(context) {
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
       if (sql.includes('AS pending_clarifications')) return { rows: context ? [context] : [] };
       if (sql.includes('INSERT INTO event_safety_checks')) return { rows: [{ id: 9, event_id: values[0], outcome: values[2], notes: values[3], change_areas: values[4] }] };
-      if (sql.includes('array_remove(safety_changes_open')) return { rows: [{ safety_changes_open: context.safety_changes_open.filter((area) => area !== values[1]) }] };
+      if (sql.includes('array_remove(safety_changes_open')) {
+        context.safety_changes_open = context.safety_changes_open.filter((area) => area !== values[1]);
+        return { rows: [{ safety_changes_open: context.safety_changes_open }] };
+      }
       if (sql.includes('UPDATE events SET safety_changes_open = $2')) return { rows: [] };
+      if (/FROM users\s+WHERE role=\$1/.test(sql)) return { rows: [{ id: 50 }] };
       if (sql.includes('INSERT INTO notifications')) {
         return { rows: values[0].map((userId, index) => ({ id: index + 1, user_id: userId, title: values[4][index], message: values[5][index], email: `user${userId}@example.com` })) };
       }
@@ -177,7 +183,7 @@ for (const [label, body, message] of [
   ['an inherited property name', { outcome: 'changes_requested', notes: 'Fix it', changeAreas: ['constructor'] }, 'Choose each planning stage once: venue arrangements, technical arrangements or event details.'],
   ['a repeated stage', { outcome: 'changes_requested', notes: 'Fix it', changeAreas: ['venue', 'venue'] }, 'Choose each planning stage once: venue arrangements, technical arrangements or event details.'],
   ['stages on an approval', { outcome: 'approved', changeAreas: ['venue'] }, 'Planning stages can only be chosen when requesting changes.'],
-  ['an empty stage list on a rejection', { outcome: 'rejected', notes: 'Unsafe', changeAreas: [] }, 'Planning stages can only be chosen when requesting changes.'],
+
 ]) {
   // Test case: One malformed stage selection is refused before the transaction starts.
   test(`OFC AC3 - a safety check with ${label} is refused`, async () => {
@@ -318,4 +324,20 @@ test('OFC AC4/AC5 - after the changes are complete approval is still blocked unt
   const result = await request('/api/events/101/decision');
   assert.equal('safetyChanges' in result.body, false);
   assert.equal(result.body.blocked.approved.code, 'SAFETY_CHANGES_REQUESTED');
+});
+
+// Regression: a rejected safety check that named revision stages returns to the queue after the final stage is resolved.
+test('OFC AC4/AC5 - completing revisions after a rejected check notifies Safety Officers for reassessment', async () => {
+  mockPool(coordinator);
+  const tx = mockTransaction({ ...readyContext, safety_changes_open: ['venue'], latest_safety_check: {
+    outcome: 'rejected', notes: 'Unsafe venue layout', change_areas: ['venue'],
+  } });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+  const result = await resolve({ area: 'venue' });
+  assert.equal(result.status, 200);
+  const safetyInsert = tx.find('INSERT INTO notifications').find(({ values }) => values[3].includes('safety_check_ready'));
+  assert.ok(safetyInsert);
+  assert.deepEqual(safetyInsert.values[3], ['safety_check_ready']);
+  assert.equal(safetyInsert.values[4][0], 'Ready for safety re-review: Workshop');
+  assert.equal(JSON.parse(safetyInsert.values[6][0]).requirement, 'reassessment');
 });

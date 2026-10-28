@@ -4,7 +4,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  DECISION_REQUIREMENTS, readiness, evaluateDecision, evaluateSafetyReview,
+  DECISION_REQUIREMENTS, SAFETY_CHANGE_AREAS, resolutionBlocker, readiness, evaluateDecision, evaluateSafetyReview,
 } = require('../../backend/src/services/eventDecisionPolicy');
 
 const NOW = Date.parse('2030-01-01T00:00:00.000Z');
@@ -144,8 +144,13 @@ for (const [label, changes, expected] of [
   });
 }
 
-// ---------- Operational Feasibility Check (OFC) ----------
-const { SAFETY_CHANGE_AREAS, resolutionBlocker } = require('../../backend/src/services/eventDecisionPolicy');
+// Test case: A rejected check can return to the queue when the requested revision stages are complete.
+test('OFC AC4/AC5 - a rejected check with completed revisions is eligible for reassessment', () => {
+  const revised = { ...unchecked, latest_safety_check: { outcome: 'rejected', change_areas: ['venue'] }, safety_changes_open: [] };
+  assert.equal(evaluateSafetyReview(revised), null);
+});
+
+
 
 // Test case: The three stages a Safety Officer can reopen, and what proves each is complete, are pinned (AC3).
 test('OFC AC3 - each reopenable planning stage is completed by its own arrangement requirement', () => {
@@ -188,12 +193,14 @@ test('OFC AC4/AC5 - after the requested changes are complete, approval still wai
   assert.equal(codeFor('approved', { ...changed, latest_safety_check: { outcome: 'approved' } }), null);
 });
 
-// A check is due when none exists or as the re-check after changes; a passed or failed check is final (AC4/AC5).
+// A check is due when none exists, after a changes request, or after a rejected check that reopened stages;
+// an approved check and a terminal rejection are final.
 for (const [label, check, expected] of [
   ['no check yet', null, null],
   ['a change request (the re-check)', { outcome: 'changes_requested' }, null],
+  ['a rejected check with revisions requested', { outcome: 'rejected', change_areas: ['venue'] }, null],
   ['a passed check', { outcome: 'approved' }, 'SAFETY_CHECK_COMPLETE'],
-  ['a failed check', { outcome: 'rejected' }, 'SAFETY_CHECK_COMPLETE'],
+  ['a rejected check with no revisions requested', { outcome: 'rejected', change_areas: [] }, 'SAFETY_CHECK_COMPLETE'],
 ]) {
   // Test case: Whether another safety review is due after this latest outcome.
   test(`OFC AC4/AC5 - after ${label} another safety review is ${expected ? 'not due' : 'due'}`, () => {

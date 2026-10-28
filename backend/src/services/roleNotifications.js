@@ -34,21 +34,26 @@ async function isReadyForSafetyCheck(db, eventId) {
 }
 
 /**
- * Tells every Safety Officer that an event has just become ready for its safety check. Only a change from not ready to
- * ready notifies, so later edits to an event that was already waiting do not repeat the message.
+ * Tells every Safety Officer that an event has just become ready for its safety check. The transition guard prevents
+ * duplicates while an event remains queued; the latest prior outcome identifies a re-review after requested revisions.
  * @param {{ query: Function }} db transaction client, read after the change has been written.
  * @param {number} eventId the event the change concerned.
  * @param {boolean} wasReady readiness measured on the same client just before the change.
  * @returns {Promise<object[]>} stored rows for delivery after commit (empty when nothing was sent).
  */
 async function notifySafetyIfNewlyReady(db, eventId, wasReady) {
-  if (wasReady || !await isReadyForSafetyCheck(db, eventId)) return [];
-  const { rows: [event] } = await db.query('SELECT id, name FROM events WHERE id = $1', [eventId]);
+  if (wasReady) return [];
+  const context = await eventDecisionModel.loadDecisionContext(db, eventId);
+  if (!context || evaluateSafetyReview({ ...context, now: Date.now() })) return [];
+  const reassessment = ['rejected', 'changes_requested'].includes(context.latest_safety_check?.outcome);
+  const requirement = reassessment ? 'reassessment' : 'initial';
   return notifyRole(db, 'safety_officer', {
-    eventId: event.id, type: 'safety_check_ready',
-    title: `Ready for safety check: ${event.name}`,
-    message: `${event.name} has confirmed venue and technical arrangements and is ready for its operational safety check.`,
-    details: { eventId: event.id },
+    eventId: context.id, type: 'safety_check_ready',
+    title: reassessment ? `Ready for safety re-review: ${context.name}` : `Ready for safety check: ${context.name}`,
+    message: reassessment
+      ? `${context.name} has completed the requested arrangement revisions and is ready for operational safety re-review.`
+      : `${context.name} has confirmed venue and technical arrangements and is ready for its operational safety check.`,
+    details: { eventId: context.id, requirement },
   });
 }
 
