@@ -50,7 +50,8 @@ async function findAccessibleById(id, user) {
       e.equipment_items, e.technical_support_required, e.technical_support_details,
       e.video_conferencing_required, e.technical_specifications,
       e.equipment_confirmed_at IS NOT NULL AS equipment_confirmed,
-      EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id=e.id AND vb.status='approved') AS venue_confirmed,
+      (EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id=e.id AND vb.status='approved')
+        AND NOT EXISTS (SELECT 1 FROM venue_booking_disruptions d JOIN venue_bookings vb ON vb.id=d.booking_id WHERE vb.event_id=e.id AND d.resolved_at IS NULL)) AS venue_confirmed,
       EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding,
       COALESCE((SELECT jsonb_agg(jsonb_build_object(
         'id', cr.id, 'coordinator_id', cr.coordinator_id, 'organiser_id', cr.organiser_id,

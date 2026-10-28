@@ -22,7 +22,7 @@ for (const [offset, expected] of [[-1,false],[0,false],[1,true]]) {
 test('SCRUM-106 AC1 - validates reason and positive timezone-qualified closure interval', () => {
   const input = { reason: '  Emergency repairs ', startDatetime:'2031-10-20T01:00:00Z', endDatetime:'2031-10-20T02:00:00Z' };
   assert.equal(closureInput(input).reason, 'Emergency repairs');
-  for (const invalid of [{...input,reason:' '},{...input,endDatetime:input.startDatetime},{...input,startDatetime:'2031-10-20T01:00:00'},{...input,startDatetime:'2031-02-30T01:00:00Z'}]) assert.throws(()=>closureInput(invalid), /closure|reason/i);
+  for (const invalid of [null,[],{...input,reason:' '},{...input,endDatetime:input.startDatetime},{...input,startDatetime:'2031-10-20T01:00:00'},{...input,startDatetime:'2031-02-30T01:00:00Z'}]) assert.throws(()=>closureInput(invalid), /closure|reason/i);
 });
 const context = { status:'planning', is_draft:false, pending_clarifications:0, equipment_items:[], safety_changes_open:[], now:start,
  bookings:[{status:'approved',disrupted:true}], latest_safety_check:{outcome:'approved'} };
@@ -42,7 +42,7 @@ const notices=require('../../backend/src/services/notificationService');
 const service=require('../../backend/src/services/venueDisruptions');
 afterEach(()=>mock.restoreAll());
 /** Supplies database records only; transaction ordering, recipient selection and recovery rules remain real. */
-function database({status='approved',issue={},replacement=true,failNotice=false,missing=false}={}) {
+function database({status='approved',issue={},replacement=true,failNotice=false,missing=false,assignmentMissing=false}={}) {
  const calls=[],notes=[];
  const row={...booking,id:5,venue_id:7,event_id:3,event_name:'Gala',coordinator_id:8,venue_name:'Hall A',status};
  const query=async(sql,values=[])=>{
@@ -51,7 +51,7 @@ function database({status='approved',issue={},replacement=true,failNotice=false,
   if(sql.includes('INSERT INTO venue_unavailability'))return {rows:[{id:2}]};
   if(sql.includes('SELECT b.*,e.name'))return {rows:[row]};
   if(sql.includes('SELECT b.venue_id'))return {rows:missing?[]:[{venue_id:7}]};
-  if(sql.includes('SELECT d.*,b.event_id'))return {rows:missing?[]:[{id:9,booking_id:5,event_id:3,start_datetime:booking.start_datetime,end_datetime:booking.end_datetime,...issue}]};
+  if(sql.includes('SELECT d.*,b.event_id'))return {rows:missing||assignmentMissing?[]:[{id:9,booking_id:5,event_id:3,start_datetime:booking.start_datetime,end_datetime:booking.end_datetime,...issue}]};
   if(sql.includes('SELECT b.id FROM venue_bookings'))return {rows:replacement?[{id:10}]:[]};
   if(sql.startsWith('SELECT id FROM events'))return {rows:missing?[]:[{id:3}]};
   if(sql.includes('SELECT d.id,d.booking_id'))return {rows:[{id:9,booking_id:5}]};
@@ -116,4 +116,11 @@ test('SCRUM-106 AC5 - database decision and safety queue both ignore safety chec
  const db={query:async query=>{sql.push(query);return {rows:[]};}};
  await model.loadDecisionContext(db,3,{coordinatorId:8,lock:true});await model.safetyCandidates(db);
  for(const query of sql){assert.match(query,/s.checked_at >= e.venue_revised_at/);assert.match(query,/d.resolved_at IS NULL/);}
+});
+
+test('SCRUM-106 AC4 - inherited notification does not let a former coordinator resolve a disruption',async()=>{
+ const db=database({assignmentMissing:true});
+ await assert.rejects(()=>service.resolveDisruption(3,9,99),/Disruption not found/);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('UPDATE venue_bookings')),false);
+ assert.deepEqual(db.calls.find(c=>c.sql.includes('SELECT d.*,b.event_id')).values,[9,3,99]);
 });

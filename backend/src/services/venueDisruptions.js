@@ -4,6 +4,7 @@ const { insertNotifications, emailNotifications } = require('./notificationServi
 const { occupiedWindow } = require('./venueAvailability');
 /** Rejects invalid closure input before any database write; timestamps must include an explicit timezone. */
 function closureInput(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw Object.assign(new Error('Enter a closure period and reason.'), {status:400});
   const parse = value => {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return NaN;
     const day = new Date(`${value.slice(0,10)}T00:00:00Z`);
@@ -49,7 +50,12 @@ async function recordClosure(venueId, body, staffId) {
     if (notices.length) stored = await insertNotifications(client,notices);
     await client.query('COMMIT');
     result = {closure,affectedBookings:affected};
-  } catch(error) {await client.query('ROLLBACK');throw error;} finally {client.release();}
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   await emailNotifications(stored);
   return result;
 }
@@ -92,6 +98,11 @@ async function resolveDisruption(eventId,issueId,userId,replacementBookingId=nul
       venue_revised_at=clock_timestamp(),updated_at=now() WHERE id=$1`,[eventId]);
     await client.query('COMMIT');
     return {resolution:replacementBookingId===null?'cancelled':'replaced'};
-  } catch(error) {await client.query('ROLLBACK');throw error;} finally {client.release();}
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 module.exports={closureInput,affectedByClosure,recordClosure,listDisruptions,resolveDisruption};

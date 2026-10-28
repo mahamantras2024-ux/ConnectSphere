@@ -71,3 +71,36 @@ it('SCRUM-106 AC4 - only approved unaffected bookings can be selected as replace
  expect(screen.queryByRole('option',{name:/Hall A|Hall B/})).not.toBeInTheDocument();
  expect(screen.getByRole('button',{name:'Use replacement for Hall A'})).toBeDisabled();
 });
+it('SCRUM-106 AC4 - resolving an issue in the real event page reloads its latest planning state',async()=>{
+ // Arrange: use real auth, app routes and event page; only remote data is substituted.
+ const {default:App}=await import('../../frontend/src/App');
+ const {AuthProvider}=await import('../../frontend/src/context/AuthContext');
+ localStorage.setItem('cs_token','session');let resolved=false,reads=0;
+ api.get.mockImplementation(async path=>{
+  if(path==='/auth/me')return {user:{id:8,role:'event_coordinator',roles:['event_coordinator']}};
+  if(path==='/events/3'){reads++;return {event:{id:3,name:'Gala',status:'planning',coordinator_id:8,organiser_id:1,equipment_items:[],accessibility_requirements:[],clarification_requests:[]}};}
+  if(path.endsWith('/venue-disruptions'))return {issues:resolved?[]:[{id:2,booking_id:5,venue_name:'Hall A',reason:'Repairs'}]};
+  return {bookings:[],notifications:[],unreadCount:0,events:[],changeRequests:[]};
+ });
+ api.post.mockImplementation(async()=>{resolved=true;return {resolution:'cancelled'};});
+ render(<MemoryRouter initialEntries={['/events/3']}><AuthProvider><App/></AuthProvider></MemoryRouter>);
+ // Act: recovery lives under the Venue requests tab on the actual event screen.
+ const tab=await screen.findByRole('tab',{name:/Venue requests/i});fireEvent.click(tab);
+ fireEvent.click(await screen.findByRole('button',{name:'Cancel affected booking at Hall A'}));
+ // Assert: a stale-event implementation that merely hides the issue fails this read-count check.
+ await waitFor(()=>expect(reads).toBeGreaterThan(1));localStorage.clear();
+});
+it('SCRUM-106 AC4 - unmounted recovery panel ignores late data and late failures',async()=>{
+ let resolve,reject;
+ api.get.mockImplementation(path=>path.endsWith('venue-disruptions')?new Promise(done=>{resolve=done;}):new Promise((_,fail)=>{reject=fail;}));
+ const view=render(<MemoryRouter><VenueDisruptions eventId={3} token="session" onResolved={()=>{}}/></MemoryRouter>);
+ view.unmount();resolve({issues:[]});reject(new Error('Offline'));
+ await Promise.resolve();expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+it('SCRUM-106 AC4 - late successful reads cannot restore a panel after it is unmounted',async()=>{
+ const replies=[];api.get.mockImplementation(()=>new Promise(resolve=>replies.push(resolve)));
+ const view=render(<MemoryRouter><VenueDisruptions eventId={3} token="session" onResolved={()=>{}}/></MemoryRouter>);
+ expect(screen.getByRole('status')).toHaveTextContent('Loading venue disruptions');view.unmount();
+ replies[0]({issues:[{id:2,booking_id:5,venue_name:'Old hall',reason:'Repairs'}]});replies[1]({bookings:[]});
+ await Promise.resolve();expect(screen.queryByText('Old hall')).not.toBeInTheDocument();
+});
