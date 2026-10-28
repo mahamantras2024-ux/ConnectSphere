@@ -4,44 +4,45 @@ import { useState } from 'react';
 const formatDate = value => new Intl.DateTimeFormat('en-SG', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 }).format(new Date(`${value}T00:00:00Z`));
-const formatHistoryDate = value => new Intl.DateTimeFormat('en-SG', {
-  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
-}).format(new Date(value));
+const getMonthLabel = value => new Intl.DateTimeFormat('en-SG', {
+  month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${value}T00:00:00Z`));
+const CALENDAR_HORIZON_DAYS = 90;
 
-// Reserved slots are shown in neutral grey; the "· Reserved" text keeps the status readable without colour.
-const CALENDAR_STYLES = `
-.equipment-calendar-window.is-reserved {
-  background: #e9ecef;
-  border-color: #ced4da;
-  color: #6c757d;
+function calendarDateAtOffset(offset) {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
 }
-.equipment-calendar-window.is-reserved small { color: inherit; }
-@media (prefers-color-scheme: dark) {
-  .equipment-calendar-window.is-reserved {
-    background: #2b3138;
-    border-color: #444c56;
-    color: #9aa4ae;
-  }
-}
-.equipment-status-control { display: grid; gap: 8px; }
-.equipment-status-control select { min-width: 132px; padding: 8px 10px; border: 1px solid #c8cec1; border-radius: 8px; background: #fff; color: #25322a; }
-.equipment-status-control form { display: grid; gap: 6px; }
-.equipment-status-control textarea { width: 100%; min-height: 64px; }
-.equipment-inventory-table th:last-child,
-.equipment-inventory-table td:last-child { min-width: 280px; }
-.equipment-status-history { display: grid; min-width: 250px; gap: 8px; margin: 0; padding: 0 !important; list-style: none; }
-.equipment-status-history-entry { padding: 9px 11px; border: 1px solid #e4e9df; border-radius: 8px; background: #fbfcf8; }
-.equipment-status-history-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.equipment-status-history-status { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 8px; border-radius: 999px; background: #eef2e8; color: #43583b; font-size: 11px; font-weight: 700; }
-.equipment-status-history-status.is-unavailable { background: #fff0e8; color: #a3431b; }
-.equipment-status-history-meta time { flex: 0 0 auto; color: #71796e; font-size: 11px; white-space: nowrap; }
-.equipment-status-history-reason { margin: 7px 0 0; color: #333b32; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
-.equipment-status-history-actor { display: block; margin-top: 5px; color: #71796e; font-size: 11px; }
-.equipment-status-history-empty { color: #788073; font-size: 12px; }
-`;
 
+// Keeps weekday alignment while omitting whole weeks outside the visible reservation horizon.
+function getMonthGridDates(monthDate, firstVisibleDate, lastVisibleDate) {
+  const firstOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), 1));
+  const lastOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0));
+  const visibleStart = new Date(Math.max(firstOfMonth.getTime(), new Date(`${firstVisibleDate}T00:00:00Z`).getTime()));
+  const visibleEnd = new Date(Math.min(lastOfMonth.getTime(), new Date(`${lastVisibleDate}T00:00:00Z`).getTime()));
+  if (visibleStart > visibleEnd) return [];
+
+  const gridStart = new Date(visibleStart);
+  gridStart.setUTCDate(visibleStart.getUTCDate() - visibleStart.getUTCDay());
+  const gridEnd = new Date(visibleEnd);
+  gridEnd.setUTCDate(visibleEnd.getUTCDate() + (6 - visibleEnd.getUTCDay()));
+  return Array.from({ length: (gridEnd.getTime() - gridStart.getTime()) / 86400000 + 1 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setUTCDate(gridStart.getUTCDate() + index);
+    const dateString = date.toISOString().slice(0, 10);
+    return dateString < firstVisibleDate || dateString > lastVisibleDate ? null : dateString;
+  });
+}
+
+// Full ranges select overlapping segments; continuous schedule coverage is checked across them below.
 function matchesFilters(window, date, fromTime, toTime) {
   if (date && window.date !== date) return false;
+  if (fromTime && toTime) {
+    // Half-open intervals exclude stock changes exactly at the requested end.
+    return window.startTime.slice(0, 5) < toTime && window.endTime.slice(0, 5) > fromTime;
+  }
   if (fromTime && window.startTime.slice(0, 5) > fromTime) return false;
   if (toTime && window.endTime.slice(0, 5) < toTime) return false;
   if (fromTime && !toTime && window.endTime.slice(0, 5) <= fromTime) return false;
@@ -50,32 +51,121 @@ function matchesFilters(window, date, fromTime, toTime) {
 }
 
 const getAvailabilityWindows = item => Array.isArray(item.availabilities) ? item.availabilities : [];
+/**
+ * Selects matching stock segments only when their scheduled pieces continuously
+ * cover the requested interval on one date. Synthetic reservation windows reduce
+ * stock but cannot fill a real schedule gap; unscheduled dates stay bookable.
+ */
+function getMatchingWindows(item, date, fromTime, toTime) {
+  const windows = getAvailabilityWindows(item);
+  const matching = windows.filter(window => matchesFilters(window, date, fromTime, toTime));
+  if (!fromTime || !toTime) return matching;
+  if (fromTime >= toTime) return [];
+  const dates = [...new Set(matching.map(window => window.date))];
+  return dates.flatMap(day => {
+    const dayWindows = matching.filter(window => window.date === day);
+    const hasSchedule = windows.some(window => window.date === day && window.isScheduled !== false);
+    if (hasSchedule) {
+      const scheduled = dayWindows.filter(window => window.isScheduled !== false)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      let coveredUntil = fromTime;
+      for (const window of scheduled) {
+        if (window.startTime.slice(0, 5) > coveredUntil) return [];
+        // Nested/overlapping segments must never move the coverage cursor backwards.
+        if (window.endTime.slice(0, 5) > coveredUntil) coveredUntil = window.endTime.slice(0, 5);
+      }
+      if (coveredUntil < toTime) return [];
+    }
+    // Dated searches retain exhausted stock as zero; time-only searches advertise usable ranges.
+    if (!date && dayWindows.some(window => (Number(window.availableQuantity) || 0) <= 0)) return [];
+    return dayWindows;
+  });
+}
+
 // Legacy stock health values map onto explicit availability until a record is transitioned by staff.
 const getAvailabilityStatus = item => item.availability_status ||
   (item.status && item.status !== 'operational' ? 'Unavailable' : 'Available');
+const isEquipmentAvailable = item => getAvailabilityStatus(item) === 'Available' &&
+  (!item.status || item.status === 'operational');
+const formatHistoryDate = value => value
+  ? new Intl.DateTimeFormat('en-SG', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(value))
+  : 'Date unavailable';
 
-// A window is reserved when it is not open and is tied to a reservation (status says so, or an event holds it).
-const isReservedWindow = window => window.status !== 'Available' &&
-  (/reserv|book/i.test(String(window.status)) || Boolean(window.eventName));
+const isBlockedWindow = (item, window) => !isEquipmentAvailable(item) ||
+  /unavailable|maintenance|damage|blocked/i.test(String(window.status));
+
+function getBlockedReason(item, window) {
+  if (window.blockReason) return window.blockReason;
+  const latestStatus = item.status_history?.at(-1);
+  if (latestStatus?.status === 'Unavailable' && latestStatus.note) return latestStatus.note;
+  return window.status === 'Available' ? 'Equipment is unavailable.' : window.status;
+}
+
+// The green/red split keeps the calendar scannable; reservation counts remain details, not a third visual state.
+function getWindowState(item, window) {
+  if (isBlockedWindow(item, window)) return 'unavailable';
+  const available = Number(window.availableQuantity) || 0;
+  const reserved = Number(window.reservedQuantity) || 0;
+  const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
+  if (available > 0) return 'available';
+  if (hasReservation) return 'unavailable';
+  return window.availableQuantity == null && String(window.status || '').toLowerCase() === 'available'
+    ? 'available'
+    : 'unavailable';
+}
+
+/** Keeps a maintenance/damage reason visible beside reservation counts when a blocked asset is already booked. */
+function getWindowDetails(item, window, state) {
+  const available = Number(window.availableQuantity) || 0;
+  const reserved = Number(window.reservedQuantity) || 0;
+  const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
+  if (isBlockedWindow(item, window)) {
+    if (reserved > 0) return `${getBlockedReason(item, window)} · ${reserved} reserved · ${available} available`;
+    return getBlockedReason(item, window);
+  }
+  if (hasReservation) return `${reserved} reserved · ${available} available`;
+  if (state === 'unavailable') return getBlockedReason(item, window);
+  return `${available} available`;
+}
+
+/** Distinguishes available, reservation-limited, fully reserved, and maintenance/damage-blocked windows. */
+function getWindowLabel(item, window, state) {
+  if (isBlockedWindow(item, window)) return 'Maintenance / damage blocked';
+  const available = Number(window.availableQuantity) || 0;
+  const reserved = Number(window.reservedQuantity) || 0;
+  const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
+  if (hasReservation) return available > 0 ? 'Partially reserved' : 'Fully reserved';
+  return state === 'available' ? 'Available' : 'Unavailable';
+}
 
 /**
- * Filters the read-only catalogue by asset ID/name and availability date/time range.
- * Availability range filters show only assets whose available window covers the full range.
- * Available quantities are date-specific and show the best matching window unless a full range is set.
+ * Filters inventory and shows availability windows; dates without a schedule use full stock unless the asset is blocked.
+ * Scheduled segments must continuously cover the requested range; reservation-only windows reduce stock on overlap. Status
+ * callbacks persist audited availability transitions and return the updated inventory row through the dashboard.
  */
-export default function EquipmentInventorySection({ inventory, error, onRepairEquipment, onMarkUnavailable }) {
+export default function EquipmentInventorySection({
+  inventory,
+  error,
+  onRepairEquipment,
+  onMarkUnavailable,
+}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const [calendarMonth, setCalendarMonth] = useState(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)));
   const [repairingEquipmentId, setRepairingEquipmentId] = useState(null);
-  const [resolutionNote, setResolutionNote] = useState('');
-  const [repairError, setRepairError] = useState('');
-  const [repairSaving, setRepairSaving] = useState(false);
   const [unavailableEquipmentId, setUnavailableEquipmentId] = useState(null);
   const [unavailabilityReason, setUnavailabilityReason] = useState('');
   const [unavailabilityError, setUnavailabilityError] = useState('');
   const [unavailabilitySaving, setUnavailabilitySaving] = useState(false);
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [repairError, setRepairError] = useState('');
+  const [repairSaving, setRepairSaving] = useState(false);
   const hasAvailabilityFilter = Boolean(dateFilter || fromTime || toTime);
   const hasFilter = Boolean(searchTerm.trim() || hasAvailabilityFilter);
   const invalidTimeRange = Boolean(fromTime && toTime && fromTime >= toTime);
@@ -87,33 +177,57 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
     : [];
   const searchCalendarAssets = searchCalendarMatches.map(item => ({
     ...item,
-    matchingWindows: getAvailabilityWindows(item).filter(window => (
-      matchesFilters(window, dateFilter, fromTime, toTime) && window.status === 'Available'
+    matchingWindows: getMatchingWindows(item, dateFilter, fromTime, toTime).filter(window => (
+      window.date >= calendarDateAtOffset(0) &&
+      window.date < calendarDateAtOffset(CALENDAR_HORIZON_DAYS)
     )),
   }));
-  const calendarDates = [...new Set(searchCalendarAssets.flatMap(item => (
-    getAvailabilityWindows(item).map(window => window.date)
-  )))].sort();
+  const calendarGridDates = getMonthGridDates(
+    calendarMonth,
+    calendarDateAtOffset(0),
+    calendarDateAtOffset(CALENDAR_HORIZON_DAYS - 1),
+  );
+  const earliestMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const canMoveToPreviousMonth = calendarMonth.getTime() > earliestMonth.getTime();
+  const nextMonthStart = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth() + 1, 1));
+  const latestVisibleDate = new Date(today);
+  latestVisibleDate.setUTCDate(today.getUTCDate() + CALENDAR_HORIZON_DAYS);
+  const canMoveToNextMonth = nextMonthStart.getTime() < latestVisibleDate.getTime();
 
   const assetsToFilter = search ? searchCalendarMatches : inventory;
+  // No schedule rows means the whole date is bookable unless blocked; synthetic reservation windows still reduce stock.
   const filteredAssets = invalidTimeRange ? [] : assetsToFilter.flatMap(item => {
-    const matchingWindows = getAvailabilityWindows(item).filter(window => (
-      matchesFilters(window, dateFilter, fromTime, toTime)
-    ));
+    const matchingWindows = getMatchingWindows(item, dateFilter, fromTime, toTime);
     const availableWindows = matchingWindows.filter(window => window.status === 'Available');
-    if (hasAvailabilityFilter && (dateFilter ? matchingWindows : availableWindows).length === 0) return [];
+    const hasScheduledWindowsForDate = dateFilter && getAvailabilityWindows(item).some(window => (
+      window.date === dateFilter && window.isScheduled !== false
+    ));
+    const unscheduledDate = Boolean(dateFilter && !hasScheduledWindowsForDate);
+    if (hasAvailabilityFilter && (dateFilter
+      ? !unscheduledDate && matchingWindows.length === 0
+      : availableWindows.length === 0)) return [];
     return [{
       ...item,
       matchingWindows: availableWindows,
     }];
   });
 
-  // A date without a complete time range may match several windows, so report the best slot as an upper bound.
+  // Partial filters report the best matching slot; a complete interval must use its lowest available quantity.
+  // If the selected date has no schedule or overlapping reservation window, backend availability is full stock.
   function getAvailableQuantity(item) {
-    const matchingWindows = getAvailabilityWindows(item).filter(window => (
-      matchesFilters(window, dateFilter, fromTime, toTime)
+    const matchingWindows = getMatchingWindows(item, dateFilter, fromTime, toTime);
+    const hasScheduledWindowsForDate = dateFilter && getAvailabilityWindows(item).some(window => (
+      window.date === dateFilter && window.isScheduled !== false
     ));
-    return Math.max(0, ...matchingWindows.map(window => Number(window.availableQuantity) || 0));
+    if (dateFilter && !hasScheduledWindowsForDate && matchingWindows.length === 0) {
+      return isEquipmentAvailable(item) ? Number(item.quantity) || 0 : 0;
+    }
+    const quantities = matchingWindows.map(window => Number(window.availableQuantity) || 0);
+    if (fromTime && toTime && quantities.length > 0) {
+      // The minimum protects against overstating stock when concurrent reservations change within the interval.
+      return Math.min(...quantities);
+    }
+    return Math.max(0, ...quantities);
   }
 
   function clearFilters() {
@@ -156,6 +270,7 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
       setUnavailabilityError('Enter why this equipment is unavailable.');
       return;
     }
+
     setUnavailabilityError('');
     setUnavailabilitySaving(true);
     try {
@@ -169,7 +284,7 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
     }
   }
 
-  /** Starts or cancels an audited status transition without changing inventory before confirmation. */
+  /** Opens the matching audited form; the inventory is unchanged until the API confirms the transition. */
   function handleStatusChange(item, nextStatus) {
     const currentStatus = getAvailabilityStatus(item);
     if (nextStatus === currentStatus) {
@@ -197,7 +312,6 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
 
   return (
     <section aria-labelledby="equipment-inventory-heading">
-      <style>{CALENDAR_STYLES}</style>
       <div className="section-heading">
         <h2 id="equipment-inventory-heading">Equipment inventory</h2>
       </div>
@@ -302,7 +416,7 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
                             </label>
                             {unavailabilityError && <p role="alert">{unavailabilityError}</p>}
                             <button type="submit" disabled={unavailabilitySaving}>
-                              {unavailabilitySaving ? 'Saving…' : 'Confirm unavailable'}
+                              {unavailabilitySaving ? 'Saving status…' : 'Mark Unavailable'}
                             </button>
                           </form>
                         )}
@@ -365,67 +479,115 @@ export default function EquipmentInventorySection({ inventory, error, onRepairEq
               <div className="section-heading">
                 <h3 id="equipment-calendar-heading">Availability calendar</h3>
               </div>
-              <div className="equipment-inventory-table-wrap">
-                <table className="equipment-inventory-table equipment-availability-calendar" aria-label="Equipment availability calendar">
-                  <thead>
-                    <tr>
-                      <th scope="col">ID</th>
-                      {calendarDates.map(date => (
-                        <th
-                          key={date}
-                          scope="col"
-                          className={dateFilter === date ? 'is-filtered-date' : undefined}
-                        >
-                          {new Intl.DateTimeFormat('en-SG', {
-                            weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
-                          }).format(new Date(`${date}T00:00:00Z`))}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {searchCalendarAssets.map(item => (
-                      <tr key={item.id}>
-                        <th scope="row">{item.asset_code} — {item.name}</th>
-                        {calendarDates.map(date => {
-                          const dayWindows = getAvailabilityWindows(item).filter(window => window.date === date);
-                          return (
-                            <td
-                              key={date}
-                              className={dateFilter === date ? 'is-filtered-date' : undefined}
-                              aria-label={`Availability on ${formatDate(date)} for ${item.asset_code}`}
-                            >
-                              {dayWindows.length === 0 ? <span className="equipment-calendar-empty">—</span> : (
-                                <ul className="equipment-calendar-windows">
-                                  {dayWindows.map((window, index) => {
-                                    const matches = item.matchingWindows.some(matchingWindow => (
-                                      matchingWindow.date === window.date &&
-                                      matchingWindow.startTime === window.startTime &&
-                                      matchingWindow.endTime === window.endTime
-                                    ));
-                                    const classes = ['equipment-calendar-window'];
-                                    if (matches) classes.push('is-available');
-                                    else if (isReservedWindow(window)) classes.push('is-reserved');
-                                    return (
-                                      <li
-                                        key={`${window.startTime}-${window.endTime}-${index}`}
-                                        className={classes.join(' ')}
-                                      >
-                                        <span>{window.startTime.slice(0, 5)}–{window.endTime.slice(0, 5)}</span>
-                                        <small>{window.availableQuantity} available · {window.status}</small>
-                                        {window.eventName && <small>{window.eventName}</small>}
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <p className="equipment-calendar-note">
+                Unscheduled dates are available unless the equipment is marked unavailable.
+              </p>
+              <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => setCalendarMonth(current => new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1)))}
+                  disabled={!canMoveToPreviousMonth}
+                >
+                  Previous month
+                </button>
+                <span>
+                  {getMonthLabel(calendarMonth.toISOString().slice(0, 10))}
+                </span>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => setCalendarMonth(current => new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 1)))}
+                  disabled={!canMoveToNextMonth}
+                >
+                  Next month
+                </button>
+              </div>
+              <div className="equipment-calendar-assets">
+                {searchCalendarAssets.map(item => (
+                  <section className="equipment-calendar-asset" key={item.id}>
+                    <h4>{item.asset_code} — {item.name}</h4>
+                    <table
+                      className="equipment-availability-calendar"
+                      aria-label={`${item.asset_code} monthly availability`}
+                    >
+                      <thead>
+                        <tr>
+                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                            <th scope="col" key={day}>{day}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Array.from({ length: calendarGridDates.length / 7 }, (_, week) => (
+                          <tr key={week}>
+                            {calendarGridDates.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
+                              const isVisibleDate = date !== null;
+                              const dayWindows = isVisibleDate
+                                ? getAvailabilityWindows(item).filter(window => window.date === date)
+                                : [];
+                              const defaultState = isEquipmentAvailable(item)
+                                ? 'available'
+                                : 'unavailable';
+                              return (
+                                <td
+                                  key={date || `empty-${week}-${dayIndex}`}
+                                  className={[
+                                    'equipment-calendar-day',
+                                    isVisibleDate ? `is-${defaultState}` : 'is-outside-range',
+                                    dateFilter === date ? 'is-filtered-date' : '',
+                                  ].filter(Boolean).join(' ')}
+                                  aria-label={isVisibleDate
+                                    ? `Availability on ${formatDate(date)} for ${item.asset_code}`
+                                    : undefined}
+                                >
+                                  {isVisibleDate && (
+                                    <>
+                                      <span className="equipment-calendar-day-number">
+                                        {new Date(`${date}T00:00:00Z`).getUTCDate()}
+                                      </span>
+                                      {dayWindows.length === 0 ? (
+                                        <>
+                                          <strong className={`equipment-calendar-status is-${defaultState}`}>
+                                            {defaultState === 'available' ? 'Available' : 'Maintenance / damage blocked'}
+                                          </strong>
+                                          <small>{defaultState === 'available'
+                                            ? `${Number(item.quantity) || 0} available`
+                                            : getBlockedReason(item, { status: 'Available' })}</small>
+                                        </>
+                                      ) : (
+                                        <ul className="equipment-calendar-windows">
+                                          {dayWindows.map((window, index) => {
+                                            const state = getWindowState(item, window);
+                                            const statusLabel = getWindowLabel(item, window, state);
+                                            return (
+                                              <li
+                                                key={`${window.startTime}-${window.endTime}-${index}`}
+                                                className={`equipment-calendar-window is-${state}`}
+                                              >
+                                                <span className="equipment-calendar-time">
+                                                  {window.startTime.slice(0, 5)}–{window.endTime.slice(0, 5)}
+                                                </span>
+                                                <strong className={`equipment-calendar-status is-${state}`}>
+                                                  {statusLabel}
+                                                </strong>
+                                                <small>{getWindowDetails(item, window, state)}</small>
+                                              </li>
+                                            );
+                                          })}
+                                        </ul>
+                                      )}
+                                    </>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </section>
+                ))}
               </div>
             </section>
           )}

@@ -97,6 +97,7 @@ test('AC1 - lists requests awaiting reservation and confirmed allocation audit d
     if (sql.includes('FROM users WHERE')) return { rows: [supportStaff] };
     queries.push({ sql, values });
     if (sql.includes('JOIN event_equipment_reviews review')) return { rows: candidates };
+    if (sql.includes('FROM equipment_reservation_unavailability impact')) return { rows: [] };
     return { rows: [audit] };
   });
 
@@ -105,7 +106,8 @@ test('AC1 - lists requests awaiting reservation and confirmed allocation audit d
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.requests, candidates);
   assert.deepEqual(result.body.reservations, [audit]);
-  assert.equal(queries.length, 2);
+  assert.deepEqual(result.body.affectedReservations, []);
+  assert.equal(queries.length, 3);
   const candidateQuery = queries.find(query => query.sql.includes('JOIN event_equipment_reviews review'));
   assert.match(candidateQuery.sql, /NOT EXISTS/i);
   assert.match(candidateQuery.sql, /proposed_end_time\s*>\s*LOCALTIME/i);
@@ -181,6 +183,13 @@ test('AC2 - reserves selected stock and persists who reserved it and when', asyn
     { inventory_id: 31, quantity: 2 },
     { inventory_id: 32, quantity: 1 },
   ]);
+  assert.match(availabilityCheck.sql, /availability\.id IS NOT NULL OR NOT EXISTS/i);
+  assert.match(availabilityCheck.sql, /schedule\.available_date=\$2::date/i);
+  assert.match(availabilityCheck.sql, /schedule\.start_time <= \$3::time/i);
+  assert.match(availabilityCheck.sql, /schedule\.end_time >= \$4::time/i);
+  assert.match(availabilityCheck.sql, /MAX\(concurrent\.quantity\)/i);
+  assert.match(availabilityCheck.sql, /GREATEST\(reservation\.start_time,\s*\$3::time\)/i);
+  assert.match(availabilityCheck.sql, /active_reservation\.end_time > reservation_points\.point_time/i);
   const items = calls.find(call => call.sql.includes('INSERT INTO event_equipment_reservation_items'));
   assert.deepEqual(JSON.parse(items.values[1]), [
     { inventory_id: 31, quantity: 2 },
