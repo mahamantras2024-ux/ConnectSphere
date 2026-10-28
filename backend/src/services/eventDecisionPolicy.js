@@ -55,6 +55,8 @@ const REQUIREMENTS = {
     : { met: true, code: 'CLARIFICATIONS_RESOLVED', message: 'No clarification is outstanding.' }),
 
   venueConfirmed: (context) => {
+    // SCRUM-106 AC4/AC5: another approved venue cannot hide an unresolved disrupted arrangement.
+    if (context.bookings.some(booking => booking.disrupted)) return { met:false, code:'VENUE_DISRUPTED', message:'Resolve the affected venue booking before proceeding.' };
     const live = context.bookings.filter((booking) => isLiveBooking(booking, context.now));
     if (!live.some((booking) => booking.status === 'approved')) {
       return { met: false, code: 'VENUE_NOT_CONFIRMED', message: 'No venue booking has been confirmed by Venue Staff.' };
