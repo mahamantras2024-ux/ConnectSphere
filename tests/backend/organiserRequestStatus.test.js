@@ -57,13 +57,34 @@ for (const fails of [false,true]) {
     const { migrateOrganiserRequestStatus } = require('../../backend/src/db/migrateExternalEvents');
     const queries = []; let released = false;
     mock.method(pool, 'connect', async () => ({ query: async sql => {
-      queries.push(sql); if (fails && sql !== 'ROLLBACK') throw new Error('Upgrade failed');
+      queries.push(sql); if (fails && sql.includes('CREATE TRIGGER')) throw new Error('Upgrade failed');
     }, release: () => { released = true; } }));
     if (fails) await assert.rejects(migrateOrganiserRequestStatus(), /Upgrade failed/);
-    else { await migrateOrganiserRequestStatus(); assert.match(queries[0], /CREATE TRIGGER organiser_request_status_notification/); }
+    else { await migrateOrganiserRequestStatus(); }
     assert.equal(released, true);
-    assert.equal(queries.length, fails ? 2 : 1);
-    if (fails) assert.equal(queries[1], 'ROLLBACK');
+    // The runner alone owns the transaction; a SQL-owned COMMIT would defeat rollback after a later failure.
+    assert.equal(queries.length, 3);
+    assert.equal(queries[0], 'BEGIN');
+    assert.match(queries[1], /CREATE TRIGGER organiser_request_status_notification/);
+    assert.doesNotMatch(queries[1], /^\s*(?:BEGIN|COMMIT|ROLLBACK)\s*;/im);
+    assert.equal(queries[2], fails ? 'ROLLBACK' : 'COMMIT');
+  });
+}
+
+for (const failedBoundary of ['BEGIN', 'COMMIT']) {
+  test(`SCRUM-93 AC5 review - ${failedBoundary} failure rolls back and releases the migration connection`, async () => {
+    // Arrange: emulate a database failure at each transaction boundary rather than only inside the SQL body.
+    const { migrateOrganiserRequestStatus } = require('../../backend/src/db/migrateExternalEvents');
+    const queries = []; let released = false;
+    mock.method(pool, 'connect', async () => ({
+      async query(sql) { queries.push(sql); if (sql === failedBoundary) throw new Error('Boundary failed'); },
+      release() { released = true; },
+    }));
+    // Act / Assert: no later step may succeed or hide the error, and the same connection must be cleaned up.
+    await assert.rejects(migrateOrganiserRequestStatus(), /Boundary failed/);
+    assert.equal(queries.at(-1), 'ROLLBACK');
+    assert.equal(queries.length, failedBoundary === 'BEGIN' ? 2 : 4);
+    assert.equal(released, true);
   });
 }
 

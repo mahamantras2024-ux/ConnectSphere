@@ -1,5 +1,5 @@
 -- SCRUM-93: additive, repeatable organisation status notifications; preserve all historical notification types.
-BEGIN;
+-- Transaction boundaries belong to migrateExternalEvents.js, including the standalone upgrade.
 DO $$
 DECLARE allowed_types TEXT[];
 BEGIN
@@ -10,7 +10,10 @@ BEGIN
       'event_approved', 'event_rejected', 'safety_check_recorded', 'technical_support_assigned',
       'technical_support_unassigned', 'event_cancelled', 'equipment_status_changed', 'waitlist_promoted',
       'equipment_reservation_affected', 'equipment_alternative_proposed', 'equipment_alternative_decision', 'venue_event_status_changed',
-      'event_request_status_changed', 'pending_venue_request_reminder', 'event_awaiting_assignment', 'safety_check_ready'
+      'event_request_status_changed', 'pending_venue_request_reminder', 'event_awaiting_assignment', 'safety_check_ready',
+      -- The shared constraint must retain other open PRs' notification types before their first notification is stored.
+      'tech_support_assignment_created', 'tech_support_assignment_updated', 'tech_support_assignment_cancelled',
+      'pending_tech_support_request_reminder'
     ]::text[])
   ) supported;
   ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
@@ -39,4 +42,3 @@ $function$;
 DROP TRIGGER IF EXISTS organiser_request_status_notification ON events;
 CREATE TRIGGER organiser_request_status_notification AFTER UPDATE OF status ON events
   FOR EACH ROW EXECUTE FUNCTION notify_organiser_request_status();
-COMMIT;

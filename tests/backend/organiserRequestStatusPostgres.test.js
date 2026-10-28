@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const { pool } = require('../../backend/src/config/db');
 const { findRequestStatus } = require('../../backend/src/models/organiserRequestStatusModel');
 const { listForOrganiser, updateEditable } = require('../../backend/src/models/eventModel');
-const sql = fs.readFileSync(require('node:path').join(__dirname, '../../backend/src/db/migrations/019-organiser-request-status.sql'), 'utf8');
+const sql = fs.readFileSync(require('node:path').join(__dirname, '../../backend/src/db/migrations/023-organiser-request-status.sql'), 'utf8');
 after(async () => { mock.restoreAll(); await pool.end(); });
 test('SCRUM-93 AC1-AC6 - real organisation isolation and atomic status notifications', { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
   pool.options.connectionTimeoutMillis = 5000;
