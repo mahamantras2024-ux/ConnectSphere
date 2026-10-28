@@ -60,6 +60,7 @@ if (require.main === module) {
     });
     // The persisted last-sent timestamp makes this hourly scheduler safe across restarts and multiple checks.
     startDailyVenueReminderScheduler(pool);
+    require('./services/coordinatorNotifications').startCoordinatorNotificationScheduler(pool);
   });
 }
 

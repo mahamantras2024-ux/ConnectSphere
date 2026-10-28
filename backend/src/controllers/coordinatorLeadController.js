@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const notificationService = require('../services/notificationService');
 const asyncHandler = require('../utils/asyncHandler');
 
 /** Returns active submitted events and provisioned coordinators for manual lead selection. */
@@ -23,9 +24,10 @@ const assign = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Choose a valid event, coordinator and current assignment.' });
   }
   const client = await pool.connect();
+  let stored = [];
   try {
     await client.query('BEGIN');
-    const event = (await client.query('SELECT id,coordinator_id,is_draft,status FROM events WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    const event = (await client.query('SELECT id,name,coordinator_id,is_draft,status FROM events WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!event || event.is_draft || ['draft','cancelled','completed'].includes(event.status)) {
       await client.query('ROLLBACK'); return res.status(404).json({ message: 'Active event not found.' });
     }
@@ -39,7 +41,14 @@ const assign = asyncHandler(async (req, res) => {
     }
     // One nullable foreign key represents responsibility; replacing it never creates a second coordinator.
     const updated = (await client.query('UPDATE events SET coordinator_id=$1,updated_at=now() WHERE id=$2 RETURNING *', [coordinatorId,event.id])).rows[0];
+    // SCRUM-85 AC1: the current assignee receives one event-identifying notice only when responsibility changes.
+    if (event.coordinator_id !== coordinatorId) stored = await notificationService.insertNotifications(client, [{
+      userId:coordinatorId,eventId:event.id,changeRequestId:null,type:'event_details_changed',
+      title:`Event assigned: ${event.name}`,message:`You are now the Event Coordinator for ${event.name}. Open the event for its current details.`,
+      details:{kind:'event_assignment',previousCoordinatorId:event.coordinator_id},
+    }]);
     await client.query('COMMIT');
+    await notificationService.emailNotifications(stored);
     res.json({ event: updated, message: 'Coordinator assignment saved.' });
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }

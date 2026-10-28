@@ -80,8 +80,8 @@ async function createVenueRequest(venueId, body, userId) {
 async function decideVenueRequest(venueId, requestId, decision, userId, reason) {
   if (!validId(venueId) || !validId(requestId) || !['approved', 'rejected'].includes(decision)) throw reject(400, 'Choose a valid request and approval or rejection decision.');
   if (reason != null && typeof reason !== 'string') throw reject(400, 'The decision reason must be text.');
-  // Rejection notes explain why the booking was declined; approvals never retain an irrelevant reason.
-  const decisionNotes = decision === 'rejected' ? reason?.trim() || null : null;
+  // SCRUM-85 AC2: supplied reasons or alternative arrangements belong to either decision.
+  const decisionNotes = reason?.trim() || null;
   let safetyNotes = [];
   const decided = await withVenue(Number(venueId), async (client, venue) => {
     const request = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
@@ -99,7 +99,7 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason) 
     const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [request.event_id])).rows[0];
     // Store the notification inside the same transaction: a decision cannot commit without its coordinator notice.
     // The existing event-details type covers this venue-arrangement change without widening database permissions or constraints.
-    await insertNotifications(client, [{ userId: event.coordinator_id ?? request.requested_by, eventId: event.id, changeRequestId: null,
+    if (event.coordinator_id) await insertNotifications(client, [{ userId: event.coordinator_id, eventId: event.id, changeRequestId: null,
       type: 'event_details_changed', title: `Venue booking ${decision}: ${event.name}`,
       message: `${event.name}: venue booking #${request.id} at ${venue.name} was ${decision}.${decisionNotes ? `\nReason or alternative arrangement: ${decisionNotes}` : ''}`,
       // Keep a separate durable audit snapshot, even if a later arrangement change updates the booking timestamp.

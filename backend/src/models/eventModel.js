@@ -1376,7 +1376,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
         e.proposed_start_time::text AS proposed_start_time,
         e.proposed_end_time::text AS proposed_end_time, e.equipment_items,
-        e.equipment_requirements_version AS request_version,
+        e.equipment_requirements_version AS request_version, e.coordinator_id,
         review.outcome AS review_outcome,
         venue.name AS venue_name, venue.location AS venue_location
       FROM events e
@@ -1568,6 +1568,8 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
     `, [reservation.id, JSON.stringify(availabilitySelections)]);
     // Reservation freezes the reviewed equipment details so later organiser edits become change requests.
     await client.query('UPDATE events SET equipment_confirmed_at=COALESCE(equipment_confirmed_at, now()) WHERE id=$1', [event.id]);
+    // SCRUM-85 AC4: confirmation and its coordinator notice share this reservation transaction.
+    await require('../services/coordinatorNotifications').notifyEquipmentReserved(client, event, reservation);
     await client.query('COMMIT');
     return { reservation, items: inventory.map(item => ({
       inventoryId: item.id, assetCode: item.asset_code, name: item.name,

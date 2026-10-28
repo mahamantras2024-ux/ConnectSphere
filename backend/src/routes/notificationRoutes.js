@@ -5,8 +5,14 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 
+const {requireRole}=require('../middleware/role');
+const coordinator=require('../services/coordinatorNotifications');
 const router = express.Router();
 router.use(requireAuth);
+
+// SCRUM-85 AC9: preferences are scoped to session identity and the coordinator role.
+router.get('/coordinator-preferences', requireRole('event_coordinator'), asyncHandler(async(req,res)=>res.json({preference:await coordinator.getPreference(db,req.user.id)})));
+router.put('/coordinator-preferences', requireRole('event_coordinator'), asyncHandler(async(req,res)=>res.json({preference:await coordinator.savePreference(db,req.user.id,req.body || {})})));
 
 // GET /api/notifications returns the caller's newest notifications plus unresolved safety-review notifications and unread count; scoping is by session, never by query input.
 router.get('/', asyncHandler(async (req, res) => {

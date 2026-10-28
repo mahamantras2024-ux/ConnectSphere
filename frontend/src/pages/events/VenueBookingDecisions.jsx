@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import VenueHoldState from './VenueHoldState';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
@@ -37,6 +38,7 @@ export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
                   return (
                     <li key={booking.id} aria-label={`${booking.venue_name} ${status}`} className="ed-clar-item">
                       <h3>{booking.venue_name}</h3>
+                      <VenueHoldState booking={booking} />
                       <p><strong>Status:</strong> <span>{status}</span></p>
                       {booking.start_datetime && <p><strong>Period:</strong> {new Date(booking.start_datetime).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} – {new Date(booking.end_datetime).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>}
                       {booking.requirements && <dl>
@@ -46,7 +48,7 @@ export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
                         <dt>Required facilities</dt><dd>{booking.requirements.requiredFacilities.join(', ') || 'None specified'}</dd>
                       </dl>}
                       <p>{booking.cancel_other_pending ? 'Other pending requests will be cancelled if this arrangement changes or is cancelled.' : 'Other requests are kept if this arrangement changes or is cancelled.'}</p>
-                      {booking.status === 'rejected' && booking.decision_notes?.trim() && (
+                      {booking.decision_notes?.trim() && (
                         <p><strong>Venue Staff reason:</strong> {booking.decision_notes}</p>
                       )}
                     </li>
