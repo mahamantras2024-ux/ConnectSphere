@@ -182,14 +182,19 @@ export default function EquipmentInventorySection({
       window.date < calendarDateAtOffset(CALENDAR_HORIZON_DAYS)
     )),
   }));
-  const calendarGridDates = getMonthGridDates(
-    calendarMonth,
-    calendarDateAtOffset(0),
-    calendarDateAtOffset(CALENDAR_HORIZON_DAYS - 1),
-  );
+  // Selecting a date should reveal the month that contains it, even when it lies outside the month the staff member
+  // last paged to. Paging (no date filter) still follows the calendarMonth state so Previous/Next keep working, and a
+  // date outside the rolling horizon leaves the paged month untouched rather than scrolling to an unreachable month.
+  const firstVisibleDate = calendarDateAtOffset(0);
+  const lastVisibleDate = calendarDateAtOffset(CALENDAR_HORIZON_DAYS - 1);
+  const dateFilterInHorizon = Boolean(dateFilter) && dateFilter >= firstVisibleDate && dateFilter <= lastVisibleDate;
+  const displayedMonth = dateFilterInHorizon
+    ? new Date(Date.UTC(Number(dateFilter.slice(0, 4)), Number(dateFilter.slice(5, 7)) - 1, 1))
+    : calendarMonth;
+  const calendarGridDates = getMonthGridDates(displayedMonth, firstVisibleDate, lastVisibleDate);
   const earliestMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-  const canMoveToPreviousMonth = calendarMonth.getTime() > earliestMonth.getTime();
-  const nextMonthStart = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth() + 1, 1));
+  const canMoveToPreviousMonth = displayedMonth.getTime() > earliestMonth.getTime();
+  const nextMonthStart = new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1));
   const latestVisibleDate = new Date(today);
   latestVisibleDate.setUTCDate(today.getUTCDate() + CALENDAR_HORIZON_DAYS);
   const canMoveToNextMonth = nextMonthStart.getTime() < latestVisibleDate.getTime();
@@ -486,18 +491,18 @@ export default function EquipmentInventorySection({
                 <button
                   type="button"
                   className="button-secondary"
-                  onClick={() => setCalendarMonth(current => new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1)))}
+                  onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() - 1, 1)))}
                   disabled={!canMoveToPreviousMonth}
                 >
                   Previous month
                 </button>
                 <span>
-                  {getMonthLabel(calendarMonth.toISOString().slice(0, 10))}
+                  {getMonthLabel(displayedMonth.toISOString().slice(0, 10))}
                 </span>
                 <button
                   type="button"
                   className="button-secondary"
-                  onClick={() => setCalendarMonth(current => new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 1)))}
+                  onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1)))}
                   disabled={!canMoveToNextMonth}
                 >
                   Next month
