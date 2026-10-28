@@ -258,7 +258,11 @@ it('AC3 - reports full stock for an unscheduled selected date and time', () => {
 });
 
 // AC3 - Zero total stock stays eligible on an unscheduled date and is reported as zero in both views.
-it('AC3 - reports zero stock for an unscheduled date in inventory and calendar', () => {
+it.each(['2026-10-27', '2026-10-28', '2026-10-29'])('AC3 - reports zero stock in inventory and calendar across the month boundary from %s', (today) => {
+  // Arrange: four days ahead lands just before, exactly on, and just after the next month starts.
+  // Freeze Date alone so calendar coverage is reproducible without changing async timer behavior.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${today}T12:00:00Z`));
   const unscheduledDate = getDateOffset(4);
   const item = { ...inventory[0], quantity: 0, availabilities: [] };
   render(<EquipmentInventorySection inventory={[item]} error="" />);
@@ -273,6 +277,10 @@ it('AC3 - reports zero stock for an unscheduled date in inventory and calendar',
 
   // Assert: zero stock is preserved rather than becoming an empty result or an undefined quantity.
   expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('0');
+  // A date filter does not change the visible month; navigate before checking a day in the next month.
+  if (new Date(`${unscheduledDate}T00:00:00Z`).getUTCMonth() !== new Date().getUTCMonth()) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+  }
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   const dateLabel = new Intl.DateTimeFormat('en-SG', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
