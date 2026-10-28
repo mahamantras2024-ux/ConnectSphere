@@ -156,7 +156,12 @@ test('AC1/AC3 - records unavailable status and flags its future reservations', a
   assert.deepEqual(result.affectedIssues.map(issue => issue.reservationId), [301, 302]);
   assert.deepEqual(result.affectedIssues.map(issue => issue.noAlternativeAvailable), [true, true]);
   assert.deepEqual(notifications.map(note => note.userId), [6, 5, 8, 7]);
-  assert.ok(notifications.every(note => note.type === 'equipment_reservation_affected'));
+  // The on-site-assigned staff now receive an equipment_status_changed notice (AC3); the coordinator still receives the
+  // reservation-affected notice. Recipients are ordered [staff 6, coordinator 5, staff 8, coordinator 7].
+  assert.deepEqual(notifications.map(note => note.type),
+    ['equipment_status_changed', 'equipment_reservation_affected', 'equipment_status_changed', 'equipment_reservation_affected']);
+  // The staff headline names the item and its new status so the preview reads it at a glance (AC3.2).
+  assert.match(notifications[0].message, /Equipment MIC-001 \(Microphone\) is now unavailable/);
   assert.deepEqual(notifications.map(note => note.details.issueId), [71, 71, 72, 72]);
   assert.equal(queries.filter(({ sql }) => /SET suggestion_status='no_alternative'/.test(sql)).length, 2);
   assert.ok(queries.some(({ sql, values }) => /equipment_status_history/.test(sql) &&

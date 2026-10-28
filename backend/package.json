@@ -18,6 +18,7 @@
     "migrate:venue-booking-requests": "node src/db/migrateVenueBookingRequests.js",
     "migrate:venue-staff-event-status": "node src/db/migrateVenueStaffEventStatus.js",
     "migrate:venue-reminder-frequency": "node src/db/migrateVenueStaffEventStatus.js --reminder-frequency",
+    "migrate:tech-support-reminders": "node src/db/migrateTechSupportReminderPreferences.js",
     "seed:venue-event-status-demo": "node src/db/seedVenueEventStatusDemo.js",
     "seed:safety-review-ready-demo": "node src/db/seedSafetyReviewReadyDemo.js",
     "setup:sprint-one": "node src/db/setupSprintOne.js",

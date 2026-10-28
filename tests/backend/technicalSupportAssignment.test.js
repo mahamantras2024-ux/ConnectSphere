@@ -63,3 +63,31 @@ test('AC1 - lists only the signed-in staff member assignments', async () => {
   const result = await invoke(controller.listAssigned);
   assert.deepEqual(result.body.events, [{ id: 7, name: 'Workshop', equipment_items: [] }]);
 });
+
+// AC1/AC2: additions emit tech_support_assignment_created and removals emit tech_support_assignment_cancelled, each with
+// a first message line that names the event so the notification preview headline identifies it.
+test('AC1 AC2 - emits created and cancelled assignment notifications naming the event', async () => {
+  let notes;
+  const client = { release() {}, async query(sql, values) {
+    if (sql.includes('FROM events')) return { rows: [{ id: 7, name: 'Spring Gala', coordinator_id: 41, status: 'submitted', technical_support_required: true, proposed_date: '2026-10-12', equipment_items: [], venue: {} }] };
+    if (sql.includes('SELECT id FROM users')) return { rows: [{ id: 42 }] };
+    if (sql.includes('SELECT staff_id')) return { rows: [{ staff_id: 41 }] }; // 41 currently assigned, will be removed
+    return { rows: [] };
+  } };
+  mock.method(pool, 'connect', async () => client);
+  // Capture the exact notes the controller builds so we can assert their type and headline.
+  mock.method(require('../../backend/src/services/notificationService'), 'insertNotifications', async (_db, built) => { notes = built; return built.map((_, i) => ({ id: i + 1 })); });
+  mock.method(require('../../backend/src/services/notificationService'), 'emailNotifications', async () => {});
+
+  // Act: assign staff 42 (added) while 41 is dropped (removed/cancelled).
+  await invoke(controller.assign, { staffIds: [42] });
+
+  // Assert: a plausible impl that kept the old technical_support_assigned/unassigned types, or that dropped the event
+  // name from the headline, would fail here.
+  const created = notes.find(note => note.userId === 42);
+  const cancelled = notes.find(note => note.userId === 41);
+  assert.equal(created.type, 'tech_support_assignment_created');
+  assert.equal(cancelled.type, 'tech_support_assignment_cancelled');
+  assert.match(created.message.split('\n')[0], /Spring Gala/);
+  assert.match(cancelled.message.split('\n')[0], /Spring Gala/);
+});

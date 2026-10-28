@@ -87,15 +87,19 @@ async function markUnavailable(inventoryId, reason, staffId) {
         inventoryId,
         assetCode: equipment.asset_code,
       };
+      // Notify each Technical Support member assigned to on-site support for the reserving event (AC3.4): the
+      // reservation -> event -> event_technical_support_assignments join is materialized as reservation.support_ids,
+      // so exactly the assigned staff are told. The first message line names the item and its new status so the
+      // notification preview headline reads, e.g. "Equipment PROJ-001 is now unavailable" (AC3.2).
       for (const userId of reservation.support_ids) {
         notes.push({
           userId,
           eventId: reservation.event_id,
           changeRequestId: null,
-          type: 'equipment_reservation_affected',
-          title: `Reserved equipment unavailable: ${reservation.event_name}`,
-          message: `${equipment.asset_code} (${equipment.name}) is unavailable for ${reservation.event_name}. Review the affected reservation.`,
-          details,
+          type: 'equipment_status_changed',
+          title: `Equipment status changed: ${reservation.event_name}`,
+          message: `Equipment ${equipment.asset_code} (${equipment.name}) is now unavailable\nIt is reserved for ${reservation.event_name}. Review the affected reservation and propose a replacement.`,
+          details: { ...details, status: 'unavailable' },
         });
       }
       if (reservation.coordinator_id) {

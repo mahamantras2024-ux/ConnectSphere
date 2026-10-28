@@ -59,12 +59,15 @@ const assign = asyncHandler(async (req, res) => {
         SELECT $1, unnest($2::int[])`, [eventId, staffIds]);
     }
     const notes = [
-      ...added.map(userId => ({ userId, eventId, changeRequestId: null, type: 'technical_support_assigned',
-        title: `On-site support assigned: ${event.name}`, message: `You are assigned to provide on-site technical support for ${event.name}.`,
-        details: { eventId, change: 'assigned' } })),
-      ...removed.map(userId => ({ userId, eventId, changeRequestId: null, type: 'technical_support_unassigned',
-        title: `On-site support assignment changed: ${event.name}`, message: `You are no longer assigned to provide on-site technical support for ${event.name}.`,
-        details: { eventId, change: 'unassigned' } })),
+      // A newly added member is notified their on-site assignment was created; the first message line names the event so
+      // the notification preview headline identifies it (AC1).
+      ...added.map(userId => ({ userId, eventId, changeRequestId: null, type: 'tech_support_assignment_created',
+        title: `On-site support assigned: ${event.name}`, message: `On-site support assigned: ${event.name}\nYou are assigned to provide on-site technical support for ${event.name}.`,
+        details: { eventId, change: 'created' } })),
+      // A removed member is notified their assignment was cancelled (AC2); the first line again names the event.
+      ...removed.map(userId => ({ userId, eventId, changeRequestId: null, type: 'tech_support_assignment_cancelled',
+        title: `On-site support cancelled: ${event.name}`, message: `On-site support cancelled: ${event.name}\nYou are no longer assigned to provide on-site technical support for ${event.name}.`,
+        details: { eventId, change: 'cancelled' } })),
     ];
     const stored = notes.length ? await notificationService.insertNotifications(client, notes) : [];
     await client.query('COMMIT');
