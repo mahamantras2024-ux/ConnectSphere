@@ -32,3 +32,12 @@ for(const replacementBookingId of [null,8])test(`SCRUM-106 AC4 - assigned coordi
  const response=await request('/events/3/venue-disruptions/2/resolve','POST',{replacementBookingId});
  assert.equal(response.status,200);assert.deepEqual(await response.json(),{resolution:replacementBookingId===null?'cancelled':'replaced'});
 });
+
+for(const id of ['1','2','2147483646','2147483647'])test(`SCRUM-106 AC1 AC4 - valid resource boundary ID ${id} reaches the assignment-scoped query`,async()=>{
+ const response=await request(`/events/${id}/venue-disruptions`);assert.equal(response.status,200);
+ assert.deepEqual(queries.find(q=>q.sql.startsWith('SELECT id FROM events')).values,[id,8]);
+});
+for(const replacementBookingId of [1,2,2147483646,2147483647])test(`SCRUM-106 AC4 - valid replacement boundary ID ${replacementBookingId} reaches recovery`,async()=>{
+ mock.method(pool,'connect',async()=>({release(){},query:async(sql,values)=>({rows:sql.includes('SELECT b.venue_id')?[{venue_id:7}]:sql.includes('SELECT d.*,b.event_id')?[{id:2,booking_id:5}]:sql.includes('SELECT b.id FROM venue_bookings')?[{id:values[0]}]:[]})}));
+ const response=await request('/events/3/venue-disruptions/2/resolve','POST',{replacementBookingId});assert.equal(response.status,200);assert.deepEqual(await response.json(),{resolution:'replaced'});
+});

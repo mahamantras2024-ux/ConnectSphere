@@ -22,7 +22,7 @@ for (const [offset, expected] of [[-1,false],[0,false],[1,true]]) {
 test('SCRUM-106 AC1 - validates reason and positive timezone-qualified closure interval', () => {
   const input = { reason: '  Emergency repairs ', startDatetime:'2031-10-20T01:00:00Z', endDatetime:'2031-10-20T02:00:00Z' };
   assert.equal(closureInput(input).reason, 'Emergency repairs');
-  for (const invalid of [null,[],{...input,reason:' '},{...input,endDatetime:input.startDatetime},{...input,startDatetime:'2031-10-20T01:00:00'},{...input,startDatetime:'2031-02-30T01:00:00Z'}]) assert.throws(()=>closureInput(invalid), /closure|reason/i);
+  for (const invalid of [null,[],{...input,reason:' '},{...input,startDatetime:'2031-10-20T01:00:00'},{...input,startDatetime:'2031-02-30T01:00:00Z'}]) assert.throws(()=>closureInput(invalid), /closure|reason/i);
 });
 const context = { status:'planning', is_draft:false, pending_clarifications:0, equipment_items:[], safety_changes_open:[], now:start,
  bookings:[{status:'approved',disrupted:true}], latest_safety_check:{outcome:'approved'} };
@@ -123,4 +123,23 @@ test('SCRUM-106 AC4 - inherited notification does not let a former coordinator r
  await assert.rejects(()=>service.resolveDisruption(3,9,99),/Disruption not found/);
  assert.equal(db.calls.some(c=>c.sql.startsWith('UPDATE venue_bookings')),false);
  assert.deepEqual(db.calls.find(c=>c.sql.includes('SELECT d.*,b.event_id')).values,[9,3,99]);
+});
+test('SCRUM-106 AC5 - review and confirmation timestamps record save time rather than transaction start before a lock wait',async()=>{
+ // Arrange: SQL is the external database boundary. A transaction may begin before a venue revision and then wait on its lock.
+ const model=require('../../backend/src/models/eventDecisionModel'),writes=[];
+ const db={query:async(sql,values)=>{writes.push({sql,values});return{rows:[{}]};}};
+ await model.insertSafetyCheck(db,3,7,'approved',null,[]);await model.recordDecision(db,3,'approved',null,8);
+ // Assert: now() would preserve the pre-lock transaction time and falsely invalidate a fresh review.
+ assert.match(writes[0].sql,/checked_at\) VALUES \(\$1, \$2, \$3, \$4, \$5, clock_timestamp\(\)\)/);
+ assert.match(writes[1].sql,/decided_at = clock_timestamp\(\)/);
+});
+for(const [length,valid]of [[0,false],[1,true],[2,true]])test(`SCRUM-106 AC1 - closure reason minimum boundary length ${length} is ${valid?'accepted':'rejected'}`,()=>{
+ const body={startDatetime:'2031-10-20T01:00:00Z',endDatetime:'2031-10-20T02:00:00Z',reason:'x'.repeat(length)};
+ if(valid)assert.equal(closureInput(body).reason.length,length);else assert.throws(()=>closureInput(body),/reason/);
+});
+for(const duration of [-1,0,1])test(`SCRUM-106 AC1 - closure duration ${duration}ms is ${duration>0?'accepted':'rejected'}`,()=>{
+ // The minimum positive interval changes behavior at zero; expected values follow AC1's affected period requirement.
+ const start=Date.parse('2031-10-20T02:00:00Z');
+ const body={reason:'Repairs',startDatetime:new Date(start).toISOString(),endDatetime:new Date(start+duration).toISOString()};
+ if(duration>0)assert.equal(closureInput(body).end-closureInput(body).start,1);else assert.throws(()=>closureInput(body),/closure period/);
 });

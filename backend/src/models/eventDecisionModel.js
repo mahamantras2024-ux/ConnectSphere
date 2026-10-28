@@ -34,7 +34,7 @@ async function loadDecisionContext(db, eventId, { coordinatorId, lock = false } 
 /** Stores the coordinator's decision on the event itself so the outcome stays with the record (AC4/AC5). */
 async function recordDecision(db, eventId, decision, reason, coordinatorId) {
   const result = await db.query(`
-    UPDATE events SET status = $2, decision_reason = $3, decided_by = $4, decided_at = now(), updated_at = now()
+    UPDATE events SET status = $2, decision_reason = $3, decided_by = $4, decided_at = clock_timestamp(), updated_at = now()
     WHERE id = $1 RETURNING id, name, status, organiser_id, decision_reason, decided_at`, [eventId, decision, reason, coordinatorId]);
   return result.rows[0];
 }
@@ -42,10 +42,11 @@ async function recordDecision(db, eventId, decision, reason, coordinatorId) {
 /**
  * Appends a Safety Officer review; the newest row becomes the event's current safety outcome.
  * `changeAreas` names the planning stages a change request reopens (empty for approve/reject).
+ * Use save time after row-lock waits: a transaction-start timestamp could predate the venue revision it reviews.
  */
 async function insertSafetyCheck(db, eventId, safetyOfficerId, outcome, notes, changeAreas = []) {
   const result = await db.query(`
-    INSERT INTO event_safety_checks (event_id, safety_officer_id, outcome, notes, change_areas) VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO event_safety_checks (event_id, safety_officer_id, outcome, notes, change_areas, checked_at) VALUES ($1, $2, $3, $4, $5, clock_timestamp())
     RETURNING id, event_id, outcome, notes, change_areas, checked_at`, [eventId, safetyOfficerId, outcome, notes, changeAreas]);
   return result.rows[0];
 }
