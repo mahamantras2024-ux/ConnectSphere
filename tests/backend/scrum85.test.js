@@ -23,6 +23,7 @@ test('SCRUM-85 AC9 - only explicit opt-in and supported Venue Staff frequencies 
  assert.deepEqual(await service.savePreference(db,8,{enabled:true,frequencyDays:3}),{enabled:true,frequencyDays:3});
  assert.deepEqual(calls[0].values,[8,true,3]);
  for(const body of [{enabled:'yes',frequencyDays:1},{enabled:true,frequencyDays:2},{enabled:true,frequencyDays:0},{enabled:true,frequencyDays:8}])await assert.rejects(()=>service.savePreference(db,8,body),/frequency|reminders/);
+ await assert.rejects(()=>service.savePreference(db,8),/reminders/);
  assert.equal(calls.length,1);
 });
 

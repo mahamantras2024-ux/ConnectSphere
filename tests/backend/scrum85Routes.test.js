@@ -26,6 +26,10 @@ for(const frequencyDays of [1,3,7])test(`SCRUM-85 AC9 - saves and rereads ${freq
  const response=await request('PUT',{enabled:true,frequencyDays,userId:99});assert.equal(response.status,200);assert.deepEqual(writes,[[8,true,frequencyDays]]);
  assert.deepEqual(await (await request()).json(),{preference:{enabled:true,frequencyDays}});
 });
-for(const frequencyDays of [0,2,4,8,'1',[1]])test(`SCRUM-85 AC9 - rejects unsupported cadence ${JSON.stringify(frequencyDays)}`,async()=>{
+for(const frequencyDays of [0,2,4,6,8,'1',[1]])test(`SCRUM-85 AC9 - rejects unsupported cadence ${JSON.stringify(frequencyDays)}`,async()=>{
  assert.equal((await request('PUT',{enabled:true,frequencyDays})).status,400);assert.equal(writes.length,0);
+});
+
+test('SCRUM-85 AC9 - a missing preference request body cannot enable reminders',async()=>{
+ const response=await request('PUT');assert.equal(response.status,400);assert.equal(writes.length,0);
 });

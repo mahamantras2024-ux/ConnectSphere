@@ -70,11 +70,20 @@ it('SCRUM-85 AC2 AC3 - coordinator sees a committed decision before the ten-seco
  for(const delta of [4999,1,1]){await act(async()=>vi.advanceTimersByTime(delta));expect(screen.getByRole('button',{name:'Notifications, 1 unread'})).toBeInTheDocument();}
  localStorage.clear();
 });
-it('SCRUM-85 AC9 - preference responses from an old session cannot update an unmounted control',async()=>{
- const pending=[];api.get.mockImplementation(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
- let view=render(<CoordinatorReminderPreferences token="old"/>);view.unmount();pending[0].resolve({preference:{enabled:true,frequencyDays:7}});
- view=render(<CoordinatorReminderPreferences token="old"/>);view.unmount();pending[1].reject(new Error('Late failure'));
- await Promise.resolve();expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+it('SCRUM-85 AC9 - late success and failure from an old session cannot overwrite the current preference',async()=>{
+ // Keep the control mounted across a real token change: React ignoring updates after unmount cannot make this pass.
+ for(const outcome of ['success','failure']){
+  let finishOld,failOld;
+  api.get.mockImplementation((_path,token)=>token==='old'?new Promise((resolve,reject)=>{finishOld=resolve;failOld=reject;}):Promise.resolve({preference:{enabled:false,frequencyDays:3}}));
+  const view=render(<CoordinatorReminderPreferences token="old"/>);
+  view.rerender(<CoordinatorReminderPreferences token="new"/>);
+  await screen.findByRole('checkbox');expect(screen.getByLabelText('Review reminder frequency')).toHaveValue('3');
+  await act(async()=>{if(outcome==='success')finishOld({preference:{enabled:true,frequencyDays:7}});else failOld(new Error('Previous session failed'));});
+  // A missing active guard would either opt the new user in or display the old user's error.
+  expect(screen.getByRole('checkbox')).not.toBeChecked();
+  expect(screen.getByLabelText('Review reminder frequency')).toHaveValue('3');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();view.unmount();
+ }
 });
 it('SCRUM-85 AC9 - missing preference data defaults to disabled instead of opting a coordinator in',async()=>{
  api.get.mockResolvedValue({});render(<CoordinatorReminderPreferences token="session"/>);
