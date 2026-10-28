@@ -79,9 +79,9 @@ export default function SafetyCheckQueue() {
     const { outcome = '', notes = '', stages = [] } = forms[event.id] || {};
     if (!outcome) { setError('Choose an outcome for the safety check.'); return; }
     if (outcome !== 'approved' && !notes.trim()) { setError('Explain what is unsafe or what must change.'); return; }
-    // AC3: a change request names the planning stages the event returns to; other outcomes send none.
-    const requestingChanges = outcome === 'changes_requested';
-    if (requestingChanges && !stages.length) { setError('Choose which planning stages need changes.'); return; }
+    // Rejected checks can also reopen named planning stages so revised arrangements can be reassessed.
+    const requestingChanges = outcome === 'changes_requested' || (outcome === 'rejected' && stages.length > 0);
+    if (outcome === 'changes_requested' && !stages.length) { setError('Choose which planning stages need changes.'); return; }
     setSaving(event.id); setError(''); setStatus('');
     try {
       // Stages are sent in a fixed order so the stored list does not depend on click order.
@@ -139,7 +139,7 @@ export default function SafetyCheckQueue() {
                         </label>
                       ))}
                     </fieldset>
-                    {form.outcome === 'changes_requested' && (
+                    {(form.outcome === 'changes_requested' || form.outcome === 'rejected') && (
                       <fieldset className="flex flex-wrap gap-4" disabled={saving === event.id}>
                         <legend className="mb-1 font-medium">Planning stages to reopen for {event.name}</legend>
                         {Object.entries(STAGE_LABELS).map(([area, label]) => (

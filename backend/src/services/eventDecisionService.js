@@ -103,8 +103,8 @@ async function recordSafetyCheck(eventId, safetyOfficerId, outcome, notes, chang
       message: `The Safety Officer recorded the operational safety check for ${context.name}: ${label}.${stageLine}${notesLine}`,
       details: { outcome, notes, changeAreas },
     }] : [];
-    // The organiser must make event-detail and equipment changes, so they are told whenever changes are requested.
-    if (outcome === 'changes_requested') {
+    // The organiser must make event-detail and equipment changes, so they are told whenever revisions are requested.
+    if (changeAreas.length) {
       notifications.push({
         userId: context.organiser_id, eventId: context.id, changeRequestId: null, type: 'safety_check_recorded',
         title: `Changes needed for your event: ${context.name}`,
