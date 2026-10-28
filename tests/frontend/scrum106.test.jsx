@@ -1,5 +1,5 @@
 // SCRUM-106 UI scope: user interactions are real; only the remote API is replaced.
-import {render,screen,fireEvent,waitFor,cleanup} from '@testing-library/react';
+import {render,screen,fireEvent,waitFor,cleanup,act} from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import {afterEach,it,expect,vi} from 'vitest';
 import VenueClosureForm from '../../frontend/src/pages/venues/VenueClosureForm';
@@ -90,17 +90,24 @@ it('SCRUM-106 AC4 - resolving an issue in the real event page reloads its latest
  // Assert: a stale-event implementation that merely hides the issue fails this read-count check.
  await waitFor(()=>expect(reads).toBeGreaterThan(1));localStorage.clear();
 });
-it('SCRUM-106 AC4 - unmounted recovery panel ignores late data and late failures',async()=>{
- let resolve,reject;
- api.get.mockImplementation(path=>path.endsWith('venue-disruptions')?new Promise(done=>{resolve=done;}):new Promise((_,fail)=>{reject=fail;}));
- const view=render(<MemoryRouter><VenueDisruptions eventId={3} token="session" onResolved={()=>{}}/></MemoryRouter>);
- view.unmount();resolve({issues:[]});reject(new Error('Offline'));
- await Promise.resolve();expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-});
-it('SCRUM-106 AC4 - late successful reads cannot restore a panel after it is unmounted',async()=>{
- const replies=[];api.get.mockImplementation(()=>new Promise(resolve=>replies.push(resolve)));
- const view=render(<MemoryRouter><VenueDisruptions eventId={3} token="session" onResolved={()=>{}}/></MemoryRouter>);
- expect(screen.getByRole('status')).toHaveTextContent('Loading venue disruptions');view.unmount();
- replies[0]({issues:[{id:2,booking_id:5,venue_name:'Old hall',reason:'Repairs'}]});replies[1]({bookings:[]});
- await Promise.resolve();expect(screen.queryByText('Old hall')).not.toBeInTheDocument();
+for (const outcome of ['success','failure']) it(`SCRUM-106 AC4 - a late ${outcome} from the previous event cannot overwrite current recovery information`,async()=>{
+ // Arrange: keep the same mounted component while its event and session change.
+ let finishOld,failOld;
+ api.get.mockImplementation(path=>{
+  if(path==='/events/3/venue-disruptions')return new Promise((resolve,reject)=>{finishOld=resolve;failOld=reject;});
+  if(path==='/events/4/venue-disruptions')return Promise.resolve({issues:[{id:7,booking_id:9,venue_name:'Current hall',reason:'Current repairs'}]});
+  return Promise.resolve({bookings:[]});
+ });
+ const view=render(<MemoryRouter><VenueDisruptions eventId={3} token="old" onResolved={()=>{}}/></MemoryRouter>);
+ view.rerender(<MemoryRouter><VenueDisruptions eventId={4} token="new" onResolved={()=>{}}/></MemoryRouter>);
+ await screen.findByText('Current hall');
+ // Act: the old response arrives after the new event has loaded.
+ await act(async()=>{
+  if(outcome==='success')finishOld({issues:[{id:2,booking_id:5,venue_name:'Previous hall',reason:'Previous repairs'}]});
+  else failOld(new Error('Previous session failed'));
+ });
+ // Assert: removing the effect's active guard would replace this data or introduce the old session's alert.
+ expect(screen.getByText('Current hall')).toBeInTheDocument();
+ expect(screen.queryByText('Previous hall')).not.toBeInTheDocument();
+ expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

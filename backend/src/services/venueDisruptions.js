@@ -71,6 +71,7 @@ async function listDisruptions(eventId,userId) {
 /** Cancels just the affected booking, or retires it after an approved replacement for the same event and period. */
 async function resolveDisruption(eventId,issueId,userId,replacementBookingId=null) {
   const client = await pool.connect();
+  let resolution;
   try {
     await client.query('BEGIN');
     // Venue-first locks match closure/approval ordering; discover identity without trusting request-supplied venue IDs.
@@ -97,12 +98,14 @@ async function resolveDisruption(eventId,issueId,userId,replacementBookingId=nul
     await client.query(`UPDATE events SET status=CASE WHEN status IN ('approved','confirmed') THEN 'planning' ELSE status END,
       venue_revised_at=clock_timestamp(),updated_at=now() WHERE id=$1`,[eventId]);
     await client.query('COMMIT');
-    return {resolution:replacementBookingId===null?'cancelled':'replaced'};
+    resolution = replacementBookingId===null?'cancelled':'replaced';
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally {
     client.release();
   }
+  // Return only after cleanup; failed transactions always propagate their original error.
+  return {resolution};
 }
 module.exports={closureInput,affectedByClosure,recordClosure,listDisruptions,resolveDisruption};
