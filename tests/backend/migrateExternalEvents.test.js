@@ -104,7 +104,9 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   // Organiser outcomes extend the allow-list after parent notifications so fresh deployments can store both new types.
   const organiserOutcomesIndex = queries.indexOf(migrationSql('019-organiser-event-outcomes.sql'));
   const assignmentIndex=queries.indexOf(migrationSql('020-coordinator-assignment-notifications.sql'));
-  assert.equal(assignmentIndex,queries.length - 1,'assignment notifications is the final migration');
+  const replyIndex=queries.indexOf(migrationSql('021-clarification-reply-notifications.sql'));
+  assert.equal(replyIndex,queries.length - 1,'clarification replies is the final migration');
+  assert.ok(assignmentIndex < replyIndex);
   assert.ok(organiserOutcomesIndex < assignmentIndex);
   assert.ok(parentNotificationsIndex < organiserOutcomesIndex);
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);

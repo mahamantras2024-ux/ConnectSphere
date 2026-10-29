@@ -61,7 +61,7 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
       for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql','migrations/004-event-equipment-requirements.sql',
         'migrations/005-change-request-review.sql','migrations/009-internal-single-role.sql','venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql',
         // Venue booking requests (own runner) and 017: submissions notify every Coordinator Lead (parent notification system).
-        'migrations/20261018064942_venue_booking_requests.sql','migrations/017-parent-notifications.sql','migrations/019-organiser-event-outcomes.sql','migrations/020-coordinator-assignment-notifications.sql']) {
+        'migrations/20261018064942_venue_booking_requests.sql','migrations/017-parent-notifications.sql','migrations/019-organiser-event-outcomes.sql','migrations/020-coordinator-assignment-notifications.sql','migrations/021-clarification-reply-notifications.sql']) {
         await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db',name),'utf8'));
       }
       // The real inbox also reads unresolved safety notices; retain its schema dependency in this partial fixture.

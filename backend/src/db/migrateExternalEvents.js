@@ -71,6 +71,7 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/017-parent-notifications.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/019-organiser-event-outcomes.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/020-coordinator-assignment-notifications.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/021-clarification-reply-notifications.sql'), 'utf8'));
     console.log('External event, equipment reservation and repair, venue safety, emergency-document, attendee-registration, Venue Staff status and notification migrations are ready.');
   } catch (error) {
     await client.query('ROLLBACK');

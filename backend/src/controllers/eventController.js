@@ -231,7 +231,7 @@ const createClarificationRequest = asyncHandler(async (req, res) => {
   return res.status(201).json({ clarificationRequest: request, message: 'Clarification request sent to the Event Organiser.' });
 });
 
-// POST /api/events/:id/clarifications/:clarificationId/respond resolves one outstanding request.
+// Saves an owned pending clarification reply and delivers the current coordinator's notice after atomic persistence.
 const respondToClarification = asyncHandler(async (req, res) => {
   const { id, clarificationId } = req.params;
   if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647 || !/^[1-9]\d*$/.test(clarificationId) || Number(clarificationId) > 2147483647) {
@@ -241,8 +241,10 @@ const respondToClarification = asyncHandler(async (req, res) => {
   if (typeof response !== 'string' || !response.trim() || response.length > 10000) {
     return res.status(400).json({ message: 'Enter a response or amendment of at most 10000 characters.' });
   }
-  const clarificationRequest = await eventModel.respondToClarification(id, clarificationId, req.user.id, response.trim());
-  if (!clarificationRequest) return res.status(404).json({ message: 'Outstanding clarification request not found.' });
+  const result = await eventModel.respondToClarification(id, clarificationId, req.user.id, response.trim());
+  if (!result) return res.status(404).json({ message: 'Outstanding clarification request not found.' });
+  const { clarificationRequest, stored } = result;
+  await notificationService.emailNotifications(stored);
   const event = await eventModel.findAccessibleById(id, req.user);
   return res.json({ clarificationRequest, clarificationOutstanding: event.clarification_outstanding, message: 'Clarification response saved.' });
 });

@@ -304,7 +304,7 @@ test('AC3/AC4/AC5 - organiser response is retained and clears clarification outs
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
     if (sql.includes('UPDATE event_clarification_requests')) {
-      assert.match(sql, /organiser_id=\$3 AND status='pending'/);
+      assert.match(sql, /question.organiser_id=\$3 AND question.status='pending'/);
       assert.deepEqual(values, ['101', '601', 12, responded.organiser_response]);
       return { rows: [responded] };
     }
@@ -436,4 +436,29 @@ test('Workflow AC2 - draft update permits an empty name',async()=>{
  });
  const result=await request('/api/events/101/non-critical',{method:'PUT',body:{name:''}});
  assert.equal(result.status,200);assert.equal(result.body.event.name,'');
+});
+
+for(const mailFails of [false,true])test(`Clarification reply AC1 AC4 - committed reply notifies coordinator and tolerates mail failure=${mailFails}`,async()=>{
+  // Only database and SMTP boundaries are controlled; real route, model and notification delivery remain intact.
+  let saved=false;
+  mock.method(pool,'query',async(sql)=>{
+    if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
+    if(sql.includes('UPDATE event_clarification_requests')){
+      assert.match(sql,/FOR UPDATE/);assert.match(sql,/INSERT INTO notifications/);
+      assert.match(sql,/target.coordinator_id/);
+      saved=true;
+      return {rows:[{id:601,event_id:101,status:'responded',organiser_response:'45 guests',delivery_records:[{email:'current@example.test',title:'Clarification reply received: Workshop',message:'45 guests'}]}]};
+    }
+    return {rows:[{...details,clarification_outstanding:false}]};
+  });
+  const email=mock.method(emailService,'sendNotificationEmail',async()=>{
+    assert.equal(saved,true,'email must follow the successful atomic SQL statement');
+    if(mailFails)throw new Error('SMTP unavailable');
+  });
+  mock.method(console,'error',()=>{});
+  const result=await request('/api/events/101/clarifications/601/respond',{method:'POST',body:{response:'45 guests'}});
+  assert.equal(result.status,200);assert.equal(email.mock.callCount(),1);
+  assert.equal(result.body.clarificationRequest.status,'responded');
+  assert.equal('delivery_records' in result.body.clarificationRequest,false);
+  assert.equal(JSON.stringify(result.body).includes('current@example.test'),false);
 });
