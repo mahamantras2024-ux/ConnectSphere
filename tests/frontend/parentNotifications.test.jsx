@@ -178,6 +178,7 @@ it('NT AC2 - a short single-line message has no separate details', async () => {
 
 // AC4: pressing a notification marks it read and opens the page where the update happened.
 it.each([
+  ['venue_staff', '/venue/dashboard', note({ type: 'venue_booking_requested', title: 'New venue booking request: Hall A' }), '/venue/dashboard'],
   ['event_coordinator', '/coordinator/dashboard', note({ type: 'clarification_replied', title: 'Clarification reply received: Gala' }), '/events/101'],
   ['event_coordinator', '/coordinator/dashboard', note({ type: 'event_coordinator_assigned', title: 'Event assigned: Gala' }), '/events/101'],
   ['event_organiser', '/organizer/dashboard', note(), '/organizer/events/101'],

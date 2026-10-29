@@ -28,7 +28,7 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
       await applyLiveSchema(client);
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['lee', 'event_coordinator_lead'], ['vera', 'venue_staff'],
-        ['tina', 'technical_support'], ['sam', 'safety_officer'], ['sid', 'safety_officer']];
+        ['tina', 'technical_support'], ['sam', 'safety_officer'], ['sid', 'safety_officer'], ['vince','venue_staff']];
       for (const [name, role] of people) await client.query('INSERT INTO users (email, full_name, role, roles) VALUES ($1, $2, $3::text, ARRAY[$3::text])', [`${name}@example.test`, name, role]);
       const id = Object.fromEntries(people.map(([name], index) => [name, index + 1]));
       await client.query("INSERT INTO venues (name, location, capacity, supported_layouts, accessibility_features, facilities, operating_hours, availability_status) VALUES ('Hall A', 'Level 1', 100, ARRAY['Theatre'], ARRAY['Ramp'], ARRAY['Wi-Fi'], '08:00 - 22:00', 'Available')");
@@ -59,10 +59,31 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       const leeList = (await as('lee', 'GET', '/notifications')).body;
       assert.deepEqual([leeList.unreadCount, leeList.notifications[0].type, leeList.notifications[0].event_id], [1, 'event_awaiting_assignment', eventId]);
 
+      // Booking notice AC1/AC2: assigned staff receive immediate requests even without opting into reminders.
+      await client.query("INSERT INTO venues (name,location,capacity) VALUES ('Hall B','Level 2',100)");
+      await client.query('INSERT INTO venue_staff_assignments (venue_id,staff_user_id) VALUES (1,$1),(2,$2),(1,$3)',[id.vera,id.vince,id.chris]);
       // The Lead assigns Chris, who books Hall A; Venue Staff approve it. The projector is not confirmed yet: not ready.
       assert.equal((await as('lee', 'PUT', `/events/${eventId}/assignment`, { coordinatorId: id.chris, expectedCoordinatorId: null })).status, 200);
+      // Booking AC3: a notification insert failure must roll back the new hold and send no email.
+      await client.query(`CREATE FUNCTION fail_booking_notice() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.type='venue_booking_requested' THEN RAISE EXCEPTION 'booking notice unavailable'; END IF; RETURN NEW; END $$;
+        CREATE TRIGGER fail_booking_notice BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION fail_booking_notice()`);
+      assert.equal((await as('chris','POST','/venues/1/requests',{eventId,startDatetime:'2030-10-15T10:00:00+08:00',endDatetime:'2030-10-15T12:00:00+08:00'})).status,500);
+      assert.equal((await client.query('SELECT count(*)::int AS n FROM venue_bookings WHERE event_id=$1',[eventId])).rows[0].n,0);
+      assert.equal((await notesOf('vera','venue_booking_requested')).length,0);
+      await client.query('DROP TRIGGER fail_booking_notice ON notifications');
       const booking = await as('chris', 'POST', '/venues/1/requests', { eventId, startDatetime: '2030-10-15T10:00:00+08:00', endDatetime: '2030-10-15T12:00:00+08:00' });
       assert.equal(booking.status, 201);
+      const venueNotes=(await as('vera','GET','/notifications')).body.notifications.filter(note=>note.type==='venue_booking_requested');
+      assert.deepEqual((await as('vince','GET','/notifications')).body.notifications,[]);
+      assert.equal(venueNotes.length,1);assert.equal(venueNotes[0].event_id,eventId);
+      assert.equal(venueNotes[0].details.requestId,booking.body.request.id);
+      assert.match(venueNotes[0].message,/Gala.*Hall A.*review/);
+      assert.ok(emails.some(([to,subject])=>to==='vera@example.test' && subject==='New venue booking request: Hall A'));
+      assert.equal((await as('chris','GET','/notifications')).body.notifications.filter(note=>note.type==='venue_booking_requested').length,0);
+      // An overlapping retry cannot persist a second hold or send another notice.
+      assert.equal((await as('chris','POST','/venues/1/requests',{eventId,startDatetime:'2030-10-15T10:00:00+08:00',endDatetime:'2030-10-15T12:00:00+08:00'})).status,409);
+      assert.equal((await notesOf('vera','venue_booking_requested')).length,1);
       assert.equal((await as('vera', 'PUT', `/venues/1/requests/${booking.body.request.id}/decision`, { decision: 'approved' })).status, 200);
       assert.deepEqual(await notesOf('sam', 'safety_check_ready'), []);
 

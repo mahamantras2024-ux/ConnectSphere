@@ -53,27 +53,44 @@ async function recordedPeriods(client, venueId) {
     FROM venue_schedule_periods WHERE venue_id=$1 AND status='unavailable'`, [venueId])).rows;
 }
 
-/** Creates an assignment-authorized hold with a requirements snapshot and opt-in cancellation policy; returns the stored request after checking the full occupied window. */
+/** Creates an authorized hold and assigned Venue Staff notices atomically; sends best-effort email after commit. */
 async function createVenueRequest(venueId, body, userId) {
   const details = requirements(body);
   const start = timestamp(body.startDatetime), end = timestamp(body.endDatetime);
   if (!validId(venueId) || !validId(body.eventId) || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     throw reject(400, 'Choose a valid venue, event and positive event period with explicit timezones.');
   }
-  return withVenue(Number(venueId), async (client, venue) => {
-    const event = (await client.query('SELECT id, coordinator_id FROM events WHERE id=$1 FOR SHARE', [Number(body.eventId)])).rows[0];
+  let stored = [];
+  const request = await withVenue(Number(venueId), async (client, venue) => {
+    const event = (await client.query('SELECT id, coordinator_id, name FROM events WHERE id=$1 FOR SHARE', [Number(body.eventId)])).rows[0];
     if (!event || event.coordinator_id !== userId) throw reject(403, 'This event is not assigned to you.');
     const periods = await recordedPeriods(client, venue.id);
     // Sample after the lock and reads, so waiting for another transaction cannot preserve an already-expired hold.
     const now = Date.now();
     const candidate = { kind: 'booking', start_datetime: body.startDatetime, end_datetime: body.endDatetime };
     if (hasConflict(candidate, periods, venue, now)) throw reject(409, 'The requested period is unavailable, including setup and turnaround.');
-    return (await client.query(`INSERT INTO venue_bookings
+    const booking = (await client.query(`INSERT INTO venue_bookings
       (venue_id, event_id, requested_by, start_datetime, end_datetime, status, created_at, hold_expires_at, requirements, cancel_other_pending)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) RETURNING *`,
     [venue.id, Number(body.eventId), userId, new Date(start).toISOString(), new Date(end).toISOString(), 'pending',
       new Date(now).toISOString(), new Date(now + HOLD_DURATION_MS).toISOString(), JSON.stringify(details.requirements), details.cancelOtherPending])).rows[0];
+    // Immediate notices follow venue responsibility, independently of optional reminder preferences.
+    const recipients = await client.query(`SELECT DISTINCT staff.id FROM users staff
+      JOIN venue_staff_assignments assignment ON assignment.staff_user_id=staff.id
+      WHERE assignment.venue_id=$1 AND (staff.role='venue_staff'
+        OR COALESCE(to_jsonb(staff)->'roles','[]'::jsonb) ? 'venue_staff') ORDER BY staff.id`, [venue.id]);
+    if (recipients.rows.length) {
+      stored = await insertNotifications(client, recipients.rows.map(({ id }) => ({
+        userId: id, eventId: event.id, changeRequestId: null, type: 'venue_booking_requested',
+        title: `New venue booking request: ${venue.name}`.slice(0, 255),
+        message: `${event.name}: a venue booking request for ${venue.name} needs your review. Open the Venue Staff dashboard to approve or reject it.`,
+        details: { requestId: booking.id, venueId: venue.id },
+      })));
+    }
+    return booking;
   });
+  await emailNotifications(stored);
+  return request;
 }
 
 /** Applies an explicit staff decision; even a late approval must recheck current blockers without relying on the old hold. */

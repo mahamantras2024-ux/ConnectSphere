@@ -34,6 +34,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
       INSERT INTO users(id,role) VALUES (1,'event_coordinator'),(2,'venue_staff');
       INSERT INTO events(id,coordinator_id,name) VALUES (3,1,'Gala'),(4,1,'Workshop');
       INSERT INTO venues VALUES (7,'Hall A','Available'),(8,'Hall B','Available')`);
+    await database.query('CREATE TABLE venue_staff_assignments (venue_id INT,staff_user_id INT)');
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
     try {

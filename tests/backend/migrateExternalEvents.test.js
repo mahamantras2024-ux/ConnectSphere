@@ -105,7 +105,9 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   const organiserOutcomesIndex = queries.indexOf(migrationSql('019-organiser-event-outcomes.sql'));
   const assignmentIndex=queries.indexOf(migrationSql('020-coordinator-assignment-notifications.sql'));
   const replyIndex=queries.indexOf(migrationSql('021-clarification-reply-notifications.sql'));
-  assert.equal(replyIndex,queries.length - 1,'clarification replies is the final migration');
+  const bookingNoticeIndex=queries.indexOf(migrationSql('022-venue-booking-request-notifications.sql'));
+  assert.equal(bookingNoticeIndex,queries.length - 1,'booking notices is the final migration');
+  assert.ok(replyIndex < bookingNoticeIndex);
   assert.ok(assignmentIndex < replyIndex);
   assert.ok(organiserOutcomesIndex < assignmentIndex);
   assert.ok(parentNotificationsIndex < organiserOutcomesIndex);
