@@ -42,8 +42,9 @@ async function recordClosure(venueId, body, staffId) {
     const eventIds = [...new Set(confirmed.map(b=>b.event_id))];
     if (eventIds.length) await client.query(`UPDATE events SET status=CASE WHEN status IN ('approved','confirmed') THEN 'planning' ELSE status END,
       venue_revised_at=clock_timestamp(),updated_at=now() WHERE id=ANY($1::int[])`,[eventIds]);
+    // PostgreSQL titles allow 255 characters; count code points so Unicode names stay intact.
     const notices = [...new Map(confirmed.filter(b=>b.coordinator_id).map(b=>[b.event_id,b])).values()].map(b=>({
-      userId:b.coordinator_id,eventId:b.event_id,changeRequestId:null,type:'event_details_changed',title:`Venue unavailable: ${b.event_name}`,
+      userId:b.coordinator_id,eventId:b.event_id,changeRequestId:null,type:'event_details_changed',title:Array.from(`Venue unavailable: ${b.event_name}`).slice(0,255).join(''),
       message:`${b.venue_name} is unavailable from ${new Date(input.start).toISOString()} to ${new Date(input.end).toISOString()}. Reason: ${input.reason}. Arrange an alternative venue or cancel the affected booking. The event has not been cancelled.`,
       details:{kind:'venue_disruption',closureId:closure.id,venueId:Number(venueId)},
     }));

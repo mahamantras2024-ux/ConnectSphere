@@ -42,9 +42,9 @@ const notices=require('../../backend/src/services/notificationService');
 const service=require('../../backend/src/services/venueDisruptions');
 afterEach(()=>mock.restoreAll());
 /** Supplies database records only; transaction ordering, recipient selection and recovery rules remain real. */
-function database({status='approved',issue={},replacement=true,failNotice=false,missing=false,assignmentMissing=false}={}) {
+function database({status='approved',issue={},replacement=true,failNotice=false,missing=false,assignmentMissing=false,eventName='Gala'}={}) {
  const calls=[],notes=[];
- const row={...booking,id:5,venue_id:7,event_id:3,event_name:'Gala',coordinator_id:8,venue_name:'Hall A',status};
+ const row={...booking,id:5,venue_id:7,event_id:3,event_name:eventName,coordinator_id:8,venue_name:'Hall A',status};
  const query=async(sql,values=[])=>{
   calls.push({sql,values});
   if(sql.includes('SELECT * FROM venues'))return {rows:missing?[]:[{id:7}]};
@@ -143,3 +143,18 @@ for(const duration of [-1,0,1])test(`SCRUM-106 AC1 - closure duration ${duration
  const body={reason:'Repairs',startDatetime:new Date(start).toISOString(),endDatetime:new Date(start+duration).toISOString()};
  if(duration>0)assert.equal(closureInput(body).end-closureInput(body).start,1);else assert.throws(()=>closureInput(body),/closure period/);
 });
+
+// AC1/AC2: PostgreSQL varchar counts Unicode characters, not UTF-16 code units.
+for (const [name, expectedLength] of [['x'.repeat(235),254],['x'.repeat(236),255],['x'.repeat(237),255],['😀'.repeat(255),255]]) {
+ test(`SCRUM-106 AC1 AC2 - closure title boundary for ${Array.from(name).length} event characters (${expectedLength} stored)`,async()=>{
+  // Arrange: valid event names can exceed the remaining title space after the prefix.
+  const db=database({eventName:name});
+  // Act: keep the actual closure and notification construction in the transaction.
+  await service.recordClosure(7,{startDatetime:'2031-10-20T01:45:00Z',endDatetime:'2031-10-20T02:00:00Z',reason:'Repairs'},1);
+  // Assert: preserve the prefix and complete code points; an unlimited title fails above 255.
+  const title=db.notes[0][4][0];
+  assert.equal(title,'Venue unavailable: '+Array.from(name).slice(0,236).join(''));
+  assert.equal(Array.from(title).length,expectedLength);
+  assert.ok(db.calls.some(call=>call.sql==='COMMIT'));
+ });
+}
