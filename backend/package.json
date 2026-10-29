@@ -20,6 +20,7 @@
     "migrate:venue-staff-event-status": "node src/db/migrateVenueStaffEventStatus.js",
     "migrate:venue-reminder-frequency": "node src/db/migrateVenueStaffEventStatus.js --reminder-frequency",
     "seed:venue-event-status-demo": "node src/db/seedVenueEventStatusDemo.js",
+    "seed:safety-review-ready-demo": "node src/db/seedSafetyReviewReadyDemo.js",
     "setup:sprint-one": "node src/db/setupSprintOne.js",
     "setup:venue-management": "node src/db/setupVenueManagement.js",
     "setup:venue-availability": "node src/db/setupVenueAvailability.js",

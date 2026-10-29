@@ -539,6 +539,7 @@ export default function EventDetail() {
 
     if (!value) return 'Not specified';
 
+    // Share the readable lifecycle labels used by the organiser's live status view.
     return requestStatusLabel(value);
 
   };
