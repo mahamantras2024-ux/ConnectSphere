@@ -582,7 +582,11 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
 
 // AC2 - A confirmed reservation on an unscheduled date is shown as a timed calendar window without event identity.
 it('AC2 - displays a reservation window when the date has no availability schedule', () => {
-  // Arrange: an API window represents the confirmed booking, despite no schedule row for its date.
+  // Arrange: pin the date so the +3-day reservation stays in the displayed month on every run.
+  // Only Date is faked: React effects and interaction timers remain real.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+  // An API window represents the confirmed booking despite no schedule row for its date.
   const reservationDate = getDateOffset(3);
   const item = {
     ...inventory[1],
