@@ -64,8 +64,7 @@ async function decideEvent(eventId, coordinatorId, decision, reason) {
     if (blocked) throw failure(409, blocked.message, blocked.code);
     const event = await eventDecisionModel.recordDecision(client, eventId, decision, reason, coordinatorId);
     const stored = await notificationService.insertNotifications(client, [decisionNotification(event, decision, reason)]);
-    // Coordinator approval confirms the event can proceed; venue staff need a separate arrangement notice.
-    if (decision === 'approved') stored.push(...await notifyVenueStaffOfEventStatus(client, event, 'confirmed'));
+    // SCRUM-92: initial approval does not announce final confirmation to venue staff.
     return { event, stored };
   });
 }
@@ -135,4 +134,20 @@ async function resolveSafetyChange(eventId, coordinatorId, area) {
   });
 }
 
-module.exports = { decideEvent, recordSafetyCheck, resolveSafetyChange };
+/** Persists one manual lifecycle action under the assignment-scoped row lock, preventing stale or concurrent changes. */
+async function transitionEvent(eventId, coordinatorId, status) {
+  const { evaluateTransition } = require('./eventLifecyclePolicy');
+  return inTransaction(async (client) => {
+    const context = await eventDecisionModel.loadDecisionContext(client, eventId, { coordinatorId, lock: true });
+    if (!context) throw failure(404, 'Event not found.');
+    const blocked = evaluateTransition(status, { ...context, now: Date.now() });
+    if (blocked) throw failure(409, blocked.message, blocked.code);
+    // Keep the initial decision's author, time and reason intact throughout planning and final confirmation.
+    const result = await client.query('UPDATE events SET status=$2, updated_at=now() WHERE id=$1 RETURNING id, status', [eventId, status]);
+    const event = result.rows[0];
+    // Venue staff receive the actual lifecycle change only after all confirmation prerequisites pass.
+    const stored = status === 'confirmed' ? await notifyVenueStaffOfEventStatus(client, { ...context, ...event }, status) : [];
+    return { event, stored };
+  });
+}
+module.exports = { decideEvent, recordSafetyCheck, resolveSafetyChange, transitionEvent };

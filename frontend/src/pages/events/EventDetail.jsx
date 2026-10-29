@@ -529,7 +529,8 @@ export default function EventDetail() {
 
     if (!value) return 'Not specified';
 
-    return value.charAt(0).toUpperCase() + value.slice(1);
+    // SCRUM-92: stored snake_case statuses must read as lifecycle labels.
+    return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   };
 

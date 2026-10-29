@@ -18,7 +18,7 @@ test('AC1 AC2 AC3 AC4 - returns only safe preparation details with Pending, Appr
     queries.push({ sql, values });
     return { rows: [
       { booking_id: 1, event_id: 11, event_name: 'Pending workshop', booking_status: 'pending', event_status: 'planning', venue_name: 'Hall A', start_datetime: '2031-10-20T02:00:00Z', end_datetime: '2031-10-20T03:00:00Z', expected_attendance: 20, room_layout: 'Seminar', accessibility: ['Ramp'], internal_notes: 'Do not disclose' },
-      { booking_id: 2, event_id: 12, event_name: 'Approved workshop', booking_status: 'approved', event_status: 'approved', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
+      { booking_id: 2, event_id: 12, event_name: 'Approved workshop', booking_status: 'approved', event_status: 'confirmed', venue_name: 'Hall A', start_datetime: '2031-10-21T02:00:00Z', end_datetime: '2031-10-21T03:00:00Z', expected_attendance: 30, room_layout: 'Theatre', accessibility: [], internal_notes: 'Do not disclose' },
       { booking_id: 3, event_id: 13, event_name: 'Rejected workshop', booking_status: 'rejected', event_status: 'planning', venue_name: 'Hall A', start_datetime: '2031-10-22T02:00:00Z', end_datetime: '2031-10-22T03:00:00Z', expected_attendance: 40, room_layout: null, accessibility: null },
       { booking_id: 4, event_id: 14, event_name: 'Cancelled workshop', booking_status: 'approved', event_status: 'cancelled', venue_name: 'Hall A', start_datetime: '2031-10-23T02:00:00Z', end_datetime: '2031-10-23T03:00:00Z', expected_attendance: 50, room_layout: null, accessibility: null },
     ] };
@@ -51,7 +51,7 @@ test('AC5 - scopes the event read to assigned venues and omits unrelated event a
   assert.deepEqual(executed.values, [99]);
 });
 
-test('AC1 AC2 - includes an approved booking decided by the viewing Venue Staff member', async () => {
+test('SCRUM-92 AC4 / AC1 AC2 - includes an approved booking decided by the viewing Venue Staff member', async () => {
   // Arrange: approval removes the booking from the pending queue, but the approver remains responsible for its arrangement.
   let executed;
   const db = { query: async (sql, values) => {
@@ -71,7 +71,7 @@ test('AC1 AC2 - includes an approved booking decided by the viewing Venue Staff 
   assert.deepEqual(events, [{
     bookingId: 20, eventId: 44, name: 'Graduation party', status: 'approved', venueName: 'Hall A',
     startDatetime: '2031-10-20T02:00:00Z', endDatetime: '2031-10-20T03:00:00Z',
-    expectedAttendance: 100, roomLayout: 'Theatre', accessibility: [], eventStatus: 'confirmed',
+    expectedAttendance: 100, roomLayout: 'Theatre', accessibility: [], eventStatus: 'planning',
   }]);
   assert.match(executed.sql, /booking\.decision_by=\$1/);
   assert.deepEqual(executed.values, [9]);
