@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const notificationService = require('../services/notificationService');
 const asyncHandler = require('../utils/asyncHandler');
 
 /** Returns active submitted events and provisioned coordinators for manual lead selection. */
@@ -13,7 +14,7 @@ const workspace = asyncHandler(async (req, res) => {
   res.json({ events: events.rows, coordinators: coordinators.rows });
 });
 
-/** Changes a single assignment under an event lock; stale lead decisions cannot overwrite a newer handover. */
+/** Saves assignment and the new coordinator's notice under one event lock; email follows the commit (AC1–AC4). */
 const assign = asyncHandler(async (req, res) => {
   const { coordinatorId, expectedCoordinatorId } = req.body || {};
   // PostgreSQL integer foreign keys accept only positive whole identifiers from JSON.
@@ -23,6 +24,7 @@ const assign = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Choose a valid event, coordinator and current assignment.' });
   }
   const client = await pool.connect();
+  let updated, stored = [];
   try {
     await client.query('BEGIN');
     const event = (await client.query('SELECT id,coordinator_id,is_draft,status FROM events WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
@@ -38,10 +40,21 @@ const assign = asyncHandler(async (req, res) => {
       await client.query('ROLLBACK'); return res.status(400).json({ message: 'Choose a provisioned Event Coordinator.' });
     }
     // One nullable foreign key represents responsibility; replacing it never creates a second coordinator.
-    const updated = (await client.query('UPDATE events SET coordinator_id=$1,updated_at=now() WHERE id=$2 RETURNING *', [coordinatorId,event.id])).rows[0];
+    updated = (await client.query('UPDATE events SET coordinator_id=$1,updated_at=now() WHERE id=$2 RETURNING *', [coordinatorId,event.id])).rows[0];
+    // A repeated save is not a new assignment; the locked previous value also prevents duplicate race notifications.
+    if (event.coordinator_id !== coordinatorId) {
+      stored = await notificationService.insertNotifications(client, [{
+        userId: coordinatorId, eventId: event.id, changeRequestId: null, type: 'event_coordinator_assigned',
+        title: `Event assigned: ${updated.name}`.slice(0, 255),
+        message: `You have been assigned as Event Coordinator for ${updated.name}. Open the event to review the latest information and pending work.`,
+        details: { assignedBy: req.user.id, previousCoordinatorId: event.coordinator_id },
+      }]);
+    }
     await client.query('COMMIT');
-    res.json({ event: updated, message: 'Coordinator assignment saved.' });
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
+  // A mail outage must not turn a committed assignment into a reported failure.
+  await notificationService.emailNotifications(stored);
+  res.json({ event: updated, message: 'Coordinator assignment saved.' });
 });
 module.exports = { workspace, assign };

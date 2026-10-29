@@ -48,6 +48,8 @@ for (const scenario of ['missing','draft','cancelled','completed','stale','inval
   // Each rejection proves there is no persisted handover and the transaction releases its connection.
   test(`AC2 AC3 AC5 - ${scenario} cannot change assignment`, async () => {
     const calls = [];
+    // Assignment AC4: rejected requests must not create or deliver an assignment notice.
+    const email=mock.method(emailService,'sendNotificationEmail',async()=>{});
     const client = { release() { calls.push('release'); }, async query(sql) {
       calls.push(sql);
       if (sql.includes('FROM events')) return { rows: scenario === 'missing' ? [] : [{ id: 7, coordinator_id: scenario === 'stale' ? 4 : null, is_draft: scenario === 'draft', status: scenario === 'draft' ? 'draft' : ['cancelled', 'completed'].includes(scenario) ? scenario : 'submitted' }] };
@@ -57,6 +59,8 @@ for (const scenario of ['missing','draft','cancelled','completed','stale','inval
     mock.method(pool, 'connect', async () => client);
     if (scenario === 'database error') await assert.rejects(invoke(lead.assign, { coordinatorId: 3, expectedCoordinatorId: null }), /offline/);
     else assert.equal((await invoke(lead.assign, { coordinatorId: 3, expectedCoordinatorId: null })).status, scenario === 'stale' ? 409 : scenario === 'invalid coordinator' ? 400 : 404);
+    assert.equal(calls.some(sql => sql.includes('INSERT INTO notifications')),false);
+    assert.equal(email.mock.callCount(),0);
     assert.equal(calls.some(sql => sql.startsWith('UPDATE')), false); assert.ok(calls.includes('ROLLBACK')); assert.equal(calls.at(-1), 'release');
   });
 }
@@ -83,4 +87,71 @@ test('AC2 - missing assignment body is rejected without persistence',async()=>{
   const connect = mock.method(pool,'connect',async()=>{assert.fail('A missing body must not acquire a database connection.');});
   assert.equal((await invoke(lead.assign,null)).status,400);
   assert.equal(connect.mock.callCount(),0);
+});
+
+const emailService = require('../../backend/src/services/emailService');
+/** Keeps assignment and notification SQL real while simulating only database and email transport. */
+function assignmentDatabase(previous, failure, name = 'Workshop') {
+  const calls = [];
+  mock.method(pool,'connect',async()=>({
+    release(){calls.push({sql:'release'});},
+    async query(sql,values){
+      calls.push({sql,values});
+      if(sql==='COMMIT' && failure==='commit')throw new Error('commit failed');
+      if(sql.includes('INSERT INTO notifications')){
+        if(failure==='notification')throw new Error('notification failed');
+        return {rows:[{email:'chris@example.test',title:values[4][0],message:values[5][0]}]};
+      }
+      if(sql.includes('FROM events'))return {rows:[{id:7,coordinator_id:previous,is_draft:false,status:'submitted'}]};
+      if(sql.includes('FROM users'))return {rows:[{id:3}]};
+      if(sql.startsWith('UPDATE'))return {rows:[{id:7,name,coordinator_id:3}]};
+      return {rows:[]};
+    },
+  }));
+  const email=mock.method(emailService,'sendNotificationEmail',async()=>{
+    calls.push({sql:'email'});
+    if(failure==='email')throw new Error('mail offline');
+  });
+  return {calls,email};
+}
+for(const previous of [null,4])test(`Assignment notification AC1 AC2 - assignment from ${previous} notifies only the new coordinator after commit`,async()=>{
+  const {calls,email}=assignmentDatabase(previous);
+  assert.equal((await invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:previous})).status,200);
+  const note=calls.find(call=>call.sql.includes('INSERT INTO notifications'));
+  assert.ok(note,'assignment must persist an owner-specific notification');
+  assert.deepEqual(note.values.slice(0,4),[[3],[7],[null],['event_coordinator_assigned']]);
+  assert.equal(note.values[4][0],'Event assigned: Workshop');
+  assert.match(note.values[5][0],/assigned.*Workshop/);
+  assert.equal(email.mock.callCount(),1);
+  assert.deepEqual(calls.filter(call=>['BEGIN','COMMIT','release','email'].includes(call.sql)).map(call=>call.sql),['BEGIN','COMMIT','release','email']);
+});
+test('Assignment notification AC3 - saving the same coordinator sends no duplicate',async()=>{
+  const {calls,email}=assignmentDatabase(3);
+  assert.equal((await invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:3})).status,200);
+  assert.equal(calls.some(call=>call.sql.includes('INSERT INTO notifications')),false);
+  assert.equal(email.mock.callCount(),0);
+});
+for(const failure of ['notification','commit'])test(`Assignment notification AC4 - ${failure} failure rolls back and sends no email`,async()=>{
+  const {calls,email}=assignmentDatabase(null,failure);
+  await assert.rejects(invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:null}),new RegExp(`${failure} failed`));
+  assert.equal(calls.at(-2).sql,'ROLLBACK');assert.equal(calls.at(-1).sql,'release');
+  assert.equal(email.mock.callCount(),0);
+});
+test('Assignment notification AC4 - email failure preserves the committed assignment and in-app notice',async()=>{
+  const {calls}=assignmentDatabase(null,'email');
+  mock.method(console,'error',()=>{});
+  assert.equal((await invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:null})).status,200);
+  assert.ok(calls.some(call=>call.sql==='COMMIT'));
+  assert.equal(calls.some(call=>call.sql==='ROLLBACK'),false);
+});
+
+// AC1 boundary: the event name stays complete in the message when the title reaches its storage limit.
+for(const delta of [-1,0,1])test(`Assignment notification AC1 - title length boundary offset ${delta}`,async()=>{
+  const prefix='Event assigned: ';
+  const name='x'.repeat(255-prefix.length+delta);
+  const {calls}=assignmentDatabase(null,undefined,name);
+  assert.equal((await invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:null})).status,200);
+  const note=calls.find(call=>call.sql.includes('INSERT INTO notifications'));
+  assert.equal(note.values[4][0],(prefix+name).slice(0,255));
+  assert.ok(note.values[5][0].includes(name));
 });
