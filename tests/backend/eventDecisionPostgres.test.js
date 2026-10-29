@@ -70,6 +70,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       await client.query(`INSERT INTO venue_bookings (event_id, venue_id, requested_by, start_datetime, end_datetime, status, decision_by)
         VALUES (1, 1, $1, '2030-10-15T02:00:00Z', '2030-10-15T04:00:00Z', 'approved', $2)`, [id.chris, id.vera]);
       assert.equal((await as('sam', 'POST', '/events/1/safety-checks', { outcome: 'approved' })).body.code, 'TECHNICAL_NOT_CONFIRMED');
+      // AC6: the reviewing support user must be explicitly responsible before confirming equipment.
+      await client.query('INSERT INTO event_technical_support_assignments (event_id,staff_id) VALUES (1,$1)', [id.tina]);
       // Technical Support confirms the projector through its own queue (request version 1).
       const pendingTechnical = async () => (await as('tina', 'GET', '/events/equipment-requests')).body.requests;
       const confirmTechnical = (requestVersion) => as('tina', 'POST', '/events/1/equipment-reviews', { outcome: 'fully_fulfillable', requestVersion });

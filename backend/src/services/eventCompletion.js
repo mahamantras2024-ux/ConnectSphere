@@ -1,7 +1,8 @@
 // Automatic event completion uses persisted status so all dashboards share the same lifecycle.
 
 /**
- * Completes only published approved/confirmed events strictly after their scheduled end.
+ * Completes only published confirmed events strictly after their scheduled end.
+ * Initial approval is not final confirmation and cannot establish completion eligibility.
  * Event schedule fields are Singapore wall times, matching attendee registration. The single
  * conditional UPDATE is safe across concurrent workers; status-change triggers notify once.
  * Missing schedule fields cannot establish that an event is over and are left untouched.
@@ -9,7 +10,7 @@
  */
 async function completePastEvents(db, now = new Date()) {
   const result = await db.query(`UPDATE events SET status='completed', updated_at=now()
-    WHERE is_draft=false AND status IN ('approved', 'confirmed')
+    WHERE is_draft=false AND status='confirmed'
       AND (proposed_date + proposed_end_time) AT TIME ZONE 'Asia/Singapore' < $1::timestamptz
     RETURNING id`, [now]);
   return result.rows;

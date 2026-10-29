@@ -10,7 +10,7 @@ const { completePastEvents } = require('../../backend/src/services/eventCompleti
 const eventModel = require('../../backend/src/models/eventModel');
 after(async () => { mock.restoreAll(); await pool.end(); });
 
-test('TS status AC1-AC6 - current facts and lifecycle notices stay scoped and transactional in PostgreSQL',
+test('TS status AC1-AC6 / Completion AC - scoped facts and notices; only Confirmed events complete, initially Approved events stay Approved',
   { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
     // Arrange: isolated task-owned schema, removed even on failure; no shared application rows are changed.
     const schema = `ts_status_${crypto.randomBytes(8).toString('hex')}`;
@@ -108,20 +108,21 @@ test('TS status AC1-AC6 - current facts and lifecycle notices stay scoped and tr
       }
       // Draft flags and incomplete schedules must never be mistaken for an event that has taken place.
       await client.query(`INSERT INTO events (id,name,status,is_draft,proposed_date,proposed_end_time) VALUES
-        (200,'Missing date','approved',false,NULL,'11:00'),
+        (200,'Missing date','confirmed',false,NULL,'11:00'),
         (201,'Missing time','confirmed',false,'2030-11-01',NULL),
         (202,'Unpublished','confirmed',true,'2030-11-01','11:00')`);
       assert.deepEqual(await completePastEvents(client, new Date('2030-11-01T02:59:59.999Z')), []);
       assert.deepEqual(await completePastEvents(client, new Date('2030-11-01T03:00:00.000Z')), []);
-      assert.deepEqual((await completePastEvents(client, new Date('2030-11-01T03:00:00.001Z'))).map(row => row.id).sort(), [100,101]);
+      assert.deepEqual((await completePastEvents(client, new Date('2030-11-01T03:00:00.001Z'))).map(row => row.id).sort(), [101]);
+      // Initial approval is not final confirmation: event 100 stays Approved and receives no completion notice.
       const persisted = (await client.query('SELECT id,status FROM events ORDER BY id')).rows;
-      assert.deepEqual(persisted.map(row => row.status), ['completed','completed',...statuses.slice(2),'approved','confirmed','confirmed']);
-      assert.equal((await listRelevantEvents(client, 1, 100))[0].status, 'completed');
+      assert.deepEqual(persisted.map(row => row.status), ['approved','completed',...statuses.slice(2),'confirmed','confirmed','confirmed']);
+      assert.equal((await listRelevantEvents(client, 1, 100))[0].status, 'approved');
       const completionNotes = (await client.query('SELECT user_id,event_id,details FROM notifications ORDER BY event_id')).rows;
-      assert.deepEqual(completionNotes.map(row => [row.user_id,row.event_id,row.details.status]), [[1,100,'completed'],[1,101,'completed']]);
+      assert.deepEqual(completionNotes.map(row => [row.user_id,row.event_id,row.details.status]), [[1,101,'completed']]);
       // Repeated or concurrent workers cannot transition an already completed row or duplicate its notice.
       assert.deepEqual(await completePastEvents(client, new Date('2030-11-02T03:00:00Z')), []);
-      assert.equal((await client.query('SELECT count(*)::int AS n FROM notifications')).rows[0].n, 2);
+      assert.equal((await client.query('SELECT count(*)::int AS n FROM notifications')).rows[0].n, 1);
     } finally {
       mock.restoreAll();
       await client.query('ROLLBACK');

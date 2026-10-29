@@ -81,3 +81,24 @@ test('TS status AC6 - accepts the valid integer ID boundary while hiding absent 
   // Assert: absence produces a scoped lookup rather than incorrectly rejecting a valid ID.
   assert.deepEqual(queries.map(query => query.values), [[41,1], [41,2], [41,2147483646], [41,2147483647]]);
 });
+
+// AC6: keep authenticated identity wired into every legacy queue and direct availability read.
+for (const path of ['/equipment-requests', '/equipment-reservations', '/equipment-reservation-issues', '/7/equipment-availability']) {
+  test(`TS status AC6 - passes staff responsibility to ${path}`, async () => {
+    // Arrange: the database boundary returns no eligible rows; SQL still has to authorize before reading them.
+    const queries = database([]);
+    const result = await read(path);
+    assert.equal(result.status, path.includes('/7/') ? 404 : 200);
+    assert.ok(queries.length > 0);
+    for (const query of queries) {
+      // Assert all three responsibility relationships use the authenticated ID, including nested dashboard lists.
+      assert.equal(query.values.at(-1), staff.id);
+      for (const relationship of ['event_technical_support_assignments', 'event_equipment_reviews', 'event_equipment_reservations']) {
+        assert.ok(query.sql.includes(relationship));
+      }
+      assert.match(query.sql, /staff_id=\$[12]/);
+      assert.match(query.sql, /reviewed_by=\$[12]/);
+      assert.match(query.sql, /reserved_by=\$[12]/);
+    }
+  });
+}
