@@ -11,7 +11,7 @@ function contextSql(scope, lock) {
       (SELECT count(*)::int FROM event_clarification_requests cr WHERE cr.event_id = e.id AND cr.status = 'pending') AS pending_clarifications,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at) ORDER BY vb.id)
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
-      (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'safety_officer_name', officer.full_name,
+      (SELECT jsonb_build_object('id', s.id, 'outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'safety_officer_name', officer.full_name,
           'change_areas', s.change_areas)
         FROM event_safety_checks s JOIN users officer ON officer.id = s.safety_officer_id
         WHERE s.event_id = e.id ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
@@ -92,7 +92,7 @@ async function safetyCandidates(db) {
           'turnaround_minutes', v.turnaround_minutes, 'emergency_access', v.emergency_access, 'known_restrictions', v.known_restrictions,
           'emergency_documents', v.emergency_documents) ORDER BY vb.id)
         FROM venue_bookings vb JOIN venues v ON v.id = vb.venue_id WHERE vb.event_id = e.id AND vb.status = 'approved'), '[]'::jsonb) AS venues,
-      (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'change_areas', s.change_areas)
+      (SELECT jsonb_build_object('id', s.id, 'outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'change_areas', s.change_areas)
         FROM event_safety_checks s WHERE s.event_id = e.id ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
     FROM events e
     WHERE e.is_draft = false AND e.status IN ('submitted', 'under_review', 'approved', 'planning')

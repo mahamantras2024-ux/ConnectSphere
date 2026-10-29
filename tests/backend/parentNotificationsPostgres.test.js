@@ -132,6 +132,38 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       assert.deepEqual((await notesOf('sam', 'safety_check_ready')).filter((title) => title.endsWith('Expo')), ['Ready for safety check: Expo']);
       assert.ok(emails.some(([to, subject]) => to === 'sam@example.test' && subject === 'Ready for safety check: Expo'));
 
+      // Safety recovery AC1: reproduce an already-ready event with a missing notice for the signed-in officer.
+      await client.query("DELETE FROM notifications WHERE event_id=$1 AND user_id=$2 AND type='safety_check_ready'",[talk.body.event.id,id.sam]);
+      const retainedSid=(await notesOf('sid','safety_check_ready')).length;
+      assert.ok((await as('sam','GET','/safety/checks')).body.events.some(event=>event.id===talk.body.event.id));
+      assert.equal((await notesOf('sam','safety_check_ready')).filter(title=>title==='Ready for safety check: Talk').length,1);
+      // Repeated and overlapping queue reads must not duplicate notices or resend email; other recipients are untouched.
+      const recoveredEmails=emails.filter(([to,subject])=>to==='sam@example.test' && subject==='Ready for safety check: Talk').length;
+      await Promise.all([as('sam','GET','/safety/checks'),as('sam','GET','/safety/checks')]);
+      assert.equal((await notesOf('sam','safety_check_ready')).filter(title=>title==='Ready for safety check: Talk').length,1);
+      assert.equal(emails.filter(([to,subject])=>to==='sam@example.test' && subject==='Ready for safety check: Talk').length,recoveredEmails);
+      assert.equal((await notesOf('sid','safety_check_ready')).length,retainedSid);
+      // Safety recovery AC2: preserve an existing legacy/read notice without resetting it or adding a replacement.
+      const galaSam=(await client.query("SELECT id FROM notifications WHERE event_id=$1 AND user_id=$2 AND type='safety_check_ready' ORDER BY id LIMIT 1",[eventId,id.sam])).rows[0];
+      await client.query("UPDATE notifications SET details=details-'reviewCycle',read_at=now() WHERE id=$1",[galaSam.id]);
+      const galaBefore=(await client.query("SELECT count(*)::int AS n FROM notifications WHERE event_id=$1 AND user_id=$2 AND type='safety_check_ready'",[eventId,id.sam])).rows[0].n;
+      await as('sam','GET','/safety/checks');
+      assert.equal((await client.query("SELECT count(*)::int AS n FROM notifications WHERE event_id=$1 AND user_id=$2 AND type='safety_check_ready'",[eventId,id.sam])).rows[0].n,galaBefore);
+      assert.ok((await client.query('SELECT read_at FROM notifications WHERE id=$1',[galaSam.id])).rows[0].read_at);
+
+      // A distinct requested re-review must receive a new recovery notice rather than reuse the initial one.
+      assert.equal((await as('sam','POST',`/events/${talk.body.event.id}/safety-checks`,{outcome:'changes_requested',notes:'Review crowd flow',changeAreas:['event_details']})).status,201);
+      assert.equal((await as('chris','POST',`/events/${talk.body.event.id}/safety-changes/resolve`,{area:'event_details'})).status,200);
+      await client.query("DELETE FROM notifications WHERE event_id=$1 AND user_id=$2 AND type='safety_check_ready' AND details->>'requirement'='reassessment'",[talk.body.event.id,id.sam]);
+      await as('sam','GET','/safety/checks');
+      const recoveredReview=(await client.query("SELECT details FROM notifications WHERE event_id=$1 AND user_id=$2 AND type='safety_check_ready' AND details->>'requirement'='reassessment'",[talk.body.event.id,id.sam])).rows;
+      assert.equal(recoveredReview.length,1);assert.notEqual(recoveredReview[0].details.reviewCycle,'initial');
+
+      // Safety recovery AC1: a provisioned officer added after readiness gets their own current notices on first queue load.
+      await client.query("INSERT INTO users (email,full_name,role,roles) VALUES ('nora@example.test','nora','safety_officer',ARRAY['safety_officer'])");
+      id.nora=(await client.query("SELECT id FROM users WHERE email='nora@example.test'")).rows[0].id;
+      assert.ok((await as('nora','GET','/safety/checks')).body.events.some(event=>event.id===talk.body.event.id));
+      assert.equal((await notesOf('nora','safety_check_ready')).filter(title=>title==='Ready for safety re-review: Talk').length,1);
       // ---------- Every migration re-runs with the new types (and older ones) stored ----------
       for (const file of runnerOrder) await client.query(sqlFile(file));
       await client.query("INSERT INTO notifications (user_id, type, title, message) VALUES ($1, 'safety_check_ready', 't', 'm'), ($1, 'event_awaiting_assignment', 't', 'm')", [id.sam]);

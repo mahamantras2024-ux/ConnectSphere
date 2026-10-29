@@ -335,6 +335,8 @@ test('AR AC1 - the safety queue lists only events whose venue and technical arra
     venues: [{ name: 'Hall A', capacity: 100 }], latest_safety_check: null, ...changes });
   mock.method(pool, 'query', async (sql) => {
     if (sql.includes('FROM users WHERE')) return { rows: [safetyOfficer] };
+    // Recovery transport is covered separately; no missing notification is returned in this queue-facts case.
+    if(sql.includes('INSERT INTO notifications'))return {rows:[]};
     // The query itself pre-filters to events with a confirmed venue (the rules module then applies the full prerequisite).
     assert.match(sql, /AND EXISTS \(SELECT 1 FROM venue_bookings vb WHERE vb\.event_id = e\.id AND vb\.status = 'approved'\)/);
     return { rows: [candidate(1, {}), candidate(2, { technical_support_required: true }),
@@ -513,4 +515,25 @@ for (const delta of [-1,0,1]) test(`Organiser outcomes AC2 - initial approval ti
   const values = tx.find('INSERT INTO notifications')[0].values;
   assert.equal(values[4][0],(prefix+name).slice(0,255));
   assert.ok(values[5][0].includes(name));
+});
+
+for(const fails of [false,true])test(`Safety recovery AC1 AC3 - queue recovers a missing notice and remains usable on recovery failure=${fails}`,async()=>{
+  // Arrange a genuinely reviewable event. Real auth/routing/policy/helper remain active; only database and SMTP are controlled.
+  const queries=[];
+  mock.method(pool,'query',async(sql,values)=>{
+    if(sql.includes('FROM users WHERE'))return {rows:[safetyOfficer]};
+    queries.push({sql,values});
+    if(sql.includes('INSERT INTO notifications')){
+      assert.deepEqual(values[0],[safetyOfficer.id]);
+      if(fails)throw new Error('notification database unavailable');
+      return {rows:[{email:'sam@example.com',title:'Ready for safety check: Workshop',message:'Ready'}]};
+    }
+    return {rows:[{...readyContext,id:101,latest_safety_check:null}]};
+  });
+  const email=mock.method(emailService,'sendNotificationEmail',async()=>{});
+  const error=mock.method(console,'error',()=>{});
+  const result=await request('/api/safety/checks',{user:safetyOfficer});
+  assert.equal(result.status,200);assert.deepEqual(result.body.events.map(event=>event.id),[101]);
+  assert.equal(queries.filter(query=>query.sql.includes('INSERT INTO notifications')).length,1);
+  assert.equal(email.mock.callCount(),fails?0:1);assert.equal(error.mock.callCount(),fails?1:0);
 });
