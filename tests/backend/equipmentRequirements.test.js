@@ -249,7 +249,7 @@ test('EQ AC3 - after confirmation an edit becomes a change request and confirmed
   // Assert: only an INSERT into change requests, gated on confirmation, addressed to coordinator 30.
   assert.equal(result.status, 202);
   assert.deepEqual(result.body.changeRequest, changeRequest);
-  assert.match(result.body.message, /Change request submitted\. The confirmed equipment arrangements remain in effect/);
+  assert.match(result.body.message, /Change request submitted and pending review by the Event Coordinator\. The confirmed equipment arrangements remain in effect/);
   assert.equal(writes.length, 1);
   assert.match(writes[0].sql, /INSERT INTO event_change_requests/);
   assert.match(writes[0].sql, /equipment_confirmed_at IS NOT NULL/);

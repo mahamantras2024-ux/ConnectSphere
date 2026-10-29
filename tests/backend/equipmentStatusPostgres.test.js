@@ -41,6 +41,8 @@ test('ES AC1-AC3 - equipment request status, affected items and coordinator noti
           equipment_items, technical_support_required, technical_support_details, is_draft, status)
         VALUES (1, 2, 'Gala', '2030-10-15', '10:00', '12:00', 80, '[{"item":"Microphone","quantity":4}]', true, 'AV tech', false, 'submitted')`);
 
+      // Current routes require replacement tables added after this legacy fixture's original schema.
+      await require('./support/liveSchema').applyLiveSchema(client);
       mock.method(pool, 'query', (sql, values) => client.query(sql, values));
       mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
       const emails = [];

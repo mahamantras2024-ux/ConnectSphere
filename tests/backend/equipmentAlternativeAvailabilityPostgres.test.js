@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
 const notificationService = require('../../backend/src/services/notificationService');
-const { proposeAlternative } = require('../../backend/src/services/equipmentReservationUnavailability');
+const { suggestAlternative } = require('../../backend/src/services/equipmentReservationUnavailability');
 
 const sqlFile = (name) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', name), 'utf8');
 
@@ -66,6 +66,8 @@ test('AC1 - rejects a replacement when a reservation commits while its stock loc
         PRIMARY KEY (event_id, staff_id)
       )`);
       await setupClient.query(sqlFile('migrations/014-equipment-reservation-unavailability.sql'));
+      // The current service reads suggestion-state columns introduced by this migration.
+      await setupClient.query(sqlFile('migrations/015-equipment-replacement-suggestions.sql'));
 
       const support = (await setupClient.query(
         `INSERT INTO users (email, full_name, role) VALUES ('support@example.test', 'Test Support', 'technical_support') RETURNING id`,
@@ -133,7 +135,8 @@ test('AC1 - rejects a replacement when a reservation commits while its stock loc
       await lockClient.query('SELECT id FROM equipments WHERE id=$1 FOR UPDATE', [alternative.id]);
 
       // Act: start proposing against that locked row, then reserve its only unit before releasing the lock.
-      proposalPromise = proposeAlternative(issue.id, support.id, alternative.id);
+      proposalPromise = suggestAlternative(issue.id, alternative.id, support.id);
+      proposalPromise.catch(() => {});
       let proposalIsWaiting = false;
       for (let attempt = 0; attempt < 250; attempt += 1) {
         const waiting = await setupClient.query(

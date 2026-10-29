@@ -59,6 +59,8 @@ test('ES AC3 - migration 013 upgrades a database holding older reviews without l
       await client.query("INSERT INTO event_equipment_reviews (event_id, request_version, outcome, reason, reviewed_by, affected_items) VALUES (2, 2, 'partially_fulfillable', 'x', 3, '[{\"key\":\"equipment:0\"}]')");
 
       // The coordinator sees the legacy partial review's items as not recorded, never as available.
+      // Current routes require replacement tables added after this legacy fixture's original schema.
+      await require('./support/liveSchema').applyLiveSchema(client);
       mock.method(pool, 'query', (sql, values) => client.query(sql, values));
       mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
       const app = require('../../backend/src/index');

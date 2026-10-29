@@ -101,7 +101,10 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   // Parent notification system: its notification types are set after every earlier type change, as the final migration.
   const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
   assert.ok(venueFrequencyIndex < parentNotificationsIndex, 'parent notifications follow the Venue Staff migrations');
-  assert.equal(parentNotificationsIndex, queries.length - 1, 'parent notifications is the final migration');
+  // Organiser outcomes extend the allow-list after parent notifications so fresh deployments can store both new types.
+  const organiserOutcomesIndex = queries.indexOf(migrationSql('019-organiser-event-outcomes.sql'));
+  assert.equal(organiserOutcomesIndex,queries.length - 1,'organiser outcomes is the final migration');
+  assert.ok(parentNotificationsIndex < organiserOutcomesIndex);
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });

@@ -116,7 +116,7 @@ const updateEventInformation = asyncHandler(async (req, res) => {
     await notificationService.emailNotifications([{ email: coordinatorEmail, ...notification }]);
     return res.status(202).json({
       changeRequest,
-      message: 'Change request submitted. The confirmed event information remains in effect, and the Event Coordinator has been notified.',
+      message: 'Change request submitted and pending review by the Event Coordinator. The confirmed event information remains in effect, and the Event Coordinator has been notified.',
     });
   }
   const event = await eventModel.updateEditable(id, req.user.id, data, hasCriticalChanges);
@@ -162,7 +162,7 @@ const updateEquipmentRequirements = asyncHandler(async (req, res) => {
   await notificationService.emailNotifications([{ email: coordinatorEmail, ...notification }]);
   return res.status(202).json({
     changeRequest,
-    message: 'Change request submitted. The confirmed equipment arrangements remain in effect, and the Event Coordinator has been notified.',
+    message: 'Change request submitted and pending review by the Event Coordinator. The confirmed equipment arrangements remain in effect, and the Event Coordinator has been notified.',
   });
 });
 

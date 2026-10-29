@@ -274,10 +274,10 @@ it('AC2 - confirmed venue exposes request controls for critical fields and penci
 });
 
 // Test case: AC1/AC2/AC3 - critical edits after venue confirmation become pending requests without changing confirmed details.
-it('AC1/AC2/AC3 - submits a critical change request and keeps the confirmed event value in effect', async () => {
+it('Organiser outcomes AC3 / AC1/AC2/AC3 - submits a critical change request pending review and keeps the confirmed event value in effect', async () => {
   api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: { ...event, coordinator_id: 30, venue_confirmed: true } });
   api.put.mockResolvedValue({ changeRequest: { id: 501, status: 'pending' },
-    message: 'Change request submitted. The confirmed event information remains in effect, and the Event Coordinator has been notified.' });
+    message: 'Change request submitted and pending review by the Event Coordinator. The confirmed event information remains in effect, and the Event Coordinator has been notified.' });
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
   fireEvent.click(screen.getByRole('button', { name: 'Request change to Event name' }));
@@ -286,7 +286,7 @@ it('AC1/AC2/AC3 - submits a critical change request and keeps the confirmed even
   fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/101/non-critical', { name: 'Revised Workshop' }, 'organiser-token'));
   expect(await screen.findByRole('heading', { name: event.name })).toBeTruthy();
-  expect(await screen.findByText(/confirmed event information remains in effect/)).toBeTruthy();
+  expect(await screen.findByText(/pending review by the Event Coordinator.*confirmed event information remains in effect/)).toBeTruthy();
 });
 
 // Test case: AC1/AC2/AC3/AC5 - coordinator identifies unclear fields, sends a request, and sees outstanding status.

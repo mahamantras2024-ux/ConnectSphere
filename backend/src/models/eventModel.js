@@ -1616,14 +1616,23 @@ async function listPendingChangeRequests(coordinatorId) {
   return result.rows;
 }
 
-// Saves a coordinator's clarification request only for an event assigned to them.
+/** AC5: stores an assignment-scoped clarification and its owner's notification atomically in one SQL statement. */
 async function createClarificationRequest(id, coordinatorId, informationNeeded, message) {
   const result = await pool.query(`
-    INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message)
-    SELECT e.id, e.coordinator_id, e.organiser_id, $3::jsonb, $4
-    FROM events e WHERE e.id=$1 AND e.coordinator_id=$2
-    RETURNING id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response, created_at, responded_at`,
-  [id, coordinatorId, JSON.stringify(informationNeeded), message]);
+    WITH request AS (
+      INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message)
+      SELECT e.id, e.coordinator_id, e.organiser_id, $3::jsonb, $4
+      FROM events e WHERE e.id=$1 AND e.coordinator_id=$2
+      RETURNING id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response, created_at, responded_at
+    ), notified AS (
+      INSERT INTO notifications (user_id,event_id,type,title,message,details)
+      SELECT request.organiser_id,request.event_id,'event_clarification_requested',
+        left('Clarification needed: ' || e.name,255),
+        'The Event Coordinator needs clarification for ' || e.name || E'.\\n' || request.message,
+        jsonb_build_object('clarificationId',request.id,'informationNeeded',request.information_needed)
+      FROM request JOIN events e ON e.id=request.event_id
+    )
+    SELECT * FROM request`, [id, coordinatorId, JSON.stringify(informationNeeded), message]);
   return result.rows[0] || null;
 }
 

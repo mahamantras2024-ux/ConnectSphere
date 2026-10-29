@@ -152,8 +152,8 @@ test('AR AC1/AC4/AC5/AC6 - approving records the decision on the event and notif
   assert.deepEqual(tx.find('UPDATE events SET status')[0].values, [101, 'approved', null, 30]);
   // Assert: one organiser notification, committed with the decision, emailed after commit.
   const [userIds, eventIds, , types, titles, messages] = tx.find('INSERT INTO notifications')[0].values;
-  assert.deepEqual([userIds, eventIds, types, titles], [[12], [101], ['event_approved'], ['Event approved: Workshop']]);
-  assert.equal(messages[0], 'Your event request Workshop has been approved by the Event Coordinator and can proceed.');
+  assert.deepEqual([userIds, eventIds, types, titles], [[12], [101], ['event_approved'], ['Event initially approved: Workshop']]);
+  assert.equal(messages[0], 'Your event request Workshop has been initially approved by the Event Coordinator. This is not final confirmation.');
   assert.deepEqual(transactionWords(tx), ['BEGIN', 'COMMIT']);
   assert.deepEqual(send.mock.calls.map((call) => call.arguments[0]), ['user12@example.com']);
   assert.equal(tx.client.released, true);
@@ -169,7 +169,7 @@ test('AR AC3/AC4/AC6 - rejecting with unconfirmed arrangements stores the trimme
   assert.equal(result.body.message, 'Event rejected. The organiser has been notified.');
   assert.deepEqual(tx.find('UPDATE events SET status')[0].values, [101, 'rejected', 'The venue could not be secured.', 30]);
   const [, , , types, titles, messages] = tx.find('INSERT INTO notifications')[0].values;
-  assert.deepEqual([types, titles], [['event_rejected'], ['Event request not approved: Workshop']]);
+  assert.deepEqual([types, titles], [['event_rejected'], ['Event rejected: Workshop']]);
   assert.equal(messages[0], 'Your event request Workshop was not approved by the Event Coordinator.\nReason: The venue could not be secured.');
 });
 
@@ -476,4 +476,41 @@ test('SCRUM-92 AC9 - organiser cannot call the lifecycle management endpoint', a
   const result = await request('/api/events/101/status', { method: 'POST', body: { status: 'under_review' }, user: organiser });
   assert.equal(result.status, 403);
   assert.equal(tx.statements.length, 0);
+});
+
+// Organiser outcomes AC2: final confirmation has its own atomic, owner-addressed notification.
+test('Organiser outcomes AC2 - final confirmation notifies the owner distinctly from initial approval', async () => {
+  mockAuth();
+  const tx = mockTransaction({ context: { ...readyContext, status: 'approved' } });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+  const result = await request('/api/events/101/status', { method: 'POST', body: { status: 'confirmed' } });
+  assert.equal(result.status, 200);
+  const notes = tx.find('INSERT INTO notifications');
+  const ownerNote = notes.find(note => note.values[0].includes(12));
+  assert.ok(ownerNote, 'final confirmation must reach the event owner');
+  assert.deepEqual(ownerNote.values[3], ['event_confirmed']);
+  assert.equal(ownerNote.values[4][0], 'Event finally confirmed: Workshop');
+  assert.match(ownerNote.values[5][0], /finally confirmed/);
+  assert.deepEqual(transactionWords(tx), ['BEGIN', 'COMMIT']);
+});
+
+test('Organiser outcomes AC2 - a failed final-confirmation notice rolls back the status change', async () => {
+  mockAuth();
+  const tx = mockTransaction({ context: { ...readyContext, status: 'approved' }, failNotifications: true });
+  const result = await request('/api/events/101/status', { method: 'POST', body: { status: 'confirmed' } });
+  assert.equal(result.status, 500);
+  assert.deepEqual(transactionWords(tx), ['BEGIN', 'ROLLBACK']);
+});
+
+// AC2 boundary: titles fit storage without losing the complete event name from the body.
+for (const delta of [-1,0,1]) test(`Organiser outcomes AC2 - initial approval title limit offset ${delta}`, async () => {
+  const prefix = 'Event initially approved: ';
+  const name = 'x'.repeat(255-prefix.length+delta);
+  mockAuth();
+  const tx = mockTransaction({context:{...readyContext,name}});
+  mock.method(emailService,'sendNotificationEmail',async()=>{});
+  assert.equal((await decide({decision:'approved'})).status,200);
+  const values = tx.find('INSERT INTO notifications')[0].values;
+  assert.equal(values[4][0],(prefix+name).slice(0,255));
+  assert.ok(values[5][0].includes(name));
 });
