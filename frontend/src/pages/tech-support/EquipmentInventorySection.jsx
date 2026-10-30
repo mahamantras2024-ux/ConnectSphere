@@ -8,6 +8,303 @@ const getMonthLabel = value => new Intl.DateTimeFormat('en-SG', {
   month: 'long', year: 'numeric', timeZone: 'UTC',
 }).format(new Date(`${value}T00:00:00Z`));
 const CALENDAR_HORIZON_DAYS = 90;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Calendar styles live with the component. Colours are tokens on .equipment-calendar-section so they can be
+// swapped for the app's own palette; the dark values follow the user's colour scheme.
+const CALENDAR_STYLES = `
+.equipment-calendar-section {
+  --cal-border: #e3e5ee;
+  --cal-surface: #ffffff;
+  --cal-muted-surface: #f6f7fb;
+  --cal-text: #1f2140;
+  --cal-text-muted: #6b6f8a;
+  --cal-available: #1a7f4b;
+  --cal-available-bg: #e6f5ec;
+  --cal-unavailable: #c62828;
+  --cal-unavailable-bg: #fdeaea;
+  --cal-focus: #4a4fd6;
+  margin-top: 2rem;
+  color: var(--cal-text);
+}
+@media (prefers-color-scheme: dark) {
+  .equipment-calendar-section {
+    --cal-border: #33364d;
+    --cal-surface: #181a2b;
+    --cal-muted-surface: #121422;
+    --cal-text: #e8e9f6;
+    --cal-text-muted: #9a9dbb;
+    --cal-available: #6fd3a0;
+    --cal-available-bg: #16352a;
+    --cal-unavailable: #ff8a80;
+    --cal-unavailable-bg: #3d1f1d;
+    --cal-focus: #9ea2ff;
+  }
+}
+.equipment-calendar-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 0 0 1rem;
+}
+.equipment-calendar-navigation > span {
+  min-width: 10rem;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.equipment-calendar-navigation button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+}
+.equipment-calendar-navigation button:focus-visible {
+  outline: 2px solid var(--cal-focus);
+  outline-offset: 2px;
+}
+.equipment-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.25rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--cal-text-muted);
+}
+.equipment-calendar-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.equipment-calendar-legend li::before {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  background: var(--swatch-bg);
+  border: 1px solid var(--swatch);
+}
+.equipment-calendar-legend .is-available   { --swatch: var(--cal-available);   --swatch-bg: var(--cal-available-bg); }
+.equipment-calendar-legend .is-unavailable { --swatch: var(--cal-unavailable); --swatch-bg: var(--cal-unavailable-bg); }
+.equipment-calendar-assets {
+  display: grid;
+  gap: 2rem;
+}
+.equipment-calendar-asset h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.equipment-calendar-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--cal-border);
+  border-radius: 8px;
+  background: var(--cal-surface);
+}
+.equipment-availability-calendar {
+  width: 100%;
+  min-width: 40rem;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.equipment-availability-calendar thead th {
+  padding: 0.5rem 0.25rem;
+  background: var(--cal-muted-surface);
+  border-bottom: 1px solid var(--cal-border);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--cal-text-muted);
+}
+.equipment-calendar-day {
+  position: relative;
+  height: 5rem;
+  padding: 0.375rem 0.5rem 0.5rem;
+  vertical-align: top;
+  border: 1px solid var(--cal-border);
+  border-width: 0 1px 1px 0;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  overflow: hidden;
+}
+.equipment-calendar-day:last-child { border-right: 0; }
+.equipment-availability-calendar tbody tr:last-child > .equipment-calendar-day { border-bottom: 0; }
+.equipment-calendar-day.is-outside-range { background: var(--cal-muted-surface); }
+.equipment-calendar-day.is-available     { background: var(--cal-surface); }
+.equipment-calendar-day.is-unavailable {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--cal-unavailable-bg) 0 6px,
+    var(--cal-surface) 6px 12px
+  );
+}
+.equipment-calendar-day.is-filtered-date {
+  outline: 2px solid var(--cal-focus);
+  outline-offset: -2px;
+}
+.equipment-calendar-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  margin-bottom: 0.25rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.equipment-calendar-day.is-today .equipment-calendar-day-number {
+  background: var(--cal-focus);
+  color: var(--cal-surface);
+}
+.equipment-calendar-day > .equipment-calendar-status {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.equipment-calendar-status.is-available   { color: var(--cal-available); }
+.equipment-calendar-status.is-unavailable { color: var(--cal-unavailable); }
+.equipment-calendar-blocked-reason {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 0.125rem;
+  color: var(--cal-text-muted);
+}
+.equipment-calendar-windows {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.equipment-calendar-window {
+  display: grid;
+  gap: 0.0625rem;
+  min-width: 0;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  border-radius: 4px;
+  background: var(--window-bg);
+}
+.equipment-calendar-window.is-available   { --window-color: var(--cal-available);   --window-bg: var(--cal-available-bg); }
+.equipment-calendar-window.is-unavailable { --window-color: var(--cal-unavailable); --window-bg: var(--cal-unavailable-bg); }
+.equipment-calendar-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.equipment-calendar-window .equipment-calendar-status {
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+.equipment-calendar-window small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cal-text-muted);
+  font-size: 0.6875rem;
+}
+@media (max-width: 640px) {
+  .equipment-availability-calendar { min-width: 0; }
+  .equipment-availability-calendar thead { display: none; }
+  .equipment-availability-calendar,
+  .equipment-availability-calendar tbody,
+  .equipment-availability-calendar tr,
+  .equipment-availability-calendar td { display: block; width: 100%; }
+  .equipment-calendar-day { height: auto; border-width: 0 0 1px; }
+  .equipment-calendar-day.is-outside-range { display: none; }
+  .equipment-calendar-day::before {
+    content: attr(data-weekday);
+    margin-right: 0.5rem;
+    color: var(--cal-text-muted);
+    font-weight: 600;
+  }
+}
+
+/* Overrides: scoped one level deeper so the app's global th/td/li/button rules cannot leak in. */
+.equipment-calendar-section .equipment-availability-calendar thead th {
+  color: var(--cal-text-muted);
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.equipment-calendar-section .equipment-availability-calendar td {
+  text-align: left;
+  vertical-align: top;
+}
+.equipment-calendar-section .equipment-calendar-day.is-outside-range {
+  background: transparent;
+  border-color: transparent;
+}
+.equipment-calendar-section .equipment-calendar-windows,
+.equipment-calendar-section .equipment-calendar-windows li {
+  list-style: none;
+  margin: 0;
+}
+.equipment-calendar-section .equipment-calendar-window small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: hidden;
+}
+.equipment-calendar-section .equipment-calendar-windows li::before,
+.equipment-calendar-section .equipment-calendar-windows li::after {
+  content: none;
+  display: none;
+}
+.equipment-calendar-section .equipment-calendar-window {
+  position: static;
+  gap: 0.0625rem;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  justify-items: start;
+  text-align: left;
+}
+.equipment-calendar-section .equipment-calendar-window .equipment-calendar-time {
+  color: var(--window-color);
+}
+.equipment-calendar-section .equipment-calendar-day-number {
+  display: flex;
+  justify-content: flex-start;
+  width: fit-content;
+  background: none;
+  color: var(--cal-text);
+  font-weight: 500;
+}
+.equipment-calendar-section .equipment-calendar-day.is-today .equipment-calendar-day-number {
+  background: var(--cal-focus);
+  color: var(--cal-surface);
+  justify-content: center;
+}
+/* Quiet days: a plain stock count in muted text, so only exceptions draw the eye. */
+.equipment-calendar-section .equipment-calendar-day > .equipment-calendar-status.is-available {
+  color: var(--cal-text-muted);
+  font-weight: 400;
+}
+.equipment-calendar-section .equipment-calendar-navigation button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--cal-border);
+  border-radius: 8px;
+  background: var(--cal-surface);
+  box-shadow: none;
+  color: var(--cal-text);
+}
+.equipment-calendar-section .equipment-calendar-navigation button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+`;
 
 function calendarDateAtOffset(offset) {
   const date = new Date();
@@ -478,6 +775,7 @@ export default function EquipmentInventorySection({
           )}
           {searchTerm.trim() && searchCalendarAssets.length > 0 && (
             <section className="equipment-calendar-section" aria-labelledby="equipment-calendar-heading">
+              <style>{CALENDAR_STYLES}</style>
               <div className="section-heading">
                 <h2 id="equipment-calendar-heading">Availability calendar</h2>
               </div>
@@ -506,92 +804,98 @@ export default function EquipmentInventorySection({
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
                 </button>
               </div>
+              <ul className="equipment-calendar-legend" aria-label="Legend">
+                <li className="is-available">Available</li>
+                <li className="is-unavailable">Reserved or blocked</li>
+              </ul>
               <div className="equipment-calendar-assets">
                 {searchCalendarAssets.map(item => (
                   <section className="equipment-calendar-asset" key={item.id}>
-                    <h4>{item.asset_code} — {item.name}</h4>
-                    <table
-                      className="equipment-availability-calendar"
-                      aria-label={`${item.asset_code} monthly availability`}
-                    >
-                      <thead>
-                        <tr>
-                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                            <th scope="col" key={day}>{day}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Array.from({ length: calendarGridDates.length / 7 }, (_, week) => (
-                          <tr key={week}>
-                            {calendarGridDates.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
-                              const isVisibleDate = date !== null;
-                              const dayWindows = isVisibleDate
-                                ? getAvailabilityWindows(item).filter(window => window.date === date)
-                                : [];
-                              const defaultState = isEquipmentAvailable(item)
-                                ? 'available'
-                                : 'unavailable';
-                              return (
-                                <td
-                                  key={date || `empty-${week}-${dayIndex}`}
-                                  className={[
-                                    'equipment-calendar-day',
-                                    isVisibleDate ? `is-${defaultState}` : 'is-outside-range',
-                                    dateFilter === date ? 'is-filtered-date' : '',
-                                  ].filter(Boolean).join(' ')}
-                                  aria-label={isVisibleDate
-                                    ? `Availability on ${formatDate(date)} for ${item.asset_code}`
-                                    : undefined}
-                                >
-                                  {isVisibleDate && (
-                                    <>
-                                      <span className="equipment-calendar-day-number">
-                                        {new Date(`${date}T00:00:00Z`).getUTCDate()}
-                                      </span>
-                                      {dayWindows.length === 0 ? (
-                                        <>
-                                          {/* A single stock label keeps quiet days compact without repeating availability. */}
-                                          <strong className={`equipment-calendar-status is-${defaultState}`}>
-                                            {defaultState === 'available'
-                                              ? `${Number(item.quantity) || 0} available`
-                                              : 'Maintenance / damage blocked'}
-                                          </strong>
-                                          {defaultState === 'unavailable' && (
-                                            <small className="equipment-calendar-blocked-reason">{getBlockedReason(item, { status: 'Available' })}</small>
-                                          )}
-                                        </>
-                                      ) : (
-                                        <ul className="equipment-calendar-windows">
-                                          {dayWindows.map((window, index) => {
-                                            const state = getWindowState(item, window);
-                                            const statusLabel = getWindowLabel(item, window, state);
-                                            return (
-                                              <li
-                                                key={`${window.startTime}-${window.endTime}-${index}`}
-                                                className={`equipment-calendar-window is-${state}`}
-                                              >
-                                                <span className="equipment-calendar-time">
-                                                  {window.startTime.slice(0, 5)}–{window.endTime.slice(0, 5)}
-                                                </span>
-                                                <strong className={`equipment-calendar-status is-${state}`}>
-                                                  {statusLabel}
-                                                </strong>
-                                                <small>{getWindowDetails(item, window, state)}</small>
-                                              </li>
-                                            );
-                                          })}
-                                        </ul>
-                                      )}
-                                    </>
-                                  )}
-                                </td>
-                              );
-                            })}
+                    <h3>{item.asset_code} — {item.name}</h3>
+                    <div className="equipment-calendar-scroll">
+                      <table
+                        className="equipment-availability-calendar"
+                        aria-label={`${item.asset_code} monthly availability`}
+                      >
+                        <thead>
+                          <tr>
+                            {WEEKDAYS.map(day => (
+                              <th scope="col" key={day}>{day}</th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: calendarGridDates.length / 7 }, (_, week) => (
+                            <tr key={week}>
+                              {calendarGridDates.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
+                                const isVisibleDate = date !== null;
+                                const dayWindows = isVisibleDate
+                                  ? getAvailabilityWindows(item).filter(window => window.date === date)
+                                  : [];
+                                const defaultState = isEquipmentAvailable(item)
+                                  ? 'available'
+                                  : 'unavailable';
+                                return (
+                                  <td
+                                    key={date || `empty-${week}-${dayIndex}`}
+                                    className={[
+                                      'equipment-calendar-day',
+                                      isVisibleDate ? `is-${defaultState}` : 'is-outside-range',
+                                      dateFilter === date ? 'is-filtered-date' : '',
+                                      date === firstVisibleDate ? 'is-today' : '',
+                                    ].filter(Boolean).join(' ')}
+                                    data-weekday={isVisibleDate ? WEEKDAYS[dayIndex] : undefined}
+                                    aria-label={isVisibleDate
+                                      ? `Availability on ${formatDate(date)} for ${item.asset_code}`
+                                      : undefined}
+                                  >
+                                    {isVisibleDate && (
+                                      <>
+                                        <span className="equipment-calendar-day-number">
+                                          {new Date(`${date}T00:00:00Z`).getUTCDate()}
+                                        </span>
+                                        {dayWindows.length === 0 ? (
+                                          <>
+                                            {/* A single stock label keeps quiet days compact without repeating availability. */}
+                                            <strong className={`equipment-calendar-status is-${defaultState}`}>
+                                              {defaultState === 'available'
+                                                ? `${Number(item.quantity) || 0} available`
+                                                : 'Maintenance / damage blocked'}
+                                            </strong>
+                                            {defaultState === 'unavailable' && (
+                                              <small className="equipment-calendar-blocked-reason">{getBlockedReason(item, { status: 'Available' })}</small>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <ul className="equipment-calendar-windows">
+                                            {dayWindows.map((window, index) => {
+                                              const state = getWindowState(item, window);
+                                              const statusLabel = getWindowLabel(item, window, state);
+                                              const details = getWindowDetails(item, window, state);
+                                              const timeRange = `${window.startTime.slice(0, 5)}–${window.endTime.slice(0, 5)}`;
+                                              return (
+                                                <li
+                                                  key={`${window.startTime}-${window.endTime}-${index}`}
+                                                  className={`equipment-calendar-window is-${state}`}
+                                                  title={`${timeRange} · ${statusLabel} · ${details}`}
+                                                >
+                                                  <span className="equipment-calendar-time">{timeRange}</span>
+                                                  <small>{details}</small>
+                                                </li>
+                                              );
+                                            })}
+                                          </ul>
+                                        )}
+                                      </>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 ))}
               </div>
