@@ -260,8 +260,9 @@ const CALENDAR_STYLES = `
   justify-items: center;
   text-align: center;
 }
-.equipment-calendar-section .equipment-calendar-window .equipment-calendar-time {
-  color: var(--window-color);
+.equipment-calendar-section .equipment-calendar-window .equipment-calendar-status {
+  color: var(--cal-text-muted);
+  font-weight: 400;
 }
 .equipment-calendar-section .equipment-calendar-day-number {
   display: flex;
@@ -411,18 +412,8 @@ function getWindowDetails(item, window, state) {
   }
   if (hasReservation) return `${reserved} reserved · ${available} available`;
   if (state === 'unavailable') return getBlockedReason(item, window);
-  return `${available} available`;
-}
-
-/** Distinguishes available, reservation-limited, fully reserved, and maintenance/damage-blocked windows. */
-function getWindowLabel(item, window, state) {
-  if (isBlockedWindow(item, window)) return 'Maintenance / damage blocked';
-  const available = Number(window.availableQuantity) || 0;
-  const reserved = Number(window.reservedQuantity) || 0;
-  const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
-  // Partial reservations are already explained by their reserved/available counts; avoid a second status line.
-  if (hasReservation) return available > 0 ? '' : 'Fully reserved';
-  return state === 'available' ? 'Available' : 'Unavailable';
+  // Legacy windows without quantities retain their explicit availability instead of inventing a zero count.
+  return window.availableQuantity == null ? 'Available' : `${available} available`;
 }
 
 /**
@@ -865,18 +856,14 @@ export default function EquipmentInventorySection({
                                           <ul className="equipment-calendar-windows">
                                             {dayWindows.map((window, index) => {
                                               const state = getWindowState(item, window);
-                                              const statusLabel = getWindowLabel(item, window, state);
-                                              const details = getWindowDetails(item, window, state);
-                                              const timeRange = `${window.startTime.slice(0, 5)}–${window.endTime.slice(0, 5)}`;
+                                              const details = getWindowDetails(item, window, state) || 'Unavailable';
                                               return (
                                                 <li
                                                   key={`${window.startTime}-${window.endTime}-${index}`}
                                                   className={`equipment-calendar-window is-${state}`}
-                                                  title={[timeRange, statusLabel, details].filter(Boolean).join(' · ')}
                                                 >
-                                                  <span className="equipment-calendar-time">{timeRange}</span>
-                                                  {statusLabel && <strong className={`equipment-calendar-status is-${state}`}>{statusLabel}</strong>}
-                                                  <small>{details}</small>
+                                                  {/* Scheduled and quiet days share the same dot-and-quantity presentation. */}
+                                                  <span className={`equipment-calendar-status is-${state}`}>{details}</span>
                                                 </li>
                                               );
                                             })}

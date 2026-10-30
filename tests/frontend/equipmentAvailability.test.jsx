@@ -48,7 +48,8 @@ it('Calendar AC4 - shows one asset at a time and falls back when a new search ex
   const todayCell = within(region).getByLabelText('Availability on 10 October 2026 for PROJ-001');
   expect(todayCell.classList.contains('is-today')).toBe(true);
   expect(todayCell.dataset.weekday).toBe('Sat');
-  expect(within(region).getByTitle('09:00–17:00 · Available · 1 available')).toBeTruthy();
+  expect(within(region).queryByText(/09:00–17:00/)).toBeNull();
+  expect(within(region).getByText('1 available')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'View availability for PROJ-002' }));
   expect(screen.queryByRole('table', { name: 'PROJ-001 monthly availability' })).toBeNull();
   expect(within(screen.getByRole('table', { name: 'PROJ-002 monthly availability' })).getAllByText('7 available').length).toBeGreaterThan(0);
@@ -226,7 +227,6 @@ it('AC2 - keeps a null-quantity window unavailable when its status is not Availa
 
   // Assert: absent quantity never presents an unconfirmed status as available.
   expect(availabilityWindow.classList.contains('is-unavailable')).toBe(true);
-  expect(within(availabilityWindow).getByText('Unavailable')).toBeTruthy();
   expect(within(availabilityWindow).getByText('Pending')).toBeTruthy();
 });
 
@@ -370,9 +370,10 @@ it('AC1 - searches by ID or name and shows the matched asset calendar separately
   expect(screen.getByRole('row', { name: /PROJ-001 Projector/ })).toBeTruthy();
   expect(screen.queryByRole('row', { name: /MIC-001 Wireless Microphone/ })).toBeNull();
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
-  expect(within(calendar).getAllByText(/09:00–17:00/).length).toBeGreaterThan(0);
+  expect(within(calendar).queryByText(/09:00–17:00/)).toBeNull();
+  expect(within(calendar).getByText('1 available')).toBeTruthy();
   expect(within(calendar).queryByText('Town Hall')).toBeNull();
-  expect(within(calendar).getAllByText('Available').length).toBeGreaterThan(0);
+  expect(within(calendar).queryByText('Available')).toBeNull();
   expect(within(calendar).getAllByRole('columnheader')).toHaveLength(7);
 });
 
@@ -409,7 +410,8 @@ it('AC1 - pages month by month and shows unscheduled in-range dates as available
   calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   expect(within(calendar).getByLabelText(`Availability on ${longDate(getDateOffset(89))} for PROJ-001`)).toBeTruthy();
   expect(within(calendar).queryByLabelText(`Availability on ${longDate(getDateOffset(90))} for PROJ-001`)).toBeNull();
-  expect(within(calendar).getByText(/09:00–10:00/)).toBeTruthy();
+  expect(within(calendar).queryByText(/09:00–10:00/)).toBeNull();
+  expect(within(calendar).getByText('1 available')).toBeTruthy();
   expect(within(calendar).queryByText('—')).toBeNull();
   expect(screen.getByRole('button', { name: 'Next month' }).disabled).toBe(true);
 });
@@ -646,10 +648,11 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
   });
 
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
-  expect(within(calendar).getAllByText('Available').length).toBeGreaterThan(0);
+  expect(within(calendar).queryByText('Available')).toBeNull();
   expect(within(calendar).queryByText('Partially reserved')).toBeNull();
   expect(within(calendar).queryByTitle(/Partially reserved/)).toBeNull();
-  expect(within(calendar).getByText('Fully reserved')).toBeTruthy();
+  expect(within(calendar).queryByText('Fully reserved')).toBeNull();
+  expect(within(calendar).queryByText(/\d{2}:\d{2}/)).toBeNull();
   expect(within(calendar).getAllByText('3 available').length).toBeGreaterThan(0);
   expect(within(calendar).getByText('2 reserved · 1 available')).toBeTruthy();
   expect(within(calendar).getByText('3 reserved · 0 available')).toBeTruthy();
@@ -659,6 +662,11 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
   expect(windows[0].classList.contains('is-available')).toBe(true);
   expect(windows[1].classList.contains('is-available')).toBe(true);
   expect(windows[2].classList.contains('is-unavailable')).toBe(true);
+  for (const [index, window] of windows.entries()) {
+    const dot = window.querySelector('.equipment-calendar-status');
+    expect(dot).toBeTruthy();
+    expect(dot.classList.contains(index === 2 ? 'is-unavailable' : 'is-available')).toBe(true);
+  }
   fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: getDateOffset(1) } });
   expect(windows[0].classList.contains('is-available')).toBe(true);
 });
@@ -695,7 +703,7 @@ it('AC2 - displays a reservation window when the date has no availability schedu
       day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
     }).format(new Date(`${reservationDate}T00:00:00Z`))} for MIC-001`,
   );
-  expect(within(day).getByText('14:00–16:00')).toBeTruthy();
+  expect(within(day).queryByText('14:00–16:00')).toBeNull();
   expect(within(day).queryByText('Community Workshop')).toBeNull();
   expect(within(day).getByText('1 reserved · 1 available')).toBeTruthy();
 
@@ -834,7 +842,7 @@ it('AC2 AC3 - keeps separate calendar windows and marks unscheduled days availab
   fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: '2026-10-12' } });
   const day = within(calendar).getByRole('cell', { name: 'Availability on 12 October 2026 for PROJ-001' });
   expect(day.className).toContain('is-filtered-date');
-  expect(within(day).getByText('09:00–10:00')).toBeTruthy();
-  expect(within(day).getByText('09:00–11:00')).toBeTruthy();
-  expect(within(day).getByText('10:00–11:00')).toBeTruthy();
+  expect(within(day).getAllByRole('listitem')).toHaveLength(3);
+  expect(within(day).getAllByText('Available')).toHaveLength(3);
+  expect(within(day).queryByText(/\d{2}:\d{2}/)).toBeNull();
 });
