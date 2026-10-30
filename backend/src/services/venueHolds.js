@@ -5,6 +5,12 @@ const { hasConflict } = require('./venueAvailability');
 const { insertNotifications, emailNotifications } = require('./notificationService');
 const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
 
+/** Fits a complete hold title into notifications.title; the message retains the full event name and hold context. */
+function holdNotificationTitle(action, eventName) {
+  // PostgreSQL counts Unicode characters, not UTF-16 code units; preserve whole astral characters at the limit.
+  return Array.from(`Venue hold ${action}: ${eventName}`).slice(0, 255).join('');
+}
+
 /** Validates route identities and an explicit future instant; call after locking to avoid accepting a stale deadline. */
 function expiryInstant(value) {
   const instant = timestamp(value);
@@ -45,7 +51,7 @@ async function saveHold(venueId, bookingId, staffId, value, updating) {
       WHERE id=$5 AND venue_id=$6 RETURNING *`, ['tentative', deadline, new Date(Date.now()).toISOString(), staffId, booking.id, venue.id])).rows[0];
     const event = (await client.query('SELECT id,name,coordinator_id FROM events WHERE id=$1 FOR SHARE', [booking.event_id])).rows[0];
     await insertNotifications(client, [{ userId: event.coordinator_id ?? booking.requested_by, eventId: event.id, changeRequestId: null,
-      type: 'event_details_changed', title: `Venue hold ${updating ? 'updated' : 'approved'}: ${event.name}`,
+      type: 'event_details_changed', title: holdNotificationTitle(updating ? 'updated' : 'approved', event.name),
       message: `${event.name}: tentative venue hold #${booking.id} at ${venue.name} was approved and expires at ${deadline}. Coordinator confirmation is required before expiry.`,
       details: { kind: 'venue_tentative_hold', bookingId: booking.id, venueId: venue.id, holdExpiresAt: deadline,
         decision:'approved',decisionBy: staffId,decidedAt:saved.updated_at,notes:null } }]);
@@ -100,7 +106,7 @@ async function expireVenueHolds(db = pool) {
       FROM expired JOIN events e ON e.id=expired.event_id JOIN venues v ON v.id=expired.venue_id`);
     if (result.rows.length) await insertNotifications(client, result.rows.map(booking => ({
       userId: booking.coordinator_id ?? booking.requested_by, eventId: booking.event_id, changeRequestId: null,
-      type: 'event_details_changed', title: `Venue hold expired: ${booking.event_name}`,
+      type: 'event_details_changed', title: holdNotificationTitle('expired', booking.event_name),
       message: `${booking.event_name}: tentative hold #${booking.id} at ${booking.venue_name} expired at ${new Date(booking.hold_expires_at).toISOString()}. Submit a new request for availability and staff approval.`,
       details: { kind: 'venue_hold_expired', bookingId: booking.id, venueId: booking.venue_id,
         holdExpiresAt: booking.hold_expires_at, startDatetime: booking.start_datetime, endDatetime: booking.end_datetime },
