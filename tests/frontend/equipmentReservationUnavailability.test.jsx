@@ -184,7 +184,7 @@ it('AC3 - refreshes affected reservations after a replacement proposal is sent',
   configureDashboardApi({ affectedReservations: [issue] });
   api.put.mockResolvedValue({ message: 'Replacement suggestion sent to the Event Coordinator.' });
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   const card = await screen.findByRole('article', { name: 'Community Workshop' });
   fireEvent.change(within(card).getByLabelText('Replacement for PROJ-001 at Community Workshop'), {

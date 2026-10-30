@@ -513,9 +513,9 @@ export default function TechSupportDashboard() {
   }
 
   const tabs = [
-    { id: 'inventory', label: 'Equipment inventory' },
-    { id: 'review', label: 'Equipment request review' },
-    { id: 'reservations', label: 'Equipment reservation' },
+    { id: 'inventory', label: 'Inventory', title: 'Equipment inventory' },
+    { id: 'review', label: 'Requests', title: 'Equipment request review' },
+    { id: 'reservations', label: 'Reservations', title: 'Equipment reservation' },
   ];
 
   // Keep one tablist so moving it into the header preserves panel IDs and keyboard behavior.
@@ -564,7 +564,7 @@ export default function TechSupportDashboard() {
       {activeTab === 'dashboard' ? (
         <PageIntro title="Technical Support Dashboard" eyebrow="Internal workspace" description="Your assigned events and latest updates." />
       ) : (
-        <header className="page-intro support-section-intro"><h1>{tabs.find(tab => tab.id === activeTab).label}</h1></header>
+        <header className="page-intro support-section-intro"><h1>{tabs.find(tab => tab.id === activeTab).title}</h1></header>
       )}
       {activeTab === 'dashboard' && (
         <div className="support-overview">

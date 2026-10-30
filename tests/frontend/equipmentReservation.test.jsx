@@ -567,7 +567,7 @@ it('AC4 - confirms a reservation through the dashboard and refreshes its audit r
   render(<MemoryRouter initialEntries={['/tech-support/dashboard']}>
     <AuthProvider><App /></AuthProvider>
   </MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   const candidate = await screen.findByRole('article', { name: 'Community Workshop' });
 
   fireEvent.click(within(candidate).getByRole('button', { name: 'Check availability' }));
