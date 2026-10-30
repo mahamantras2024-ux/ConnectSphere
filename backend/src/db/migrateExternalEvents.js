@@ -4,6 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
 
+/** Runs the transaction-free SCRUM-93 SQL as one atomic upgrade; callers roll back and release on failure. */
+async function applyOrganiserRequestStatus(client, migration) {
+  await client.query('BEGIN');
+  await client.query(migration);
+  await client.query('COMMIT');
+}
+
 // Applies only the document upgrade for existing projects, avoiding unrelated historical/demo migrations.
 async function migrateVenueEmergencyDocuments() {
   const client = await pool.connect();
@@ -31,6 +38,13 @@ async function migrateAttendeeRegistration() {
 async function migrateAttendeeWithdrawal() {
   const client = await pool.connect();
   try { await client.query(fs.readFileSync(path.join(__dirname, 'migrations/016-attendee-withdrawal.sql'), 'utf8')); }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+/** Installs only SCRUM-93 status notifications on an existing database without replaying unrelated migrations. */
+async function migrateOrganiserRequestStatus() {
+  const client = await pool.connect();
+  try { await applyOrganiserRequestStatus(client, fs.readFileSync(path.join(__dirname, 'migrations/023-organiser-request-status.sql'), 'utf8')); }
   catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
 }
@@ -70,6 +84,8 @@ async function migrate() {
     // Parent notification system: Coordinator Lead and Safety Officer notification types (after every other type change).
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/017-parent-notifications.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/019-technical-support-event-status.sql'), 'utf8'));
+    // SCRUM-93 installs status notifications after all earlier notification type upgrades.
+    await applyOrganiserRequestStatus(client, fs.readFileSync(path.join(__dirname, 'migrations/023-organiser-request-status.sql'), 'utf8'));
     console.log('External event, equipment reservation and repair, venue safety, emergency-document, attendee-registration, Venue Staff status and notification migrations are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -77,7 +93,8 @@ async function migrate() {
   } finally { client.release(); }
 }
 if (require.main === module) {
-  const operation = process.argv.includes('--attendee-withdrawal') ? migrateAttendeeWithdrawal
+  const operation = process.argv.includes('--organiser-request-status') ? migrateOrganiserRequestStatus
+    : process.argv.includes('--attendee-withdrawal') ? migrateAttendeeWithdrawal
     : process.argv.includes('--attendee-registration') ? migrateAttendeeRegistration
     : process.argv.includes('--venue-emergency-documents') ? migrateVenueEmergencyDocuments : migrate;
   operation().catch((error) => {
@@ -86,4 +103,4 @@ if (require.main === module) {
     process.exitCode = 1;
   }).finally(() => pool.end());
 }
-module.exports = { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal };
+module.exports = { migrateOrganiserRequestStatus, migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal };

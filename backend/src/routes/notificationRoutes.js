@@ -8,7 +8,7 @@ const notificationService = require('../services/notificationService');
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/notifications returns the caller's 50 newest notifications and unread count; scoping is by session, never by query input.
+// GET /api/notifications returns the caller's newest notifications plus unresolved safety-review notifications and unread count; scoping is by session, never by query input.
 router.get('/', asyncHandler(async (req, res) => {
   res.json(await notificationService.listForUser(db, req.user.id));
 }));

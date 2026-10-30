@@ -104,7 +104,13 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   // TS status AC5: install the lifecycle trigger after every responsibility and notification table exists.
   const technicalStatusIndex = queries.indexOf(migrationSql('019-technical-support-event-status.sql'));
   assert.ok(parentNotificationsIndex < technicalStatusIndex, 'technical status follows the shared notification migrations');
-  assert.equal(technicalStatusIndex, queries.length - 1, 'technical status trigger is the final migration');
+  // SCRUM-93 preserves every earlier type and installs the transactional status trigger last.
+  const requestStatusIndex = queries.indexOf(migrationSql('023-organiser-request-status.sql'));
+  assert.ok(technicalStatusIndex < requestStatusIndex, 'organiser status follows the technical lifecycle migration');
+  assert.equal(requestStatusIndex, queries.length - 2);
+  assert.equal(queries[requestStatusIndex - 1], 'BEGIN');
+  assert.equal(queries[requestStatusIndex + 1], 'COMMIT');
+  assert.match(queries[requestStatusIndex], /AFTER UPDATE OF status ON events/);
   assert.match(queries[documentsIndex], /ADD COLUMN IF NOT EXISTS emergency_documents JSONB NOT NULL DEFAULT/);
   assert.match(queries[documentsIndex], /octet_length/);
 });
@@ -128,6 +134,25 @@ test('AC7 - the Venue Staff upgrade applies reminder frequency and the standalon
   await migrateVenueReminderFrequency();
   assert.equal(frequencyOnly.length, 1);
   assert.match(frequencyOnly[0], /reminder_frequency_days/);
+});
+
+test('SCRUM-93 AC5 review - full runner rolls back the organiser upgrade and releases its connection on failure', async () => {
+  // Arrange: historical migrations succeed; the status upgrade fails after its runner-owned BEGIN.
+  const queries = []; let released = false;
+  mock.method(pool, 'connect', async () => ({
+    async query(sql) {
+      queries.push(sql);
+      if (sql.includes('CREATE TRIGGER organiser_request_status_notification')) throw new Error('Status upgrade failed');
+    },
+    release() { released = true; },
+  }));
+  // Act / Assert: an upgrade failure must escape, roll back, skip COMMIT and release the connection.
+  await assert.rejects(migrate(), /Status upgrade failed/);
+  assert.equal(queries.at(-3), 'BEGIN');
+  assert.match(queries.at(-2), /CREATE TRIGGER organiser_request_status_notification/);
+  assert.equal(queries.at(-1), 'ROLLBACK');
+  assert.equal(queries.includes('COMMIT'), false);
+  assert.equal(released, true);
 });
 
 // Upload AC: upgrading an existing venue catalogue must not replay unrelated seed/demo migrations.
