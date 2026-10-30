@@ -48,6 +48,7 @@ async function findAccessibleById(id, user) {
       e.proposed_start_time, e.proposed_end_time, e.expected_attendance,
       e.programme_details, e.room_layout_preference, e.accessibility_requirements,
       e.equipment_notes, e.registration_required, e.registration_capacity,
+      e.registration_deadline,e.withdrawal_deadline,e.registration_open,
       e.special_arrangements, e.is_draft, e.status, e.created_at, e.updated_at,
       e.equipment_items, e.technical_support_required, e.technical_support_details,
       e.video_conferencing_required, e.technical_specifications,

@@ -23,6 +23,7 @@ import { requestStatusLabel } from './requestStatusLabel';
 import EquipmentStatusSection from './EquipmentStatusSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 import OrganiserVenueDetails from './OrganiserVenueDetails';
+import RegistrationSettings from './RegistrationSettings';
 
 import CoordinatorRegistrations from './CoordinatorRegistrations';
 
@@ -1077,7 +1078,9 @@ export default function EventDetail() {
       </div>
 
       </div>
+      {user.role==='event_organiser' && <RegistrationSettings event={event} token={token} onSaved={saved=>setEvent(current=>({...current,...saved}))}/>}
       {coordinatorWorkspace && <>
+        {/* Coordinator deadline changes are reviewed through the existing change-request workflow below. */}
         <section role="tabpanel" id="workspace-panel-venues" aria-labelledby="workspace-tab-venues" hidden={workspaceTab !== 'venues'}>
           <div className="workspace-action-card"><div><h2>Venue arrangements</h2><p>Review your requests here. Search and request spaces in Find venues.</p></div>
             <Link className="button-link" to={`/coordinator/venues?eventId=${event.id}`}>Find a venue</Link></div>

@@ -9,6 +9,7 @@ const equipmentStatusService = require('../services/equipmentStatusService');
 const { notifyLeadsOfSubmission } = require('../services/roleNotifications');
 const { decideChangeRequest } = require('../services/changeRequestDecisions');
 const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements, changeLines } = require('../services/changeRequestReview');
+const {assertDeadlines}=require('../services/registrationSettingsPolicy');
 const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
 // Reuses the completed owner/assignment-scoped event read handlers.
 const { getEvent, listEvents } = require('./eventReadController');
@@ -96,6 +97,8 @@ const updateEventInformation = asyncHandler(async (req, res) => {
     try {data.attachments=mergeAttachments(current.attachments || {},validateAttachments(input.attachments));}
     catch(error){return res.status(400).json({message:error.message});}
   }
+  // Rescheduling an event must not leave an accepted registration cutoff after its new start.
+  assertDeadlines(applyToEvent(current,data));
   if (current.venue_confirmed && hasCriticalChanges) {
     if (!current.coordinator_id) {
       return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a critical change request.' });

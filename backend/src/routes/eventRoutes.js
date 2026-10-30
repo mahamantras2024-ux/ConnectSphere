@@ -17,6 +17,9 @@ const asyncHandler = require('../utils/asyncHandler');
 const organiserVenues = require('../controllers/organiserVenueController');
 
 router.use(requireAuth);
+const registrationSettings=require('../controllers/registrationSettingsController');
+router.put('/:id/registration-settings',requireRole('event_organiser'),asyncHandler(registrationSettings.save));
+router.put('/:id/registration-availability',requireRole('event_organiser'),asyncHandler(registrationSettings.setOpen));
 router.get('/:id/request-status', requireRole('event_organiser'), require('../controllers/organiserRequestStatusController').getRequestStatus);
 router.get('/:id/organiser-venue-bookings', requireRole('event_organiser'), asyncHandler(organiserVenues.listArrangements));
 router.get('/technical-support-staff', requireRole('event_coordinator'), technicalSupportAssignmentController.listStaff);

@@ -9,6 +9,8 @@ const {
 
 // Fields that make up the equipment request Technical Support reviews (the organiser's equipment form).
 const EQUIPMENT_FIELDS = ['equipmentItems', 'technicalSupportRequired', 'technicalSupportDetails', 'videoConferencingRequired', 'technicalSpecifications', 'equipmentNotes'];
+const {assertDeadlines}=require('./registrationSettingsPolicy');
+const {applyToEvent}=require('./changeRequestReview');
 
 /** Builds an error carrying the HTTP status and optional machine-readable code for the controller. */
 function failure(status, message, code) { return Object.assign(new Error(message), { status, code }); }
@@ -82,6 +84,8 @@ async function decideChangeRequest(requestId, coordinatorId, decision, reason) {
       if (unsupported.length) {
         throw failure(409, `This change request includes changes that cannot be applied yet: ${unsupported.join(', ')}.`, 'UNSUPPORTED_CHANGE');
       }
+      // A request may be approved after its event schedule changed; stale deadlines cannot bypass the start cutoff.
+      assertDeadlines(applyToEvent(event,request.requested_changes));
       event = await eventModel.applyChanges(client, request.event_id, request.requested_changes);
       // Changed equipment has not been reviewed: start a new request version and clear the confirmation so Technical
       // Support reviews it and its status reads "pending" (Tracks Equipment Request Status AC1).

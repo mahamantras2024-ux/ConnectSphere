@@ -21,6 +21,8 @@ const EVENT_FIELDS = {
   equipmentNotes: { column: 'equipment_notes', label: 'Equipment requests' },
   registrationRequired: { column: 'registration_required', label: 'Registration required' },
   registrationCapacity: { column: 'registration_capacity', label: 'Registration capacity' },
+  registrationDeadline: { column: 'registration_deadline', label: 'Registration deadline (UTC)' },
+  withdrawalDeadline: { column: 'withdrawal_deadline', label: 'Withdrawal deadline (UTC)' },
   specialArrangements: { column: 'special_arrangements', label: 'Special arrangements' },
   // Critical answers can carry attachments ({ question: { name, ... } }); shown by file name, never by content.
   attachments: { column: 'attachments', label: 'Attachments', json: true,
