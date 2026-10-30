@@ -67,6 +67,7 @@ function mockTransaction(context) {
         context.safety_changes_open = context.safety_changes_open.filter((area) => area !== values[1]);
         return { rows: [{ safety_changes_open: context.safety_changes_open }] };
       }
+      if (sql.includes('UPDATE event_equipment_reservations')) return {rows:[]};
       if (sql.includes('UPDATE events SET safety_changes_open = $2')) return { rows: [] };
       if (/FROM users\s+WHERE role=\$1/.test(sql)) return { rows: [{ id: 50 }] };
       if (sql.includes('INSERT INTO notifications')) {
@@ -340,4 +341,20 @@ test('OFC AC4/AC5 - completing revisions after a rejected check notifies Safety 
   assert.deepEqual(safetyInsert.values[3], ['safety_check_ready']);
   assert.equal(safetyInsert.values[4][0], 'Ready for safety re-review: Workshop');
   assert.equal(JSON.parse(safetyInsert.values[6][0]).requirement, 'reassessment');
+});
+
+// Safety stock AC1–AC3: only technical rework invalidates active equipment allocations.
+for(const [outcome,areas,releases] of [
+ ['rejected',['technical'],true],['changes_requested',['technical'],true],
+ ['rejected',['venue'],false],['approved',[],false],
+])test(`Safety stock AC1 AC2 - ${outcome} with ${areas.join('/')||'no reopened stages'} releases=${releases}`,async()=>{
+ mockPool(safetyOfficer);
+ const tx=mockTransaction({...readyContext,latest_safety_check:null});
+ mock.method(emailService,'sendNotificationEmail',async()=>{});
+ const body={outcome,...(outcome==='approved'?{}:{notes:'Rework the arrangement',changeAreas:areas})};
+ assert.equal((await recordCheck(body)).status,201);
+ const release=tx.find('UPDATE event_equipment_reservations');
+ assert.equal(release.length,releases?1:0);
+ if(releases){assert.deepEqual(release[0].values,[101,50]);assert.match(release[0].sql,/status='reserved'/);assert.match(release[0].sql,/released_by=\$2/);assert.match(release[0].sql,/released_at=now\(\)/);}
+ assert.deepEqual(tx.words(),['BEGIN','COMMIT']);
 });

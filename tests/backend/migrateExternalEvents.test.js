@@ -107,7 +107,9 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   const replyIndex=queries.indexOf(migrationSql('021-clarification-reply-notifications.sql'));
   const bookingNoticeIndex=queries.indexOf(migrationSql('022-venue-booking-request-notifications.sql'));
   const safetyDedupIndex=queries.indexOf(migrationSql('023-safety-readiness-notification-deduplication.sql'));
-  assert.equal(safetyDedupIndex,queries.length - 1,'readiness deduplication is the final migration');
+  const safetyReworkIndex=queries.indexOf(migrationSql('024-revisable-safety-rejections.sql'));
+  assert.equal(safetyReworkIndex,queries.length - 1,'safety rework is the final migration');
+  assert.ok(safetyDedupIndex < safetyReworkIndex);
   assert.ok(bookingNoticeIndex < safetyDedupIndex);
   assert.ok(replyIndex < bookingNoticeIndex);
   assert.ok(assignmentIndex < replyIndex);

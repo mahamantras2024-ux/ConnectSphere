@@ -65,6 +65,23 @@ async function reopenStages(db, eventId, areas) {
     WHERE id = $1`, [eventId, areas]);
 }
 
+/**
+ * Safety stock AC1–AC3: releases only this event's active allocations when technical arrangements must be redone.
+ * Stock queries already exclude cancelled reservations. Keep item rows and prior release audits as history, and close
+ * replacement issues tied to these obsolete allocations. The caller holds the event lock and owns the transaction.
+ */
+async function releaseEquipmentForSafetyRework(db, eventId, safetyOfficerId) {
+  await db.query(`WITH released AS (
+    UPDATE event_equipment_reservations
+    SET status='cancelled', released_by=$2, released_at=now()
+    WHERE event_id=$1 AND status='reserved'
+    RETURNING id
+  )
+  UPDATE equipment_reservation_unavailability
+  SET status='resolved', resolved_at=now()
+  WHERE reservation_id IN (SELECT id FROM released) AND status='open'`, [eventId,safetyOfficerId]);
+}
+
 /** Marks one reopened stage complete and returns the stages still open (AC4: the re-check waits for all of them). */
 async function resolveStage(db, eventId, area) {
   const result = await db.query(`
@@ -101,4 +118,4 @@ async function safetyCandidates(db) {
   return result.rows;
 }
 
-module.exports = { loadDecisionContext, recordDecision, insertSafetyCheck, reopenStages, resolveStage, safetyCandidates };
+module.exports = { loadDecisionContext, recordDecision, insertSafetyCheck, reopenStages, releaseEquipmentForSafetyRework, resolveStage, safetyCandidates };
