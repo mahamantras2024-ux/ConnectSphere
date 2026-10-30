@@ -655,7 +655,9 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
   expect(within(calendar).queryByText(/\d{2}:\d{2}/)).toBeNull();
   expect(within(calendar).getAllByText('3 available').length).toBeGreaterThan(0);
   expect(within(calendar).getByText('2 reserved · 1 available')).toBeTruthy();
-  expect(within(calendar).getByText('3 reserved · 0 available')).toBeTruthy();
+  // Zero remaining stock must communicate unavailability directly, while partial stock keeps its quantities.
+  expect(within(calendar).getByText('Unavailable')).toBeTruthy();
+  expect(within(calendar).queryByText('3 reserved · 0 available')).toBeNull();
   expect(within(calendar).queryByText('Town Hall')).toBeNull();
   expect(within(calendar).queryByText('Gala')).toBeNull();
   const windows = within(calendar).getAllByRole('listitem');

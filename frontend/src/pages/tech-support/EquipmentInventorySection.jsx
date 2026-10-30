@@ -401,7 +401,7 @@ function getWindowState(item, window) {
     : 'unavailable';
 }
 
-/** Keeps a maintenance/damage reason visible beside reservation counts when a blocked asset is already booked. */
+/** Shows fully booked windows as unavailable while preserving partial quantities and specific maintenance/damage reasons. */
 function getWindowDetails(item, window, state) {
   const available = Number(window.availableQuantity) || 0;
   const reserved = Number(window.reservedQuantity) || 0;
@@ -410,7 +410,7 @@ function getWindowDetails(item, window, state) {
     if (reserved > 0) return `${getBlockedReason(item, window)} · ${reserved} reserved · ${available} available`;
     return getBlockedReason(item, window);
   }
-  if (hasReservation) return `${reserved} reserved · ${available} available`;
+  if (hasReservation) return state === 'unavailable' ? 'Unavailable' : `${reserved} reserved · ${available} available`;
   if (state === 'unavailable') return getBlockedReason(item, window);
   // Legacy windows without quantities retain their explicit availability instead of inventing a zero count.
   return window.availableQuantity == null ? 'Available' : `${available} available`;
