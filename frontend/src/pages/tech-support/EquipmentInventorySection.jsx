@@ -484,9 +484,6 @@ export default function EquipmentInventorySection({
               <div className="section-heading">
                 <h3 id="equipment-calendar-heading">Availability calendar</h3>
               </div>
-              <p className="equipment-calendar-note">
-                Unscheduled dates are available unless the equipment is marked unavailable.
-              </p>
               <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                 <button
                   type="button"
@@ -553,12 +550,15 @@ export default function EquipmentInventorySection({
                                       </span>
                                       {dayWindows.length === 0 ? (
                                         <>
+                                          {/* A single stock label keeps quiet days compact without repeating availability. */}
                                           <strong className={`equipment-calendar-status is-${defaultState}`}>
-                                            {defaultState === 'available' ? 'Available' : 'Maintenance / damage blocked'}
+                                            {defaultState === 'available'
+                                              ? `${Number(item.quantity) || 0} available`
+                                              : 'Maintenance / damage blocked'}
                                           </strong>
-                                          <small>{defaultState === 'available'
-                                            ? `${Number(item.quantity) || 0} available`
-                                            : getBlockedReason(item, { status: 'Available' })}</small>
+                                          {defaultState === 'unavailable' && (
+                                            <small className="equipment-calendar-blocked-reason">{getBlockedReason(item, { status: 'Available' })}</small>
+                                          )}
                                         </>
                                       ) : (
                                         <ul className="equipment-calendar-windows">

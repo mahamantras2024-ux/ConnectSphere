@@ -25,6 +25,8 @@ export default function Navbar() {
     <Link className="brand" to={user ? getDashboardRoute(user.role) : '/external/login'}><span className="brand-mark" aria-hidden="true">C<span>·</span></span><span>ConnectSphere<small>Events, thoughtfully connected.</small></span></Link>
     <div className="nav-links">{user ? <>
       <NavLink to={getDashboardRoute(user.role)}>{workspaceLabel}</NavLink>
+      {/* Technical Support owns the controls; this slot keeps them beside Dashboard in the shared header. */}
+      {user.role === 'technical_support' && <div id="technical-support-equipment-navigation" className="equipment-header-navigation" />}
       {/* Venue discovery has its own workspace; it does not belong inside Assigned Events. */}
       {user.role === 'event_coordinator' && <NavLink to="/coordinator/venues">Find venues</NavLink>}
       {user.roles?.length > 1 && <label className="role-switch">Workspace<select aria-label="Active role" value={user.role} disabled={busy} onChange={changeRole}>{user.roles.map(role =>

@@ -1,5 +1,6 @@
 // File: Displays the Technical Support dashboard and its authenticated pending equipment-review queue.
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
 import NotificationsPanel from '../../components/NotificationsPanel';
@@ -377,6 +378,13 @@ export default function TechSupportDashboard() {
   const [requestError, setRequestError] = useState('');
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('inventory');
+  const [navigationTarget, setNavigationTarget] = useState(null);
+
+  // The dashboard owns tab state; mount its controls beside Dashboard after the shared header commits.
+  // Embedded workspaces without the shared navbar retain local controls.
+  useLayoutEffect(() => {
+    setNavigationTarget(document.getElementById('technical-support-equipment-navigation'));
+  }, []);
 
   const showSuccess = message => setToast({ type: 'success', message });
 
@@ -501,6 +509,45 @@ export default function TechSupportDashboard() {
     { id: 'reservations', label: 'Equipment reservation' },
   ];
 
+  // Keep one tablist so moving it into the header preserves panel IDs and keyboard behavior.
+  const equipmentNavigation = (
+    <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
+      {tabs.map(tab => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          id={`support-tab-${tab.id}`}
+          aria-selected={activeTab === tab.id}
+          aria-controls={`support-panel-${tab.id}`}
+          tabIndex={activeTab === tab.id ? 0 : -1}
+          className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
+          onClick={() => setActiveTab(tab.id)}
+          onKeyDown={event => {
+            const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
+            const nextIndex = event.key === 'ArrowRight'
+              ? (currentIndex + 1) % tabs.length
+              : event.key === 'ArrowLeft'
+                ? (currentIndex - 1 + tabs.length) % tabs.length
+                : event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? tabs.length - 1
+                    : -1;
+            if (nextIndex >= 0) {
+              event.preventDefault();
+              const nextTab = tabs[nextIndex];
+              setActiveTab(nextTab.id);
+              document.getElementById(`support-tab-${nextTab.id}`)?.focus();
+            }
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="page">
       <style>{dashboardStyles}</style>
@@ -527,41 +574,7 @@ export default function TechSupportDashboard() {
             <h2>Equipment management</h2>
           </div>
         </div>
-        <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`support-tab-${tab.id}`}
-              aria-selected={activeTab === tab.id}
-              aria-controls={`support-panel-${tab.id}`}
-              tabIndex={activeTab === tab.id ? 0 : -1}
-              className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
-              onClick={() => setActiveTab(tab.id)}
-              onKeyDown={event => {
-                const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
-                const nextIndex = event.key === 'ArrowRight'
-                  ? (currentIndex + 1) % tabs.length
-                  : event.key === 'ArrowLeft'
-                    ? (currentIndex - 1 + tabs.length) % tabs.length
-                    : event.key === 'Home'
-                      ? 0
-                      : event.key === 'End'
-                        ? tabs.length - 1
-                        : -1;
-                if (nextIndex >= 0) {
-                  event.preventDefault();
-                  const nextTab = tabs[nextIndex];
-                  setActiveTab(nextTab.id);
-                  document.getElementById(`support-tab-${nextTab.id}`)?.focus();
-                }
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {navigationTarget ? createPortal(equipmentNavigation, navigationTarget) : equipmentNavigation}
         {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
           <EquipmentInventorySection

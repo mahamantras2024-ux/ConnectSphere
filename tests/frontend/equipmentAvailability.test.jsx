@@ -363,9 +363,9 @@ it('AC1 - pages month by month and shows unscheduled in-range dates as available
   expect(within(calendar).getByLabelText(`Availability on ${new Intl.DateTimeFormat('en-SG', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
   }).format(new Date(`${getDateOffset(0)}T00:00:00Z`))} for PROJ-001`)).toBeTruthy();
-  expect(screen.getByText(/Unscheduled dates are available/)).toBeTruthy();
+  expect(screen.queryByText(/Unscheduled dates are available/)).toBeNull();
   expect(screen.queryByRole('list', { name: 'Availability legend' })).toBeNull();
-  expect(within(calendar).getAllByText('Available').length).toBeGreaterThan(1);
+  expect(within(calendar).getAllByText('3 available').length).toBeGreaterThan(1);
   const longDate = date => new Intl.DateTimeFormat('en-SG', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
   }).format(new Date(`${date}T00:00:00Z`));
@@ -379,6 +379,20 @@ it('AC1 - pages month by month and shows unscheduled in-range dates as available
   expect(within(calendar).getByText(/09:00–10:00/)).toBeTruthy();
   expect(within(calendar).queryByText('—')).toBeNull();
   expect(screen.getByRole('button', { name: 'Next month' }).disabled).toBe(true);
+});
+
+// AC1 - The current month shows only the remaining calendar weeks instead of blank past weeks.
+it('Calendar AC1 AC2 - removes the note and gives unscheduled days one stock label', () => {
+  // Arrange: an operational asset with no windows uses its total available stock.
+  render(<EquipmentInventorySection inventory={[{ ...inventory[0], availabilities: [] }]} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), { target: { value: 'PROJ-001' } });
+  const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
+  const day = within(calendar).getAllByRole('cell').find(cell => cell.hasAttribute('aria-label'));
+  // Assert: the former adjacent Available/3 available pair must not return.
+  expect(within(day).getByText('3 available')).toBeTruthy();
+  expect(within(day).queryByText('Available')).toBeNull();
+  expect(day.querySelectorAll('.equipment-calendar-status')).toHaveLength(1);
+  expect(screen.queryByText(/Unscheduled dates are available/)).toBeNull();
 });
 
 // AC1 - The current month shows only the remaining calendar weeks instead of blank past weeks.

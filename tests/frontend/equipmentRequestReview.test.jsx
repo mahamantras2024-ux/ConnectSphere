@@ -31,6 +31,27 @@ async function openDashboard() {
   fireEvent.click(await screen.findByRole('tab', { name: 'Equipment request review' }));
 }
 
+it('Navigation AC1 AC2 - places equipment tabs beside Dashboard and keeps their panels and keyboard controls', async () => {
+  // Arrange the real authenticated application, including its shared navigation.
+  await openDashboard();
+  const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
+  const tabs = within(navigation).getByRole('tablist', { name: 'Technical Support dashboard sections' });
+  expect(within(tabs).getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+    'Equipment info', 'Equipment request review', 'Equipment reservation',
+  ]);
+  expect(within(navigation).getByRole('link', { name: 'Dashboard' }).nextElementSibling.contains(tabs)).toBe(true);
+  expect(screen.getAllByRole('tablist', { name: 'Technical Support dashboard sections' })).toHaveLength(1);
+  // Act/Assert: a header tab still controls the real workspace, including roving keyboard focus.
+  const review = within(tabs).getByRole('tab', { name: 'Equipment request review', selected: true });
+  expect(screen.getByRole('tabpanel').id).toBe(review.getAttribute('aria-controls'));
+  fireEvent.keyDown(review, { key: 'ArrowRight' });
+  const reservation = within(tabs).getByRole('tab', { name: 'Equipment reservation', selected: true });
+  expect(document.activeElement).toBe(reservation);
+  expect(screen.getByRole('tabpanel').id).toBe(reservation.getAttribute('aria-controls'));
+  fireEvent.click(within(tabs).getByRole('tab', { name: 'Equipment info' }));
+  expect(screen.getByRole('tabpanel').id).toBe('support-panel-inventory');
+});
+
 beforeEach(() => {
   localStorage.clear();
   let pendingRequest = eventRequest;
