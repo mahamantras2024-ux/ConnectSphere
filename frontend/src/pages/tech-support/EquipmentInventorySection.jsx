@@ -667,10 +667,14 @@ export default function EquipmentInventorySection({
               <tbody>
                 {filteredAssets.map(item => (
                   <tr key={item.id}>
-                    <th scope="row"><button type="button" className="equipment-calendar-link"
-                      aria-label={`View availability for ${item.asset_code}`}
-                      onClick={() => setCalendarEquipmentId(String(item.id))}>{item.asset_code}</button></th>
-                    <td>{item.name}</td>
+                    <th scope="row">{item.asset_code}</th>
+                    <td>
+                      <span>{item.name}</span>
+                      {/* Name the action explicitly so opening availability does not depend on discovering a clickable ID. */}
+                      <button type="button" className="equipment-calendar-link"
+                        aria-label={`View calendar for ${item.asset_code}`}
+                        onClick={() => setCalendarEquipmentId(String(item.id))}>View calendar</button>
+                    </td>
                     <td>{item.specification}</td>
                     <td>
                       <div className="equipment-status-control">
