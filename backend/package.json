@@ -11,6 +11,7 @@
     "test": "node ../tests/run.cjs backend",
     "test:coverage": "node ../tests/run.cjs backend coverage",
     "test:coverage:sprint-one": "node ../tests/run.cjs backend coverage sprint-one",
+    "migrate:organiser-request-status": "node src/db/migrateExternalEvents.js --organiser-request-status",
     "migrate:external-events": "node src/db/migrateExternalEvents.js",
     "migrate:attendee-registration": "node src/db/migrateExternalEvents.js --attendee-registration",
     "migrate:attendee-withdrawal": "node src/db/migrateExternalEvents.js --attendee-withdrawal",

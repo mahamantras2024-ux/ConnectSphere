@@ -1,8 +1,9 @@
-// File: Loads and displays events owned by the organiser or assigned to the coordinator.
+// File: Loads organisation request statuses for organisers and assigned events for coordinators.
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import useLiveResource from '../../hooks/useLiveResource';
 import OrganiserRequestList from './OrganiserRequestList';
 import PageIntro from '../../components/PageIntro';
 import NotificationsPanel from '../../components/NotificationsPanel';
@@ -13,17 +14,15 @@ export default function EventList({ dashboard = false }) {
   const { token, user } = useAuth();
   const location = useLocation();
   const organiser = user.role === 'event_organiser';
-  const [events, setEvents] = useState([]), [error, setError] = useState(''), [loading, setLoading] = useState(true);
+  // Five-second polling plus a three-second stalled-read retry follows the existing ten-second notification contract.
+  const { data, loading, error, updateData } = useLiveResource('/events', token, { retryAfterMs: 3000 });
+  const events = data?.events || [];
+  /** Local draft/support writes invalidate older polls, so a late response cannot undo a successful action. */
+  function setEvents(update) {
+    updateData(current => ({ ...current, events: update(current.events) }));
+  }
   const [supportStaff, setSupportStaff] = useState([]);
   const [supportStaffError, setSupportStaffError] = useState('');
-  useEffect(() => {
-    // Loads scoped events. A token change always comes with a route change (logout or role switch) that unmounts
-    // this list, and React 18 ignores updates after unmount, so no stale-response guard is needed.
-    setLoading(true); setError('');
-    api.get('/events', token).then(data => setEvents(data.events || []))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [token]);
   useEffect(() => {
     if (organiser || !dashboard) return undefined;
     api.get('/events/technical-support-staff', token).then(data => setSupportStaff(data.staff || []))

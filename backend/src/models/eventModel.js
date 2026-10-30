@@ -2,14 +2,16 @@
 const pool = require('../config/db');
 const { pool: databasePool } = require('../config/db');
 const { EVENT_FIELDS } = require('../services/eventFields');
+const { ORGANISATION_STATUS_SCOPE } = require('./organiserRequestStatusModel');
 
-// Lists events owned by the supplied organiser, newest first.
+// Lists own and same-organisation request statuses; can_manage preserves submitter-only mutation controls.
 async function listForOrganiser(organiserId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.purpose, e.status, e.organiser_id, e.coordinator_id, e.created_at, e.updated_at,
+      (e.organiser_id=$1) AS can_manage,
       EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding
     FROM events e
-    WHERE organiser_id = $1
+    WHERE organiser_id = $1 OR ${ORGANISATION_STATUS_SCOPE}
     ORDER BY e.created_at DESC
   `, [organiserId]);
 
