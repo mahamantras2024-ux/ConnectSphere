@@ -4,6 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
 
+/** Repairs legacy safety-invalidated stock without replaying schema changes or historical seeds. */
+async function repairSafetyEquipment() {
+  const client = await pool.connect();
+  try { await client.query(fs.readFileSync(path.join(__dirname, 'migrations/025-safety-equipment-release-repair.sql'), 'utf8')); }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
 // Applies only the document upgrade for existing projects, avoiding unrelated historical/demo migrations.
 async function migrateVenueEmergencyDocuments() {
   const client = await pool.connect();
@@ -75,6 +83,7 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/022-venue-booking-request-notifications.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/023-safety-readiness-notification-deduplication.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/024-revisable-safety-rejections.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/025-safety-equipment-release-repair.sql'), 'utf8'));
     console.log('External event, equipment reservation and repair, venue safety, emergency-document, attendee-registration, Venue Staff status and notification migrations are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -82,7 +91,8 @@ async function migrate() {
   } finally { client.release(); }
 }
 if (require.main === module) {
-  const operation = process.argv.includes('--attendee-withdrawal') ? migrateAttendeeWithdrawal
+  const operation = process.argv.includes('--repair-safety-equipment') ? repairSafetyEquipment
+    : process.argv.includes('--attendee-withdrawal') ? migrateAttendeeWithdrawal
     : process.argv.includes('--attendee-registration') ? migrateAttendeeRegistration
     : process.argv.includes('--venue-emergency-documents') ? migrateVenueEmergencyDocuments : migrate;
   operation().catch((error) => {
@@ -91,4 +101,4 @@ if (require.main === module) {
     process.exitCode = 1;
   }).finally(() => pool.end());
 }
-module.exports = { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal };
+module.exports = { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal, repairSafetyEquipment };

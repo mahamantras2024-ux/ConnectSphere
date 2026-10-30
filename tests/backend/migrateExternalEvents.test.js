@@ -3,10 +3,28 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
-const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal } = require('../../backend/src/db/migrateExternalEvents');
+const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal, repairSafetyEquipment } = require('../../backend/src/db/migrateExternalEvents');
 const { migrateVenueStaffEventStatus, migrateVenueReminderFrequency } = require('../../backend/src/db/migrateVenueStaffEventStatus');
 
 afterEach(() => mock.restoreAll());
+
+// Safety repair AC1/AC3: the deployment command avoids historical seed migrations and always cleans up its connection.
+for (const fails of [false, true]) test(`Safety repair AC1 AC3 - standalone repair releases its connection; failure=${fails}`, async () => {
+  const queries = []; let released = false;
+  mock.method(pool, 'connect', async () => ({ query: async sql => {
+    queries.push(sql);
+    if (fails && sql !== 'ROLLBACK') throw new Error('Repair failed');
+  }, release: () => { released = true; } }));
+  if (fails) {
+    await assert.rejects(repairSafetyEquipment(), /Repair failed/);
+    assert.equal(queries.at(-1), 'ROLLBACK');
+  } else {
+    await repairSafetyEquipment();
+    assert.equal(queries.length, 1);
+    assert.equal(queries[0], fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/025-safety-equipment-release-repair.sql'), 'utf8'));
+  }
+  assert.equal(released, true);
+});
 
 test('Withdraw AC2/AC3 - standalone withdrawal upgrade applies only the deadline and notification schema', async () => {
   // Arrange: database boundary records the exact SQL without touching shared application records.
@@ -108,7 +126,9 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   const bookingNoticeIndex=queries.indexOf(migrationSql('022-venue-booking-request-notifications.sql'));
   const safetyDedupIndex=queries.indexOf(migrationSql('023-safety-readiness-notification-deduplication.sql'));
   const safetyReworkIndex=queries.indexOf(migrationSql('024-revisable-safety-rejections.sql'));
-  assert.equal(safetyReworkIndex,queries.length - 1,'safety rework is the final migration');
+  const safetyRepairIndex=queries.indexOf(migrationSql('025-safety-equipment-release-repair.sql'));
+  assert.equal(safetyRepairIndex,queries.length - 1,'safety repair is the final migration');
+  assert.ok(safetyReworkIndex < safetyRepairIndex);
   assert.ok(safetyDedupIndex < safetyReworkIndex);
   assert.ok(bookingNoticeIndex < safetyDedupIndex);
   assert.ok(replyIndex < bookingNoticeIndex);

@@ -6,6 +6,7 @@ const jwt=require('../../backend/node_modules/jsonwebtoken');
 const {pool}=require('../../backend/src/config/db');
 const emailService=require('../../backend/src/services/emailService');
 const {applyLiveSchema}=require('./support/liveSchema');
+const {repairSafetyEquipment}=require('../../backend/src/db/migrateExternalEvents');
 
 test('Safety stock AC1–AC3 - technical rework releases stock atomically and permits a fresh reservation',
  {skip:process.env.RUN_DB_TESTS!=='1'},async t=>{
@@ -116,6 +117,80 @@ test('Safety stock AC1–AC3 - technical rework releases stock atomically and pe
     }
     // A full upgrade rerun must keep stored revisable rejections valid, not reinstall the obsolete constraint.
     await applyLiveSchema(client);
+   });
+   await t.test('Safety repair AC1 AC2 AC3 - repairs historical stock with strict time boundaries and atomic repeatable history',async()=>{
+    // Arrange independent events so keeping new allocations cannot hide failure to release old ones.
+    await client.query('TRUNCATE events RESTART IDENTITY CASCADE');
+    await client.query('UPDATE equipments SET quantity=10 WHERE id=$1',[stockId]);
+    const scenarios=[
+     ['Before rejection','rejected',['technical'],'2024-12-31T23:59:59.999999Z',true],
+     ['At rejection','rejected',['technical'],'2025-01-01T00:00:00Z',false],
+     ['After rejection','rejected',['technical'],'2025-01-01T00:00:00.000001Z',false],
+     ['Before changes requested','changes_requested',['technical'],'2024-12-31T23:59:59Z',true],
+     ['Venue only','changes_requested',['venue'],'2024-12-31T23:59:59Z',false],
+     ['Approved','approved',[],'2024-12-31T23:59:59Z',false],
+     ['Terminal rejection','rejected',[],'2024-12-31T23:59:59Z',false],
+     ['Later approval','rejected',['technical'],'2024-12-31T23:59:59Z',true],
+     ['Unrelated event',null,[],'2024-12-31T23:59:59Z',false],
+    ];
+    const allocations=[];
+    for(const [name,outcome,areas,reservedAt,release] of scenarios){
+     const eventId=(await client.query(`INSERT INTO events(organiser_id,coordinator_id,name,is_draft,status,proposed_date,
+      proposed_start_time,proposed_end_time,expected_attendance,equipment_items,equipment_requirements_version)
+      VALUES(1,2,$1,false,'submitted','2035-01-20','10:00','12:00',20,'[{"item":"Projector","quantity":1}]',2) RETURNING id`,[name])).rows[0].id;
+     if(outcome)await client.query(`INSERT INTO event_safety_checks(event_id,safety_officer_id,outcome,notes,change_areas,checked_at)
+      VALUES($1,3,$2,'Recorded before stock release fix',$3,'2025-01-01T00:00:00Z')`,[eventId,outcome,areas]);
+     if(name==='Later approval')await client.query(`INSERT INTO event_safety_checks(event_id,safety_officer_id,outcome,checked_at)
+      VALUES($1,3,'approved','2025-02-01T00:00:00Z')`,[eventId]);
+     const reservation=(await client.query(`INSERT INTO event_equipment_reservations(event_id,request_version,reserved_by,
+      event_date,start_time,end_time,reserved_at) VALUES($1,1,4,'2035-01-20','10:00','12:00',$2) RETURNING *`,[eventId,reservedAt])).rows[0];
+     await client.query('INSERT INTO event_equipment_reservation_items(reservation_id,inventory_id,quantity) VALUES($1,$2,1)',[reservation.id,stockId]);
+     await client.query(`INSERT INTO equipment_reservation_unavailability(reservation_id,inventory_id,reason)
+      VALUES($1,$2,'Old allocation issue')`,[reservation.id,stockId]);
+     allocations.push({reservation,release});
+    }
+    const probe=(await client.query(`INSERT INTO events(organiser_id,coordinator_id,name,is_draft,status,proposed_date,proposed_start_time,
+     proposed_end_time,expected_attendance,equipment_items) VALUES(1,2,'Repair stock probe',false,'submitted','2035-01-20',
+     '10:00','12:00',20,'[{"item":"Projector","quantity":1}]') RETURNING id`)).rows[0].id;
+    await client.query(`INSERT INTO event_equipment_reviews(event_id,request_version,outcome,reviewed_by)
+     SELECT id,equipment_requirements_version,'fully_fulfillable',4 FROM events WHERE id=$1`,[probe]);
+    const history=(await client.query(`INSERT INTO event_equipment_reservations(event_id,request_version,reserved_by,
+     event_date,start_time,end_time,status,reserved_at,released_by,released_at)
+     VALUES($1,3,4,'2035-01-19','10:00','12:00','cancelled','2024-01-01',4,'2024-01-02') RETURNING *`,[allocations[0].reservation.event_id])).rows[0];
+    /** Use the dashboard's stock endpoint so repair must change actual availability, not only audit columns. */
+    async function available(){
+     const result=await as(4,'GET',`/events/${probe}/equipment-availability`);assert.equal(result.status,200);
+     return result.body.availability.items.flatMap(item=>item.availableAssets).find(asset=>asset.id===stockId).available_quantity;
+    }
+    assert.equal(await available(),1);
+    const before=(await client.query('SELECT * FROM event_equipment_reservations ORDER BY id')).rows;
+    const eventsBefore=(await client.query('SELECT * FROM events ORDER BY id')).rows;
+    // Act/error: an impact-resolution failure must roll back every allocation update.
+    await client.query(`CREATE FUNCTION fail_repair() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+     RAISE EXCEPTION 'Repair impact failed'; END $$;
+     CREATE TRIGGER fail_repair BEFORE UPDATE ON equipment_reservation_unavailability FOR EACH ROW EXECUTE FUNCTION fail_repair()`);
+    await assert.rejects(repairSafetyEquipment(),/Repair impact failed/);
+    assert.deepEqual((await client.query('SELECT * FROM event_equipment_reservations ORDER BY id')).rows,before);
+    assert.equal(await available(),1);
+    await client.query('DROP TRIGGER fail_repair ON equipment_reservation_unavailability; DROP FUNCTION fail_repair()');
+    // Act/happy: a retry completes the same production repair used by deployment.
+    await repairSafetyEquipment();
+    assert.equal(await available(),4);
+    for(const {reservation,release} of allocations){
+     const actual=(await client.query('SELECT * FROM event_equipment_reservations WHERE id=$1',[reservation.id])).rows[0];
+     if(release){assert.equal(actual.status,'cancelled');assert.equal(actual.released_by,3);assert.ok(actual.released_at instanceof Date);}
+     else assert.deepEqual(actual,reservation);
+     assert.equal((await client.query('SELECT status FROM equipment_reservation_unavailability WHERE reservation_id=$1',[reservation.id])).rows[0].status,release?'resolved':'open');
+     assert.equal((await client.query('SELECT count(*)::int AS n FROM event_equipment_reservation_items WHERE reservation_id=$1',[reservation.id])).rows[0].n,1);
+    }
+    assert.deepEqual((await client.query('SELECT * FROM event_equipment_reservations WHERE id=$1',[history.id])).rows[0],history);
+    assert.deepEqual((await client.query('SELECT * FROM events ORDER BY id')).rows,eventsBefore);
+    const repaired=(await client.query('SELECT * FROM event_equipment_reservations ORDER BY id')).rows;
+    const impacts=(await client.query('SELECT * FROM equipment_reservation_unavailability ORDER BY id')).rows;
+    // Assert/boundary: repeat runs preserve release timestamps and all replacement allocations.
+    await repairSafetyEquipment();
+    assert.deepEqual((await client.query('SELECT * FROM event_equipment_reservations ORDER BY id')).rows,repaired);
+    assert.deepEqual((await client.query('SELECT * FROM equipment_reservation_unavailability ORDER BY id')).rows,impacts);
    });
   }finally{
    mock.restoreAll();if(server?.listening)await new Promise(resolve=>server.close(resolve));
