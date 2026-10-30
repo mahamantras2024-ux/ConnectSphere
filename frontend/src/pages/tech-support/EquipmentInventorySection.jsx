@@ -11,19 +11,19 @@ const CALENDAR_HORIZON_DAYS = 90;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // Calendar styles live with the component. Colours are tokens on .equipment-calendar-section so they can be
-// swapped for the app's own palette; the dark values follow the user's colour scheme.
+// matched to the neutral Technical Support page; the dark values retain the remote calendar's colour-scheme support.
 const CALENDAR_STYLES = `
 .equipment-calendar-section {
-  --cal-border: #e3e5ee;
-  --cal-surface: #ffffff;
-  --cal-muted-surface: #f6f7fb;
-  --cal-text: #1f2140;
-  --cal-text-muted: #6b6f8a;
+  --cal-border: #dfe5e0;
+  --cal-surface: #f6f8f6;
+  --cal-muted-surface: #edf1ee;
+  --cal-text: #30391c;
+  --cal-text-muted: #686a5e;
   --cal-available: #1a7f4b;
   --cal-available-bg: #e6f5ec;
   --cal-unavailable: #c62828;
   --cal-unavailable-bg: #fdeaea;
-  --cal-focus: #4a4fd6;
+  --cal-focus: #424f19;
   margin-top: 2rem;
   color: var(--cal-text);
 }
@@ -202,7 +202,7 @@ const CALENDAR_STYLES = `
   font-weight: 600;
 }
 .equipment-calendar-window .equipment-calendar-status {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 .equipment-calendar-window small {
@@ -210,7 +210,7 @@ const CALENDAR_STYLES = `
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--cal-text-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 @media (max-width: 640px) {
   .equipment-availability-calendar { min-width: 0; }
@@ -238,7 +238,7 @@ const CALENDAR_STYLES = `
   font-weight: 500;
 }
 .equipment-calendar-section .equipment-availability-calendar td {
-  text-align: left;
+  text-align: center;
   vertical-align: top;
 }
 .equipment-calendar-section .equipment-calendar-day.is-outside-range {
@@ -267,16 +267,18 @@ const CALENDAR_STYLES = `
   gap: 0.0625rem;
   padding: 0.25rem 0.5rem;
   border: 0;
-  justify-items: start;
-  text-align: left;
+  justify-items: center;
+  text-align: center;
 }
 .equipment-calendar-section .equipment-calendar-window .equipment-calendar-time {
   color: var(--window-color);
 }
 .equipment-calendar-section .equipment-calendar-day-number {
   display: flex;
-  justify-content: flex-start;
+  justify-content: center;
   width: fit-content;
+  margin-inline: auto;
+  font-size: 18px;
   background: none;
   color: var(--cal-text);
   font-weight: 500;
@@ -449,6 +451,7 @@ export default function EquipmentInventorySection({
   onMarkUnavailable,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [calendarEquipmentId, setCalendarEquipmentId] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
@@ -479,6 +482,8 @@ export default function EquipmentInventorySection({
       window.date < calendarDateAtOffset(CALENDAR_HORIZON_DAYS)
     )),
   }));
+  // Keep a single readable grid; a narrower search falls back to its first match without retaining unrelated stock.
+  const calendarEquipment = searchCalendarAssets.find(item => String(item.id) === calendarEquipmentId) || searchCalendarAssets[0];
   // Selecting a date should reveal the month that contains it, even when it lies outside the month the staff member
   // last paged to. Paging (no date filter) still follows the calendarMonth state so Previous/Next keep working, and a
   // date outside the rolling horizon leaves the paged month untouched rather than scrolling to an unreachable month.
@@ -779,6 +784,13 @@ export default function EquipmentInventorySection({
               <div className="section-heading">
                 <h2 id="equipment-calendar-heading">Availability calendar</h2>
               </div>
+              <label className="equipment-calendar-selector">
+                Equipment
+                <select aria-label="Calendar equipment" value={calendarEquipment.id}
+                  disabled={searchCalendarAssets.length === 1} onChange={event => setCalendarEquipmentId(event.target.value)}>
+                  {searchCalendarAssets.map(item => <option key={item.id} value={item.id}>{item.asset_code} — {item.name}</option>)}
+                </select>
+              </label>
               <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                 <button
                   type="button"
@@ -809,9 +821,8 @@ export default function EquipmentInventorySection({
                 <li className="is-unavailable">Reserved or blocked</li>
               </ul>
               <div className="equipment-calendar-assets">
-                {searchCalendarAssets.map(item => (
+                {[calendarEquipment].map(item => (
                   <section className="equipment-calendar-asset" key={item.id}>
-                    <h3>{item.asset_code} — {item.name}</h3>
                     <div className="equipment-calendar-scroll">
                       <table
                         className="equipment-availability-calendar"
@@ -880,6 +891,7 @@ export default function EquipmentInventorySection({
                                                   title={`${timeRange} · ${statusLabel} · ${details}`}
                                                 >
                                                   <span className="equipment-calendar-time">{timeRange}</span>
+                                                  <strong className={`equipment-calendar-status is-${state}`}>{statusLabel}</strong>
                                                   <small>{details}</small>
                                                 </li>
                                               );
