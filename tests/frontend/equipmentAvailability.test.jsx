@@ -283,11 +283,19 @@ it('AC3 - reports zero stock for an unscheduled date in inventory and calendar',
 
 // AC2 - partial time filters and reserved calendar windows retain truthful availability states.
 it('AC2 - handles one-sided time filters, empty calendar days, and non-booked unavailable windows', () => {
+  // Freeze Date to mid-month so the available/reserved/maintenance dates all stay within the rendered month grid,
+  // independent of when the suite runs. Dates are rebuilt locally against the frozen clock for consistency.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-01-12T12:00:00Z'));
+  const localAvailableDate = getDateOffset(1);
+  const localReservedDate = getDateOffset(3);
+  const localMaintenanceDate = getDateOffset(5);
   const edgeInventory = [{
     ...inventory[0],
     availabilities: [
-      ...inventory[0].availabilities,
-      { date: maintenanceDate, startTime: '10:00:00', endTime: '12:00:00', status: 'Maintenance', availableQuantity: 0 },
+      { date: localAvailableDate, startTime: '09:00:00', endTime: '17:00:00', status: 'Available', availableQuantity: 1 },
+      { date: localReservedDate, startTime: '09:00:00', endTime: '18:00:00', status: 'Reserved', availableQuantity: 0, eventName: 'Town Hall' },
+      { date: localMaintenanceDate, startTime: '10:00:00', endTime: '12:00:00', status: 'Maintenance', availableQuantity: 0 },
     ],
   }];
   render(<EquipmentInventorySection inventory={edgeInventory} error="" />);
@@ -306,7 +314,7 @@ it('AC2 - handles one-sided time filters, empty calendar days, and non-booked un
   fireEvent.change(screen.getByLabelText('Available from'), { target: { value: '' } });
   fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
   expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
-  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: maintenanceDate } });
+  fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: localMaintenanceDate } });
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   expect(within(calendar).getAllByText(/Maintenance/).length).toBeGreaterThan(0);
 });
@@ -549,6 +557,10 @@ it('AC2 - shows a fallback error when the unavailable save fails without a messa
 
 // AC2 - The calendar shows reservation quantities without exposing event names.
 it('AC2 - never displays event names for reserved calendar windows', () => {
+  // Freeze Date to mid-month so the day+1/day+2 windows stay inside the rendered current-month calendar grid,
+  // which otherwise omits dates that roll into next month when the test runs near a month boundary.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-01-12T12:00:00Z'));
   const item = {
     ...inventory[0],
     quantity: 3,
@@ -582,6 +594,10 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
 
 // AC2 - A confirmed reservation on an unscheduled date is shown as a timed calendar window without event identity.
 it('AC2 - displays a reservation window when the date has no availability schedule', () => {
+  // Freeze Date to mid-month so the day+3 reservation date stays within the rendered current-month calendar grid
+  // regardless of when the suite runs (otherwise it can roll into next month and not be rendered).
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-01-12T12:00:00Z'));
   // Arrange: an API window represents the confirmed booking, despite no schedule row for its date.
   const reservationDate = getDateOffset(3);
   const item = {
