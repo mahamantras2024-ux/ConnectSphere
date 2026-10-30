@@ -647,7 +647,8 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
 
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   expect(within(calendar).getAllByText('Available').length).toBeGreaterThan(0);
-  expect(within(calendar).getByText('Partially reserved')).toBeTruthy();
+  expect(within(calendar).queryByText('Partially reserved')).toBeNull();
+  expect(within(calendar).queryByTitle(/Partially reserved/)).toBeNull();
   expect(within(calendar).getByText('Fully reserved')).toBeTruthy();
   expect(within(calendar).getAllByText('3 available').length).toBeGreaterThan(0);
   expect(within(calendar).getByText('2 reserved · 1 available')).toBeTruthy();

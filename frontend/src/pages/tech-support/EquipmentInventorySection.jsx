@@ -137,13 +137,7 @@ const CALENDAR_STYLES = `
 .equipment-availability-calendar tbody tr:last-child > .equipment-calendar-day { border-bottom: 0; }
 .equipment-calendar-day.is-outside-range { background: var(--cal-muted-surface); }
 .equipment-calendar-day.is-available     { background: var(--cal-surface); }
-.equipment-calendar-day.is-unavailable {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--cal-unavailable-bg) 0 6px,
-    var(--cal-surface) 6px 12px
-  );
-}
+.equipment-calendar-day.is-unavailable { background: var(--cal-surface); }
 .equipment-calendar-day.is-filtered-date {
   outline: 2px solid var(--cal-focus);
   outline-offset: -2px;
@@ -159,10 +153,6 @@ const CALENDAR_STYLES = `
   border-radius: 999px;
   font-size: 0.8125rem;
   font-weight: 600;
-}
-.equipment-calendar-day.is-today .equipment-calendar-day-number {
-  background: var(--cal-focus);
-  color: var(--cal-surface);
 }
 .equipment-calendar-day > .equipment-calendar-status {
   display: inline-flex;
@@ -196,7 +186,7 @@ const CALENDAR_STYLES = `
   background: var(--window-bg);
 }
 .equipment-calendar-window.is-available   { --window-color: var(--cal-available);   --window-bg: transparent; }
-.equipment-calendar-window.is-unavailable { --window-color: var(--cal-unavailable); --window-bg: var(--cal-unavailable-bg); }
+.equipment-calendar-window.is-unavailable { --window-color: var(--cal-unavailable); --window-bg: transparent; }
 .equipment-calendar-time {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -282,11 +272,6 @@ const CALENDAR_STYLES = `
   background: none;
   color: var(--cal-text);
   font-weight: 500;
-}
-.equipment-calendar-section .equipment-calendar-day.is-today .equipment-calendar-day-number {
-  background: var(--cal-focus);
-  color: var(--cal-surface);
-  justify-content: center;
 }
 /* Quiet days: a plain stock count in muted text, so only exceptions draw the eye. */
 .equipment-calendar-section .equipment-calendar-day > .equipment-calendar-status.is-available {
@@ -435,7 +420,8 @@ function getWindowLabel(item, window, state) {
   const available = Number(window.availableQuantity) || 0;
   const reserved = Number(window.reservedQuantity) || 0;
   const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
-  if (hasReservation) return available > 0 ? 'Partially reserved' : 'Fully reserved';
+  // Partial reservations are already explained by their reserved/available counts; avoid a second status line.
+  if (hasReservation) return available > 0 ? '' : 'Fully reserved';
   return state === 'available' ? 'Available' : 'Unavailable';
 }
 
@@ -886,10 +872,10 @@ export default function EquipmentInventorySection({
                                                 <li
                                                   key={`${window.startTime}-${window.endTime}-${index}`}
                                                   className={`equipment-calendar-window is-${state}`}
-                                                  title={`${timeRange} · ${statusLabel} · ${details}`}
+                                                  title={[timeRange, statusLabel, details].filter(Boolean).join(' · ')}
                                                 >
                                                   <span className="equipment-calendar-time">{timeRange}</span>
-                                                  <strong className={`equipment-calendar-status is-${state}`}>{statusLabel}</strong>
+                                                  {statusLabel && <strong className={`equipment-calendar-status is-${state}`}>{statusLabel}</strong>}
                                                   <small>{details}</small>
                                                 </li>
                                               );

@@ -137,20 +137,20 @@ p { line-height: 1.65; }
 .equipment-availability-calendar th { padding: 12px 4px; background: #edf1ee; color: #536158; text-align: center; font-size: 13px; font-weight: 600; }
 .equipment-availability-calendar th:first-child, .equipment-availability-calendar th:last-child { color: #a15c34; }
 .equipment-availability-calendar td { height: 88px; padding: 12px 6px; border: 1px solid #dfe5e0; background: transparent; text-align: center; vertical-align: top; }
-.equipment-availability-calendar td.is-unavailable { background: #f8e8df80; border-color: #dfe5e0; }
+.equipment-availability-calendar td.is-unavailable { background: transparent; border-color: #dfe5e0; }
 .equipment-availability-calendar td.is-outside-range { background: transparent; border-color: transparent; }
 .equipment-availability-calendar td.is-filtered-date { border-color: #e78043; box-shadow: inset 0 0 0 2px #e78043; }
 .equipment-calendar-day-number { display: block; margin-bottom: 6px; color: var(--ink); font-size: 18px; font-weight: 650; }
 .equipment-calendar-windows { display: grid; gap: 5px; margin: 0; padding: 0 !important; list-style: none; }
 .equipment-calendar-window { display: grid; justify-items: center; gap: 5px; min-width: 0; padding: 6px 4px; border-radius: 4px; background: transparent; color: var(--ink); font-size: 10px; }
-.equipment-calendar-window.is-unavailable { background: #f9e3dc; }
+.equipment-calendar-window.is-unavailable { background: transparent; }
 .equipment-calendar-window + .equipment-calendar-window { border-top: 1px solid #e9ece4; }
 .equipment-calendar-time { color: inherit; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .equipment-calendar-status { display: inline-flex; align-items: center; justify-content: center; gap: 5px; max-width: 100%; padding: 0; background: transparent; color: #36542f; font-size: 12px; font-weight: 600; line-height: 1.35; white-space: normal; }
 .equipment-calendar-status::before { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #68a84c; content: ""; }
 .equipment-calendar-status.is-available { color: #365c31; }
 .equipment-calendar-status.is-available::before { background: #68a84c; }
-.equipment-calendar-status.is-unavailable { background: #fae8e2; color: #8b3931; }
+.equipment-calendar-status.is-unavailable { background: transparent; color: #8b3931; }
 .equipment-calendar-status.is-unavailable::before { background: #c85a50; }
 .equipment-calendar-window small { color: var(--muted); font-size: 12px; line-height: 1.35; }
 .equipment-calendar-blocked-reason { display: block; margin-top: 4px; color: #8b3931; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
