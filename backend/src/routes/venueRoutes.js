@@ -12,7 +12,7 @@ const { validateCoordinates, nearestMrt, geocode } = require('../services/venueL
 const { rateLimit } = require('express-rate-limit');
 const asyncHandler = require('../utils/asyncHandler');
 const { venueSchedule, saveVenueSchedule } = require('../controllers/venueScheduleController');
-const { createRequest, decideRequest, listPendingRequests, changeExpiry, confirmHold } = require('../controllers/venueRequestController');
+const { createRequest, decideRequest, listPendingRequests, changeExpiry, confirmHold, changeSession } = require('../controllers/venueRequestController');
 const venueEventStatus = require('../controllers/venueEventStatusController');
 router.get('/requests/pending', requireAuth, requireRole('venue_staff'), asyncHandler(listPendingRequests));
 router.get('/relevant-events', requireAuth, requireRole('venue_staff'), asyncHandler(venueEventStatus.listRelevantEvents));
@@ -26,6 +26,7 @@ router.get('/search', requireAuth, requireRole('event_coordinator'), asyncHandle
 router.get('/:id/schedule', requireAuth, requireRole('venue_staff', 'event_coordinator'), asyncHandler(venueSchedule));
 router.put('/:id/schedule', requireAuth, requireRole('venue_staff'), asyncHandler(saveVenueSchedule));
 router.post('/:id/requests', requireAuth, requireRole('event_coordinator'), asyncHandler(createRequest));
+router.put('/:id/requests/:requestId/session', requireAuth, requireRole('event_coordinator'), asyncHandler(changeSession));
 router.put('/:id/requests/:requestId/decision', requireAuth, requireRole('venue_staff'), asyncHandler(decideRequest));
 router.put('/:id/requests/:requestId/expiry', requireAuth, requireRole('venue_staff'), asyncHandler(changeExpiry));
 router.put('/:id/requests/:requestId/confirm', requireAuth, requireRole('event_coordinator'), asyncHandler(confirmHold));

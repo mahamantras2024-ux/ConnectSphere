@@ -61,12 +61,14 @@ export default function VenueBookingInbox() {
     {loading ? <p role="status">Loading booking requests…</p> : data && (!requests.length ? <p>No pending venue booking requests.</p>
       : <div className="record-grid">{requests.map(request => <article className="record-card" key={request.id}>
         <span className="status-badge">{request.status==='tentative'?'Tentative hold':'Pending'}</span><h3>{request.event_name}</h3><p>{request.venue_name}</p>
+        {request.requirements?.sessionName && <p className="eyebrow">Session: {request.requirements.sessionName}</p>}
         {request.status==='tentative' && <p>Expires {singaporeTime(request.hold_expires_at)} (SGT)</p>}
         <p>{singaporeTime(request.start_datetime)} – {singaporeTime(request.end_datetime)}</p>
         <button className="button-secondary" aria-label={`Review ${request.event_name} at ${request.venue_name}`} onClick={() => review(request)}>Review request</button>
       </article>)}</div>)}
     {selected && <Modal drawer title="Review venue booking request" onClose={() => { if (!saving) setSelectedId(null); }}>
       <div className="booking-review"><p className="eyebrow">Booking request #{selected.id}</p><h2>{selected.event_name}</h2>
+        {selected.requirements?.sessionName && <p>Session: {selected.requirements.sessionName}</p>}
         <dl className="detail-facts"><div><dt>Venue</dt><dd>{selected.venue_name}</dd></div>
           <div><dt>Start (Singapore time)</dt><dd>{singaporeTime(selected.start_datetime)}</dd></div>
           <div><dt>End (Singapore time)</dt><dd>{singaporeTime(selected.end_datetime)}</dd></div>

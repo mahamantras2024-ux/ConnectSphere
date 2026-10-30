@@ -37,14 +37,14 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
         outcome TEXT,notes TEXT,checked_at TIMESTAMPTZ,change_areas TEXT[]);
       CREATE TABLE notifications(id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id), event_id INTEGER,
         change_request_id INTEGER, type TEXT, title TEXT, message TEXT, details JSONB);
-      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00');
+      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00',capacity INTEGER DEFAULT 40);
       INSERT INTO users(id,role) VALUES (1,'event_coordinator'),(2,'venue_staff');
       INSERT INTO events(id,coordinator_id,name) VALUES (3,1,'Gala'),(4,1,'Workshop');
-      INSERT INTO venues VALUES (7,'Hall A','Available'),(8,'Hall B','Available')`);
+      INSERT INTO venues(id,name,availability_status) VALUES (7,'Hall A','Available'),(8,'Hall B','Available')`);
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
     try {
-      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql','migrations/019-venue-tentative-holds.sql']) await client.query(migration(file));
+      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql','migrations/019-venue-tentative-holds.sql','migrations/020-session-venue-requests.sql']) await client.query(migration(file));
     } finally { client.release(); }
     // Redirect only connection acquisition. All route SQL, constraints, locking and commits run on real PostgreSQL.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));
@@ -69,7 +69,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Test data is isolated even between cases; catalogue status must never become a venue-wide hold.
     await database.query('TRUNCATE venue_bookings, venue_unavailability, venue_schedule_periods, notifications RESTART IDENTITY');
     writerPids.clear();
-    await database.query("UPDATE venues SET is_active=true, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
+    await database.query("UPDATE venues SET is_active=true, capacity=40, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
   });
 
   after(async () => {
@@ -354,4 +354,38 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     assert.equal(saved.confirmed_by,1);assert.ok(saved.confirmed_at instanceof Date);
   });
 
+  test('Session venues AC1 AC2 AC3 AC4 - parallel sessions revise and cancel independently in PostgreSQL',async()=>{
+    // Arrange: two simultaneous sessions belong to one event but use different venues and requirement snapshots.
+    const first=await request('/7/requests',{...body,sessionName:'Track A',capacity:20,cancelOtherPending:true});
+    const second=await request('/8/requests',{...body,sessionName:'Track B',capacity:30});
+    assert.equal(first.status,201);assert.equal(second.status,201);
+    // Start from a genuinely final booking, so omitting fresh approval on revision cannot pass vacuously.
+    const approved=await request(`/7/requests/${first.body.request.id}/decision`,{decision:'approved',holdExpiresAt:'2099-01-01T00:00:00Z'},'PUT',2);
+    assert.equal(approved.status,200);
+    const confirmed=await request(`/7/requests/${first.body.request.id}/confirm`,{},'PUT',1);
+    assert.equal(confirmed.status,200);assert.equal(confirmed.body.request.status,'approved');
+    const other=(await database.query('SELECT * FROM venue_bookings WHERE id=$1',[second.body.request.id])).rows[0];
+    // Act: revise only Track A; venue staff must assess the new request again.
+    const route=`/7/requests/${first.body.request.id}/session`;
+    const changed=await request(route,{...body,startDatetime:at('12:00'),endDatetime:at('13:00'),capacity:25},'PUT',1);
+    assert.equal(changed.status,200);assert.equal(changed.body.request.status,'pending');
+    assert.equal(changed.body.request.requirements.capacity,25);
+    // Assert: even an old bulk-cancellation preference cannot cross the named session boundary.
+    await database.query('UPDATE venue_bookings SET cancel_other_pending=true WHERE id=$1',[first.body.request.id]);
+    const cancelled=await request(route,{cancel:true},'PUT',1);
+    assert.equal(cancelled.status,200);assert.equal(cancelled.body.request.status,'cancelled');
+    assert.deepEqual((await database.query('SELECT * FROM venue_bookings WHERE id=$1',[other.id])).rows[0],other);
+    assert.equal((await request(`/8/requests/${other.id}/session`,{cancel:true},'PUT',2)).status,403);
+  });
+
+  test('Session venues AC3 AC5 - staff approval rechecks the individual session capacity',async()=>{
+    // Arrange: the requested venue fits initially but its recorded capacity changes before staff review.
+    const created=await request('/7/requests',{...body,sessionName:'Breakout',capacity:20});
+    assert.equal(created.status,201);
+    await database.query('UPDATE venues SET capacity=19 WHERE id=7');
+    // Act / Assert: another venue cannot contribute spare places; the request remains pending.
+    const approval=await request(`/7/requests/${created.body.request.id}/decision`,{decision:'approved',holdExpiresAt:'2099-01-01T00:00:00Z'},'PUT',2);
+    assert.equal(approval.status,400);
+    assert.equal((await database.query('SELECT status FROM venue_bookings')).rows[0].status,'pending');
+  });
 });

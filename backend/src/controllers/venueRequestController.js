@@ -1,6 +1,7 @@
 const { createVenueRequest, decideVenueRequest } = require('../services/venueRequests');
 const { pool } = require('../config/db');
 const { updateHoldExpiry, confirmVenueHold } = require('../services/venueHolds');
+const { changeSessionRequest } = require('../services/sessionVenueRequests');
 
 /** Returns pending requests with submitted requirements; older unspecified fields fall back to the event record. */
 async function listPendingRequests(req, res) {
@@ -40,4 +41,8 @@ async function changeExpiry(req,res) {
 async function confirmHold(req,res) {
   return res.json({request:await confirmVenueHold(req.params.id,req.params.requestId,req.user.id)});
 }
-module.exports = { createRequest, decideRequest, listPendingRequests, changeExpiry, confirmHold };
+/** Applies an assigned coordinator's single-session revision or cancellation. */
+async function changeSession(req,res){
+  res.json({request:await changeSessionRequest(req.params.id,req.params.requestId,req.body,req.user.id)});
+}
+module.exports = { createRequest, decideRequest, listPendingRequests, changeExpiry, confirmHold, changeSession };

@@ -5,6 +5,7 @@ const { requirements } = require('./venueRequestRequirements');
 
 const { reject, validId, timestamp, withVenue, recordedPeriods } = require('./venueBookingStore');
 const { approveTentativeHold } = require('./venueHolds');
+const { assertSessionSuitability } = require('./sessionVenueRequests');
 
 /** Creates an assignment-authorized hold with a requirements snapshot and opt-in cancellation policy; returns the stored request after checking the full occupied window. */
 async function createVenueRequest(venueId, body, userId) {
@@ -16,6 +17,7 @@ async function createVenueRequest(venueId, body, userId) {
   return withVenue(Number(venueId), async (client, venue) => {
     const event = (await client.query('SELECT id, coordinator_id FROM events WHERE id=$1 FOR SHARE', [Number(body.eventId)])).rows[0];
     if (!event || event.coordinator_id !== userId) throw reject(403, 'This event is not assigned to you.');
+    assertSessionSuitability(details.requirements, venue);
     const periods = await recordedPeriods(client, venue.id);
     // Sample after the lock and reads, so waiting for another transaction cannot preserve an already-expired hold.
     const now = Date.now();
