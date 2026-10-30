@@ -175,7 +175,9 @@ it('AC1-AC3 - marks equipment unavailable and reports how many reservations were
     { reason: 'Damaged during setup' },
     'support-token',
   );
-  expect(screen.getByRole('article', { name: 'Community Workshop' })).toBeTruthy();
+  // Router transitions may finish after the success toast; wait for the destination rather than assuming both commit together.
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Reservations', selected: true })).toBeTruthy());
+  expect(await screen.findByRole('article', { name: 'Community Workshop' })).toBeTruthy();
 });
 
 // AC3 - Dashboard refreshes the affected list and confirms the notification to the Coordinator.
