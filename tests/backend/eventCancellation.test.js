@@ -27,7 +27,7 @@ async function request(path, { user = organiser, method = 'GET' } = {}) {
 }
 
 /** Mocks locked cancellation writes while recording commit order, notifications, and post-commit email recipients. */
-function mockCancellationTransaction({ context = event, recipients = attendees, failNotifications = false, updateMissed = false } = {}) {
+function mockCancellationTransaction({ context = event, recipients = attendees, supportStaff = [], failNotifications = false, updateMissed = false } = {}) {
   const statements = [];
   const client = {
     release() { this.released = true; },
@@ -43,6 +43,8 @@ function mockCancellationTransaction({ context = event, recipients = attendees, 
         return { rows: updateMissed ? [] : [{ id: context.id, name: context.name, status: 'cancelled' }] };
       }
       if (normalized.includes('FROM registrations') && normalized.includes('attendee_id')) return { rows: recipients };
+      // Technical Support assignment lookup for cancellation notices; most scenarios have none assigned.
+      if (normalized.includes('FROM event_technical_support_assignments')) return { rows: supportStaff };
       // Existing cancellation scenarios have no assigned Venue Staff; this keeps their attendee-only oracle focused.
       if (normalized.includes('FROM venue_staff_assignments')) return { rows: [] };
       if (normalized.includes('INSERT INTO notifications')) {
@@ -165,3 +167,43 @@ for (const [label, changes] of [
     assert.equal(tx.find('UPDATE events').length, 0);
   });
 }
+
+// SCRUM-86 AC2 - cancelling an event notifies every Technical Support Staff member assigned to support it, so they
+// know their on-site assignment is no longer required. The notice names the event and routes to the tech-support
+// dashboard via the tech_support_assignment_cancelled type.
+test('AC2 - cancellation notifies assigned Technical Support Staff that their on-site assignment ended', async () => {
+  // Arrange: the event has two assigned Technical Support Staff (ids 61, 62) and no active attendees, so the only
+  // notifications are the support cancellations — a faulty impl that skipped support staff would store nothing.
+  mock.method(pool, 'query', async (sql) => sql.includes('FROM users WHERE') ? { rows: [organiser] } : { rows: [] });
+  const tx = mockCancellationTransaction({ recipients: [], supportStaff: [{ staff_id: 61 }, { staff_id: 62 }] });
+  const sendEmail = mock.method(emailService, 'sendNotificationEmail', async () => {});
+
+  // Act
+  const result = await request('/101/cancel', { method: 'POST' });
+
+  // Assert: both assigned staff receive a tech_support_assignment_cancelled notice whose first message line names the event.
+  assert.equal(result.status, 200);
+  const supportInsert = tx.find('INSERT INTO notifications').at(-1);
+  const [userIds, eventIds, , types, titles, messages] = supportInsert.values;
+  assert.deepEqual(userIds, [61, 62]);
+  assert.deepEqual(eventIds, [101, 101]);
+  assert.deepEqual(types, ['tech_support_assignment_cancelled', 'tech_support_assignment_cancelled']);
+  assert.ok(titles.every(title => title === 'On-site support cancelled: Community Workshop'));
+  assert.ok(messages.every(message => message.split('\n')[0].includes('Community Workshop')));
+  // The assignment lookup is scoped to the cancelled event.
+  assert.deepEqual(tx.find('FROM event_technical_support_assignments')[0].values, [101]);
+});
+
+// SCRUM-86 AC2 - an event with no assigned Technical Support Staff stores no support notifications on cancellation.
+test('AC2 - cancellation stores no support notice when no Technical Support Staff are assigned', async () => {
+  mock.method(pool, 'query', async (sql) => sql.includes('FROM users WHERE') ? { rows: [organiser] } : { rows: [] });
+  const tx = mockCancellationTransaction({ recipients: [], supportStaff: [] });
+  mock.method(emailService, 'sendNotificationEmail', async () => {});
+
+  const result = await request('/101/cancel', { method: 'POST' });
+
+  // Assert: the assignment lookup ran, but with no rows no notification insert was attempted (no empty/phantom notice).
+  assert.equal(result.status, 200);
+  assert.equal(tx.find('FROM event_technical_support_assignments').length, 1);
+  assert.equal(tx.find('INSERT INTO notifications').length, 0);
+});

@@ -53,6 +53,10 @@ const assign = asyncHandler(async (req, res) => {
       'SELECT staff_id FROM event_technical_support_assignments WHERE event_id=$1', [eventId])).rows.map(row => row.staff_id);
     const added = staffIds.filter(id => !current.includes(id));
     const removed = current.filter(id => !staffIds.includes(id));
+    // Members who stay assigned across this change; they are notified their assignment was updated only when the
+    // on-site team actually changed around them (someone added or removed), never on a no-op save (AC2).
+    const kept = staffIds.filter(id => current.includes(id));
+    const rosterChanged = added.length > 0 || removed.length > 0;
     await client.query('DELETE FROM event_technical_support_assignments WHERE event_id=$1', [eventId]);
     if (staffIds.length) {
       await client.query(`INSERT INTO event_technical_support_assignments (event_id, staff_id)
@@ -68,6 +72,11 @@ const assign = asyncHandler(async (req, res) => {
       ...removed.map(userId => ({ userId, eventId, changeRequestId: null, type: 'tech_support_assignment_cancelled',
         title: `On-site support cancelled: ${event.name}`, message: `On-site support cancelled: ${event.name}\nYou are no longer assigned to provide on-site technical support for ${event.name}.`,
         details: { eventId, change: 'cancelled' } })),
+      // A member who stays assigned while the team changes around them is notified their assignment was updated
+      // (AC2); the first line names the event so the preview headline identifies it.
+      ...(rosterChanged ? kept : []).map(userId => ({ userId, eventId, changeRequestId: null, type: 'tech_support_assignment_updated',
+        title: `On-site support updated: ${event.name}`, message: `On-site support updated: ${event.name}\nThe on-site technical support team for ${event.name} has changed. Your assignment remains active.`,
+        details: { eventId, change: 'updated' } })),
     ];
     const stored = notes.length ? await notificationService.insertNotifications(client, notes) : [];
     await client.query('COMMIT');
