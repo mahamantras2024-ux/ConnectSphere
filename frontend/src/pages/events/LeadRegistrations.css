@@ -1,0 +1,13 @@
+.lead-registration-view { display:grid; gap:1rem; padding:1.5rem; }
+.lead-registration-view h2,.lead-registration-view h3,.lead-registration-view p { margin:0; }
+.lead-registration-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.75rem; margin:0; }
+.lead-registration-metrics>div { background:#f3f5eb; border:1px solid #e0e5d3; border-radius:12px; padding:1rem; }
+.lead-registration-metrics dt { font-size:.8rem; color:#586343; }
+.lead-registration-metrics dd { margin:.35rem 0 0; font-size:1.6rem; font-weight:650; }
+.lead-registration-table { overflow-x:auto; border:1px solid #e0e5d3; border-radius:12px; }
+.lead-registration-table table { width:100%; border-collapse:collapse; text-align:left; }
+.lead-registration-table th,.lead-registration-table td { padding:.8rem 1rem; border-bottom:1px solid #e9ecdf; }
+.lead-registration-table th { background:#f7f8f2; font-size:.8rem; color:#586343; }
+.lead-registration-table tr:last-child td { border-bottom:0; }
+.lead-registration-view ol { padding-left:1.5rem; display:grid; gap:.5rem; }
+@media(max-width:480px) { .lead-registration-metrics { grid-template-columns:1fr; } }
