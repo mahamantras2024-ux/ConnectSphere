@@ -11,9 +11,8 @@ function staffStatus(status) {
   return ['pending', 'approved', 'rejected', 'cancelled'].includes(status) ? status : 'pending';
 }
 
-/** Converts the coordinator's persisted approval into the venue-facing confirmed lifecycle stage. */
+/** Maps early request stages to venue planning; SCRUM-92 reserves Confirmed for explicit final confirmation. */
 function eventLifecycleStatus(status) {
-  if (status === 'approved') return 'confirmed';
   return EVENT_STATUSES.includes(status) ? status : 'planning';
 }
 

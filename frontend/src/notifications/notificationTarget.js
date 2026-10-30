@@ -36,6 +36,8 @@ export const SAFETY_EVENT_ANCHOR = (id) => `safety-event-${id}`;
  * @returns {string} an in-app path.
  */
 export function notificationTarget(notification, role) {
+  // Organisation colleagues have status-only access; this target never opens another organiser’s private detail page.
+  if (notification.type === 'event_request_status_changed' && role === 'event_organiser' && notification.event_id != null) return `/organizer/events/${notification.event_id}/status`;
   if (notification.type === 'event_awaiting_assignment') return '/coordinator-lead/dashboard';
   // Tech-support work is dashboard-owned, so route by type before any role/event-page branch below.
   if (TECH_SUPPORT_TYPES.has(notification.type)) return '/tech-support/dashboard';

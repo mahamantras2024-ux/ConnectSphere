@@ -1,7 +1,6 @@
 // File: Tests the Event Coordinator Approves/Rejects Event story end to end against real PostgreSQL in a disposable schema.
 // Test scope: Real routes, SQL, constraints and transactions; only Gmail delivery is replaced. Shared application records remain untouched.
-// AC1-AC7 plus the Week 7 Operational Safety Check prerequisite, using the agreed rule (approve needs arrangements and a
-// passed safety check; reject is allowed when arrangements fail; clarifications block both).
+// AC1-AC7 plus the Week 7 Operational Safety Check prerequisite, using the agreed rule (SCRUM-92 separates initial approval from confirmation; clarifications block initial decisions).
 require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
@@ -101,10 +100,11 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.deepEqual((await as('chris', 'POST', '/events/1/safety-changes/resolve', { area: 'technical' })).body.open, []);
       assert.deepEqual((await as('sam', 'GET', '/safety/checks')).body.events.map((event) => [event.name, event.latest_safety_check.change_areas]), [['Workshop', ['technical']]]);
       const review = (await as('chris', 'GET', '/events/1/decision')).body;
-      assert.deepEqual(review.allowed, { approved: false, rejected: true });
-      assert.equal(review.blocked.approved.code, 'SAFETY_CHANGES_REQUESTED');
+      assert.deepEqual(review.allowed, { approved: true, rejected: true });
+      assert.equal(review.blocked.approved, null);
       assert.equal(review.safetyCheck.notes, 'Move the projector off the exit route');
-      assert.equal((await as('chris', 'POST', '/events/1/decision', { decision: 'approved' })).body.code, 'SAFETY_CHANGES_REQUESTED');
+      // SCRUM-92: safety readiness gates final confirmation; Submitted cannot skip initial approval.
+      assert.equal((await as('chris', 'POST', '/events/1/status', { status: 'confirmed' })).body.code, 'INVALID_TRANSITION');
       assert.equal(review.readiness.find((item) => item.name === 'safetyPassed').met, false);
 
       // ---------- AC7: an outstanding clarification blocks both decisions until the organiser answers ----------
@@ -133,11 +133,18 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
         ['approved', 'approved', 'chris', null]);
       assert.equal('safetyCheck' in organiserView, false);
       assert.equal((await as('chris', 'POST', '/events/1/decision', { decision: 'rejected' })).body.code, 'ALREADY_DECIDED');
+      // SCRUM-92 AC5/AC6/AC8: real SQL retains initial approval across manual planning and confirmation.
+      assert.equal((await as('chris', 'POST', '/events/1/status', { status: 'planning' })).status, 200);
+      assert.equal((await as('chris', 'POST', '/events/1/status', { status: 'confirmed' })).status, 200);
+      const finalView = (await as('chris', 'GET', '/events/1/decision')).body;
+      assert.equal(finalView.status, 'confirmed');
+      assert.equal(finalView.outcome.decision, 'approved');
+      assert.equal((await client.query('SELECT status FROM events WHERE id=1')).rows[0].status, 'confirmed');
       // The decided event leaves the safety queue.
       assert.deepEqual((await as('sam', 'GET', '/safety/checks')).body.events, []);
 
       // ---------- AC3/AC4/AC6: a request without a venue can still be rejected, with the reason kept and sent ----------
-      assert.equal((await as('chris', 'POST', '/events/2/decision', { decision: 'approved' })).body.code, 'VENUE_NOT_CONFIRMED');
+      assert.equal((await as('chris', 'GET', '/events/2/decision')).body.readiness.find(item => item.name === 'venueConfirmed').met, false);
       assert.equal((await as('chris', 'POST', '/events/2/decision', { decision: 'rejected', reason: ' No suitable venue is available. ' })).status, 200);
       assert.deepEqual((await client.query('SELECT status, decision_reason FROM events WHERE id = 2')).rows[0],
         { status: 'rejected', decision_reason: 'No suitable venue is available.' });

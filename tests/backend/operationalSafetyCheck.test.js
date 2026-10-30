@@ -319,11 +319,11 @@ test('OFC AC3 - the organiser sees which stages need changes and the Safety Offi
   assert.deepEqual(result.body, { status: 'submitted', outcome: null, safetyChanges: { open: [{ area: 'venue' }, { area: 'event_details' }], notes: 'Second exit needed' } });
 });
 // Test case: Once the changes are complete the page no longer reports them, but approval still needs a new check (AC5).
-test('OFC AC4/AC5 - after the changes are complete approval is still blocked until a new check passes', async () => {
-  mockPool(coordinator, (sql) => (sql.includes('AS pending_clarifications') ? { rows: [{ ...sentBack, safety_changes_open: [] }] } : { rows: [{ id: 101 }] }));
+test('SCRUM-92 AC6 / OFC AC4/AC5 - final confirmation waits for a new passed check', async () => {
+  mockPool(coordinator, (sql) => (sql.includes('AS pending_clarifications') ? { rows: [{ ...sentBack, status: 'planning', safety_changes_open: [] }] } : { rows: [{ id: 101 }] }));
   const result = await request('/api/events/101/decision');
   assert.equal('safetyChanges' in result.body, false);
-  assert.equal(result.body.blocked.approved.code, 'SAFETY_CHANGES_REQUESTED');
+  assert.equal(result.body.transitions.find(action => action.status === 'confirmed').blocked.code, 'SAFETY_CHANGES_REQUESTED');
 });
 
 // Regression: a rejected safety check that named revision stages returns to the queue after the final stage is resolved.

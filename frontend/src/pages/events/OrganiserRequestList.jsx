@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '../../api/client';
 import ActionConfirmation from '../../components/ActionConfirmation';
+import { requestStatusLabel } from './requestStatusLabel';
 
-/** Groups owned requests into rows and confirms draft deletion/submission before changing stored state. */
+/** Groups organisation-visible requests; private details and confirmed draft actions remain submitter-only. */
 export default function OrganiserRequestList({ events, onChange, token }) {
   const location = useLocation();
   const [pending, setPending] = useState(null);
@@ -53,14 +54,15 @@ export default function OrganiserRequestList({ events, onChange, token }) {
         {items.map(event => <li className="event-request-row" key={event.id}>
           <div>
             <h3>{event.name || 'Untitled Event'}</h3><p>{event.purpose || 'No purpose provided'}</p>
-            <span className={`status-badge status-${isInProgress(event) ? 'in_progress' : event.status}`}>
-              {isInProgress(event) ? 'In progress' : event.status?.replace(/_/g, ' ') || 'Draft'}
+            <span className={`status-badge status-${event.status}`}>
+              {requestStatusLabel(event.status)}
             </span>
-            {event.clarification_outstanding && <span className="status-badge status-clarification_outstanding">Clarification outstanding</span>}
+            {event.clarification_outstanding && <><span className="status-badge status-clarification_outstanding">Clarification outstanding</span><p>Action required: respond to clarification.</p></>}
           </div>
           <div className="request-row-actions">
-            <Link className="button-link button-secondary" state={{ returnTo: location.pathname }} to={`/organizer/events/${event.id}`}>View details</Link>
-            {isDraft(event) && <>
+            <Link className="button-link button-secondary" to={`/organizer/events/${event.id}/status`}>View status</Link>
+            {event.can_manage !== false && <Link className="button-link button-secondary" state={{ returnTo: location.pathname }} to={`/organizer/events/${event.id}`}>View details</Link>}
+            {isDraft(event) && event.can_manage !== false && <>
               <button disabled={busy} className="button-secondary" onClick={() => review(event, 'submit')}>Submit draft</button>
               <button disabled={busy} className="button-secondary" onClick={() => review(event, 'delete')}>Delete draft</button>
             </>}
