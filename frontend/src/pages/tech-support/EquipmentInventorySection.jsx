@@ -255,7 +255,8 @@ const CALENDAR_STYLES = `
 .equipment-calendar-section .equipment-calendar-window {
   position: static;
   gap: 0.0625rem;
-  padding: 0.25rem 0.5rem;
+  /* Match quiet-day status height; reservation wrappers must not add vertical inset. */
+  padding: 0 0.5rem;
   border: 0;
   justify-items: center;
   text-align: center;
