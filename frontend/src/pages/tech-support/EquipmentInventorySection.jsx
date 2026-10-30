@@ -488,21 +488,25 @@ export default function EquipmentInventorySection({
                 <button
                   type="button"
                   className="button-secondary"
+                  aria-label="Previous month"
+                  title="Previous month"
                   onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() - 1, 1)))}
                   disabled={!canMoveToPreviousMonth}
                 >
-                  Previous month
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m14 6-6 6 6 6" /></svg>
                 </button>
-                <span>
+                <span aria-live="polite" aria-atomic="true">
                   {getMonthLabel(displayedMonth.toISOString().slice(0, 10))}
                 </span>
                 <button
                   type="button"
                   className="button-secondary"
+                  aria-label="Next month"
+                  title="Next month"
                   onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1)))}
                   disabled={!canMoveToNextMonth}
                 >
-                  Next month
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
                 </button>
               </div>
               <div className="equipment-calendar-assets">

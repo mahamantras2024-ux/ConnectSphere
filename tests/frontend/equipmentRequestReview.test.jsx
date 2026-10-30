@@ -52,6 +52,46 @@ it('Navigation AC1 AC2 - places equipment tabs beside Dashboard and keeps their 
   expect(screen.getByRole('tabpanel').id).toBe('support-panel-inventory');
 });
 
+it('Workspace AC1 AC2 - Dashboard and equipment sections show only their own content and active control', async () => {
+  // Arrange the full workspace on Dashboard, rather than preselecting an equipment section.
+  localStorage.setItem('cs_token', 'support-token');
+  render(<MemoryRouter initialEntries={['/tech-support/dashboard']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  const dashboard = await screen.findByRole('link', { name: 'Dashboard' });
+  await screen.findByRole('heading', { name: 'Assigned events' });
+  expect(screen.getByRole('heading', { name: 'Notifications' })).toBeTruthy();
+  expect(screen.queryByRole('tabpanel')).toBeNull();
+  expect(dashboard.getAttribute('aria-current')).toBe('page');
+  // Each selection must remove overview content and every other panel, rather than merely scroll to it.
+  for (const [label, id] of [['Equipment info','inventory'], ['Equipment request review','review'], ['Equipment reservation','reservations']]) {
+    fireEvent.click(screen.getByRole('tab', { name: label }));
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(screen.getByRole('tabpanel').id).toBe(`support-panel-${id}`);
+    expect(screen.queryByRole('heading', { name: 'Assigned events' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
+    expect(dashboard.getAttribute('aria-current')).not.toBe('page');
+    expect(dashboard.classList.contains('active')).toBe(false);
+  }
+  // Dashboard restores the overview even when already on the same route.
+  fireEvent.click(dashboard);
+  expect(await screen.findByRole('heading', { name: 'Assigned events' })).toBeTruthy();
+  expect(screen.queryByRole('tabpanel')).toBeNull();
+  expect(screen.queryByRole('tab', { selected: true })).toBeNull();
+  expect(dashboard.classList.contains('active')).toBe(true);
+});
+
+it.each(['inventory','review','reservations','unknown'])('Workspace AC3 - restores the section URL %s and safely falls back for an unknown section', async section => {
+  // A refreshed or shared URL must select the same section; unknown values show Dashboard.
+  localStorage.setItem('cs_token', 'support-token');
+  render(<MemoryRouter initialEntries={[`/tech-support/dashboard?section=${section}`]}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  if (section === 'unknown') {
+    expect(await screen.findByRole('heading', { name: 'Assigned events' })).toBeTruthy();
+    expect(screen.queryByRole('tabpanel')).toBeNull();
+  } else {
+    expect((await screen.findByRole('tabpanel')).id).toBe(`support-panel-${section}`);
+    expect(screen.queryByRole('heading', { name: 'Assigned events' })).toBeNull();
+  }
+});
+
 beforeEach(() => {
   localStorage.clear();
   let pendingRequest = eventRequest;

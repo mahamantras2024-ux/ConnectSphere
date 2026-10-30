@@ -1,6 +1,7 @@
 // File: Displays the Technical Support dashboard and its authenticated pending equipment-review queue.
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
 import NotificationsPanel from '../../components/NotificationsPanel';
@@ -377,7 +378,15 @@ export default function TechSupportDashboard() {
   const [issueError, setIssueError] = useState('');
   const [requestError, setRequestError] = useState('');
   const [toast, setToast] = useState(null);
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSection = searchParams.get('section');
+  const activeTab = ['inventory', 'review', 'reservations'].includes(selectedSection) ? selectedSection : 'dashboard';
+  /** Keep section selection in the URL so Dashboard, refresh and browser history restore the correct content. */
+  function setActiveTab(section) {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', section);
+    setSearchParams(next);
+  }
   const [navigationTarget, setNavigationTarget] = useState(null);
 
   // The dashboard owns tab state; mount its controls beside Dashboard after the shared header commits.
@@ -520,7 +529,7 @@ export default function TechSupportDashboard() {
           id={`support-tab-${tab.id}`}
           aria-selected={activeTab === tab.id}
           aria-controls={`support-panel-${tab.id}`}
-          tabIndex={activeTab === tab.id ? 0 : -1}
+          tabIndex={activeTab === tab.id || (activeTab === 'dashboard' && tab.id === 'inventory') ? 0 : -1}
           className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
           onClick={() => setActiveTab(tab.id)}
           onKeyDown={event => {
@@ -552,12 +561,18 @@ export default function TechSupportDashboard() {
     <div className="page">
       <style>{dashboardStyles}</style>
       <PageIntro
-        title="Technical Support Dashboard"
+        title={activeTab === 'dashboard' ? 'Technical Support Dashboard' : tabs.find(tab => tab.id === activeTab).label}
         eyebrow="Internal workspace"
-        description="Review equipment requests, reserve equipment, and release allocations when events change."
+        description={activeTab === 'dashboard'
+          ? 'Your assigned events and latest updates.'
+          : 'Manage equipment using the selected section below.'}
       />
-      <NotificationsPanel />
-      <OnSiteSupportSection token={token} />
+      {activeTab === 'dashboard' && (
+        <div className="support-overview">
+          <NotificationsPanel />
+          <OnSiteSupportSection token={token} />
+        </div>
+      )}
       {toast && (
         <div
           role="status"
@@ -569,11 +584,6 @@ export default function TechSupportDashboard() {
         </div>
       )}
       <div className="support-management-workspace">
-        <div className="onsite-support-heading support-workspace-heading">
-          <div>
-            <h2>Equipment management</h2>
-          </div>
-        </div>
         {navigationTarget ? createPortal(equipmentNavigation, navigationTarget) : equipmentNavigation}
         {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">

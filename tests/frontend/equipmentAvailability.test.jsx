@@ -395,6 +395,27 @@ it('Calendar AC1 AC2 - removes the note and gives unscheduled days one stock lab
   expect(screen.queryByText(/Unscheduled dates are available/)).toBeNull();
 });
 
+it('Calendar AC3 - icon-only month controls keep accessible names and navigation limits', () => {
+  // Arrange a calendar at the start of the rolling horizon.
+  render(<EquipmentInventorySection inventory={[inventory[0]]} error="" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search equipment by ID or name' }), { target: { value: 'PROJ-001' } });
+  const previous = screen.getByRole('button', { name: 'Previous month' });
+  const next = screen.getByRole('button', { name: 'Next month' });
+  // Assert appearance through semantic markup: icons are decorative and names remain on the buttons.
+  for (const button of [previous, next]) {
+    expect(button.textContent.trim()).toBe('');
+    expect(button.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+  }
+  expect(previous.disabled).toBe(true);
+  // Act: the same compact controls must still move forward and back.
+  fireEvent.click(next);
+  expect(screen.getByText('November 2026')).toBeTruthy();
+  expect(previous.disabled).toBe(false);
+  fireEvent.click(previous);
+  expect(screen.getByText('October 2026')).toBeTruthy();
+  expect(previous.disabled).toBe(true);
+});
+
 // AC1 - The current month shows only the remaining calendar weeks instead of blank past weeks.
 it('AC1 - keeps the current month calendar compact from today onward', () => {
   // Arrange

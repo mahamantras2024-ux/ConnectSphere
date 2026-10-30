@@ -158,7 +158,7 @@ it('AC1-AC3 - marks equipment unavailable and reports how many reservations were
     currentInventory[0] = { ...inventory[0], status: 'maintenance', availability_status: 'Unavailable' };
     return { equipment: currentInventory[0], affectedIssues: [issue] };
   });
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
 
   const row = await screen.findByRole('row', { name: /PROJ-001 Projector/ });
   fireEvent.change(within(row).getByLabelText('Status for PROJ-001'), { target: { value: 'Unavailable' } });

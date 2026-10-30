@@ -1,5 +1,5 @@
 // File: Shows working role-specific links and secure switching between provisioned roles.
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoute, roleLabels } from '../auth/dashboardRoutes';
@@ -8,6 +8,10 @@ import NotificationBell from './NotificationBell';
 export default function Navbar() {
   const { user, logout, switchRole } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Equipment sections share the dashboard route, but only one header control should appear active.
+  const equipmentSelected = user?.role === 'technical_support' &&
+    ['inventory', 'review', 'reservations'].includes(new URLSearchParams(location.search).get('section'));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const external = ['event_organiser', 'attendee'].includes(user?.role);
@@ -24,7 +28,8 @@ export default function Navbar() {
   return <><a className="skip-link" href="#main-content">Skip to content</a><nav className="navbar" aria-label="Main navigation">
     <Link className="brand" to={user ? getDashboardRoute(user.role) : '/external/login'}><span className="brand-mark" aria-hidden="true">C<span>·</span></span><span>ConnectSphere<small>Events, thoughtfully connected.</small></span></Link>
     <div className="nav-links">{user ? <>
-      <NavLink to={getDashboardRoute(user.role)}>{workspaceLabel}</NavLink>
+      <NavLink to={getDashboardRoute(user.role)} aria-current={equipmentSelected ? false : 'page'}
+        className={({ isActive }) => isActive && !equipmentSelected ? 'active' : undefined}>{workspaceLabel}</NavLink>
       {/* Technical Support owns the controls; this slot keeps them beside Dashboard in the shared header. */}
       {user.role === 'technical_support' && <div id="technical-support-equipment-navigation" className="equipment-header-navigation" />}
       {/* Venue discovery has its own workspace; it does not belong inside Assigned Events. */}
