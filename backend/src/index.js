@@ -11,6 +11,7 @@ const venueRoutes = require('./routes/venueRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { pool } = require('./config/db');
 const { startDailyVenueReminderScheduler } = require('./services/venueEventStatus');
+const { startHoldExpiryScheduler } = require('./services/venueHolds');
 
 const app = express();
 
@@ -57,6 +58,7 @@ if (require.main === module) {
     });
     // The persisted last-sent timestamp makes this hourly scheduler safe across restarts and multiple checks.
     startDailyVenueReminderScheduler(pool);
+    startHoldExpiryScheduler(pool);
   });
 }
 

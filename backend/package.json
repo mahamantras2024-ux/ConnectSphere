@@ -17,6 +17,7 @@
     "migrate:attendee-withdrawal": "node src/db/migrateExternalEvents.js --attendee-withdrawal",
     "migrate:technical-support": "node src/db/migrateTechnicalSupportAssignments.js",
     "migrate:venue-booking-requests": "node src/db/migrateVenueBookingRequests.js",
+    "migrate:venue-holds": "node src/db/migrateVenueHolds.js",
     "migrate:venue-staff-event-status": "node src/db/migrateVenueStaffEventStatus.js",
     "migrate:venue-reminder-frequency": "node src/db/migrateVenueStaffEventStatus.js --reminder-frequency",
     "seed:venue-event-status-demo": "node src/db/seedVenueEventStatusDemo.js",

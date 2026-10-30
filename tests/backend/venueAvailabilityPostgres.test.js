@@ -25,9 +25,16 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     await adminQuery(`CREATE SCHEMA ${schema}`);
     // pg keeps the password non-enumerable; preserve it explicitly without logging credentials.
     database = new Pool({ ...pool.options, password: pool.options.password, options: `-c search_path=${schema}`, application_name: schema, max: 10 });
-    await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT, role TEXT, auth_version INTEGER DEFAULT 0, roles TEXT[] DEFAULT '{}');
+    await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT, full_name TEXT, role TEXT, auth_version INTEGER DEFAULT 0, roles TEXT[] DEFAULT '{}');
       CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id), name TEXT,
+        organiser_id INTEGER, status TEXT DEFAULT 'submitted', is_draft BOOLEAN DEFAULT false, equipment_items JSONB DEFAULT '[]',
+        technical_support_required BOOLEAN DEFAULT false, video_conferencing_required BOOLEAN DEFAULT false,
+        equipment_notes TEXT, equipment_confirmed_at TIMESTAMPTZ, decision_reason TEXT, decided_at TIMESTAMPTZ,
+        decided_by INTEGER, safety_changes_open TEXT[] DEFAULT '{}', proposed_date DATE, proposed_end_time TIME,
         expected_attendance INTEGER DEFAULT 100, room_layout_preference TEXT DEFAULT 'Seminar', accessibility_requirements TEXT[] DEFAULT '{Ramp}');
+      CREATE TABLE event_clarification_requests(id SERIAL PRIMARY KEY,event_id INTEGER,status TEXT);
+      CREATE TABLE event_safety_checks(id SERIAL PRIMARY KEY,event_id INTEGER,safety_officer_id INTEGER,
+        outcome TEXT,notes TEXT,checked_at TIMESTAMPTZ,change_areas TEXT[]);
       CREATE TABLE notifications(id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id), event_id INTEGER,
         change_request_id INTEGER, type TEXT, title TEXT, message TEXT, details JSONB);
       CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00');
@@ -37,7 +44,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
     try {
-      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql']) await client.query(migration(file));
+      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql','migrations/019-venue-tentative-holds.sql']) await client.query(migration(file));
     } finally { client.release(); }
     // Redirect only connection acquisition. All route SQL, constraints, locking and commits run on real PostgreSQL.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));
@@ -103,6 +110,12 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Act: apply the actual additive migration twice with data already present.
     const { setup } = require('../../backend/src/db/setupVenueAvailability');
     await setup(); await setup();
+    // The historical setup installs its original guard; replay the latest additive migration to exercise current behavior.
+    const lifecycle = await database.connect();
+    try {
+      await lifecycle.query(migration('migrations/019-venue-tentative-holds.sql'));
+      await lifecycle.query(migration('migrations/019-venue-tentative-holds.sql'));
+    } finally { lifecycle.release(); }
     // Assert: no status/deadline rewriting or loss of historical records is allowed.
     assert.deepEqual((await database.query('SELECT * FROM venue_bookings ORDER BY id')).rows, before);
     assert.equal(before[0].hold_expires_at, null);
@@ -154,7 +167,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     const gate = await database.connect();
     await gate.query('BEGIN');
     await gate.query("INSERT INTO venue_unavailability(venue_id,reason,start_datetime,end_datetime) VALUES (7,'Repair',$1,$2)", [at('10:30'), at('11:00')]);
-    const approval = request(`/7/requests/${created.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2);
+    const approval = request(`/7/requests/${created.body.request.id}/decision`, { decision: 'approved', holdExpiresAt:'2099-01-01T00:00:00Z' }, 'PUT', 2);
     let response;
     try { await waitForBlockedWriters(1); }
     finally { await gate.query('COMMIT'); gate.release(); response = await approval; }
@@ -186,7 +199,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     await database.query("UPDATE venue_bookings SET created_at=now()-interval '2 days',hold_expires_at=now()-interval '1 day'");
     // Act: another coordinator request acquires the released slot, then staff try the old request.
     const replacement = await request('/7/requests', { ...body, eventId: 4 });
-    const late = await request(`/7/requests/${created.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2);
+    const late = await request(`/7/requests/${created.body.request.id}/decision`, { decision: 'approved', holdExpiresAt:'2099-01-01T00:00:00Z' }, 'PUT', 2);
     // Assert: expiration neither confirms the old request nor gives it priority over the new hold.
     assert.equal(replacement.status, 201);
     assert.equal(late.status, 409);
@@ -204,12 +217,12 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     assert.equal(queue.body.requests[0].expected_attendance, 40);
     assert.equal(queue.body.requests[0].room_layout_preference, 'Theatre');
     assert.deepEqual(queue.body.requests[0].accessibility_requirements, ['Step-free']);
-    assert.equal((await request(`/8/requests/${created.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2)).status, 404);
+    assert.equal((await request(`/8/requests/${created.body.request.id}/decision`, { decision: 'approved', holdExpiresAt:'2099-01-01T00:00:00Z' }, 'PUT', 2)).status, 404);
     assert.equal((await request(`/7/requests/${created.body.request.id}/decision`, { decision: 'rejected' }, 'PUT', 2)).status, 200);
     const replacement = await request('/7/requests', body);
     assert.equal(replacement.status, 201);
-    assert.equal((await request(`/7/requests/${replacement.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2)).status, 200);
-    assert.deepEqual((await database.query('SELECT status,decision_by FROM venue_bookings ORDER BY id')).rows, [{ status: 'rejected', decision_by: 2 }, { status: 'approved', decision_by: 2 }]);
+    assert.equal((await request(`/7/requests/${replacement.body.request.id}/decision`, { decision: 'approved', holdExpiresAt:'2099-01-01T00:00:00Z' }, 'PUT', 2)).status, 200);
+    assert.deepEqual((await database.query('SELECT status,decision_by FROM venue_bookings ORDER BY id')).rows, [{ status: 'rejected', decision_by: 2 }, { status: 'tentative', decision_by: 2 }]);
     // SCRUM-43 AC5/AC7: each committed decision has a separate durable coordinator/audit notice.
     const notices = (await database.query('SELECT user_id, details FROM notifications ORDER BY id')).rows;
     assert.deepEqual(notices.map(note => [note.user_id, note.details.decisionBy, note.details.decision]), [[1, 2, 'rejected'], [1, 2, 'approved']]);
@@ -220,11 +233,11 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Arrange: both staff calls target the same locked pending request; PostgreSQL supplies real serialization.
     const created = await request('/7/requests', body);
     const path = `/7/requests/${created.body.request.id}/decision`;
-    const decisions = await Promise.all(['approved', 'rejected'].map(decision => request(path, { decision }, 'PUT', 2)));
+    const decisions = await Promise.all(['approved', 'rejected'].map(decision => request(path, { decision,holdExpiresAt:'2099-01-01T00:00:00Z' }, 'PUT', 2)));
     assert.deepEqual(decisions.map(result => result.status).sort(), [200, 409]);
     const persisted = (await database.query('SELECT status, decision_by, updated_at FROM venue_bookings')).rows[0];
     const notes = (await database.query('SELECT details FROM notifications')).rows;
-    assert.equal(notes.length, 1); assert.equal(notes[0].details.decision, persisted.status);
+    assert.equal(notes.length, 1); assert.equal(notes[0].details.decision, persisted.status==='tentative'?'approved':persisted.status);
     assert.equal(notes[0].details.decisionBy, persisted.decision_by);
     assert.equal(new Date(notes[0].details.decidedAt).getTime(), persisted.updated_at.getTime());
   });
@@ -281,7 +294,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Act: the persisted closure must affect both API paths and the PostgreSQL booking guard.
     const saved = await request('/7/schedule', { date, periods: [{ status: 'unavailable', start: '12:00', end: '13:00' }] }, 'PUT', 2);
     const newRequest = await request('/7/requests', { ...body, eventId: 4, startDatetime: at('12:30'), endDatetime: at('12:45') });
-    const approval = await request(`/7/requests/${pending.body.request.id}/decision`, { decision: 'approved' }, 'PUT', 2);
+    const approval = await request(`/7/requests/${pending.body.request.id}/decision`, { decision: 'approved', holdExpiresAt:'2099-01-01T00:00:00Z' }, 'PUT', 2);
     const direct = "INSERT INTO venue_bookings(venue_id,event_id,requested_by,start_datetime,end_datetime,status) VALUES (7,4,1,$1,$2,'approved')";
     // Assert: no available mark or stale pending hold overrides the unavailable period.
     assert.equal(saved.status, 200);
@@ -290,4 +303,55 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     await assert.rejects(database.query(direct, [at('12:30'), at('12:45')]), { code: '23P01' });
     assert.deepEqual((await database.query('SELECT status FROM venue_bookings')).rows, [{ status: 'pending' }]);
   });
+  test('SCRUM-107 AC3 AC4 AC6 - PostgreSQL rejects expired confirmation and concurrent workers notify only once', async () => {
+    // Arrange: a real staff-approved hold passes its deadline while the app is offline.
+    const held = (await database.query(`INSERT INTO venue_bookings
+      (venue_id,event_id,requested_by,start_datetime,end_datetime,status,hold_expires_at)
+      VALUES (7,3,1,$1,$2,'tentative',clock_timestamp()+interval '1 second') RETURNING id`, [at('10:00'),at('11:00')])).rows[0];
+    await database.query('SELECT pg_sleep(1.1)');
+    // Act / Assert: the trigger independently rejects a direct database attempt to confirm the expired row.
+    await assert.rejects(database.query("UPDATE venue_bookings SET status='approved' WHERE id=$1",[held.id]),
+      error=>error.code==='23514' && error.constraint==='venue_hold_expiry_guard');
+    const {expireVenueHolds}=require('../../backend/src/services/venueHolds');
+    const counts=await Promise.all([expireVenueHolds(database),expireVenueHolds(database)]);
+    assert.equal(counts[0]+counts[1],1);
+    assert.equal((await database.query("SELECT count(*)::int AS count FROM notifications WHERE details->>'kind'='venue_hold_expired'")).rows[0].count,1);
+    assert.equal((await database.query('SELECT status FROM venue_bookings WHERE id=$1',[held.id])).rows[0].status,'expired');
+  });
+
+  test('SCRUM-107 AC5 AC6 - expired confirmation cannot displace a concurrent fresh booking', async () => {
+    // Arrange: the old row is retained as expired history and no longer reserves the slot.
+    const expired=(await database.query(`INSERT INTO venue_bookings
+      (venue_id,event_id,requested_by,start_datetime,end_datetime,status,hold_expires_at)
+      VALUES (7,3,1,$1,$2,'expired',clock_timestamp()-interval '1 second') RETURNING id`,[at('10:00'),at('11:00')])).rows[0];
+    // Act: fresh booking and late confirmation contend for the same venue lock.
+    const [late,fresh]=await Promise.all([
+      request(`/7/requests/${expired.id}/confirm`,{},'PUT',1),
+      request('/7/requests',{...body,eventId:4}),
+    ]);
+    // Assert: request ordering never gives the old expired arrangement priority over the fresh request.
+    assert.equal(late.status,409);assert.equal(fresh.status,201);
+    assert.deepEqual((await database.query('SELECT status FROM venue_bookings ORDER BY id')).rows,[{status:'expired'},{status:'pending'}]);
+  });
+
+  test('SCRUM-107 AC1 AC2 AC3 - staff approval and deadline replacement persist before coordinator confirmation', async () => {
+    // Arrange: create an actual request; staff approval must remain tentative in PostgreSQL.
+    const created=await request('/7/requests',body);
+    const route=`/7/requests/${created.body.request.id}`;
+    const first=new Date(Date.now()+3600000).toISOString();
+    const replacement=new Date(Date.now()+7200000).toISOString();
+    const approval=await request(`${route}/decision`,{decision:'approved',holdExpiresAt:first},'PUT',2);
+    assert.equal(approval.status,200);assert.equal(approval.body.request.status,'tentative');
+    // Act: replace the deadline through the staff endpoint, then finalize as the assigned coordinator.
+    const updated=await request(`${route}/expiry`,{holdExpiresAt:replacement},'PUT',2);
+    assert.equal(updated.status,200);
+    assert.equal(updated.body.request.hold_expires_at,replacement);
+    const confirmed=await request(`${route}/confirm`,{},'PUT',1);
+    // Assert: a final booking retains its audit deadline but no longer expires as a tentative hold.
+    assert.equal(confirmed.status,200);
+    const saved=(await database.query('SELECT status,hold_expires_at,confirmed_by,confirmed_at FROM venue_bookings')).rows[0];
+    assert.equal(saved.status,'approved');assert.equal(saved.hold_expires_at.toISOString(),replacement);
+    assert.equal(saved.confirmed_by,1);assert.ok(saved.confirmed_at instanceof Date);
+  });
+
 });
