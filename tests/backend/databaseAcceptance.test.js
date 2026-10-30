@@ -6,6 +6,7 @@ const {describe,after}=require('node:test');
 // Load backend/.env before the shared pool is created: the pool reads its connection settings once, at require time.
 require('../../backend/node_modules/dotenv').config();
 const sharedPool=require('../../backend/src/config/db').pool;
+const { applyLiveSchema } = require('./support/liveSchema');
 // Closes the shared pool once, after all grouped fixtures have finished.
 after(()=>sharedPool.end());
 
@@ -32,9 +33,8 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     await client.query(`SET search_path TO ${schema}`);
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255), role VARCHAR(50), organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[], accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-    for (const file of ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql', 'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/009-internal-single-role.sql', 'migrations/010-venue-safety-facts.sql']) {
-      await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8'));
-    }
+    // The current production schema (every runner migration), so later columns such as emergency documents exist.
+    await applyLiveSchema(client);
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
     // Transactions (pool.connect) must also stay in the disposable schema; otherwise they would reach the shared database.
     mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
@@ -168,16 +168,8 @@ test('Sprint 1 persists roles, venue buffers and personal registrations in real 
     await client.query(`CREATE SCHEMA ${schema}`); await client.query(`SET search_path TO ${schema}`);
     await client.query(`CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, full_name VARCHAR(255), password_hash VARCHAR(255), role VARCHAR(50), organisation_name VARCHAR(255), auth_version INTEGER NOT NULL DEFAULT 0)`);
     await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[], accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/001-external-events.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/002-event-change-requests.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/003-event-clarifications.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-attachments.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/004-event-equipment-requirements.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/005-change-request-review.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/sprintOneSchema.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/venueManagementSchema.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/009-internal-single-role.sql'), 'utf8'));
-    await client.query(fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/010-venue-safety-facts.sql'), 'utf8'));
+    // The current production schema (every runner migration), so later columns such as emergency documents exist.
+    await applyLiveSchema(client);
     mock.method(pool, 'query', (sql, values) =>
       // Handles this operation using the surrounding screen or request state.
       client.query(sql, values));

@@ -236,6 +236,8 @@ test('EQ AC1 / Workflow AC2 - a database missing a migration returns a clear upd
   if(sql.includes('FROM users WHERE'))return {rows:[{id:12,email:'org@example.com',role:'event_organiser',auth_version:0}]};
   throw Object.assign(new Error('column "equipment_items" of relation "events" does not exist'),{code:'42703'});
  });
+ // Submitting runs in a transaction: route it to the same database, which is missing the column.
+ mock.method(db.pool,'connect',async()=>({release(){},query:(sql,values)=>['BEGIN','COMMIT','ROLLBACK'].includes(sql.trim())?{rows:[]}:db.pool.query(sql,values)}));
  // Act
  const result=await request('/api/events',{method:'POST',token:jwt.sign({sub:12},process.env.JWT_SECRET),body:{name:'Workshop',proposedDate:'2030-10-15',proposedStartTime:'09:00',proposedEndTime:'12:00',expectedAttendance:50}});
  // Assert
@@ -377,7 +379,8 @@ test('API startup waits for initialization before listening on a configured or d
    if(name==='dotenv')return {config(){}};
    if(name==='express')return express;
    if(name==='cors'||name==='morgan')return ()=>()=>{};
-   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;})};
+   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;}),pool:{}};
+   if(name==='./services/venueEventStatus')return {startDailyVenueReminderScheduler(){}};
    if(name==='./middleware/errorHandler')return {errorHandler(){}};
    if(name.startsWith('./routes/'))return {};
    throw new Error(`Unexpected startup dependency: ${name}`);

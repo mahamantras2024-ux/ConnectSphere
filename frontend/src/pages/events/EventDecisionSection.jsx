@@ -10,6 +10,7 @@ const REQUIREMENT_LABELS = {
   technicalConfirmed: 'Technical arrangements', safetyPassed: 'Operational safety check',
 };
 const SAFETY_LABELS = { approved: 'Passed', rejected: 'Failed', changes_requested: 'Changes requested' };
+const ACTION_LABELS = { under_review: 'Start review', planning: 'Start planning', confirmed: 'Confirm event', completed: 'Mark completed' };
 
 /** Displays a stored timestamp in Singapore time, matching how event times are entered. */
 function formatTime(value) {
@@ -27,6 +28,8 @@ function formatTime(value) {
 export default function EventDecisionSection({ event, onDecided }) {
   const { token, user } = useAuth();
   const coordinator = user.role === 'event_coordinator';
+  // Assignment is also checked by the API under a row lock; hide actions if a stale view belongs to another coordinator.
+  const assignedCoordinator = coordinator && String(event.coordinator_id) === String(user.id);
   const [review, setReview] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -36,14 +39,14 @@ export default function EventDecisionSection({ event, onDecided }) {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
 
-  // Reloads when a clarification opens or closes on this page, because that changes whether a decision is allowed.
+  // Lifecycle and clarification changes refresh the recorded outcome as well as decision readiness on an open page.
   useEffect(() => {
     api.get(`/events/${event.id}/decision`, token).then((data) => {
       // This panel is supplementary: an unexpected response (e.g. an older API) must not break the event page.
       if (typeof data.status !== 'string' || (coordinator && !Array.isArray(data.readiness))) throw new Error('The review decision is unavailable right now.');
       setReview(data); setLoadError('');
     }).catch((err) => setLoadError(err.message));
-  }, [event.id, event.clarification_outstanding, token, reloadKey, coordinator]);
+  }, [event.id, event.status, event.clarification_outstanding, token, reloadKey, coordinator]);
 
   // Sends the decision; buttons are disabled while saving so one click sends one decision.
   async function decide(decision) {
@@ -58,6 +61,21 @@ export default function EventDecisionSection({ event, onDecided }) {
     } finally {
       setSaving(false);
       // Always re-read: after success to show the stored outcome, after a 409 because something changed elsewhere.
+      setReloadKey((key) => key + 1);
+    }
+  }
+
+  /** Saves a manual lifecycle action and reloads server readiness so stale approvals cannot confirm an event. */
+  async function changeStatus(nextStatus) {
+    setSaving(true); setError(''); setStatus('');
+    try {
+      const data = await api.post(`/events/${event.id}/status`, { status: nextStatus }, token);
+      onDecided(data.event.status);
+      setStatus(data.message);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
       setReloadKey((key) => key + 1);
     }
   }
@@ -82,6 +100,17 @@ export default function EventDecisionSection({ event, onDecided }) {
       </div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
+      {assignedCoordinator && review?.transitions && (
+        <div className="grid gap-2" aria-label="Event status actions">
+          <p>Current status: <strong>{review.status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}</strong>. Initial approval is separate from final confirmation.</p>
+          {review.transitions.filter((action) => !action.blocked || action.blocked.code !== 'INVALID_TRANSITION').map((action) => (
+            <div key={action.status}>
+              <button type="button" disabled={saving || Boolean(action.blocked)} onClick={() => changeStatus(action.status)}>{ACTION_LABELS[action.status]}</button>
+              {action.blocked && <p>{action.blocked.message}</p>}
+            </div>
+          ))}
+        </div>
+      )}
       {/* Operational Feasibility Check AC3/AC4: stages the Safety Officer reopened, shown while any is still open. */}
       {review?.safetyChanges && <SafetyChangesPanel eventId={event.id} changes={review.safetyChanges} coordinator={coordinator} token={token}
         onChanged={() => setReloadKey((key) => key + 1)} />}

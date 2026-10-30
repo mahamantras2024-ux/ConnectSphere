@@ -178,8 +178,8 @@ it.each([
   expect(stageBox(item, 'Technical arrangements').disabled).toBe(disabled);
 });
 
-// Test case: Switching to Reject after ticking stages sends no stages (only change requests reopen planning).
-it('OFC AC2 - stages ticked before switching to Reject are not sent', async () => {
+// Test case: Switching to Reject after ticking a stage preserves the revision stage for reassessment.
+it('OFC AC2 - stages ticked before switching to Reject are sent for revision', async () => {
   api.post.mockResolvedValue({ message: 'Safety check recorded.' });
   const { item } = await openQueue([gala]);
   fireEvent.click(within(item).getByLabelText('Request changes'));
@@ -187,7 +187,7 @@ it('OFC AC2 - stages ticked before switching to Reject are not sent', async () =
   fireEvent.click(within(item).getByLabelText('Reject'));
   fireEvent.change(within(item).getByLabelText('Notes (required unless approving)'), { target: { value: 'Unsafe' } });
   fireEvent.click(within(item).getByRole('button', { name: 'Record safety check' }));
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/101/safety-checks', { outcome: 'rejected', notes: 'Unsafe' }, 'session-token'));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/101/safety-checks', { outcome: 'rejected', notes: 'Unsafe', changeAreas: ['venue'] }, 'session-token'));
 });
 
 // ---------- AC3/AC4/AC5: the event page while changes are open ----------

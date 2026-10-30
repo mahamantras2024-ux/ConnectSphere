@@ -180,6 +180,8 @@ it.each([['success'],['failure']])('a late %s for a previously opened record doe
   let navigate,settle7;
   function Navigator(){navigate=useNavigate();return null;}
   api.get.mockImplementation(path=>path==='/auth/me'?Promise.resolve({user})
+    // The current event's independent venue resource succeeds while its event request races.
+    :path.endsWith('/organiser-venue-bookings')?Promise.resolve({bookings:[]})
     :path==='/events/7'?new Promise((done,bad)=>{settle7={done,bad};}):Promise.resolve({event:{id:8,name:'Current record'}}));
   localStorage.setItem('cs_token','test-session');
   // Wrapped in ProtectedRoute exactly as App does, so the page renders only once the session is restored.
@@ -324,9 +326,10 @@ it.each([
     expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
-  const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/events/assignments']
+  // Parent notification system: every signed-in page reads the user's own notifications once (shared by bell and panel).
+  const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/notifications','/events/assignments']
     : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations','/events/equipment-reservation-issues']
-    : role === 'safety_officer' ? ['/auth/me','/safety/checks']
+    : role === 'safety_officer' ? ['/auth/me','/notifications','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();

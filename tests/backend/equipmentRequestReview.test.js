@@ -97,6 +97,8 @@ function mockReviewTransaction({ version = 1, reviewRows }) {
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
       if (sql.includes('FOR UPDATE OF e')) return { rows: [{ ...eventRequest, coordinator_id: null, equipment_requirements_version: version, reviewed: false }] };
       if (sql.includes('INSERT INTO event_equipment_reviews')) return { rows: reviewRows };
+      // Safety-check readiness (parent notification system): no decision context here, so the event is not ready.
+      if (sql.includes('AS pending_clarifications')) return { rows: [] };
       throw new Error(`Unexpected transaction statement: ${sql}`);
     },
   }));

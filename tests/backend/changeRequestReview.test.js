@@ -44,7 +44,7 @@ function mockAuth(user = coordinator) {
  */
 // `updatedEvent` is the event row the database returns after applying the approved changes (literal per scenario).
 function mockTransaction({ lockedRequest = pendingRequest, bookings = [booking], roleMembers = { venue_staff: [41, 42], technical_support: [61] },
-  failNotifications = false, updatedEvent = { ...event, expected_attendance: 150, proposed_end_time: '12:30:00' } } = {}) {
+  failNotifications = false, updatedEvent = { ...event, expected_attendance: 150, proposed_end_time: '12:30:00' }, readiness = [] } = {}) {
   const statements = [];
   const client = {
     released: false,
@@ -52,6 +52,9 @@ function mockTransaction({ lockedRequest = pendingRequest, bookings = [booking],
     async query(sql, values) {
       statements.push({ sql: sql.trim(), values });
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
+      // Safety-check readiness before and after applying (parent notification system); none means "not ready".
+      if (sql.includes('AS pending_clarifications')) return { rows: readiness.length ? [readiness.shift()] : [] };
+      if (sql.includes('SELECT id, name FROM events')) return { rows: [{ id: values[0], name: 'Workshop' }] };
       if (sql.includes('FROM event_change_requests r JOIN events e')) return { rows: lockedRequest ? [lockedRequest] : [] };
       if (sql.includes('UPDATE events SET')) return { rows: [{ event: updatedEvent }] };
       if (sql.includes('FROM venue_bookings vb JOIN venues')) return { rows: bookings };
@@ -381,7 +384,8 @@ test('CR AC2 - users read only their own notifications with an unread count', as
     if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
     assert.deepEqual(values, [30]);
     if (sql.includes('count(*)')) return { rows: [{ unread: 1 }] };
-    assert.match(sql, /WHERE user_id=\$1 ORDER BY created_at DESC, id DESC LIMIT 50/);
+    // Safety Officer review notifications are retained outside the ordinary 50-row window while their required review is unresolved.
+    assert.match(sql, /FROM notifications n/);
     return { rows: stored };
   });
   const result = await request('/api/notifications?userId=12');
@@ -443,6 +447,45 @@ test('CR AC2 - an equipment change request notifies the assigned coordinator', a
   assert.deepEqual(send.mock.calls.map((call) => call.arguments), [['chris@example.com', title, message]]);
   assert.equal(result.body.changeRequest.coordinator_email, undefined);
 });
+
+// ---------- Parent notification system: an approved change can make the event ready for its safety check ----------
+
+// Decision contexts as loadDecisionContext returns them: confirmed venue, no clarifications or safety changes owed.
+const readyContext = { id: 101, name: 'Workshop', status: 'submitted', is_draft: false, equipment_items: [], technical_support_required: false,
+  video_conferencing_required: false, equipment_notes: null, equipment_confirmed_at: null, pending_clarifications: 0,
+  bookings: [{ status: 'approved', hold_expires_at: null }], safety_changes_open: [], latest_safety_check: null };
+// The same event before the change, still asking for a projector that Technical Support has not confirmed.
+const waitingForTechnical = { ...readyContext, equipment_items: [{ item: 'Projector', quantity: 1 }] };
+
+// Test case: The organiser drops the only technical requirement; once approved nothing is waiting, so Safety Officers hear.
+test('NT AC1 - approving a change that removes all technical needs tells every Safety Officer the event is ready', async () => {
+  // Arrange: not ready before (projector unconfirmed), ready after (nothing technical requested).
+  mockAuth();
+  const tx = mockTransaction({ lockedRequest: { ...pendingRequest, requested_changes: { equipmentItems: [] } }, bookings: [],
+    updatedEvent: { ...event, equipment_items: [] }, roleMembers: { safety_officer: [50, 51] }, readiness: [waitingForTechnical, readyContext] });
+  const sent = mock.method(emailService, 'sendNotificationEmail', async () => {});
+  // Act
+  const result = await decide({ decision: 'approved' });
+  // Assert: one ready notice per Safety Officer, in the decision's own transaction, then emailed after commit.
+  assert.equal(result.status, 200);
+  const safetyInsert = tx.find('INSERT INTO notifications').find(({ values }) => values[3].includes('safety_check_ready'));
+  assert.deepEqual([safetyInsert.values[0], safetyInsert.values[3]], [[50, 51], ['safety_check_ready', 'safety_check_ready']]);
+  assert.ok(tx.statements.indexOf(safetyInsert) < tx.statements.findIndex((statement) => statement.sql === 'COMMIT'));
+  assert.ok(sent.mock.calls.some((call) => call.arguments[1] === 'Ready for safety check: Workshop'));
+});
+
+// Test case: A change that leaves the event unready (or was already ready) sends no safety notice, and a rejection never checks.
+for (const [label, readiness, decision] of [['still not ready', [waitingForTechnical, waitingForTechnical], 'approved'],
+  ['already ready', [readyContext, readyContext], 'approved'], ['rejected', [], 'rejected']]) {
+  test(`NT AC1 - an approved change that leaves the event ${label} notifies no Safety Officer`, async () => {
+    mockAuth();
+    const tx = mockTransaction({ roleMembers: { safety_officer: [50] }, readiness });
+    mock.method(emailService, 'sendNotificationEmail', async () => {});
+    assert.equal((await decide({ decision })).status, 200);
+    const types = tx.find('INSERT INTO notifications').flatMap(({ values }) => values[3]);
+    assert.equal(types.includes('safety_check_ready'), false);
+  });
+}
 
 // ---------- Integration with Tracks Equipment Request Status ----------
 

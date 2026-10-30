@@ -1,7 +1,6 @@
 // File: Tests the Event Coordinator Approves/Rejects Event story end to end against real PostgreSQL in a disposable schema.
 // Test scope: Real routes, SQL, constraints and transactions; only Gmail delivery is replaced. Shared application records remain untouched.
-// AC1-AC7 plus the Week 7 Operational Safety Check prerequisite, using the agreed rule (approve needs arrangements and a
-// passed safety check; reject is allowed when arrangements fail; clarifications block both).
+// AC1-AC7 plus the Week 7 Operational Safety Check prerequisite, using the agreed rule (SCRUM-92 separates initial approval from confirmation; clarifications block initial decisions).
 require('../../backend/node_modules/dotenv').config();
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,12 +11,8 @@ const jwt = require('../../backend/node_modules/jsonwebtoken');
 const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 
-const migrations = ['migrations/001-external-events.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql',
-  'migrations/002-event-change-requests.sql', 'migrations/003-event-clarifications.sql', 'migrations/004-event-attachments.sql',
-  'migrations/004-event-equipment-requirements.sql', 'migrations/005-change-request-review.sql', 'migrations/005-technical-support-reviews.sql',
-  'migrations/006-event-decisions.sql', 'migrations/010-venue-safety-facts.sql', 'migrations/011-safety-change-stages.sql',
-  // Technical Support reviews store affected items (equipment status story), so the review table needs migration 013.
-  'migrations/013-equipment-review-affected-items.sql'];
+// The current production schema (every runner migration), so later venue and notification columns always exist.
+const { liveSchemaFiles: migrations } = require('./support/liveSchema');
 const sqlFile = (file) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
 
 // Test case: Walks one event through safety review and decision and a second through rejection, checking every gate,
@@ -81,7 +76,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       const queue = (await as('sam', 'GET', '/safety/checks')).body.events;
       assert.deepEqual(queue.map((event) => [event.name, event.venues]), [['Workshop', [{ name: 'Hall A', capacity: 100, supported_layouts: ['Theatre'],
         accessibility_features: ['Ramp'], operating_hours: '08:00 - 22:00', setup_minutes: 30, turnaround_minutes: 15,
-        emergency_access: 'Two exits to Marina Road', known_restrictions: 'No open flames' }]]]);
+        // A venue with no emergency documents uploaded yet (SCRUM-98) reports an empty set.
+        emergency_access: 'Two exits to Marina Road', emergency_documents: {}, known_restrictions: 'No open flames' }]]]);
 
       // ---------- OFC AC2/AC3: the Safety Officer requests changes to the technical arrangements ----------
       assert.equal((await as('sam', 'POST', '/events/1/safety-checks', { outcome: 'changes_requested', notes: 'Widen the fire exit route' })).status, 400);
@@ -104,10 +100,11 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.deepEqual((await as('chris', 'POST', '/events/1/safety-changes/resolve', { area: 'technical' })).body.open, []);
       assert.deepEqual((await as('sam', 'GET', '/safety/checks')).body.events.map((event) => [event.name, event.latest_safety_check.change_areas]), [['Workshop', ['technical']]]);
       const review = (await as('chris', 'GET', '/events/1/decision')).body;
-      assert.deepEqual(review.allowed, { approved: false, rejected: true });
-      assert.equal(review.blocked.approved.code, 'SAFETY_CHANGES_REQUESTED');
+      assert.deepEqual(review.allowed, { approved: true, rejected: true });
+      assert.equal(review.blocked.approved, null);
       assert.equal(review.safetyCheck.notes, 'Move the projector off the exit route');
-      assert.equal((await as('chris', 'POST', '/events/1/decision', { decision: 'approved' })).body.code, 'SAFETY_CHANGES_REQUESTED');
+      // SCRUM-92: safety readiness gates final confirmation; Submitted cannot skip initial approval.
+      assert.equal((await as('chris', 'POST', '/events/1/status', { status: 'confirmed' })).body.code, 'INVALID_TRANSITION');
       assert.equal(review.readiness.find((item) => item.name === 'safetyPassed').met, false);
 
       // ---------- AC7: an outstanding clarification blocks both decisions until the organiser answers ----------
@@ -136,11 +133,18 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
         ['approved', 'approved', 'chris', null]);
       assert.equal('safetyCheck' in organiserView, false);
       assert.equal((await as('chris', 'POST', '/events/1/decision', { decision: 'rejected' })).body.code, 'ALREADY_DECIDED');
+      // SCRUM-92 AC5/AC6/AC8: real SQL retains initial approval across manual planning and confirmation.
+      assert.equal((await as('chris', 'POST', '/events/1/status', { status: 'planning' })).status, 200);
+      assert.equal((await as('chris', 'POST', '/events/1/status', { status: 'confirmed' })).status, 200);
+      const finalView = (await as('chris', 'GET', '/events/1/decision')).body;
+      assert.equal(finalView.status, 'confirmed');
+      assert.equal(finalView.outcome.decision, 'approved');
+      assert.equal((await client.query('SELECT status FROM events WHERE id=1')).rows[0].status, 'confirmed');
       // The decided event leaves the safety queue.
       assert.deepEqual((await as('sam', 'GET', '/safety/checks')).body.events, []);
 
       // ---------- AC3/AC4/AC6: a request without a venue can still be rejected, with the reason kept and sent ----------
-      assert.equal((await as('chris', 'POST', '/events/2/decision', { decision: 'approved' })).body.code, 'VENUE_NOT_CONFIRMED');
+      assert.equal((await as('chris', 'GET', '/events/2/decision')).body.readiness.find(item => item.name === 'venueConfirmed').met, false);
       assert.equal((await as('chris', 'POST', '/events/2/decision', { decision: 'rejected', reason: ' No suitable venue is available. ' })).status, 200);
       assert.deepEqual((await client.query('SELECT status, decision_reason FROM events WHERE id = 2')).rows[0],
         { status: 'rejected', decision_reason: 'No suitable venue is available.' });

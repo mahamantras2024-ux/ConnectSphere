@@ -18,7 +18,11 @@ const event = { id: 101, name: 'Community Workshop', purpose: 'Bring neighbours 
   equipment_notes: 'Two microphones', registration_required: true, registration_capacity: 35,
   special_arrangements: 'Vegetarian catering', organiser_id: 12, organiser_name: 'Alice', coordinator_name: 'Chris', status: 'submitted' };
 // Renders the application at a selected in-memory route with optional stored test-session credentials.
-function open(path, authenticated = true) {
+function open(path, authenticated = true, venueBookings = []) {
+  // Supply the new external boundary explicitly so unrelated event tests keep valid venue responses.
+  const getEventResource = api.get.getMockImplementation();
+  api.get.mockImplementation((resource, ...args) => resource.endsWith('/organiser-venue-bookings')
+    ? Promise.resolve({ bookings: venueBookings }) : getEventResource(resource, ...args));
   if (authenticated) localStorage.setItem('cs_token', 'organiser-token');
   render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><App /></AuthProvider></MemoryRouter>);
 }
@@ -38,6 +42,21 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+
+// SCRUM-104 must be reachable from the real organiser route, not only as an isolated component.
+it('SCRUM-104 AC1 AC3 - opens the managed event venue section through the organiser route', async () => {
+  // Arrange: retain real routing and authentication while replacing only API traffic.
+  const venueBookings = [{ id: 9, venue_name: 'North Hall', address: '12 North Road', capacity: 120,
+    start_datetime: '2030-04-04T02:00:00Z', end_datetime: '2030-04-04T04:00:00Z', status: 'approved' }];
+  // Act
+  open('/organizer/events/101', true, venueBookings);
+  // Assert: removing the integration or using a coordinator-only endpoint breaks this test.
+  const section = await screen.findByRole('region', { name: 'Venue arrangements' });
+  await within(section).findByText('North Hall');
+  expect(within(section).getByText('Confirmed')).toBeTruthy();
+  expect(within(section).getByText('12 North Road')).toBeTruthy();
+  expect(api.get).toHaveBeenCalledWith('/events/101/organiser-venue-bookings', 'organiser-token');
+});
 
 it.each(['light', 'dark'])('UI contrast AC1 AC2 - event text stays readable in the brand palette with %s system preference', async preference => {
   // Arrange: render real event styles. Read CSSOM explicitly because jsdom does not evaluate colour-scheme media queries.
@@ -112,11 +131,11 @@ it('AC2 - non-organisers do not receive event edit controls', async () => {
 
 it('SCRUM-90 AC4 AC5 - organiser cancellation updates the event status on the detail page', async () => {
   // Arrange: the event is published and owned by the signed-in organiser.
-  const confirmedEvent = { ...event, status: 'approved', is_draft: false, coordinator_id: 30 };
+  let confirmedEvent = { ...event, status: 'approved', is_draft: false, coordinator_id: 30 };
   api.get.mockImplementation(async path => path === '/auth/me' ? { user }
     : path === '/events/101' ? { event: confirmedEvent } : { event: confirmedEvent });
-  api.post.mockResolvedValue({ event: { id: 101, name: confirmedEvent.name, status: 'cancelled' },
-    message: 'Event cancelled. Active attendees have been notified.' });
+  api.post.mockImplementation(async () => { confirmedEvent = { ...confirmedEvent, status: 'cancelled' };
+    return { event: confirmedEvent, message: 'Event cancelled. Active attendees have been notified.' }; });
   // Act: confirm cancellation from the existing event details page.
   open('/organizer/events/101');
   fireEvent.click(await screen.findByRole('button', { name: 'Cancel event' }));
@@ -124,7 +143,7 @@ it('SCRUM-90 AC4 AC5 - organiser cancellation updates the event status on the de
   // Assert: the detail view reflects the committed status and confirms notification delivery.
   expect(await screen.findByRole('status')).toBeTruthy();
   expect(await screen.findByText('Event cancelled. Active attendees have been notified.')).toBeTruthy();
-  expect(screen.getByText('Cancelled')).toBeTruthy();
+  expect(screen.getByText('Cancelled', { selector: '.ed-badge' })).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/events/101/cancel', {}, 'organiser-token');
 });
 
@@ -291,10 +310,12 @@ it('AC1/AC2/AC3/AC5 - coordinator sends a field-specific clarification and event
 // Test case: AC4/AC5 - organiser response is shown in the event history and clears outstanding status.
 it('AC4/AC5 - organiser responds to a clarification and can see the retained response', async () => {
   const clarificationRequest = { id: 601, information_needed: ['expected_attendance'], message: 'Please confirm the count.', status: 'pending' };
-  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user }
-    : { event: { ...event, clarification_outstanding: true, clarification_requests: [clarificationRequest] } });
+  let currentEvent = { ...event, clarification_outstanding: true, clarification_requests: [clarificationRequest] };
+  api.get.mockImplementation(async (path) => path === '/auth/me' ? { user } : { event: currentEvent });
   const answered = { ...clarificationRequest, status: 'responded', organiser_response: 'The expected attendance is 45.' };
-  api.post.mockResolvedValue({ clarificationRequest: answered, clarificationOutstanding: false, message: 'Clarification response saved.' });
+  // SCRUM-93 rereads after a committed response; model the server's updated state rather than returning a stale fixture forever.
+  api.post.mockImplementation(async () => { currentEvent = { ...currentEvent, clarification_outstanding: false, clarification_requests: [answered] };
+    return { clarificationRequest: answered, clarificationOutstanding: false, message: 'Clarification response saved.' }; });
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
   fireEvent.change(screen.getByLabelText('Response or amendment to clarification 601'), { target: { value: answered.organiser_response } });
@@ -518,14 +539,16 @@ it('Clarification AC1 AC5 - validates selection prevents duplicates and reports 
 // AC4/AC5: blank replies do not resolve requests; responding to one preserves the other outstanding request.
 it('Clarification AC4 AC5 - responds once and preserves other outstanding requests',async()=>{
   const requests=[{id:601,information_needed:['expected_attendance','legacy_field'],message:'Count?',status:'pending'}, {id:602,information_needed:['purpose'],message:'Purpose?',status:'pending'}];
-  api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{event:{...event,clarification_requests:requests}});
+  let currentEvent = { ...event, clarification_requests: requests };
+  api.get.mockImplementation(async path=>path==='/auth/me'?{user}:{event:currentEvent});
   let finish;api.post.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
   open('/organizer/events/101');await screen.findByRole('heading',{name:event.name});
   const form=screen.getByLabelText('Response or amendment to clarification 601').closest('form');
   fireEvent.submit(form);expect(api.post).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('Response or amendment to clarification 601'),{target:{value:'45 people'}});
   fireEvent.submit(form);fireEvent.submit(form);expect(api.post).toHaveBeenCalledTimes(1);
-  await act(async()=>finish({clarificationRequest:{...requests[0],status:'responded',organiser_response:'45 people'},clarificationOutstanding:true,message:'Saved'}));
+  currentEvent = { ...currentEvent, clarification_outstanding: true, clarification_requests: [{ ...requests[0], status: 'responded', organiser_response: '45 people' }, requests[1]] };
+  await act(async()=>finish({clarificationRequest:currentEvent.clarification_requests[0],clarificationOutstanding:true,message:'Saved'}));
   expect(screen.getByText('45 people')).toBeTruthy();expect(screen.getByLabelText('Response or amendment to clarification 602')).toBeTruthy();
 });
 
@@ -641,12 +664,12 @@ it.each(['event_organiser', 'event_coordinator'])('UI AC1 - %s shows a red outst
 
 // UI AC2: assignment changes the organiser presentation while terminal/draft states remain explicit.
 it.each([
-  ['submitted', 3, 'In progress'], ['under_review', 3, 'In progress'],
-  ['approved', 3, 'In progress'], ['planning', 3, 'In progress'], ['confirmed', 3, 'In progress'],
-  ['submitted', null, 'submitted'], ['draft', 3, 'draft'],
-  ['cancelled', 3, 'cancelled'], ['completed', 3, 'completed'],
-])('UI AC2 - organiser displays %s with coordinator %s as %s', async (status, coordinatorId, label) => {
-  // Arrange: persisted assignment is the source of progress; no lifecycle mutation is needed.
+  ['submitted', 3, 'Submitted'], ['under_review', 3, 'Under Review'],
+  ['approved', 3, 'Approved'], ['planning', 3, 'Planning'], ['confirmed', 3, 'Confirmed'],
+  ['submitted', null, 'Submitted'], ['draft', 3, 'Draft'],
+  ['cancelled', 3, 'Cancelled'], ['completed', 3, 'Completed'],
+])('SCRUM-93 AC1/AC2 - organiser displays %s with coordinator %s as %s', async (status, coordinatorId, label) => {
+  // Arrange: SCRUM-93 displays the recorded lifecycle status regardless of assignment.
   api.get.mockImplementation(async path => path === '/auth/me' ? { user } : { events: [{ ...event, status, coordinator_id: coordinatorId }] });
   // Act and Assert: inspect the rendered status and ensure this remains a read-only change.
   open('/organizer/dashboard');
@@ -682,4 +705,75 @@ it('UI AC3 - registration question precedes a compact checkbox and saves the ans
   await waitFor(() => expect(api.put).toHaveBeenCalledWith('/events/101/non-critical', { registrationRequired: false }, 'organiser-token'));
   await screen.findByText('Saved');
   expect(screen.queryByRole('checkbox')).toBeNull();
+});
+
+it('SCRUM-93 AC3/AC5 - live status and new clarification preserve an unsaved organiser edit', async () => {
+  // Arrange: real App routing and editing, with only the HTTP responses controlled.
+  let snapshot = { ...event, can_manage: true, clarification_outstanding: false, clarification_requests: [] };
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user }
+    : path === '/events/101' ? { event }
+    : path === '/events/101/request-status' ? { event: snapshot }
+    : path === '/events/101/decision' ? { status: snapshot.status, outcome: null }
+    : { notifications: [], unreadCount: 0 });
+  open('/organizer/events/101');
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit Purpose' }));
+  const input = screen.getByLabelText('Edit Purpose');
+  fireEvent.change(input, { target: { value: 'Unsaved programme proposal' } });
+  // Act: a Coordinator changes lifecycle state and asks a new question elsewhere.
+  snapshot = { ...snapshot, status: 'planning', clarification_outstanding: true,
+    clarification_requests: [{ id: 701, status: 'pending', information_needed: ['purpose'], message: 'Please explain the programme.' }] };
+  fireEvent(window, new Event('focus'));
+  await within(screen.getByRole('region', { name: 'Request status', hidden: true })).findByText('Planning', { selector: 'strong' });
+  // Assert: polling updates status/action data while preserving the separately owned form state.
+  expect(input.value).toBe('Unsaved programme proposal');
+  expect(screen.getByText('Please explain the programme.')).toBeTruthy();
+  expect(screen.getByLabelText('Response or amendment to clarification 701')).toBeTruthy();
+});
+
+it('SCRUM-93 AC3/AC5 - a pre-response poll cannot restore an answered clarification', async () => {
+  const question = { id: 701, status: 'pending', information_needed: ['purpose'], message: 'Please explain the programme.' };
+  const original = { ...event, can_manage: true, clarification_outstanding: true, clarification_requests: [question] };
+  let current = original, reads = 0, finishOld;
+  api.get.mockImplementation(async path => {
+    if (path === '/auth/me') return { user };
+    if (path === '/events/101/request-status') {
+      reads++;
+      if (reads === 2) return new Promise(resolve => { finishOld = resolve; });
+      return { event: current };
+    }
+    if (path === '/events/101') return { event: original };
+    if (path === '/events/101/decision') return { status: 'submitted', outcome: null };
+    return { notifications: [], unreadCount: 0 };
+  });
+  const answered = { ...question, status: 'responded', organiser_response: 'A community learning session.' };
+  api.post.mockImplementation(async () => {
+    current = { ...original, clarification_outstanding: false, clarification_requests: [answered] };
+    return { clarificationRequest: answered, clarificationOutstanding: false, message: 'Response saved.' };
+  });
+  open('/organizer/events/101');
+  await within(await screen.findByRole('region', { name: 'Request status' })).findByText('Submitted', { selector: 'strong' });
+  fireEvent(window, new Event('focus'));
+  fireEvent.change(screen.getByLabelText('Response or amendment to clarification 701'), { target: { value: answered.organiser_response } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send response' }));
+  await screen.findByText(answered.organiser_response);
+  await act(async () => { finishOld({ event: original }); });
+  expect(screen.queryByText(/Action required/)).toBeNull();
+  expect(screen.queryByLabelText('Response or amendment to clarification 701')).toBeNull();
+  expect(screen.getByText(answered.organiser_response)).toBeTruthy();
+});
+
+it('SCRUM-93 AC1/AC6 - organisation colleague opens the status route without fetching private details', async () => {
+  // Arrange: real authentication, App routes and links; only HTTP returns the organisation-scoped colleague row.
+  const colleague = { ...event, organiser_id: 99, can_manage: false, status: 'under_review' };
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user }
+    : path === '/events' ? { events: [colleague] }
+    : path === '/events/101/request-status' ? { event: colleague }
+    : { notifications: [], unreadCount: 0 });
+  open('/organizer/events');
+  fireEvent.click(await screen.findByRole('link', { name: 'View status' }));
+  // Assert: a missing App route or navigation to private EventDetail would fail this oracle.
+  expect(await within(await screen.findByRole('region', { name: 'Request status' })).findByText('Under Review', { selector: 'strong' })).toBeTruthy();
+  expect(api.get).toHaveBeenCalledWith('/events/101/request-status', 'organiser-token');
+  expect(api.get).not.toHaveBeenCalledWith('/events/101', 'organiser-token');
+  expect(screen.queryByRole('button', { name: 'Edit Purpose' })).toBeNull();
 });

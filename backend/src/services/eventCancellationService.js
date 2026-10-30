@@ -2,6 +2,7 @@
 const { pool } = require('../config/db');
 const eventCancellationModel = require('../models/eventCancellationModel');
 const notificationService = require('./notificationService');
+const { notifyVenueStaffOfEventStatus } = require('./venueEventStatus');
 
 /** Creates an HTTP-aware error for expected authorization and lifecycle conflicts. */
 function failure(status, message, code) { return Object.assign(new Error(message), { status, code }); }
@@ -36,6 +37,8 @@ async function cancelEvent(eventId, user) {
       details: { status: 'cancelled' },
     }));
     if (notes.length) stored = await notificationService.insertNotifications(client, notes);
+    // Venue Staff notices share the cancellation transaction so a committed cancellation always has matching venue guidance.
+    stored.push(...await notifyVenueStaffOfEventStatus(client, event));
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

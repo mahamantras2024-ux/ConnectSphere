@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import PageIntro from '../../components/PageIntro';
+import NotificationsPanel from '../../components/NotificationsPanel';
 
 /** Reviews active requests and changes one coordinator using the assignment seen by the lead. */
 export default function CoordinatorLeadDashboard() {
   const { token } = useAuth();
   const location = useLocation();
+  const notificationOpened = useNotificationOpened();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -19,7 +22,8 @@ export default function CoordinatorLeadDashboard() {
     api.get('/events/assignments', token).then(result => { if (active) setData(result); })
       .catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
-  }, [token, version]);
+    // Opening a "new request to assign" notification here re-reads the lists.
+  }, [token, version, notificationOpened]);
   /** Sends the reviewed assignment as a precondition so another decision cannot be silently overwritten. */
   async function assign(event, coordinatorId) {
     if (busy) return;
@@ -58,7 +62,8 @@ export default function CoordinatorLeadDashboard() {
         </form>
       </article>)}</div>;
   }
-  return <div className="page"><PageIntro title="Coordinator Lead Dashboard" eyebrow="Internal workspace" description="Review incoming requests and oversee coordinator assignments." />
+  // Parent notification system: the Lead hears about new requests to assign here and from the navbar bell.
+  return <div className="page"><PageIntro title="Coordinator Lead Dashboard" eyebrow="Internal workspace" description="Review incoming requests and oversee coordinator assignments." /><NotificationsPanel />
     <button className="button-secondary" disabled={busy} onClick={() => setVersion(value => value + 1)}>Refresh assignments</button>
     {error && <p role="alert" className="error-message">{error}</p>}{message && <p role="status">{message}</p>}
     {!data ? !error && <p role="status">Loading event requests…</p> : <>

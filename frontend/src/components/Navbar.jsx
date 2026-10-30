@@ -3,6 +3,7 @@ import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoute, roleLabels } from '../auth/dashboardRoutes';
+import NotificationBell from './NotificationBell';
 // Renders role navigation, account identity, and session controls.
 export default function Navbar() {
   const { user, logout, switchRole } = useAuth();
@@ -29,6 +30,8 @@ export default function Navbar() {
       {user.roles?.length > 1 && <label className="role-switch">Workspace<select aria-label="Active role" value={user.role} disabled={busy} onChange={changeRole}>{user.roles.map(role =>
       // Converts each record into its displayed or submitted representation.
       <option key={role} value={role}>{roleLabels[role] || role}</option>)}</select></label>}
+      {/* Parent notification system: every signed-in role sees its notifications from any page. */}
+      <NotificationBell />
       <span className="account-name">{user.full_name}<small>{roleLabels[user.role] || user.role}</small></span><button className="button-secondary" onClick={handleLogout}>Log out</button>
     </> : <><NavLink to="/external/login">External sign in</NavLink><NavLink to="/login">Staff sign in</NavLink></>}</div>
   </nav>{error && <p role="alert" className="error-message nav-error">{error}</p>}</>;
