@@ -62,25 +62,85 @@ describe('new tech-support notification types route to the dashboard', () => {
     expect(notificationTarget({ type: EQUIPMENT_TYPE, event_id: null }, 'technical_support')).toBe(DASHBOARD);
   });
 
-  // Feature: tech-support-assignment-notifications, Property 1: New tech-support notification types open the dashboard.
-  // For ANY of the four new types, ANY event_id (present/null/undefined), and ANY signed-in role, the target is the
-  // tech-support dashboard. Routing is driven by the notification's meaning, not the viewer's role.
-  it('TS AC1.3/AC2.4/AC3.3 - Property 1: any new type with any event id and any role opens the dashboard', () => {
-    // Arrange: a deterministic generator covering the input space (fast-check is not available, so we loop).
+  // Assignment notification types are tech-support-only: they open the tech-support dashboard for ANY event_id and ANY
+  // role, because they are only ever delivered to tech-support staff. (Routing regression: assignment types unchanged.)
+  it('Routing regression AC3.1 - assignment types open the tech support dashboard for any role and event id', () => {
+    // Arrange: a deterministic generator over the three assignment types, all event-id shapes, and every role.
     const roles = ['technical_support', 'event_organiser', 'attendee', 'event_coordinator', 'event_coordinator_lead', 'venue_staff', 'safety_officer', 'unknown_role'];
     const eventIds = [101, 1, 0, null, undefined];
     let checked = 0;
-    for (let i = 0; i < 150; i += 1) {
-      // Pseudo-random but reproducible selection so the loop exceeds 100 varied iterations deterministically.
-      const type = NEW_TYPES[i % NEW_TYPES.length];
+    for (let i = 0; i < 120; i += 1) {
+      const type = ASSIGNMENT_TYPES[i % ASSIGNMENT_TYPES.length];
       const role = roles[(i * 7) % roles.length];
       const event_id = eventIds[(i * 3) % eventIds.length];
-      // Act / Assert: every combination must resolve to the dashboard.
+      // Act / Assert: assignment work is dashboard-owned regardless of the viewer.
       expect(notificationTarget({ type, event_id }, role)).toBe(DASHBOARD);
       checked += 1;
     }
-    // Guard against a vacuous loop: confirm we actually asserted the intended number of cases.
-    expect(checked).toBe(150);
+    expect(checked).toBe(120);
+  });
+
+  // Routing regression: equipment_status_changed must be ROLE-AWARE, not an unconditional tech-support route. These are
+  // the bug-condition oracles; they FAIL against the pre-fix code that returned the dashboard for every role.
+  it('Routing regression AC2.1 - an Event Coordinator equipment-status notification opens the event page', () => {
+    // Arrange: an equipment-status notification received by a coordinator, naming an event.
+    const notification = { type: EQUIPMENT_TYPE, event_id: 101 };
+    // Act
+    const target = notificationTarget(notification, 'event_coordinator');
+    // Assert: the coordinator must land on the event page, not the tech-support dashboard.
+    expect(target).toBe('/events/101');
+  });
+
+  it('Routing regression AC2.2 - an Event Coordinator equipment-status notification with no event id opens the coordinator dashboard', () => {
+    // Arrange: same type with no event reference.
+    const notification = { type: EQUIPMENT_TYPE, event_id: null };
+    // Act / Assert: falls back to the coordinator's own dashboard, never the tech-support dashboard.
+    expect(notificationTarget(notification, 'event_coordinator')).toBe('/coordinator/dashboard');
+  });
+
+  // Preservation: equipment_status_changed for technical support still opens the tech-support dashboard, event id or not.
+  it('Routing regression AC2.3 - a Technical Support equipment-status notification still opens the tech support dashboard', () => {
+    expect(notificationTarget({ type: EQUIPMENT_TYPE, event_id: 101 }, 'technical_support')).toBe(DASHBOARD);
+    expect(notificationTarget({ type: EQUIPMENT_TYPE, event_id: null }, 'technical_support')).toBe(DASHBOARD);
+  });
+
+  // Preservation: a non-equipment, non-assignment notification keeps the coordinator's existing role/event fallback, so
+  // the fix does not over-broaden coordinator routing.
+  it('Routing regression AC3.2/AC3.3 - an Event Coordinator keeps the existing event/dashboard fallback for other types', () => {
+    expect(notificationTarget({ type: 'event_details_changed', event_id: 101 }, 'event_coordinator')).toBe('/events/101');
+    expect(notificationTarget({ type: 'event_details_changed', event_id: null }, 'event_coordinator')).toBe('/coordinator/dashboard');
+  });
+
+  // Property (role-aware equipment routing): over every supported role and event-id shape, equipment_status_changed
+  // resolves to the dashboard only for technical support, and otherwise to that role's event page / dashboard fallback.
+  it('Routing regression AC2.1/AC2.2/AC2.3 - Property: equipment-status routing is role-aware', () => {
+    // Arrange: the roles that have an event-page fallback, plus technical support, with every event-id shape.
+    const eventPages = {
+      event_organiser: (id) => `/organizer/events/${id}`,
+      event_coordinator: (id) => `/events/${id}`,
+      event_coordinator_lead: (id) => `/events/${id}`,
+      attendee: (id) => `/attendee/events/${id}`,
+    };
+    const dashboards = {
+      technical_support: '/tech-support/dashboard', event_organiser: '/organizer/dashboard',
+      event_coordinator: '/coordinator/dashboard', event_coordinator_lead: '/coordinator-lead/dashboard',
+      attendee: '/attendee/dashboard', venue_staff: '/venue/dashboard',
+    };
+    const roles = ['technical_support', 'event_coordinator', 'event_organiser', 'event_coordinator_lead', 'attendee', 'venue_staff'];
+    const eventIds = [101, 1, null, undefined];
+    let checked = 0;
+    for (const role of roles) {
+      for (const event_id of eventIds) {
+        // The expected route is derived independently from the role/event rules, not from the implementation.
+        const expected = role === 'technical_support'
+          ? DASHBOARD
+          : (event_id != null && eventPages[role] ? eventPages[role](event_id) : dashboards[role]);
+        // Act / Assert
+        expect(notificationTarget({ type: EQUIPMENT_TYPE, event_id }, role)).toBe(expected);
+        checked += 1;
+      }
+    }
+    expect(checked).toBe(roles.length * eventIds.length);
   });
 });
 
