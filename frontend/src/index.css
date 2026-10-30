@@ -120,8 +120,10 @@ p { line-height: 1.65; }
 .equipment-calendar-section { max-width: 1050px; margin: 28px auto 0; padding: 24px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 .equipment-calendar-section .section-heading { justify-content: center; margin: 0 0 16px; text-align: center; }
 .equipment-calendar-section .section-heading h2 { margin: 0; color: var(--ink); font-size: 22px; }
-.equipment-calendar-selector { display: grid; gap: 6px; max-width: 380px; margin: 0 auto 20px; color: var(--muted); font-size: 13px; text-align: left; }
-.equipment-calendar-selector select { color: var(--ink); font-weight: 600; background: #fff; }
+.equipment-calendar-selected-name { margin: 0 0 18px; color: var(--muted); font-size: 14px; font-weight: 500; text-align: center; }
+/* Asset IDs act as the calendar selector in the existing inventory, keeping a second toolbar out of the calendar. */
+.equipment-calendar-link { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--teal); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.equipment-calendar-link:hover { background: transparent; box-shadow: none; color: var(--ink); }
 /* Keep the month and icon buttons together as a centred toolbar at every viewport width. */
 .equipment-calendar-navigation { display: grid; grid-template-columns: 44px minmax(140px, 200px) 44px; justify-content: center; align-items: center; gap: 14px; margin-bottom: 20px; }
 .equipment-calendar-navigation > span { color: var(--ink); text-align: center; font-size: 21px; font-weight: 650; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
@@ -144,7 +146,7 @@ p { line-height: 1.65; }
 .equipment-calendar-window.is-unavailable { background: #f9e3dc; }
 .equipment-calendar-window + .equipment-calendar-window { border-top: 1px solid #e9ece4; }
 .equipment-calendar-time { color: inherit; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.equipment-calendar-status { display: inline-flex; align-items: center; justify-content: center; gap: 5px; max-width: 100%; padding: 4px 6px; border-radius: 4px; background: #e9f2eb; color: #36542f; font-size: 12px; font-weight: 600; line-height: 1.35; white-space: normal; }
+.equipment-calendar-status { display: inline-flex; align-items: center; justify-content: center; gap: 5px; max-width: 100%; padding: 0; background: transparent; color: #36542f; font-size: 12px; font-weight: 600; line-height: 1.35; white-space: normal; }
 .equipment-calendar-status::before { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #68a84c; content: ""; }
 .equipment-calendar-status.is-available { color: #365c31; }
 .equipment-calendar-status.is-available::before { background: #68a84c; }

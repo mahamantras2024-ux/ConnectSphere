@@ -27,8 +27,18 @@ const availableDate = getDateOffset(1);
 const reservedDate = getDateOffset(3);
 const maintenanceDate = getDateOffset(5);
 
+it('Calendar AC4 - opens an equipment calendar directly from inventory without a search or dropdown', () => {
+  // The existing inventory is the selector; choosing its ID must also work before entering a search.
+  render(<EquipmentInventorySection inventory={inventory} error="" />);
+  expect(screen.queryByRole('region', { name: 'Availability calendar' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'View availability for MIC-001' }));
+  expect(screen.getByRole('table', { name: 'MIC-001 monthly availability' })).toBeTruthy();
+  expect(screen.queryByRole('combobox', { name: 'Calendar equipment' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'MIC-001 — Wireless Microphone' })).toBeTruthy();
+});
+
 it('Calendar AC4 - shows one asset at a time and falls back when a new search excludes it', () => {
-  // Distinct stock counts prove the selector changes the displayed asset, not just its heading.
+  // Distinct stock counts prove an inventory selection replaces the displayed calendar without a dropdown.
   render(<EquipmentInventorySection inventory={[inventory[0], { ...inventory[0], id: 2, asset_code: 'PROJ-002', quantity: 7, availabilities: [] }]} error="" />);
   const search = screen.getByRole('searchbox', { name: 'Search equipment by ID or name' });
   fireEvent.change(search, { target: { value: 'PROJ-' } });
@@ -39,13 +49,15 @@ it('Calendar AC4 - shows one asset at a time and falls back when a new search ex
   expect(todayCell.classList.contains('is-today')).toBe(true);
   expect(todayCell.dataset.weekday).toBe('Sat');
   expect(within(region).getByTitle('09:00–17:00 · Available · 1 available')).toBeTruthy();
-  fireEvent.change(screen.getByRole('combobox', { name: 'Calendar equipment' }), { target: { value: '2' } });
+  fireEvent.click(screen.getByRole('button', { name: 'View availability for PROJ-002' }));
   expect(screen.queryByRole('table', { name: 'PROJ-001 monthly availability' })).toBeNull();
   expect(within(screen.getByRole('table', { name: 'PROJ-002 monthly availability' })).getAllByText('7 available').length).toBeGreaterThan(0);
   fireEvent.change(search, { target: { value: 'PROJ-001' } });
   expect(within(region).getAllByRole('table')).toHaveLength(1);
   expect(screen.getByRole('table', { name: 'PROJ-001 monthly availability' })).toBeTruthy();
-  expect(screen.getByRole('combobox', { name: 'Calendar equipment' }).disabled).toBe(true);
+  expect(screen.queryByRole('combobox', { name: 'Calendar equipment' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  expect(screen.queryByRole('region', { name: 'Availability calendar' })).toBeNull();
 });
 
 // The catalogue has no caption, so scope to its region and use the first table before the calendar.
@@ -526,10 +538,10 @@ it('AC2 - uses legacy availability and audit details for calendar windows', () =
 
   const operationalCalendar = screen.getByRole('table', { name: 'STATUS-OPERATIONAL monthly availability' });
   expect(within(operationalCalendar).getAllByText('Available').length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Calendar equipment' }), { target: { value: '12' } });
+  fireEvent.click(screen.getByRole('button', { name: 'View availability for STATUS-HISTORY' }));
   const historyCalendar = screen.getByRole('table', { name: 'STATUS-HISTORY monthly availability' });
   expect(within(historyCalendar).getAllByText('Cable is damaged.').length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Calendar equipment' }), { target: { value: '13' } });
+  fireEvent.click(screen.getByRole('button', { name: 'View availability for STATUS-FALLBACK' }));
   const fallbackCalendar = screen.getByRole('table', { name: 'STATUS-FALLBACK monthly availability' });
   expect(within(fallbackCalendar).getAllByText('Equipment is unavailable.').length).toBeGreaterThan(0);
   expect(within(getAssetRow('STATUS-OPERATIONAL')).getByText('Date unavailable')).toBeTruthy();
@@ -736,7 +748,7 @@ it('AC3 - marks maintenance windows blocked and displays the recorded damage rea
   expect(within(calendar).getAllByText('Damage: cracked lens').length).toBeGreaterThan(0);
   expect(within(calendar).getByText('Damage: cracked lens · 1 reserved · 0 available')).toBeTruthy();
   expect(within(calendar).getAllByRole('listitem').every(window => window.classList.contains('is-unavailable'))).toBe(true);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Calendar equipment' }), { target: { value: '2' } });
+  fireEvent.click(screen.getByRole('button', { name: 'View availability for PROJ-002' }));
   const legacyCalendar = screen.getByRole('table', { name: 'PROJ-002 monthly availability' });
   expect(within(legacyCalendar).getAllByText('Equipment is unavailable.').length).toBeGreaterThan(0);
 

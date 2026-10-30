@@ -86,7 +86,7 @@ const CALENDAR_STYLES = `
   content: "";
   width: 0.75rem;
   height: 0.75rem;
-  border-radius: 3px;
+  border-radius: 50%;
   background: var(--swatch-bg);
   border: 1px solid var(--swatch);
 }
@@ -165,7 +165,7 @@ const CALENDAR_STYLES = `
   color: var(--cal-surface);
 }
 .equipment-calendar-day > .equipment-calendar-status {
-  display: block;
+  display: inline-flex;
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -195,7 +195,7 @@ const CALENDAR_STYLES = `
   border-radius: 4px;
   background: var(--window-bg);
 }
-.equipment-calendar-window.is-available   { --window-color: var(--cal-available);   --window-bg: var(--cal-available-bg); }
+.equipment-calendar-window.is-available   { --window-color: var(--cal-available);   --window-bg: transparent; }
 .equipment-calendar-window.is-unavailable { --window-color: var(--cal-unavailable); --window-bg: var(--cal-unavailable-bg); }
 .equipment-calendar-time {
   font-variant-numeric: tabular-nums;
@@ -474,7 +474,7 @@ export default function EquipmentInventorySection({
     ? inventory.filter(item => (
       `${item.asset_code} ${item.name}`.toLocaleLowerCase().includes(search)
     ))
-    : [];
+    : inventory.filter(item => String(item.id) === calendarEquipmentId);
   const searchCalendarAssets = searchCalendarMatches.map(item => ({
     ...item,
     matchingWindows: getMatchingWindows(item, dateFilter, fromTime, toTime).filter(window => (
@@ -537,8 +537,10 @@ export default function EquipmentInventorySection({
     return Math.max(0, ...quantities);
   }
 
+  /** Restores the initial catalogue view, including closing a calendar selected through an inventory ID. */
   function clearFilters() {
     setSearchTerm('');
+    setCalendarEquipmentId('');
     setDateFilter('');
     setFromTime('');
     setToTime('');
@@ -687,7 +689,9 @@ export default function EquipmentInventorySection({
               <tbody>
                 {filteredAssets.map(item => (
                   <tr key={item.id}>
-                    <th scope="row">{item.asset_code}</th>
+                    <th scope="row"><button type="button" className="equipment-calendar-link"
+                      aria-label={`View availability for ${item.asset_code}`}
+                      onClick={() => setCalendarEquipmentId(String(item.id))}>{item.asset_code}</button></th>
                     <td>{item.name}</td>
                     <td>{item.specification}</td>
                     <td>
@@ -778,19 +782,13 @@ export default function EquipmentInventorySection({
             </table>
           </div>
           )}
-          {searchTerm.trim() && searchCalendarAssets.length > 0 && (
+          {searchCalendarAssets.length > 0 && (
             <section className="equipment-calendar-section" aria-labelledby="equipment-calendar-heading">
               <style>{CALENDAR_STYLES}</style>
               <div className="section-heading">
                 <h2 id="equipment-calendar-heading">Availability calendar</h2>
               </div>
-              <label className="equipment-calendar-selector">
-                Equipment
-                <select aria-label="Calendar equipment" value={calendarEquipment.id}
-                  disabled={searchCalendarAssets.length === 1} onChange={event => setCalendarEquipmentId(event.target.value)}>
-                  {searchCalendarAssets.map(item => <option key={item.id} value={item.id}>{item.asset_code} — {item.name}</option>)}
-                </select>
-              </label>
+              <h3 className="equipment-calendar-selected-name">{calendarEquipment.asset_code} — {calendarEquipment.name}</h3>
               <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                 <button
                   type="button"
