@@ -32,11 +32,20 @@ it('Calendar AC4 - opens an equipment calendar directly from inventory without a
   render(<EquipmentInventorySection inventory={inventory} error="" />);
   expect(screen.queryByRole('region', { name: 'Availability calendar' })).toBeNull();
   const calendarButton = screen.getByRole('button', { name: 'View calendar for MIC-001' });
-  expect(calendarButton.textContent).toBe('View calendar');
+  expect(screen.getByRole('columnheader', { name: 'Calendar' })).toBeTruthy();
+  expect(calendarButton.querySelector('svg')).toBeTruthy();
   fireEvent.click(calendarButton);
   expect(screen.getByRole('table', { name: 'MIC-001 monthly availability' })).toBeTruthy();
   expect(screen.queryByRole('combobox', { name: 'Calendar equipment' })).toBeNull();
   expect(screen.getByRole('heading', { name: 'MIC-001 — Wireless Microphone' })).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Availability calendar' }));
+  // Reopening the same equipment must still move keyboard users to the calendar.
+  const calendarHeading = screen.getByRole('heading', { name: 'Availability calendar' });
+  calendarHeading.scrollIntoView = vi.fn(); // jsdom lacks browser scrolling; verify the real navigation request.
+  calendarButton.focus();
+  fireEvent.click(calendarButton);
+  expect(document.activeElement).toBe(calendarHeading);
+  expect(calendarHeading.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
 });
 
 it('Calendar AC4 - shows one asset at a time and falls back when a new search excludes it', () => {

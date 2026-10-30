@@ -122,7 +122,7 @@ p { line-height: 1.65; }
 .equipment-calendar-section .section-heading h2 { margin: 0; color: var(--ink); font-size: 22px; }
 .equipment-calendar-selected-name { margin: 0 0 18px; color: var(--muted); font-size: 14px; font-weight: 500; text-align: center; }
 /* Asset IDs act as the calendar selector in the existing inventory, keeping a second toolbar out of the calendar. */
-.equipment-calendar-link { display: block; width: fit-content; margin-top: 8px; padding: 6px 10px; border: 1px solid #dfe5e0; border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.equipment-calendar-link { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 8px; border: 1px solid #dfe5e0; border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .equipment-calendar-link:hover { background: #edf1ee; border-color: var(--teal); box-shadow: none; }
 /* Keep the month and icon buttons together as a centred toolbar at every viewport width. */
 .equipment-calendar-navigation { display: grid; grid-template-columns: 44px minmax(140px, 200px) 44px; justify-content: center; align-items: center; gap: 14px; margin-bottom: 20px; }

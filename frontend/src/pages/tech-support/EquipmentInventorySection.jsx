@@ -1,5 +1,5 @@
 // File: Displays the fixed asset catalogue and a separate calendar for searched equipment.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const formatDate = value => new Intl.DateTimeFormat('en-SG', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -429,7 +429,15 @@ export default function EquipmentInventorySection({
   onMarkUnavailable,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [calendarEquipmentId, setCalendarEquipmentId] = useState('');
+  const [calendarSelection, setCalendarSelection] = useState({ id: '', navigate: false });
+  const calendarEquipmentId = calendarSelection.id;
+  const calendarHeadingRef = useRef(null);
+  // Navigate after React renders the selected calendar, including repeated clicks on the same asset.
+  useEffect(() => {
+    if (!calendarSelection.navigate) return;
+    calendarHeadingRef.current?.focus({ preventScroll: true });
+    calendarHeadingRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [calendarSelection]);
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
@@ -518,7 +526,7 @@ export default function EquipmentInventorySection({
   /** Restores the initial catalogue view, including closing a calendar selected through an inventory ID. */
   function clearFilters() {
     setSearchTerm('');
-    setCalendarEquipmentId('');
+    setCalendarSelection({ id: '', navigate: false });
     setDateFilter('');
     setFromTime('');
     setToTime('');
@@ -662,19 +670,14 @@ export default function EquipmentInventorySection({
                   <th scope="col">Status</th>
                   <th scope="col">{dateFilter ? 'Available quantity' : 'Total quantity'}</th>
                   <th scope="col">Status history</th>
+                  <th scope="col">Calendar</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredAssets.map(item => (
                   <tr key={item.id}>
                     <th scope="row">{item.asset_code}</th>
-                    <td>
-                      <span>{item.name}</span>
-                      {/* Name the action explicitly so opening availability does not depend on discovering a clickable ID. */}
-                      <button type="button" className="equipment-calendar-link"
-                        aria-label={`View calendar for ${item.asset_code}`}
-                        onClick={() => setCalendarEquipmentId(String(item.id))}>View calendar</button>
-                    </td>
+                    <td>{item.name}</td>
                     <td>{item.specification}</td>
                     <td>
                       <div className="equipment-status-control">
@@ -758,6 +761,16 @@ export default function EquipmentInventorySection({
                         </ul>
                       ) : <span className="equipment-status-history-empty">No status history</span>}
                     </td>
+                    <td>
+                      <button type="button" className="equipment-calendar-link"
+                        aria-label={`View calendar for ${item.asset_code}`} title="View calendar"
+                        onClick={() => setCalendarSelection({ id: String(item.id), navigate: true })}>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="3" y="5" width="18" height="16" rx="2" />
+                          <path d="M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2M8 18h2" />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -768,7 +781,7 @@ export default function EquipmentInventorySection({
             <section className="equipment-calendar-section" aria-labelledby="equipment-calendar-heading">
               <style>{CALENDAR_STYLES}</style>
               <div className="section-heading">
-                <h2 id="equipment-calendar-heading">Availability calendar</h2>
+                <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>Availability calendar</h2>
               </div>
               <h3 className="equipment-calendar-selected-name">{calendarEquipment.asset_code} — {calendarEquipment.name}</h3>
               <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
