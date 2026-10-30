@@ -1,6 +1,6 @@
 // File: Loads and formats persisted event details, handling missing values and request failures.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 
@@ -18,6 +18,8 @@ import useNotificationOpened from '../../notifications/useNotificationOpened';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
+import EventRequestStatus from './EventRequestStatus';
+import { requestStatusLabel } from './requestStatusLabel';
 import EquipmentStatusSection from './EquipmentStatusSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 import OrganiserVenueDetails from './OrganiserVenueDetails';
@@ -361,11 +363,19 @@ export default function EventDetail() {
 
   const [event, setEvent] = useState(null);
 
+  /** Refreshes only persisted lifecycle flags so background reads preserve unsaved organiser edits. */
+  const updateRequestStatus = useCallback(snapshot => {
+    setEvent(current => ({ ...current, status: snapshot.status,
+      clarification_outstanding: snapshot.clarification_outstanding, clarification_requests: snapshot.clarification_requests }));
+  }, []);
+
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState('');
 
   const [editValues, setEditValues] = useState(null);
+
+  const [statusRefreshKey, setStatusRefreshKey] = useState(0);
 
   const [saveMessage, setSaveMessage] = useState('');
   // Bookmark the active section so returning from discovery restores request history.
@@ -529,8 +539,8 @@ export default function EventDetail() {
 
     if (!value) return 'Not specified';
 
-    // SCRUM-92: stored snake_case statuses must read as lifecycle labels.
-    return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    // Share the readable lifecycle labels used by the organiser's live status view.
+    return requestStatusLabel(value);
 
   };
 
@@ -655,6 +665,8 @@ export default function EventDetail() {
         clarification_requests: current.clarification_requests.map((item) => item.id === request.id ? data.clarificationRequest : item) }));
 
       setClarificationResponses((current) => ({ ...current, [request.id]: '' })); setSaveMessage(data.message);
+      // A committed response invalidates pre-write status reads, including the outstanding-action flag.
+      setStatusRefreshKey(value => value + 1);
 
     } catch (err) { setError(err.message || 'Unable to save clarification response.'); }
 
@@ -947,9 +959,10 @@ export default function EventDetail() {
 
       )}
 
+      {user.role === 'event_organiser' && <EventRequestStatus key={statusRefreshKey} eventId={event.id} onSnapshot={updateRequestStatus} />}
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
       <CancelEventAction event={event} user={user} token={token}
-        onCancelled={(cancelledEvent) => setEvent((current) => ({ ...current, ...cancelledEvent }))}
+        onCancelled={(cancelledEvent) => { setEvent((current) => ({ ...current, ...cancelledEvent })); setStatusRefreshKey(value => value + 1); }}
         onMessage={setSaveMessage} />
 
 

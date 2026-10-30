@@ -39,14 +39,14 @@ export default function EventDecisionSection({ event, onDecided }) {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
 
-  // Reloads when a clarification opens or closes on this page, because that changes whether a decision is allowed.
+  // Lifecycle and clarification changes refresh the recorded outcome as well as decision readiness on an open page.
   useEffect(() => {
     api.get(`/events/${event.id}/decision`, token).then((data) => {
       // This panel is supplementary: an unexpected response (e.g. an older API) must not break the event page.
       if (typeof data.status !== 'string' || (coordinator && !Array.isArray(data.readiness))) throw new Error('The review decision is unavailable right now.');
       setReview(data); setLoadError('');
     }).catch((err) => setLoadError(err.message));
-  }, [event.id, event.clarification_outstanding, token, reloadKey, coordinator]);
+  }, [event.id, event.status, event.clarification_outstanding, token, reloadKey, coordinator]);
 
   // Sends the decision; buttons are disabled while saving so one click sends one decision.
   async function decide(decision) {

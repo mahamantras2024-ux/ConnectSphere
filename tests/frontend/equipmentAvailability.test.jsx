@@ -258,7 +258,11 @@ it('AC3 - reports full stock for an unscheduled selected date and time', () => {
 });
 
 // AC3 - Zero total stock stays eligible on an unscheduled date and is reported as zero in both views.
-it('AC3 - reports zero stock for an unscheduled date in inventory and calendar', () => {
+it.each(['2026-10-27', '2026-10-28', '2026-10-29'])('AC3 - reports zero stock in inventory and calendar across the month boundary from %s', (today) => {
+  // Arrange: four days ahead lands just before, exactly on, and just after the next month starts.
+  // Freeze Date alone so calendar coverage is reproducible without changing async timer behavior.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${today}T12:00:00Z`));
   const unscheduledDate = getDateOffset(4);
   const item = { ...inventory[0], quantity: 0, availabilities: [] };
   render(<EquipmentInventorySection inventory={[item]} error="" />);
@@ -273,6 +277,7 @@ it('AC3 - reports zero stock for an unscheduled date in inventory and calendar',
 
   // Assert: zero stock is preserved rather than becoming an empty result or an undefined quantity.
   expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('0');
+  // Main now selects the filtered date's month automatically; retain the deterministic boundary cases without paging twice.
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   const dateLabel = new Intl.DateTimeFormat('en-SG', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -307,10 +312,7 @@ it('AC2 - handles one-sided time filters, empty calendar days, and non-booked un
   fireEvent.change(screen.getByLabelText('Available to'), { target: { value: '08:00' } });
   expect(screen.queryByRole('row', { name: /PROJ-001 Projector/ })).toBeNull();
   fireEvent.change(screen.getByLabelText('Filter equipment by date'), { target: { value: maintenanceDate } });
-  // The date filter and visible month are independent controls; a +5 day fixture can cross a month boundary.
-  if (maintenanceDate.slice(0, 7) !== getDateOffset(0).slice(0, 7)) {
-    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
-  }
+  // Main now selects this filtered date's month even when the fixture crosses a month boundary.
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   expect(within(calendar).getAllByText(/Maintenance/).length).toBeGreaterThan(0);
 });
@@ -608,6 +610,10 @@ it('AC2 - displays a reservation window when the date has no availability schedu
   });
 
   // Act: inspect the reservation date in the monthly calendar.
+  // This initial view has no date filter, so page explicitly if the reservation crosses into next month.
+  if (reservationDate.slice(0, 7) !== getDateOffset(0).slice(0, 7)) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+  }
   const calendar = screen.getByRole('table', { name: 'MIC-001 monthly availability' });
 
   // Assert: the reserved time and stock counts appear without exposing the event name.
