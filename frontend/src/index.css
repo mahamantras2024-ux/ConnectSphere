@@ -220,6 +220,11 @@ p { line-height: 1.65; }
 .field input { font-weight: 400; font-size: 13px; }
 .form-section { margin-top: 27px; padding-top: 23px; border-top: 1px solid var(--border); }
 .form-section h3 { display: flex; justify-content: space-between; }
+.venue-timing-fields { min-width: 0; margin: 24px 0 0; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, #fff); }
+.venue-timing-fields legend { padding: 0 8px; font-weight: 700; }
+.venue-timing-fields > .field-help { margin: 0 0 14px; }
+.venue-timing-fields > .field-help:last-child { margin: 12px 0 0; }
+.venue-timing-fields .field > .field-help { margin-top: -3px; }
 .four-col { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .field-help { font-size: 11px; color: var(--muted); margin-top: 15px; }
 .upload-field { display: flex; flex-direction: column; gap: 10px; padding: 20px; margin-top: 20px; border: 1px dashed #c3d2c5; border-radius: 10px; font-size: 12px; font-weight: 600; }

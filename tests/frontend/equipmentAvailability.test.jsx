@@ -562,10 +562,9 @@ it('AC2 - shows a fallback error when the unavailable save fails without a messa
 
 // AC2 - The calendar shows reservation quantities without exposing event names.
 it('AC2 - never displays event names for reserved calendar windows', () => {
-  // Freeze Date to mid-month so the day+1/day+2 windows stay inside the rendered current-month calendar grid,
-  // which otherwise omits dates that roll into next month when the test runs near a month boundary.
+  // Keep these adjacent-day fixtures in one month so the privacy assertions run at month-end too.
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date('2026-01-12T12:00:00Z'));
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
   const item = {
     ...inventory[0],
     quantity: 3,
