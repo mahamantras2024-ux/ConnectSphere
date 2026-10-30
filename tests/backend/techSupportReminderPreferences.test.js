@@ -152,3 +152,23 @@ test('AC4.6 - uses a singular message for a single pending item', async () => {
   assert.match(message, /1 pending technical support and equipment request requiring attention\./);
   assert.doesNotMatch(message, /requests requiring/);
 });
+
+// AC4 - Reminder eligibility must match the actionable review queue: events without an assigned Event Coordinator
+// never appear in that queue, so the pending-request count must exclude them (coordinator_id IS NOT NULL gate).
+test('AC4 - the pending-request count excludes events without an assigned coordinator', async () => {
+  // Arrange: capture the aggregate query the reminder job issues.
+  const calls = [];
+  const db = { query: async (sql, values) => {
+    calls.push({ sql, values });
+    if (sql.includes('GROUP BY preference.user_id')) return { rows: [] };
+    throw new Error(`Unexpected query: ${sql}`);
+  } };
+
+  // Act.
+  await sendPendingTechSupportReminders(db, Date.parse('2031-10-02T00:00:00Z'));
+
+  // Assert: the pending_requests CTE gates on an assigned coordinator, matching listPendingEquipmentRequests. A faulty
+  // query that counted unassigned-coordinator events (which can never be actioned) would omit this condition.
+  const aggregate = calls.find(call => call.sql.includes('GROUP BY preference.user_id'));
+  assert.match(aggregate.sql, /e\.coordinator_id IS NOT NULL/);
+});

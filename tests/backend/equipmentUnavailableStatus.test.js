@@ -455,3 +455,66 @@ test('AC3 - creates protected reservation-impact records and permits impact noti
   assert.match(migration, /ALTER TABLE equipment_reservation_unavailability ENABLE ROW LEVEL SECURITY/);
   assert.match(migration, /'equipment_reservation_affected'/);
 });
+
+// AC3 - The staff member who manages the affected reservation (reserved_by) is notified even when they are not an
+// on-site assignee, so they can propose a replacement.
+test('AC3 - notifies the reservation manager even when they are not assigned on-site', async () => {
+  // Arrange: one affected reservation whose on-site assignee is staff 6, but whose managing (reserving) staff is 20.
+  const affectedRows = [{
+    reservation_id: 301,
+    event_id: 401,
+    event_name: 'Town Hall',
+    coordinator_id: 5,
+    reserved_by: 20,
+    event_date: '2026-11-18',
+    start_time: '09:00:00',
+    end_time: '12:00:00',
+    quantity: 2,
+    support_ids: [6],
+  }];
+  const { client } = createDatabase({ affectedRows });
+  const notifications = [];
+  mock.method(pool, 'connect', async () => client);
+  mock.method(notificationService, 'insertNotifications', async (_db, notes) => { notifications.push(...notes); return [{ id: 1 }]; });
+  mock.method(notificationService, 'emailNotifications', async () => 1);
+
+  // Act
+  await workflow.markUnavailable(92, 'Battery failed inspection', 9);
+
+  // Assert: the on-site assignee (6) AND the managing staff member (20) both get an equipment_status_changed notice;
+  // the coordinator (5) still gets the reservation-affected notice. A faulty impl that only told on-site assignees
+  // would omit user 20.
+  const statusRecipients = notifications.filter(note => note.type === 'equipment_status_changed').map(note => note.userId);
+  assert.deepEqual(statusRecipients, [6, 20]);
+  assert.ok(notifications.some(note => note.userId === 20 && /is now unavailable/.test(note.message)));
+  assert.deepEqual(notifications.filter(note => note.type === 'equipment_reservation_affected').map(note => note.userId), [5]);
+});
+
+// AC3 - When the managing staff member is also an on-site assignee, they are notified exactly once (no duplicate).
+test('AC3 - does not notify the reservation manager twice when they are also an on-site assignee', async () => {
+  // Arrange: the managing staff member (6) is already in the on-site assignee list.
+  const affectedRows = [{
+    reservation_id: 301,
+    event_id: 401,
+    event_name: 'Town Hall',
+    coordinator_id: 5,
+    reserved_by: 6,
+    event_date: '2026-11-18',
+    start_time: '09:00:00',
+    end_time: '12:00:00',
+    quantity: 2,
+    support_ids: [6, 8],
+  }];
+  const { client } = createDatabase({ affectedRows });
+  const notifications = [];
+  mock.method(pool, 'connect', async () => client);
+  mock.method(notificationService, 'insertNotifications', async (_db, notes) => { notifications.push(...notes); return [{ id: 1 }]; });
+  mock.method(notificationService, 'emailNotifications', async () => 1);
+
+  // Act
+  await workflow.markUnavailable(92, 'Battery failed inspection', 9);
+
+  // Assert: recipients are exactly the two distinct assignees (6, 8), with no repeated entry for 6.
+  const statusRecipients = notifications.filter(note => note.type === 'equipment_status_changed').map(note => note.userId);
+  assert.deepEqual(statusRecipients, [6, 8]);
+});

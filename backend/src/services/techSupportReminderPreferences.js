@@ -57,10 +57,11 @@ async function sendPendingTechSupportReminders(db, now = Date.now()) {
   const result = await db.query(`
     WITH pending_requests AS (
       -- Count of equipment requests still awaiting Technical Support review (the shared pending queue). This mirrors
-      -- listPendingEquipmentRequests: upcoming, non-terminal events with a technical requirement and no current-version review.
+      -- listPendingEquipmentRequests exactly, including the coordinator_id IS NOT NULL gate: an event without an
+      -- assigned Event Coordinator never appears in the actionable review queue, so it must not inflate the reminder.
       SELECT count(*)::int AS pending_count
       FROM events e
-      WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
+      WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND (
