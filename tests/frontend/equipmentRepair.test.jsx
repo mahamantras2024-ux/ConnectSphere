@@ -1,6 +1,8 @@
 // File: Verifies the Technical Support repair workflow from the inventory table through its authenticated API calls.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+// Imported dashboard scenarios retain their real router context when mounted.
+import { MemoryRouter } from 'react-router-dom';
 import { api } from '../../frontend/src/api/client';
 import { useAuth } from '../../frontend/src/context/AuthContext';
 import TechSupportDashboard from '../../frontend/src/pages/tech-support/TechSupportDashboard';

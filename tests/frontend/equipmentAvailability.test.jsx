@@ -549,6 +549,9 @@ it('AC2 - shows a fallback error when the unavailable save fails without a messa
 
 // AC2 - The calendar shows reservation quantities without exposing event names.
 it('AC2 - never displays event names for reserved calendar windows', () => {
+  // Keep the multi-day fixtures in one displayed month so this assertion also works at month-end.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
   const item = {
     ...inventory[0],
     quantity: 3,
@@ -582,6 +585,9 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
 
 // AC2 - A confirmed reservation on an unscheduled date is shown as a timed calendar window without event identity.
 it('AC2 - displays a reservation window when the date has no availability schedule', () => {
+  // Keep the multi-day fixtures in one displayed month so this assertion also works at month-end.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
   // Arrange: an API window represents the confirmed booking, despite no schedule row for its date.
   const reservationDate = getDateOffset(3);
   const item = {
