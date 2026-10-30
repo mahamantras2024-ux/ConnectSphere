@@ -415,7 +415,7 @@ it('AC3 - displays confirmed reservations in a table with allocated stock and au
     onReserved={vi.fn()}
   />);
 
-  const reservationSection = screen.getByRole('region', { name: 'Equipment Reservations' });
+  const reservationSection = screen.getByRole('region', { name: 'Confirmed reservations' });
   const table = within(reservationSection).getByRole('table');
   const reservationRow = within(table).getByRole('row', { name: /Community Workshop/ });
   expect(within(reservationRow).getByRole('rowheader').textContent).toBe('Community Workshop');
@@ -575,7 +575,7 @@ it('AC4 - confirms a reservation through the dashboard and refreshes its audit r
   fireEvent.click(within(candidate).getByRole('button', { name: 'Confirm reservation' }));
 
   expect(await screen.findByText('Equipment reservation confirmed for Community Workshop.')).toBeTruthy();
-  const reservationSection = screen.getByRole('region', { name: 'Equipment Reservations' });
+  const reservationSection = screen.getByRole('region', { name: 'Confirmed reservations' });
   const reservationTable = within(reservationSection).getByRole('table');
   const reservationRow = within(reservationTable).getByRole('row', { name: /Community Workshop/ });
   expect(within(reservationRow).getByText('PROJ-001 — Projector (×2)')).toBeTruthy();

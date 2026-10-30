@@ -37,7 +37,7 @@ it('Navigation AC1 AC2 - places equipment tabs beside Dashboard and keeps their 
   const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
   const tabs = within(navigation).getByRole('tablist', { name: 'Technical Support dashboard sections' });
   expect(within(tabs).getAllByRole('tab').map(tab => tab.textContent)).toEqual([
-    'Equipment info', 'Equipment request review', 'Equipment reservation',
+    'Equipment inventory', 'Equipment request review', 'Equipment reservation',
   ]);
   expect(within(navigation).getByRole('link', { name: 'Dashboard' }).nextElementSibling.contains(tabs)).toBe(true);
   expect(screen.getAllByRole('tablist', { name: 'Technical Support dashboard sections' })).toHaveLength(1);
@@ -48,7 +48,7 @@ it('Navigation AC1 AC2 - places equipment tabs beside Dashboard and keeps their 
   const reservation = within(tabs).getByRole('tab', { name: 'Equipment reservation', selected: true });
   expect(document.activeElement).toBe(reservation);
   expect(screen.getByRole('tabpanel').id).toBe(reservation.getAttribute('aria-controls'));
-  fireEvent.click(within(tabs).getByRole('tab', { name: 'Equipment info' }));
+  fireEvent.click(within(tabs).getByRole('tab', { name: 'Equipment inventory' }));
   expect(screen.getByRole('tabpanel').id).toBe('support-panel-inventory');
 });
 
@@ -62,10 +62,13 @@ it('Workspace AC1 AC2 - Dashboard and equipment sections show only their own con
   expect(screen.queryByRole('tabpanel')).toBeNull();
   expect(dashboard.getAttribute('aria-current')).toBe('page');
   // Each selection must remove overview content and every other panel, rather than merely scroll to it.
-  for (const [label, id] of [['Equipment info','inventory'], ['Equipment request review','review'], ['Equipment reservation','reservations']]) {
+  for (const [label, id] of [['Equipment inventory','inventory'], ['Equipment request review','review'], ['Equipment reservation','reservations']]) {
     fireEvent.click(screen.getByRole('tab', { name: label }));
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
     expect(screen.getByRole('tabpanel').id).toBe(`support-panel-${id}`);
+    // One page title is enough; queue headings should describe the work rather than repeat the section name.
+    expect(screen.getAllByRole('heading', { name: label })).toHaveLength(1);
+    expect(screen.queryByText('Manage equipment using the selected section below.')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Assigned events' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
     expect(dashboard.getAttribute('aria-current')).not.toBe('page');
@@ -326,7 +329,7 @@ it('AC4 - saves the review and immediately opens equipment reservation', async (
   expect(within(card).queryByRole('button', { name: 'Save review & go to equipment reservation' })).toBeNull();
   fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
 
-  expect(await screen.findByRole('heading', { name: 'Equipment availability and reservation' })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'Reviewed requests' })).toBeTruthy();
   expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome: 'fully_fulfillable',
@@ -342,8 +345,8 @@ it('AC5 - moves between support tabs with arrow, Home, and End keys', async () =
   fireEvent.keyDown(reviewTab, { key: 'ArrowRight' });
   expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
-  expect(screen.getByRole('tab', { name: 'Equipment info', selected: true })).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Equipment inventory', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment inventory' }), { key: 'ArrowLeft' });
   expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'End' });
   expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
@@ -370,7 +373,7 @@ it('AC1 - reports inventory and reservation load errors in their respective tabs
   await openDashboard();
   expect((await screen.findByRole('alert')).textContent).toContain('Request queue unavailable.');
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Equipment info' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Equipment inventory' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Catalogue unavailable.');
   fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Reservation list unavailable.');
@@ -383,12 +386,12 @@ it('AC1 - navigates equipment tabs with the keyboard and returns from an empty r
   fireEvent.keyDown(review, { key: 'End' });
   expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'ArrowRight' });
-  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Equipment inventory' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment inventory' }), { key: 'ArrowLeft' });
   expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'Escape' });
-  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment inventory' }), { key: 'Escape' });
+  expect(screen.getByRole('tab', { name: 'Equipment inventory' }).getAttribute('aria-selected')).toBe('true');
   fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
   fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
   expect(screen.getByRole('tab', { name: 'Equipment request review' }).getAttribute('aria-selected')).toBe('true');

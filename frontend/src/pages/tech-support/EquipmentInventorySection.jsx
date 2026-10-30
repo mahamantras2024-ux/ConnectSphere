@@ -316,10 +316,7 @@ export default function EquipmentInventorySection({
   }
 
   return (
-    <section aria-labelledby="equipment-inventory-heading">
-      <div className="section-heading">
-        <h2 id="equipment-inventory-heading">Equipment inventory</h2>
-      </div>
+    <section aria-label="Equipment inventory">
       <div className="equipment-inventory-filters">
         <label>
           Search by ID or name
@@ -482,7 +479,7 @@ export default function EquipmentInventorySection({
           {searchTerm.trim() && searchCalendarAssets.length > 0 && (
             <section className="equipment-calendar-section" aria-labelledby="equipment-calendar-heading">
               <div className="section-heading">
-                <h3 id="equipment-calendar-heading">Availability calendar</h3>
+                <h2 id="equipment-calendar-heading">Availability calendar</h2>
               </div>
               <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                 <button

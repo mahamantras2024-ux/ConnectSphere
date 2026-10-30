@@ -318,7 +318,7 @@ it('AC1 - reports when marking equipment unavailable affects no reservations', a
   fireEvent.click(within(row).getByRole('button', { name: 'Mark Unavailable' }));
 
   expect(await screen.findByText('REPAIR-DEMO-002 marked unavailable. No upcoming reservations were affected.')).toBeTruthy();
-  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByRole('tab', { name: 'Equipment inventory' }).getAttribute('aria-selected')).toBe('true');
 });
 
 // AC2 - Technical Support chooses an eligible replacement and sends it to the Event Coordinator.

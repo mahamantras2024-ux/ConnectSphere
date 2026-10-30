@@ -513,7 +513,7 @@ export default function TechSupportDashboard() {
   }
 
   const tabs = [
-    { id: 'inventory', label: 'Equipment info' },
+    { id: 'inventory', label: 'Equipment inventory' },
     { id: 'review', label: 'Equipment request review' },
     { id: 'reservations', label: 'Equipment reservation' },
   ];
@@ -560,13 +560,12 @@ export default function TechSupportDashboard() {
   return (
     <div className="page">
       <style>{dashboardStyles}</style>
-      <PageIntro
-        title={activeTab === 'dashboard' ? 'Technical Support Dashboard' : tabs.find(tab => tab.id === activeTab).label}
-        eyebrow="Internal workspace"
-        description={activeTab === 'dashboard'
-          ? 'Your assigned events and latest updates.'
-          : 'Manage equipment using the selected section below.'}
-      />
+      {/* Equipment views have one title; only the overview needs the broader workspace introduction. */}
+      {activeTab === 'dashboard' ? (
+        <PageIntro title="Technical Support Dashboard" eyebrow="Internal workspace" description="Your assigned events and latest updates." />
+      ) : (
+        <header className="page-intro support-section-intro"><h1>{tabs.find(tab => tab.id === activeTab).label}</h1></header>
+      )}
       {activeTab === 'dashboard' && (
         <div className="support-overview">
           <NotificationsPanel />
@@ -600,7 +599,7 @@ export default function TechSupportDashboard() {
           <section className="onsite-support-section equipment-review-section" aria-labelledby="pending-equipment-heading">
             <div className="onsite-support-heading">
               <div>
-                <h2 id="pending-equipment-heading">Pending equipment requests</h2>
+                <h2 id="pending-equipment-heading">Pending requests</h2>
                 <p className="onsite-support-description">Review equipment requirements and record what can be fulfilled.</p>
               </div>
               <div className="equipment-review-actions">
