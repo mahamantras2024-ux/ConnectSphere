@@ -510,7 +510,7 @@ export default function TechSupportDashboard() {
         description="Review equipment requests, reserve equipment, and release allocations when events change."
       />
       <NotificationsPanel />
-      <OnSiteSupportSection token={token} />
+      <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
       {toast && (
         <div
           role="status"

@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { pool } = require('../config/db');
 const notificationService = require('../services/notificationService');
+const { listRelevantEvents } = require('../services/technicalEventStatus');
 
 const validId = value => Number.isInteger(value) && value > 0 && value <= 2147483647;
 
@@ -76,22 +77,20 @@ const assign = asyncHandler(async (req, res) => {
   } finally { client.release(); }
 });
 
-/** Lists only the signed-in Technical Support Staff member's upcoming on-site assignments. */
+/** Lists every current preparation stage for the authenticated staff member's recorded responsibilities. */
 const listAssigned = asyncHandler(async (req, res) => {
-  const result = await pool.query(`
-    SELECT e.id, e.name, e.purpose, e.status, e.proposed_date::text AS proposed_date, e.proposed_start_time,
-      e.proposed_end_time, COALESCE(v.name, 'Venue not assigned') AS venue_name,
-      v.location AS venue_location, e.equipment_items, e.equipment_notes,
-      e.technical_support_details, e.technical_specifications
-    FROM event_technical_support_assignments a
-    JOIN events e ON e.id=a.event_id
-    LEFT JOIN LATERAL (
-      SELECT v.name, v.location FROM venue_bookings vb JOIN venues v ON v.id=vb.venue_id
-      WHERE vb.event_id=e.id AND vb.status='approved' ORDER BY vb.id DESC LIMIT 1
-    ) v ON true
-    WHERE a.staff_id=$1 AND e.status NOT IN ('cancelled','completed','rejected')
-    ORDER BY e.proposed_date NULLS LAST, e.proposed_start_time NULLS LAST, e.id`, [req.user.id]);
-  res.json({ events: result.rows });
+  res.json({ events: await listRelevantEvents(pool, req.user.id) });
 });
 
-module.exports = { listStaff, assign, listAssigned };
+/** Reads one current preparation record with exactly the same scope as the dashboard list. */
+const getAssigned = asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!/^[1-9]\d*$/.test(req.params.id) || !validId(id)) {
+    return res.status(400).json({ message: 'Invalid event ID.' });
+  }
+  const [event] = await listRelevantEvents(pool, req.user.id, id);
+  if (!event) return res.status(404).json({ message: 'Event not found.' });
+  return res.json({ event });
+});
+
+module.exports = { listStaff, assign, listAssigned, getAssigned };

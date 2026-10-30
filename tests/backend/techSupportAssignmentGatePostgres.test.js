@@ -36,6 +36,8 @@ test('Bug fix - Technical Support cannot view or act on equipment requests until
         VALUES (1, $2, $1, '2030-10-15', '10:00', '12:00', 50, '[{"item":"Projector","quantity":1}]', false, 'submitted') RETURNING id`, [name, coordinatorId]);
       const unassigned = (await insertEvent('Unassigned Gala', null)).rows[0].id;
       const assigned = (await insertEvent('Assigned Talk', 2)).rows[0].id;
+      // AC6: support responsibility is independent of the coordinator-assignment gate tested here.
+      await client.query('INSERT INTO event_technical_support_assignments (event_id,staff_id) VALUES ($1,3),($2,3)', [unassigned, assigned]);
       // A review recorded before this fix existed on an event that is still unassigned (legacy data).
       const legacy = (await insertEvent('Legacy Unassigned Fair', null)).rows[0].id;
       await client.query("INSERT INTO event_equipment_reviews (event_id, request_version, outcome, reviewed_by) VALUES ($1, 1, 'fully_fulfillable', 3)", [legacy]);
