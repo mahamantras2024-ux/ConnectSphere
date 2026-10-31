@@ -50,7 +50,7 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
     await admin(`CREATE SCHEMA ${schema}`);
     // Explicitly retain pg's non-enumerable password without printing credentials.
     database = new Pool({ ...pool.options, password: pool.options.password, options: `-c search_path=${schema}`, max: 8 });
-    await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY,email TEXT,full_name TEXT,role TEXT,roles TEXT[] DEFAULT '{}',auth_version INTEGER DEFAULT 0);
+    await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY,email TEXT,full_name TEXT,role TEXT,roles TEXT[] DEFAULT '{}',organisation_name TEXT,auth_version INTEGER DEFAULT 0);
       INSERT INTO users VALUES (1,'lead@example.test','Lead','event_coordinator_lead','{}',0),
       (2,'organiser@example.test','Organiser','event_organiser','{}',0),
       (3,'chris@example.test','Chris','event_coordinator','{}',0),(4,'sam@example.test','Sam','event_coordinator','{}',0),

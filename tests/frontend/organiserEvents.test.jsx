@@ -701,15 +701,18 @@ it('UI AC3 - registration question precedes a compact checkbox and saves the ans
 
 it('SCRUM-93 AC3/AC5 - live status and new clarification preserve an unsaved organiser edit', async () => {
   // Arrange: real App routing and editing, with only the HTTP responses controlled.
-  let snapshot = { ...event, can_manage: true, clarification_outstanding: false, clarification_requests: [] };
+  // An amendment needs an assigned coordinator (post-submission amendments AC4).
+  const assigned = { ...event, coordinator_id: 3, coordinator_name: 'Chris' };
+  let snapshot = { ...assigned, can_manage: true, clarification_outstanding: false, clarification_requests: [] };
   api.get.mockImplementation(async path => path === '/auth/me' ? { user }
-    : path === '/events/101' ? { event }
+    : path === '/events/101' ? { event: assigned }
     : path === '/events/101/request-status' ? { event: snapshot }
     : path === '/events/101/decision' ? { status: snapshot.status, outcome: null }
     : { notifications: [], unreadCount: 0 });
   open('/organizer/events/101');
-  fireEvent.click(await screen.findByRole('button', { name: 'Edit Purpose' }));
-  const input = screen.getByLabelText('Edit Purpose');
+  // A submitted event is changed through an amendment request (post-submission amendments story), not edited inline.
+  fireEvent.click(await screen.findByRole('button', { name: 'Request an amendment' }));
+  const input = within(screen.getByRole('form', { name: 'Request an amendment' })).getByLabelText('Purpose');
   fireEvent.change(input, { target: { value: 'Unsaved programme proposal' } });
   // Act: a Coordinator changes lifecycle state and asks a new question elsewhere.
   snapshot = { ...snapshot, status: 'planning', clarification_outstanding: true,
