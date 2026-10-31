@@ -54,7 +54,8 @@ describe('AC3 - opening a review notification shows the event and its current re
     await screen.findByText('Gala');
     const card = container.querySelector('#safety-event-101');
     expect(card.className).toMatch(/highlighted-safety-event/);
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    // The scroll runs in an effect after the queue renders, so wait for it rather than racing it (flaky on slower CI).
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
   });
 
   // AC3: the current review requirement is named - an initial check for a never-checked event.
