@@ -28,8 +28,72 @@ async function openDashboard() {
       <AuthProvider><App /></AuthProvider>
     </MemoryRouter>,
   );
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment request review' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Requests' }));
 }
+
+it('Navigation AC1 AC2 - places equipment tabs beside Dashboard and keeps their panels and keyboard controls', async () => {
+  // Arrange the real authenticated application, including its shared navigation.
+  await openDashboard();
+  const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
+  const tabs = within(navigation).getByRole('tablist', { name: 'Technical Support dashboard sections' });
+  expect(within(tabs).getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+    'Inventory', 'Requests', 'Reservations',
+  ]);
+  expect(within(navigation).getByRole('link', { name: 'Dashboard' }).nextElementSibling.contains(tabs)).toBe(true);
+  expect(screen.getAllByRole('tablist', { name: 'Technical Support dashboard sections' })).toHaveLength(1);
+  // Act/Assert: a header tab still controls the real workspace, including roving keyboard focus.
+  const review = within(tabs).getByRole('tab', { name: 'Requests', selected: true });
+  expect(screen.getByRole('tabpanel').id).toBe(review.getAttribute('aria-controls'));
+  fireEvent.keyDown(review, { key: 'ArrowRight' });
+  const reservation = within(tabs).getByRole('tab', { name: 'Reservations', selected: true });
+  expect(document.activeElement).toBe(reservation);
+  expect(screen.getByRole('tabpanel').id).toBe(reservation.getAttribute('aria-controls'));
+  fireEvent.click(within(tabs).getByRole('tab', { name: 'Inventory' }));
+  expect(screen.getByRole('tabpanel').id).toBe('support-panel-inventory');
+});
+
+it('Workspace AC1 AC2 - Dashboard and equipment sections show only their own content and active control', async () => {
+  // Arrange the full workspace on Dashboard, rather than preselecting an equipment section.
+  localStorage.setItem('cs_token', 'support-token');
+  render(<MemoryRouter initialEntries={['/tech-support/dashboard']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  const dashboard = await screen.findByRole('link', { name: 'Dashboard' });
+  await screen.findByRole('heading', { name: 'Assigned events' });
+  expect(screen.getByRole('heading', { name: 'Notifications' })).toBeTruthy();
+  expect(screen.queryByRole('tabpanel')).toBeNull();
+  expect(dashboard.getAttribute('aria-current')).toBe('page');
+  // Each selection must remove overview content and every other panel, rather than merely scroll to it.
+  for (const [label, id, title] of [['Inventory','inventory','Equipment inventory'], ['Requests','review','Equipment request review'], ['Reservations','reservations','Equipment reservation']]) {
+    fireEvent.click(screen.getByRole('tab', { name: label }));
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(screen.getByRole('tabpanel').id).toBe(`support-panel-${id}`);
+    // One page title is enough; queue headings should describe the work rather than repeat the section name.
+    expect(screen.getAllByRole('heading', { name: title })).toHaveLength(1);
+    expect(screen.queryByText('Manage equipment using the selected section below.')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Assigned events' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
+    expect(dashboard.getAttribute('aria-current')).not.toBe('page');
+    expect(dashboard.classList.contains('active')).toBe(false);
+  }
+  // Dashboard restores the overview even when already on the same route.
+  fireEvent.click(dashboard);
+  expect(await screen.findByRole('heading', { name: 'Assigned events' })).toBeTruthy();
+  expect(screen.queryByRole('tabpanel')).toBeNull();
+  expect(screen.queryByRole('tab', { selected: true })).toBeNull();
+  expect(dashboard.classList.contains('active')).toBe(true);
+});
+
+it.each(['inventory','review','reservations','unknown'])('Workspace AC3 - restores the section URL %s and safely falls back for an unknown section', async section => {
+  // A refreshed or shared URL must select the same section; unknown values show Dashboard.
+  localStorage.setItem('cs_token', 'support-token');
+  render(<MemoryRouter initialEntries={[`/tech-support/dashboard?section=${section}`]}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  if (section === 'unknown') {
+    expect(await screen.findByRole('heading', { name: 'Assigned events' })).toBeTruthy();
+    expect(screen.queryByRole('tabpanel')).toBeNull();
+  } else {
+    expect((await screen.findByRole('tabpanel')).id).toBe(`support-panel-${section}`);
+    expect(screen.queryByRole('heading', { name: 'Assigned events' })).toBeNull();
+  }
+});
 
 beforeEach(() => {
   localStorage.clear();
@@ -126,8 +190,8 @@ it.each([
     outcome, ...(reason ? { reason } : {}), requestVersion: 1,
     ...(outcome === 'partially_fulfillable' ? { affectedItems: [{ key: 'equipment:0' }] } : {}),
   }, 'support-token'));
-  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
-  const reservationPanel = screen.getByRole('tabpanel', { name: 'Equipment reservation' });
+  expect(screen.getByRole('tab', { name: 'Reservations', selected: true })).toBeTruthy();
+  const reservationPanel = screen.getByRole('tabpanel', { name: 'Reservations' });
   if (outcome === 'fully_fulfillable' || outcome === 'partially_fulfillable') {
     expect(await within(reservationPanel).findByRole('article', { name: 'Community Workshop' })).toBeTruthy();
     expect(within(reservationPanel).getByText(`Review: ${outcome.replaceAll('_', ' ')}${reason ? ` — ${reason}` : ''}`)).toBeTruthy();
@@ -269,8 +333,8 @@ it('AC4 - saves the review and immediately opens equipment reservation', async (
   expect(within(card).queryByRole('button', { name: 'Save review & go to equipment reservation' })).toBeNull();
   fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
 
-  expect(await screen.findByRole('heading', { name: 'Equipment availability and reservation' })).toBeTruthy();
-  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'Reviewed requests' })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Reservations', selected: true })).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
     outcome: 'fully_fulfillable',
     requestVersion: 1,
@@ -280,24 +344,24 @@ it('AC4 - saves the review and immediately opens equipment reservation', async (
 // AC5 - dashboard tabs support keyboard navigation and preserve the selected workspace.
 it('AC5 - moves between support tabs with arrow, Home, and End keys', async () => {
   await openDashboard();
-  const reviewTab = screen.getByRole('tab', { name: 'Equipment request review' });
+  const reviewTab = screen.getByRole('tab', { name: 'Requests' });
   fireEvent.keyDown(reviewTab, { key: 'PageDown' });
   fireEvent.keyDown(reviewTab, { key: 'ArrowRight' });
-  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
-  expect(screen.getByRole('tab', { name: 'Equipment info', selected: true })).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
-  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'End' });
-  expect(screen.getByRole('tab', { name: 'Equipment reservation', selected: true })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Reservations', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Reservations' }), { key: 'Home' });
+  expect(screen.getByRole('tab', { name: 'Inventory', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Inventory' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Reservations', selected: true })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Reservations' }), { key: 'End' });
+  expect(screen.getByRole('tab', { name: 'Reservations', selected: true })).toBeTruthy();
 });
 
 // AC5 - the reservation empty state returns staff to the review queue.
 it('AC5 - returns from the empty reservation state to equipment review', async () => {
   await openDashboard();
-  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Reservations' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Go to equipment request review' }));
-  expect(screen.getByRole('tab', { name: 'Equipment request review', selected: true })).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Requests', selected: true })).toBeTruthy();
 });
 
 // AC1 - A failing section remains independently visible when each dashboard data request errors.
@@ -314,26 +378,26 @@ it('AC1 - reports inventory and reservation load errors in their respective tabs
   await openDashboard();
   expect((await screen.findByRole('alert')).textContent).toContain('Request queue unavailable.');
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Equipment info' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Inventory' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Catalogue unavailable.');
-  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Reservations' }));
   expect((await screen.findByRole('alert')).textContent).toContain('Reservation list unavailable.');
 });
 
 // AC1/accessibility: Arrow keys wrap, Home/End jump, and unrelated keys leave the current tab unchanged.
 it('AC1 - navigates equipment tabs with the keyboard and returns from an empty reservation queue', async () => {
   await openDashboard();
-  const review = screen.getByRole('tab', { name: 'Equipment request review' });
+  const review = screen.getByRole('tab', { name: 'Requests' });
   fireEvent.keyDown(review, { key: 'End' });
-  expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'ArrowRight' });
-  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'ArrowLeft' });
-  expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment reservation' }), { key: 'Home' });
-  fireEvent.keyDown(screen.getByRole('tab', { name: 'Equipment info' }), { key: 'Escape' });
-  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.click(screen.getByRole('tab', { name: 'Equipment reservation' }));
+  expect(screen.getByRole('tab', { name: 'Reservations' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Reservations' }), { key: 'ArrowRight' });
+  expect(screen.getByRole('tab', { name: 'Inventory' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Inventory' }), { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: 'Reservations' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Reservations' }), { key: 'Home' });
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Inventory' }), { key: 'Escape' });
+  expect(screen.getByRole('tab', { name: 'Inventory' }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getByRole('tab', { name: 'Reservations' }));
   fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
-  expect(screen.getByRole('tab', { name: 'Equipment request review' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByRole('tab', { name: 'Requests' }).getAttribute('aria-selected')).toBe('true');
 });

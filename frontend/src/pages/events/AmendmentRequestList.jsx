@@ -10,7 +10,7 @@ const STATUS = {
 };
 
 /** Shows a requested value as text; lists (accessibility needs, equipment, attachments) are joined. */
-function shownValue(value) {
+export function shownValue(value) {
   if (value == null || value === '') return 'Not specified';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) return value.length ? value.join(', ') : 'None';

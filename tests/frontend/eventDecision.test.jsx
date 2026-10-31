@@ -346,3 +346,62 @@ it('Handover AC3 - confirmed event details include coordinator handover history'
   expect(within(table).getByText('Lead Lee')).toBeTruthy();
   expect(api.get).toHaveBeenCalledWith('/events/101/assignment-history','session-token');
 });
+
+// Reconsider AC2 AC3: the real event route wires the history action back to current decision readiness.
+it('Reconsider AC2 AC3 - assigned coordinator reopens from event history and sees fresh review controls', async () => {
+  event = { ...event, status: 'rejected' };
+  review = decidedReview('rejected','Incomplete audience information');
+  const prior = { id:1,kind:'review',outcome:'rejected',occurred_at:'2030-01-01T00:00:00Z',details:{reason:'Incomplete audience information'} };
+  routes['/events/101/review-history'] = {history:[prior],rejectionId:1,blocked:null};
+  api.post.mockImplementation(async path => {
+    expect(path).toBe('/events/101/reconsider');
+    event = {...event,status:'under_review'};review={...readyReview,status:'under_review'};
+    routes['/events/101/review-history'] = {history:[prior,{...prior,id:2,kind:'reconsideration',outcome:'under_review',details:{}}],blocked:{message:'Already under review'}};
+    return {event,message:'Request reopened for review.'};
+  });
+  open('/events/101');
+  const history = await screen.findByRole('region',{name:'Review history'});
+  fireEvent.click(await within(history).findByRole('button',{name:'Reopen for reconsideration'}));
+  expect(await within(history).findByText('Request reopened for review.')).toBeTruthy();
+  expect(await within(history).findByText('Reopened for review')).toBeTruthy();
+  expect(within(history).getByText('Incomplete audience information')).toBeTruthy();
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'Reopen for reconsideration'})).toBeNull());
+  expect((await within(await decisionPanel()).findByRole('button',{name:'Approve event'})).disabled).toBe(false);
+});
+
+// Outcome AC2/AC4/AC5/AC6: dashboard notices remain historical, while their links load current owner-scoped facts.
+it.each([
+  ['event_approved','Event initially approved: Community Workshop','Initially approved; final confirmation is pending.'],
+  ['event_confirmed','Event finally confirmed: Community Workshop','The event is finally confirmed.'],
+  ['event_rejected','Event rejected: Community Workshop','The event was rejected.\nReason: Venue unavailable'],
+  ['change_request_approved','Amendment applied: Community Workshop','Updated attendance: 20 → 30.'],
+  ['event_clarification_requested','Clarification needed: Community Workshop','Please explain the learning objectives.'],
+])('Organiser outcomes AC2 AC4 AC5 AC6 - %s opens latest event information', async (type,title,message) => {
+  user = {id:12,role:'event_organiser',full_name:'Olivia'};
+  event = {...event,name:'Latest workshop information',status:'confirmed'};
+  review = {...decidedReview('approved',null),status:'confirmed'};
+  routes['/notifications'] = {unreadCount:1,notifications:[{id:19,event_id:101,type,title,message,created_at:'2030-01-02T03:04:05Z',read_at:null}]};
+  api.post.mockResolvedValue({notification:{id:19,read_at:'2030-01-02T04:00:00Z'}});
+  open('/organizer/dashboard');
+  const panel = await screen.findByRole('region',{name:'Notifications'});
+  const item = (await within(panel).findByText(title)).closest('li');
+  expect(within(item).getByText(message.includes('\n') ? /Reason: Venue unavailable/ : message)).toBeTruthy();
+  fireEvent.click(within(item).getByRole('button',{name:`${title} (new)`}));
+  expect(await screen.findByRole('heading',{name:'Latest workshop information'})).toBeTruthy();
+  const decision = await decisionPanel();
+  expect(await within(decision).findByText(/Initial approval is separate from final confirmation/)).toBeTruthy();
+  expect(within(decision).getByText('confirmed',{selector:'strong'})).toBeTruthy();
+  expect(api.get).toHaveBeenCalledWith('/events/101','session-token');
+});
+
+it('Organiser outcomes AC6 - a notification link never reveals an event outside the current owner permissions', async () => {
+  user = {id:99,role:'event_organiser'};
+  routes['/notifications'] = {unreadCount:1,notifications:[{id:19,event_id:101,type:'event_confirmed',title:'Historical outcome',message:'Open event',created_at:'2030-01-02T03:04:05Z',read_at:null}]};
+  const original = api.get.getMockImplementation();
+  api.get.mockImplementation(path => path==='/events/101' ? Promise.reject(new Error('Event not found.')) : original(path));
+  api.post.mockResolvedValue({notification:{id:19,read_at:'2030-01-02T04:00:00Z'}});
+  open('/organizer/dashboard');
+  fireEvent.click(await screen.findByRole('button',{name:'Historical outcome (new)'}));
+  expect(await screen.findByText('Event not found.')).toBeTruthy();
+  expect(screen.queryByRole('heading',{name:'Community Workshop'})).toBeNull();
+});

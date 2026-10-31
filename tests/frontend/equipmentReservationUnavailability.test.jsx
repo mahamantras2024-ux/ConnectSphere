@@ -158,7 +158,7 @@ it('AC1-AC3 - marks equipment unavailable and reports how many reservations were
     currentInventory[0] = { ...inventory[0], status: 'maintenance', availability_status: 'Unavailable' };
     return { equipment: currentInventory[0], affectedIssues: [issue] };
   });
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
 
   const row = await screen.findByRole('row', { name: /PROJ-001 Projector/ });
   fireEvent.change(within(row).getByLabelText('Status for PROJ-001'), { target: { value: 'Unavailable' } });
@@ -175,7 +175,9 @@ it('AC1-AC3 - marks equipment unavailable and reports how many reservations were
     { reason: 'Damaged during setup' },
     'support-token',
   );
-  expect(screen.getByRole('article', { name: 'Community Workshop' })).toBeTruthy();
+  // Router transitions may finish after the success toast; wait for the destination rather than assuming both commit together.
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Reservations', selected: true })).toBeTruthy());
+  expect(await screen.findByRole('article', { name: 'Community Workshop' })).toBeTruthy();
 });
 
 // AC3 - Dashboard refreshes the affected list and confirms the notification to the Coordinator.
@@ -184,7 +186,7 @@ it('AC3 - refreshes affected reservations after a replacement proposal is sent',
   configureDashboardApi({ affectedReservations: [issue] });
   api.put.mockResolvedValue({ message: 'Replacement suggestion sent to the Event Coordinator.' });
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   const card = await screen.findByRole('article', { name: 'Community Workshop' });
   fireEvent.change(within(card).getByLabelText('Replacement for PROJ-001 at Community Workshop'), {

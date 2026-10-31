@@ -15,7 +15,7 @@ const workspace = asyncHandler(async (req, res) => {
   res.json({ events: events.rows, coordinators: coordinators.rows });
 });
 
-/** Changes a single assignment under an event lock; stale lead decisions cannot overwrite a newer handover. */
+/** Saves assignment and the new coordinator's notice under one event lock; email follows the commit (AC1–AC4). */
 const assign = asyncHandler(async (req, res) => {
   const { coordinatorId, expectedCoordinatorId } = req.body || {};
   // PostgreSQL integer foreign keys accept only positive whole identifiers from JSON.
@@ -25,7 +25,7 @@ const assign = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Choose a valid event, coordinator and current assignment.' });
   }
   const client = await pool.connect();
-  let stored = [];
+  let updated, stored = [];
   try {
     await client.query('BEGIN');
     const event = (await client.query('SELECT id,name,coordinator_id,is_draft,status FROM events WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
@@ -41,7 +41,7 @@ const assign = asyncHandler(async (req, res) => {
       await client.query('ROLLBACK'); return res.status(400).json({ message: 'Choose a provisioned Event Coordinator.' });
     }
     // One nullable foreign key represents responsibility; replacing it never creates a second coordinator.
-    const updated = (await client.query('UPDATE events SET coordinator_id=$1,updated_at=now() WHERE id=$2 RETURNING *', [coordinatorId,event.id])).rows[0];
+    updated = (await client.query('UPDATE events SET coordinator_id=$1,updated_at=now() WHERE id=$2 RETURNING *', [coordinatorId,event.id])).rows[0];
     // Handover AC2/AC3: only the current assignment changes; snapshots and notification commit with it or all roll back.
     if (event.coordinator_id !== coordinatorId) await client.query(`INSERT INTO event_coordinator_history
       (event_id,previous_coordinator_id,new_coordinator_id,changed_by,previous_name,new_name,changed_by_name,event_status)
@@ -50,20 +50,21 @@ const assign = asyncHandler(async (req, res) => {
     [event.id,event.coordinator_id,coordinatorId,req.user.id,event.status]);
     // Notify both sides atomically; an initial assignment has no outgoing coordinator and repeated saves notify nobody.
     if (event.coordinator_id !== coordinatorId) stored = await notificationService.insertNotifications(client, [{
-      userId:coordinatorId,eventId:event.id,changeRequestId:null,type:'event_details_changed',
-      title:`Event assigned: ${event.name}`,message:`You are now the Event Coordinator for ${event.name}. Open the event for its current details.`,
-      details:{kind:'event_assignment',previousCoordinatorId:event.coordinator_id},
+      userId:coordinatorId,eventId:event.id,changeRequestId:null,type:'event_coordinator_assigned',
+      title:`Event assigned: ${updated.name}`,message:`You have been assigned as Event Coordinator for ${updated.name}. Open the event to review the latest information and pending work.`,
+      details:{kind:'event_assignment',assignedBy:req.user.id,previousCoordinatorId:event.coordinator_id},
     }, ...(event.coordinator_id === null ? [] : [{
       userId:event.coordinator_id,eventId:event.id,changeRequestId:null,type:'event_details_changed',
-      title:`Event reassigned: ${event.name}`,
-      message:`${event.name} has been reassigned to another Event Coordinator. You are no longer responsible for this event and no longer have access to its details.`,
+      title:`Event reassigned: ${updated.name}`,
+      message:`${updated.name} has been reassigned to another Event Coordinator. You are no longer responsible for this event and no longer have access to its details.`,
       details:{kind:'event_reassigned_away',newCoordinatorId:coordinatorId},
     }])]);
     await client.query('COMMIT');
-    await notificationService.emailNotifications(stored);
-    res.json({ event: updated, message: 'Coordinator assignment saved.' });
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
+  // A mail outage must not turn a committed assignment into a reported failure.
+  await notificationService.emailNotifications(stored);
+  res.json({ event: updated, message: 'Coordinator assignment saved.' });
 });
 /** Handover AC1/AC3: history follows current event access, so a past assignment grants no lasting read permission. */
 const assignmentHistory = asyncHandler(async (req, res) => {

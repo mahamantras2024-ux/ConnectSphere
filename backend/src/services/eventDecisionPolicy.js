@@ -8,7 +8,8 @@
  */
 const DECISION_REQUIREMENTS = {
   approved: ['clarificationsResolved'],
-  rejected: ['clarificationsResolved'],
+  // Insufficient information can itself justify rejection, even while a clarification is outstanding.
+  rejected: [],
 };
 
 /** Statuses in which a request is still awaiting the coordinator's decision. */

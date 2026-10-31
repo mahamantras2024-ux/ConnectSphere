@@ -93,9 +93,18 @@ test('SCRUM-106 AC1–AC5 - real PostgreSQL closure, approval blocking, isolated
         [{id:1,status:'cancelled'},{id:2,status:'approved'},{id:3,status:'approved'},{id:4,status:'pending'}]);
       assert.equal((await as('chris','POST','/events/1/status',{status:'confirmed'})).body.code,'SAFETY_NOT_COMPLETED');
       assert.equal((await client.query('SELECT status FROM events WHERE id=1')).rows[0].status,'planning');
+      // SCRUM-106 AC5 / Safety recovery AC2: revised venues hide old checks in both model queries.
+      // Read the real SQL results so missing revision filters cannot pass on mocked context.
+      const decisions = require('../../backend/src/models/eventDecisionModel');
+      assert.equal((await decisions.loadDecisionContext(client,1)).latest_safety_check,null);
+      assert.equal((await decisions.safetyCandidates(client)).find(event=>event.id===1).latest_safety_check,null);
       // A fresh passed safety review enables, but does not perform, coordinator confirmation.
       const safety=await as('sam','POST','/events/1/safety-checks',{outcome:'approved'});
       assert.equal(safety.status,201,JSON.stringify(safety.body));
+      // Safety recovery deduplication needs the current check ID as well as its timestamp.
+      const latestId=(await client.query('SELECT id FROM event_safety_checks WHERE event_id=1 ORDER BY id DESC LIMIT 1')).rows[0].id;
+      assert.equal((await decisions.loadDecisionContext(client,1)).latest_safety_check.id,latestId);
+      assert.equal((await decisions.safetyCandidates(client)).find(event=>event.id===1).latest_safety_check.id,latestId);
       assert.equal((await client.query('SELECT status FROM events WHERE id=1')).rows[0].status,'planning');
       assert.equal((await as('chris','POST','/events/1/status',{status:'confirmed'})).status,200);
       assert.equal((await client.query('SELECT status FROM events WHERE id=1')).rows[0].status,'confirmed');

@@ -128,8 +128,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.equal(approved.status, 200);
       const stored = (await client.query('SELECT status, decided_by, decided_at IS NOT NULL AS decided, decision_reason FROM events WHERE id = 1')).rows[0];
       assert.deepEqual(stored, { status: 'approved', decided_by: id.chris, decided: true, decision_reason: null });
-      assert.deepEqual((await notes('olivia')).map((note) => note.type), ['safety_check_recorded', 'event_approved']);
-      assert.deepEqual(emails, [{ to: 'olivia@example.test', subject: 'Event approved: Workshop' }]);
+      assert.deepEqual((await notes('olivia')).map((note) => note.type), ['safety_check_recorded', 'event_clarification_requested', 'event_approved']);
+      assert.deepEqual(emails, [{ to: 'olivia@example.test', subject: 'Event initially approved: Workshop' }]);
       const organiserView = (await as('olivia', 'GET', '/events/1/decision')).body;
       assert.deepEqual([organiserView.status, organiserView.outcome.decision, organiserView.outcome.decidedBy, organiserView.outcome.reason],
         ['approved', 'approved', 'chris', null]);
@@ -150,7 +150,7 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.equal((await as('chris', 'POST', '/events/2/decision', { decision: 'rejected', reason: ' No suitable venue is available. ' })).status, 200);
       assert.deepEqual((await client.query('SELECT status, decision_reason FROM events WHERE id = 2')).rows[0],
         { status: 'rejected', decision_reason: 'No suitable venue is available.' });
-      const [, , rejectedNote] = await notes('olivia');
+      const rejectedNote = (await notes('olivia')).find(note => note.type === 'event_rejected');
       assert.deepEqual([rejectedNote.type, rejectedNote.message],
         ['event_rejected', 'Your event request Talk was not approved by the Event Coordinator.\nReason: No suitable venue is available.']);
 
@@ -171,7 +171,7 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       await client.query(sqlFile('migrations/006-event-decisions.sql'));
       await client.query(sqlFile('migrations/010-venue-safety-facts.sql'));
       await client.query(sqlFile('migrations/011-safety-change-stages.sql'));
-      assert.equal((await client.query('SELECT status FROM events WHERE id = 1')).rows[0].status, 'approved');
+      assert.equal((await client.query('SELECT status FROM events WHERE id = 1')).rows[0].status, 'confirmed');
     } finally {
       mock.restoreAll();
       if (server?.listening) await new Promise((resolve) => server.close(resolve));

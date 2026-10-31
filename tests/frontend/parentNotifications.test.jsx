@@ -182,6 +182,9 @@ it('NT AC2 - a short single-line message has no separate details', async () => {
 
 // AC4: pressing a notification marks it read and opens the page where the update happened.
 it.each([
+  ['venue_staff', '/venue/dashboard', note({ type: 'venue_booking_requested', title: 'New venue booking request: Hall A' }), '/venue/dashboard'],
+  ['event_coordinator', '/coordinator/dashboard', note({ type: 'clarification_replied', title: 'Clarification reply received: Gala' }), '/events/101'],
+  ['event_coordinator', '/coordinator/dashboard', note({ type: 'event_coordinator_assigned', title: 'Event assigned: Gala' }), '/events/101'],
   ['event_organiser', '/organizer/dashboard', note(), '/organizer/events/101'],
   ['event_coordinator_lead', '/coordinator-lead/dashboard', note({ type: 'event_awaiting_assignment', title: 'New request to assign: Gala' }), '/coordinator-lead/dashboard'],
   ['safety_officer', '/safety/dashboard', note({ type: 'safety_check_ready', title: 'Ready for safety check: Gala' }), '/safety/dashboard'],
@@ -454,4 +457,17 @@ it('Outgoing notice AC3 - a reassigned coordinator opens their dashboard instead
     if(scrollDescriptor)Object.defineProperty(HTMLElement.prototype,'scrollIntoView',scrollDescriptor);
     else delete HTMLElement.prototype.scrollIntoView;
   }
+});
+
+// Assignment AC5: the saved assignment uses the shared coordinator dashboard inbox and its real event route.
+it('Assignment notification AC5 - coordinator dashboard notice opens the assigned event',async()=>{
+  user=roles.event_coordinator;
+  inbox={unreadCount:1,notifications:[note({type:'event_coordinator_assigned',title:'Event assigned: Gala',message:'You have been assigned as Event Coordinator for Gala.'})]};
+  open('/coordinator/dashboard');
+  const panel=await screen.findByRole('region',{name:'Notifications'});
+  const notice=await within(panel).findByRole('button',{name:'Event assigned: Gala (new)'});
+  expect(within(panel).getByText('1 unread')).toBeTruthy();
+  fireEvent.click(notice);
+  await waitFor(()=>expect(page()).toBe('/events/101'));
+  expect(api.post).toHaveBeenCalledWith('/notifications/9/read',{},'session');
 });

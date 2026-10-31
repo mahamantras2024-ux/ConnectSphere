@@ -29,4 +29,3 @@ test('Session venues AC1 AC3 - failed migration rolls back and preserves the ori
   await assert.rejects(migrate(),error=>error===failure);
   assert.equal(query.mock.calls[1].arguments[0],'ROLLBACK');assert.equal(release.mock.callCount(),1);
 });
-

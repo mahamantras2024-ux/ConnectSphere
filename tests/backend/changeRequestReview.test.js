@@ -322,7 +322,9 @@ test('CR AC3 - rejecting keeps the event unchanged, stores the reason and notifi
   assert.deepEqual(tx.find('UPDATE event_change_requests')[0].values, [501, 'rejected', 30, 'Hall A cannot seat 150.']);
   const [userIds, , , types, , messages] = tx.find('INSERT INTO notifications')[0].values;
   assert.deepEqual([userIds, types], [[12], ['change_request_rejected']]);
-  assert.equal(messages[0], 'Your requested changes to Workshop were not approved. The confirmed details remain in effect.\nReason: Hall A cannot seat 150.');
+  assert.ok(messages[0].startsWith('Your requested changes to Workshop were not approved. The confirmed details remain in effect.\n'));
+  assert.match(messages[0], /Expected attendance:/);
+  assert.ok(messages[0].endsWith('Reason: Hall A cannot seat 150.'));
 });
 
 // Reasons are optional and at most 4000 characters; blank reasons are stored as no reason.

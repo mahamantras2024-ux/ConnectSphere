@@ -149,7 +149,7 @@ test('CR AC1/AC2/AC3 - change requests are notified, reviewed, applied or reject
       assert.equal((await client.query('SELECT decision_reason FROM event_change_requests WHERE id=$1', [second.id])).rows[0].decision_reason, 'Name is already in use.');
       const olivia = await notificationsFor('olivia');
       assert.equal(olivia[1].type, 'change_request_rejected');
-      assert.equal(olivia[1].message, 'Your requested changes to Workshop were not approved. The confirmed details remain in effect.\nReason: Name is already in use.');
+      assert.equal(olivia[1].message, 'Your requested changes to Workshop were not approved. The confirmed details remain in effect.\nEvent name: Workshop → Renamed workshop\nReason: Name is already in use.');
       // ---------- Reassignment (Coordinator Lead story): a pending request moves with the event ----------
       assert.equal((await as('olivia', 'POST', '/events/1/amendment-requests', { changes: { expectedAttendance: 120 }, explanation: 'Venue limit.' })).status, 202);
       const handedOver = (await as('chris', 'GET', '/events/change-requests')).body.changeRequests[0];
