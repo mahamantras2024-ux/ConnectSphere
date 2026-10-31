@@ -19,7 +19,7 @@ test('SCRUM-93 AC1-AC6 - real organisation isolation and atomic status notificat
     await client.query(`SET search_path TO ${schema}`);
     await client.query(`CREATE TABLE users (id integer PRIMARY KEY, role text, roles text[] DEFAULT '{}', organisation_name text);
       CREATE TABLE events (id serial PRIMARY KEY, organiser_id integer REFERENCES users(id), name text, purpose text,
-        status text, coordinator_id integer, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), decision_reason text, decided_at timestamptz);
+        status text, coordinator_id integer, is_draft boolean NOT NULL DEFAULT true, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), decision_reason text, decided_at timestamptz);
       CREATE TABLE venue_bookings (event_id integer, status text);
       CREATE TABLE event_clarification_requests (id serial, event_id integer, status text, information_needed jsonb, message text, organiser_response text, created_at timestamptz DEFAULT now(), responded_at timestamptz);
       CREATE TABLE notifications (id serial PRIMARY KEY, user_id integer REFERENCES users(id), event_id integer REFERENCES events(id),
