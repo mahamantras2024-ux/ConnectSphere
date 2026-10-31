@@ -18,6 +18,14 @@ it('Reconsider AC2 AC3 - shows rejection and corrections and reopens the display
   api.post.mockReturnValue(new Promise(resolve => { finish = resolve; }));
   const changed = open();
   expect(await screen.findByText('Audience corrected')).toBeTruthy();
+  // AC3: each historical outcome remains a separate chronological row with accessible column headings.
+  const table = screen.getByRole('table', { name: 'Event review history' });
+  expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['Date and time', 'Outcome', 'Reviewed by', 'Details']);
+  expect(within(table).getAllByRole('row')).toHaveLength(4);
+  expect(within(table).getAllByRole('row')[1].textContent).toContain('Audience not explained');
+  expect(within(table).getAllByRole('row')[2].textContent).toContain('Audience corrected');
+  expect(within(table).getAllByRole('row')[3].textContent).toContain('Reopened for review');
+  expect(within(table).getAllByText('Not recorded')).toHaveLength(2);
   expect(screen.getByText('Audience not explained')).toBeTruthy();
   expect(screen.getByText(/Vague.*Community learning/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Reopen for reconsideration'}));

@@ -30,8 +30,8 @@ export default function EventReviewHistory({ event, token, coordinator, onReopen
     finally { setSaving(false); setReload(value => value + 1); }
   }
   return (
-    <section className="ed-card" aria-label="Review history">
-      <h2>Review history</h2>
+    <section className="ed-card review-history-card" aria-label="Review history">
+      <h2 className="ed-card-title">Review history</h2>
       {error && <p role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
       {event.status === 'cancelled' && <p>Cancelled events cannot be reconsidered. Submit a new event request.</p>}
@@ -44,18 +44,36 @@ export default function EventReviewHistory({ event, token, coordinator, onReopen
           </button>
         </div>
       )}
-      {view && (view.history.length ? <ol>{view.history.map(entry => (
-        <li key={entry.id}>
-          <strong>{entry.kind === 'correction' ? 'Correction applied' : entry.kind === 'reconsideration' ? 'Reopened for review' : entry.outcome.replaceAll('_', ' ')}</strong>
-          <time dateTime={entry.occurred_at}> — {new Date(entry.occurred_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</time>
-          {entry.actor_name && <span> — {entry.actor_name}</span>}
-          {entry.details.reason && <p>{entry.details.reason}</p>}
-          {entry.details.explanation && <p>{entry.details.explanation}</p>}
-          {entry.kind === 'correction' && <ul>{entry.details.changes.map(change => (
-            <li key={change.field}>{change.label}: {shownValue(change.before)} → {shownValue(change.after)}</li>
-          ))}</ul>}
-        </li>
-      ))}</ol> : <p>No review outcomes recorded yet.</p>)}
+      {view && (view.history.length ? (
+        <div className="review-history-table-wrap" role="region" aria-label="Scroll review history" tabIndex={0}>
+          <table className="review-history-table">
+            <caption className="sr-only">Event review history</caption>
+            <thead><tr>
+              <th scope="col">Date and time</th><th scope="col">Outcome</th>
+              <th scope="col">Reviewed by</th><th scope="col">Details</th>
+            </tr></thead>
+            <tbody>{view.history.map(entry => (
+              <tr key={entry.id}>
+                <td className="review-history-date"><time dateTime={entry.occurred_at}>
+                  {new Date(entry.occurred_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' })}
+                </time></td>
+                <td><span className="review-history-outcome" data-outcome={entry.outcome}>
+                  {entry.kind === 'correction' ? 'Correction applied' : entry.kind === 'reconsideration' ? 'Reopened for review' : entry.outcome.replaceAll('_', ' ')}
+                </span></td>
+                <td>{entry.actor_name || 'Not recorded'}</td>
+                <td className="review-history-details">
+                  {entry.details.reason && <p>{entry.details.reason}</p>}
+                  {entry.details.explanation && <p>{entry.details.explanation}</p>}
+                  {entry.kind === 'correction' && <dl className="review-history-changes">{entry.details.changes.map(change => (
+                    <div key={change.field}><dt>{change.label}</dt><dd>{shownValue(change.before)} → {shownValue(change.after)}</dd></div>
+                  ))}</dl>}
+                  {!entry.details.reason && !entry.details.explanation && entry.kind !== 'correction' && <span className="review-history-empty">—</span>}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      ) : <p>No review outcomes recorded yet.</p>)}
     </section>
   );
 }

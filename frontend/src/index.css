@@ -716,3 +716,24 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 /* Staff preparation stages use the established warning and neutral tones; cancellation keeps its shared red badge. */
 .onsite-event-card .status-planning { background: var(--cream); color: #685019; }
 .onsite-event-card .status-completed { background: #EFEFE3; color: #616351; }
+
+/* Keep audit rows easy to scan; narrow screens scroll the table without widening the event page. */
+.review-history-card { min-width: 0; }
+.review-history-table-wrap { width: 100%; max-width: 100%; margin-top: 18px; overflow-x: auto; border: 1px solid #dfe5e0; border-radius: 10px; background: #fff; }
+.review-history-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14px; line-height: 1.5; text-align: left; }
+.review-history-table th { padding: 12px 16px; background: #f2f5f3; color: #536052; font-size: 12px; font-weight: 650; white-space: nowrap; border-bottom: 1px solid #dfe5e0; }
+.review-history-table td { padding: 16px; border-bottom: 1px solid #e8ece8; vertical-align: top; }
+.review-history-table tbody tr:last-child td { border-bottom: 0; }
+.review-history-table tbody tr:nth-child(even) { background: #fafbf9; }
+.review-history-date { width: 22%; color: #656c65; font-size: 13px; }
+.review-history-outcome { display: inline-block; padding: 4px 9px; border-radius: 6px; background: #eef1ee; color: #495345; font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.review-history-outcome[data-outcome="rejected"] { background: #fbeeea; color: #963e32; }
+.review-history-outcome[data-outcome="approved"] { background: #eaf3e8; color: #3f6439; }
+.review-history-outcome[data-outcome="applied"], .review-history-outcome[data-outcome="under_review"] { background: #edf2f8; color: #405d7c; }
+.review-history-details { width: 42%; overflow-wrap: anywhere; }
+.review-history-details p { margin: 0 0 6px; }
+.review-history-details p:last-child { margin-bottom: 0; }
+.review-history-changes { display: grid; gap: 8px; margin: 8px 0 0; }
+.review-history-changes dt { color: #586351; font-size: 12px; font-weight: 600; }
+.review-history-changes dd { margin: 2px 0 0; }
+.review-history-empty { color: #899088; }
