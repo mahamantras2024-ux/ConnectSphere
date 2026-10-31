@@ -22,7 +22,7 @@ async function listReviews(eventId) {
 
 /**
  * Locks the event's equipment request inside a transaction and returns it with whether its current version has been
- * reviewed, so a review or an organiser resubmission is decided against a request nobody else is changing.
+ * reviewed, so a review is decided against a request nobody else is changing.
  */
 async function lockRequest(db, eventId) {
   const result = await db.query(`

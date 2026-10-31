@@ -216,34 +216,23 @@ test('ES AC2 - a review of an outdated request version is refused without writin
   assert.equal(tx.find('INSERT').length, 0);
 });
 
-// ---------- AC2: an organiser's edit sends a reviewed request back to pending ----------
+// ---------- AC2: a reviewed request changes only through an amendment request ----------
 
-// Organiser edits go through the existing event read, then the transaction.
+// Since the post-submission amendments story the organiser no longer edits a submitted (reviewed) request directly: the
+// change is an amendment request, and approving it starts a new pending version (covered in changeRequestReview.test.js).
 const organiserEdit = () => request('/api/events/101/equipment', { method: 'PUT', user: organiser, body: { equipmentItems: [{ item: 'Microphone', quantity: 2 }] } });
-const mockOrganiserRead = () => mock.method(pool, 'query', async (sql) => {
-  if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
-  if (sql.includes('JOIN users organiser')) return { rows: [{ ...request101, equipment_confirmed: false }] };
-  throw new Error(`Unexpected pool query: ${sql}`);
-});
-test('ES AC2 - editing a reviewed request notifies the coordinator that it is pending again', async () => {
-  mockOrganiserRead();
-  const tx = mockTransaction({ locked: { ...request101, reviewed: true } });
-  mock.method(emailService, 'sendNotificationEmail', async () => {});
-  assert.equal((await organiserEdit()).status, 200);
-  const [userIds, , , , titles, messages] = tx.find('INSERT INTO notifications')[0].values;
-  assert.deepEqual([userIds, titles], [[30], ['Equipment request pending: Gala']]);
-  assert.equal(messages[0], 'The equipment request for Gala is now pending.\nThe organiser changed the requirements, so Technical Support will review them again.');
-  assert.ok(tx.statements.indexOf(tx.find('UPDATE events SET equipment_items')[0]) < tx.statements.indexOf(tx.find('INSERT INTO notifications')[0]));
-});
-test('ES AC2 - editing a request that was never reviewed sends no notification (it was already pending)', async () => {
-  mockOrganiserRead();
-  const tx = mockTransaction({ locked: { ...request101, reviewed: false } });
-  assert.equal((await organiserEdit()).status, 200);
-  assert.equal(tx.find('INSERT INTO notifications').length, 0);
-});
-test('ES AC2 - an edit overtaken by a confirmation is refused and nothing is notified', async () => {
-  mockOrganiserRead();
-  const tx = mockTransaction({ locked: { ...request101, reviewed: true }, updated: null });
-  assert.equal((await organiserEdit()).status, 409);
-  assert.equal(tx.find('INSERT INTO notifications').length, 0);
+test('ES AC2 / AM AC1 - the organiser cannot edit a reviewed request directly, so nothing is written or notified', async () => {
+  // Arrange: the submitted, reviewed request; a transaction would mean a write or a notification.
+  mock.method(pool, 'query', async (sql) => {
+    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
+    if (sql.includes('JOIN users organiser')) return { rows: [{ ...request101, status: 'submitted', is_draft: false, equipment_confirmed: false }] };
+    throw new Error(`Unexpected pool query: ${sql}`);
+  });
+  const connect = mock.method(pool, 'connect', async () => assert.fail('No transaction may start.'));
+  // Act
+  const result = await organiserEdit();
+  // Assert
+  assert.equal(result.status, 409);
+  assert.equal(result.body.code, 'AMENDMENT_REQUIRED');
+  assert.equal(connect.mock.callCount(), 0);
 });

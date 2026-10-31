@@ -9,9 +9,12 @@ const SINGAPORE_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 /** Normalises stored and requested values so "09:00" and "09:00:00", or equal lists, are not reported as changes. */
 function comparable(field, value) {
-  if (value === undefined || value === '') return null;
+  // No value (including a cleared deadline, which must not read as the 1970 epoch) is compared and shown as none.
+  if (value == null || value === '') return null;
   if ((field === 'proposedStartTime' || field === 'proposedEndTime') && typeof value === 'string') return value.padEnd(8, ':00');
   if (field === 'proposedDate' && typeof value === 'string') return value.slice(0, 10);
+  // Deadlines are instants: the same moment written differently (offset, precision) is not a change.
+  if (field === 'registrationDeadline' || field === 'withdrawalDeadline') return new Date(value).toISOString();
   return value;
 }
 
@@ -42,6 +45,22 @@ function describeChanges(event, requestedChanges) {
     // Structured values (attachments, equipment lists) are shown as readable entries rather than raw objects.
     const shown = definition?.display || ((value) => value);
     return [{ field, label: definition?.label || field, current: shown(before), requested: shown(after) }];
+  });
+}
+
+/**
+ * Lists what an amendment request asked for, without comparing to the event (whose values may since have changed), so
+ * the organiser can see each proposal and its outcome.
+ * @param {object} requestedChanges stored camelCase changes.
+ * @returns {{ field: string, label: string, requested: * }[]} in the event's standard field order; unknown keys last.
+ */
+function requestedChanges(requestedChanges) {
+  const known = Object.keys(EVENT_FIELDS).filter((field) => Object.hasOwn(requestedChanges, field));
+  const unknown = Object.keys(requestedChanges).filter((field) => !isSupportedField(field));
+  return [...known, ...unknown].map((field) => {
+    const definition = EVENT_FIELDS[field];
+    const shown = definition?.display || ((value) => value);
+    return { field, label: definition?.label || field, requested: shown(comparable(field, requestedChanges[field])) };
   });
 }
 
@@ -113,25 +132,6 @@ function assessArrangements(nextEvent, changedFields, bookings, now) {
   }).filter((arrangement) => arrangement.reasons.length);
 }
 
-/**
- * Chooses who must hear about an approved change (AC3 "relevant personnel").
- * - The organiser always hears the outcome.
- * - Venue Staff: whoever approved each affected booking; a still-pending booking has no decision-maker yet,
- *   so every Venue Staff account is told.
- * - Technical Support: when the time or attendance changes for an event with equipment needs, because
- *   equipment reservations follow the event's time and size.
- */
-function recipientsFor({ event, changedFields, arrangements, venueStaffIds, technicalSupportIds }) {
-  const venueStaff = new Set();
-  for (const arrangement of arrangements) {
-    if (arrangement.decisionBy) venueStaff.add(arrangement.decisionBy);
-    else venueStaffIds.forEach((id) => venueStaff.add(id));
-  }
-  const affectsEquipment = changedFields.some((field) => TIME_FIELDS.includes(field) || field === 'expectedAttendance');
-  const technicalSupport = affectsEquipment && event.equipment_notes?.trim() ? [...new Set(technicalSupportIds)] : [];
-  return { organiser: [event.organiser_id], venueStaff: [...venueStaff], technicalSupport };
-}
-
 /** Formats a stored value for notification text without inventing data for empty values. */
 function displayValue(value) {
   if (value == null || value === '') return 'Not specified';
@@ -146,6 +146,6 @@ function changeLines(changes) {
 }
 
 module.exports = {
-  TIME_FIELDS, isSupportedField, describeChanges, applyToEvent, eventPeriod, assessArrangements, recipientsFor,
+  TIME_FIELDS, isSupportedField, describeChanges, requestedChanges, applyToEvent, eventPeriod, assessArrangements,
   displayValue, changeLines,
 };

@@ -24,6 +24,8 @@ export const SAFETY_EVENT_ANCHOR = (id) => `safety-event-${id}`;
 /**
  * The page where a notification's update happened, for the signed-in role.
  * - A new request to assign opens the Coordinator Lead's assignment queue.
+ * - A new amendment (change) request opens the coordinator's dashboard, whose Amendment requests inbox is where it is
+ *   approved or rejected (the event page has no decision controls).
  * - A Technical Support assignment notification opens the tech-support dashboard, independent of the event id.
  * - An equipment-status notification opens the tech-support dashboard for a Technical Support recipient; for any other
  *   role (e.g. an Event Coordinator) it uses that role's normal event-page/dashboard route.
@@ -38,6 +40,7 @@ export function notificationTarget(notification, role) {
   // Organisation colleagues have status-only access; this target never opens another organiser’s private detail page.
   if (notification.type === 'event_request_status_changed' && role === 'event_organiser' && notification.event_id != null) return `/organizer/events/${notification.event_id}/status`;
   if (notification.type === 'event_awaiting_assignment') return '/coordinator-lead/dashboard';
+  if (notification.type === 'change_request_submitted' && role === 'event_coordinator') return '/coordinator/dashboard';
   // Assignment work is tech-support-only and dashboard-owned, so route by type before any role/event-page branch.
   if (TECH_SUPPORT_ASSIGNMENT_TYPES.has(notification.type)) return '/tech-support/dashboard';
   // An equipment-status notification opens the tech-support dashboard only for a Technical Support recipient; any other

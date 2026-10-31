@@ -33,9 +33,10 @@ async function changeSessionRequest(venueId,bookingId,body,userId){
     assertSessionSuitability(details.requirements,venue);
     const periods=await recordedPeriods(client,venue.id);
     if(hasConflict({start_datetime:body.startDatetime,end_datetime:body.endDatetime},periods,venue,Date.now(),booking.id))throw reject(409,'This session period conflicts with another booking or unavailable period.');
-    // Any changed timing/requirements needs fresh staff approval; other sessions retain their status and audit.
+    // Fresh approval replaces the old confirmed snapshot, so clear its recheck flag; other sessions keep their audit.
     return (await client.query(`UPDATE venue_bookings SET start_datetime=$1,end_datetime=$2,requirements=$3::jsonb,
       status='pending',hold_expires_at=$4,decision_by=NULL,decision_notes=NULL,confirmed_by=NULL,confirmed_at=NULL,
+      recheck_required_at=NULL,recheck_reason=NULL,
       cancel_other_pending=false,updated_at=now() WHERE id=$5 RETURNING *`,
     [new Date(start).toISOString(),new Date(end).toISOString(),JSON.stringify(details.requirements),new Date(Date.now()+HOLD_DURATION_MS).toISOString(),booking.id])).rows[0];
   });

@@ -30,7 +30,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
         organiser_id INTEGER, status TEXT DEFAULT 'submitted', is_draft BOOLEAN DEFAULT false, equipment_items JSONB DEFAULT '[]',
         technical_support_required BOOLEAN DEFAULT false, video_conferencing_required BOOLEAN DEFAULT false,
         equipment_notes TEXT, equipment_confirmed_at TIMESTAMPTZ, decision_reason TEXT, decided_at TIMESTAMPTZ,
-        decided_by INTEGER, safety_changes_open TEXT[] DEFAULT '{}', proposed_date DATE, proposed_end_time TIME,
+        decided_by INTEGER, safety_changes_open TEXT[] DEFAULT '{}', safety_recheck_required_at TIMESTAMPTZ, proposed_date DATE, proposed_end_time TIME,
         expected_attendance INTEGER DEFAULT 100, room_layout_preference TEXT DEFAULT 'Seminar', accessibility_requirements TEXT[] DEFAULT '{Ramp}');
       CREATE TABLE event_clarification_requests(id SERIAL PRIMARY KEY,event_id INTEGER,status TEXT);
       CREATE TABLE event_safety_checks(id SERIAL PRIMARY KEY,event_id INTEGER,safety_officer_id INTEGER,
@@ -45,6 +45,8 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     const client = await database.connect();
     try {
       for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql','migrations/019-venue-tentative-holds.sql','migrations/020-session-venue-requests.sql']) await client.query(migration(file));
+    // The focused fixture needs the additive booking recheck columns introduced by main's amendment migration.
+    await client.query('ALTER TABLE venue_bookings ADD COLUMN recheck_required_at TIMESTAMPTZ, ADD COLUMN recheck_reason TEXT');
     } finally { client.release(); }
     // Redirect only connection acquisition. All route SQL, constraints, locking and commits run on real PostgreSQL.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));
@@ -365,12 +367,16 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     assert.equal(approved.status,200);
     const confirmed=await request(`/7/requests/${first.body.request.id}/confirm`,{},'PUT',1);
     assert.equal(confirmed.status,200);assert.equal(confirmed.body.request.status,'approved');
+    await database.query("UPDATE venue_bookings SET recheck_required_at=now(),recheck_reason='Attendance changed' WHERE id=$1",[first.body.request.id]);
     const other=(await database.query('SELECT * FROM venue_bookings WHERE id=$1',[second.body.request.id])).rows[0];
     // Act: revise only Track A; venue staff must assess the new request again.
     const route=`/7/requests/${first.body.request.id}/session`;
     const changed=await request(route,{...body,startDatetime:at('12:00'),endDatetime:at('13:00'),capacity:25},'PUT',1);
     assert.equal(changed.status,200);assert.equal(changed.body.request.status,'pending');
     assert.equal(changed.body.request.requirements.capacity,25);
+    // A fresh pending approval cannot retain the confirmed-booking recheck flag or staff would hit the wrong endpoint.
+    assert.equal(changed.body.request.recheck_required_at,null);
+    assert.equal(changed.body.request.recheck_reason,null);
     // Assert: even an old bulk-cancellation preference cannot cross the named session boundary.
     await database.query('UPDATE venue_bookings SET cancel_other_pending=true WHERE id=$1',[first.body.request.id]);
     const cancelled=await request(route,{cancel:true},'PUT',1);

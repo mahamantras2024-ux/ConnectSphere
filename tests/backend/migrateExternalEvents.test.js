@@ -98,12 +98,18 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   assert.ok(registrationIndex < withdrawalIndex, 'withdrawal follows registration');
   assert.ok(withdrawalIndex < venueStatusIndex, 'Venue Staff status follows withdrawal');
   assert.ok(venueStatusIndex < venueFrequencyIndex, 'reminder frequency follows Venue Staff status');
-  // Parent notification system: its notification types are set after every earlier type change, as the final migration.
+  // Parent notification system: its notification types are set after every earlier type change.
   const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
   assert.ok(venueFrequencyIndex < parentNotificationsIndex, 'parent notifications follow the Venue Staff migrations');
+  // Post-submission amendments: the explanation column follows every earlier notification upgrade.
+  const amendmentIndex = queries.indexOf(migrationSql('019-amendment-explanations.sql'));
+  assert.ok(parentNotificationsIndex < amendmentIndex, 'amendment explanations follow the notification types');
+  // Offline clarifications and amendment history extend the explanation column's table.
+  const historyIndex = queries.indexOf(migrationSql('020-clarifications-and-amendment-history.sql'));
+  assert.ok(amendmentIndex < historyIndex, 'clarification and amendment history follow the amendment explanations');
   // TS status AC5: install the lifecycle trigger after every responsibility and notification table exists.
   const technicalStatusIndex = queries.indexOf(migrationSql('019-technical-support-event-status.sql'));
-  assert.ok(parentNotificationsIndex < technicalStatusIndex, 'technical status follows the shared notification migrations');
+  assert.ok(historyIndex < technicalStatusIndex, 'technical status follows the amendment history');
   // SCRUM-93 preserves every earlier type and installs the transactional status trigger last.
   const requestStatusIndex = queries.indexOf(migrationSql('023-organiser-request-status.sql'));
   assert.ok(technicalStatusIndex < requestStatusIndex, 'organiser status follows the technical lifecycle migration');
