@@ -12,7 +12,7 @@ function contextSql(scope, lock) {
       COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at,
           'recheck_required_at', vb.recheck_required_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
-      (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'safety_officer_name', officer.full_name,
+      (SELECT jsonb_build_object('id', s.id, 'outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'safety_officer_name', officer.full_name,
           'change_areas', s.change_areas)
         FROM event_safety_checks s JOIN users officer ON officer.id = s.safety_officer_id
         WHERE s.event_id = e.id AND (e.venue_revised_at IS NULL OR s.checked_at >= e.venue_revised_at) ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
@@ -67,6 +67,23 @@ async function reopenStages(db, eventId, areas) {
     WHERE id = $1`, [eventId, areas]);
 }
 
+/**
+ * Safety stock AC1–AC3: releases only this event's active allocations when technical arrangements must be redone.
+ * Stock queries already exclude cancelled reservations. Keep item rows and prior release audits as history, and close
+ * replacement issues tied to these obsolete allocations. The caller holds the event lock and owns the transaction.
+ */
+async function releaseEquipmentForSafetyRework(db, eventId, safetyOfficerId) {
+  await db.query(`WITH released AS (
+    UPDATE event_equipment_reservations
+    SET status='cancelled', released_by=$2, released_at=now()
+    WHERE event_id=$1 AND status='reserved'
+    RETURNING id
+  )
+  UPDATE equipment_reservation_unavailability
+  SET status='resolved', resolved_at=now()
+  WHERE reservation_id IN (SELECT id FROM released) AND status='open'`, [eventId,safetyOfficerId]);
+}
+
 /** Marks one reopened stage complete and returns the stages still open (AC4: the re-check waits for all of them). */
 async function resolveStage(db, eventId, area) {
   const result = await db.query(`
@@ -95,7 +112,7 @@ async function safetyCandidates(db) {
           'turnaround_minutes', v.turnaround_minutes, 'emergency_access', v.emergency_access, 'known_restrictions', v.known_restrictions,
           'emergency_documents', v.emergency_documents) ORDER BY vb.id)
         FROM venue_bookings vb JOIN venues v ON v.id = vb.venue_id WHERE vb.event_id = e.id AND vb.status = 'approved'), '[]'::jsonb) AS venues,
-      (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'change_areas', s.change_areas)
+      (SELECT jsonb_build_object('id', s.id, 'outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'change_areas', s.change_areas)
         FROM event_safety_checks s WHERE s.event_id = e.id AND (e.venue_revised_at IS NULL OR s.checked_at >= e.venue_revised_at) ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
     FROM events e
     WHERE e.is_draft = false AND e.status IN ('submitted', 'under_review', 'approved', 'planning')
@@ -104,4 +121,4 @@ async function safetyCandidates(db) {
   return result.rows;
 }
 
-module.exports = { loadDecisionContext, recordDecision, insertSafetyCheck, reopenStages, resolveStage, safetyCandidates };
+module.exports = { loadDecisionContext, recordDecision, insertSafetyCheck, reopenStages, releaseEquipmentForSafetyRework, resolveStage, safetyCandidates };

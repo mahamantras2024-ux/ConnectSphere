@@ -3,10 +3,28 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pool } = require('../../backend/src/config/db');
-const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal } = require('../../backend/src/db/migrateExternalEvents');
+const { migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal, repairSafetyEquipment } = require('../../backend/src/db/migrateExternalEvents');
 const { migrateVenueStaffEventStatus, migrateVenueReminderFrequency } = require('../../backend/src/db/migrateVenueStaffEventStatus');
 
 afterEach(() => mock.restoreAll());
+
+// Safety repair AC1/AC3: the deployment command avoids historical seed migrations and always cleans up its connection.
+for (const fails of [false, true]) test(`Safety repair AC1 AC3 - standalone repair releases its connection; failure=${fails}`, async () => {
+  const queries = []; let released = false;
+  mock.method(pool, 'connect', async () => ({ query: async sql => {
+    queries.push(sql);
+    if (fails && sql !== 'ROLLBACK') throw new Error('Repair failed');
+  }, release: () => { released = true; } }));
+  if (fails) {
+    await assert.rejects(repairSafetyEquipment(), /Repair failed/);
+    assert.equal(queries.at(-1), 'ROLLBACK');
+  } else {
+    await repairSafetyEquipment();
+    assert.equal(queries.length, 1);
+    assert.equal(queries[0], fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/025-safety-equipment-release-repair.sql'), 'utf8'));
+  }
+  assert.equal(released, true);
+});
 
 test('Withdraw AC2/AC3 - standalone withdrawal upgrade applies only the deadline and notification schema', async () => {
   // Arrange: database boundary records the exact SQL without touching shared application records.
@@ -101,6 +119,29 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   // Parent notification system: its notification types are set after every earlier type change.
   const parentNotificationsIndex = queries.indexOf(migrationSql('017-parent-notifications.sql'));
   assert.ok(venueFrequencyIndex < parentNotificationsIndex, 'parent notifications follow the Venue Staff migrations');
+  // Organiser outcomes extend the allow-list after parent notifications so fresh deployments can store both new types.
+  const organiserOutcomesIndex = queries.indexOf(migrationSql('019-organiser-event-outcomes.sql'));
+  const assignmentIndex=queries.indexOf(migrationSql('020-coordinator-assignment-notifications.sql'));
+  const replyIndex=queries.indexOf(migrationSql('021-clarification-reply-notifications.sql'));
+  const bookingNoticeIndex=queries.indexOf(migrationSql('022-venue-booking-request-notifications.sql'));
+  const safetyDedupIndex=queries.indexOf(migrationSql('023-safety-readiness-notification-deduplication.sql'));
+  const safetyReworkIndex=queries.indexOf(migrationSql('024-revisable-safety-rejections.sql'));
+  const safetyRepairIndex=queries.indexOf(migrationSql('025-safety-equipment-release-repair.sql'));
+  assert.ok(safetyRepairIndex > safetyReworkIndex, 'safety repair follows safety rework');
+  assert.ok(safetyReworkIndex < safetyRepairIndex);
+  assert.ok(safetyDedupIndex < safetyReworkIndex);
+  assert.ok(bookingNoticeIndex < safetyDedupIndex);
+  assert.ok(replyIndex < bookingNoticeIndex);
+  assert.ok(assignmentIndex < replyIndex);
+  assert.ok(organiserOutcomesIndex < assignmentIndex);
+  assert.ok(parentNotificationsIndex < organiserOutcomesIndex);
+  // SCRUM-93 preserves every earlier type and installs the transactional status trigger last.
+  const requestStatusIndex = queries.indexOf(migrationSql('023-organiser-request-status.sql'));
+  assert.ok(safetyRepairIndex < requestStatusIndex, 'status trigger follows all notification type upgrades');
+  // Both feature sets must remain insertable even before any notices of a new type exist.
+  for (const type of ['event_confirmed', 'event_clarification_requested', 'event_coordinator_assigned', 'clarification_replied', 'venue_booking_requested', 'event_request_status_changed']) {
+    assert.ok(queries[requestStatusIndex].includes(`'${type}'`), `final constraint retains ${type}`);
+  }
   // Post-submission amendments: the explanation column follows every earlier notification upgrade.
   const amendmentIndex = queries.indexOf(migrationSql('019-amendment-explanations.sql'));
   assert.ok(parentNotificationsIndex < amendmentIndex, 'amendment explanations follow the notification types');
@@ -111,7 +152,6 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   const technicalStatusIndex = queries.indexOf(migrationSql('019-technical-support-event-status.sql'));
   assert.ok(historyIndex < technicalStatusIndex, 'technical status follows the amendment history');
   // SCRUM-93 preserves every earlier type and installs the transactional status trigger last.
-  const requestStatusIndex = queries.indexOf(migrationSql('023-organiser-request-status.sql'));
   assert.ok(technicalStatusIndex < requestStatusIndex, 'organiser status follows the technical lifecycle migration');
   assert.equal(requestStatusIndex, queries.length - 2);
   assert.equal(queries[requestStatusIndex - 1], 'BEGIN');

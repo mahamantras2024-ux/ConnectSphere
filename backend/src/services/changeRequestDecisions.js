@@ -3,18 +3,18 @@
 const { pool } = require('../config/db');
 const notificationService = require('./notificationService');
 const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
-const { describeChanges } = require('./changeRequestReview');
+const { describeChanges, changeLines } = require('./changeRequestReview');
 const { applyAmendment, amendmentRecipients, amendmentNotifications } = require('./agreedAmendments');
 
 /** Builds an error carrying the HTTP status and optional machine-readable code for the controller. */
 function failure(status, message, code) { return Object.assign(new Error(message), { status, code }); }
 
-/** The organiser's notice that a request was not approved; the confirmed details remain in effect. */
+/** Caps the stored rejection title; the message retains the complete name, changes and reason. */
 function rejectionNotice(request, changes, reason) {
   return [{ eventId: request.event_id, changeRequestId: request.id, userId: request.organiser_id, type: 'change_request_rejected',
-    title: `Change request not approved: ${request.event.name}`,
+    title: (`Change request not approved: ${request.event.name}`).slice(0, 255),
     message: `Your requested changes to ${request.event.name} were not approved. The confirmed details remain in effect.`
-      + (reason ? `\nReason: ${reason}` : ''),
+      + `\n${changeLines(changes).join('\n')}` + (reason ? `\nReason: ${reason}` : ''),
     details: { changes, reason } }];
 }
 

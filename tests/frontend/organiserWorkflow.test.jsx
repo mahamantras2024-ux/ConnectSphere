@@ -157,3 +157,19 @@ it.each([2*1024*1024-1,2*1024*1024,2*1024*1024+1])('Workflow AC5 - browser file 
  if(size>2*1024*1024)await expect(readAttachment(file)).rejects.toThrow('2 MB');
  else expect(atob((await readAttachment(file)).data).length).toBe(size);
 });
+
+// AC1: persisted submission and server failures must be distinguishable on the organiser dashboard.
+it.each([true,false])('Organiser outcomes AC1 - submission result success=%s is explained without losing the request',async success=>{
+ if(success)api.post.mockResolvedValue({event:{...event,status:'submitted',is_draft:false},message:'Event request submitted.'});
+ else api.post.mockRejectedValue(new Error('Submission failed: add the event attendance.'));
+ open();fireEvent.click(await screen.findByRole('button',{name:'Submit draft'}));
+ fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
+ if(success){
+  expect(await screen.findByText('Event request submitted.')).toBeTruthy();
+  expect(within(screen.getByRole('region',{name:'Submitted'})).getByRole('heading',{name:'Workshop'})).toBeTruthy();
+ }else{
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent','Submission failed: add the event attendance.');
+  expect(within(screen.getByRole('region',{name:'Drafts'})).getByRole('heading',{name:'Workshop'})).toBeTruthy();
+  expect(screen.queryByText('Event request submitted.')).toBeNull();
+ }
+});

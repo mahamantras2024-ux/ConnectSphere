@@ -1,5 +1,5 @@
 // File: Displays the fixed asset catalogue and a separate calendar for searched equipment.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const formatDate = value => new Intl.DateTimeFormat('en-SG', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -8,6 +8,292 @@ const getMonthLabel = value => new Intl.DateTimeFormat('en-SG', {
   month: 'long', year: 'numeric', timeZone: 'UTC',
 }).format(new Date(`${value}T00:00:00Z`));
 const CALENDAR_HORIZON_DAYS = 90;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Calendar styles live with the component. Colours are tokens on .equipment-calendar-section so they can be
+// matched to the neutral Technical Support page; the dark values retain the remote calendar's colour-scheme support.
+const CALENDAR_STYLES = `
+.equipment-calendar-section {
+  --cal-border: #dfe5e0;
+  --cal-surface: #f6f8f6;
+  --cal-muted-surface: #edf1ee;
+  --cal-text: #30391c;
+  --cal-text-muted: #686a5e;
+  --cal-available: #1a7f4b;
+  --cal-available-bg: #e6f5ec;
+  --cal-unavailable: #c62828;
+  --cal-unavailable-bg: #fdeaea;
+  --cal-focus: #424f19;
+  margin-top: 2rem;
+  color: var(--cal-text);
+}
+@media (prefers-color-scheme: dark) {
+  .equipment-calendar-section {
+    --cal-border: #33364d;
+    --cal-surface: #181a2b;
+    --cal-muted-surface: #121422;
+    --cal-text: #e8e9f6;
+    --cal-text-muted: #9a9dbb;
+    --cal-available: #6fd3a0;
+    --cal-available-bg: #16352a;
+    --cal-unavailable: #ff8a80;
+    --cal-unavailable-bg: #3d1f1d;
+    --cal-focus: #9ea2ff;
+  }
+}
+.equipment-calendar-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 0 0 1rem;
+}
+.equipment-calendar-navigation > span {
+  min-width: 10rem;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.equipment-calendar-navigation button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+}
+.equipment-calendar-navigation button:focus-visible {
+  outline: 2px solid var(--cal-focus);
+  outline-offset: 2px;
+}
+.equipment-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.25rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--cal-text-muted);
+}
+.equipment-calendar-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.equipment-calendar-legend li::before {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--swatch-bg);
+  border: 1px solid var(--swatch);
+}
+.equipment-calendar-legend .is-available   { --swatch: var(--cal-available);   --swatch-bg: var(--cal-available-bg); }
+.equipment-calendar-legend .is-unavailable { --swatch: var(--cal-unavailable); --swatch-bg: var(--cal-unavailable-bg); }
+.equipment-calendar-assets {
+  display: grid;
+  gap: 2rem;
+}
+.equipment-calendar-asset h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.equipment-calendar-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--cal-border);
+  border-radius: 8px;
+  background: var(--cal-surface);
+}
+.equipment-availability-calendar {
+  width: 100%;
+  min-width: 40rem;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.equipment-availability-calendar thead th {
+  padding: 0.5rem 0.25rem;
+  background: var(--cal-muted-surface);
+  border-bottom: 1px solid var(--cal-border);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--cal-text-muted);
+}
+.equipment-calendar-day {
+  position: relative;
+  height: 5rem;
+  padding: 0.375rem 0.5rem 0.5rem;
+  vertical-align: top;
+  border: 1px solid var(--cal-border);
+  border-width: 0 1px 1px 0;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  overflow: hidden;
+}
+.equipment-calendar-day:last-child { border-right: 0; }
+.equipment-availability-calendar tbody tr:last-child > .equipment-calendar-day { border-bottom: 0; }
+.equipment-calendar-day.is-outside-range { background: var(--cal-muted-surface); }
+.equipment-calendar-day.is-available     { background: var(--cal-surface); }
+.equipment-calendar-day.is-unavailable { background: var(--cal-surface); }
+.equipment-calendar-day.is-filtered-date {
+  outline: 2px solid var(--cal-focus);
+  outline-offset: -2px;
+}
+.equipment-calendar-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  margin-bottom: 0.25rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.equipment-calendar-day > .equipment-calendar-status {
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.equipment-calendar-status.is-available   { color: var(--cal-available); }
+.equipment-calendar-status.is-unavailable { color: var(--cal-unavailable); }
+.equipment-calendar-blocked-reason {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 0.125rem;
+  color: var(--cal-text-muted);
+}
+.equipment-calendar-windows {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.equipment-calendar-window {
+  display: grid;
+  gap: 0.0625rem;
+  min-width: 0;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  border-radius: 4px;
+  background: var(--window-bg);
+}
+.equipment-calendar-window.is-available   { --window-color: var(--cal-available);   --window-bg: transparent; }
+.equipment-calendar-window.is-unavailable { --window-color: var(--cal-unavailable); --window-bg: transparent; }
+.equipment-calendar-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.equipment-calendar-window .equipment-calendar-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.equipment-calendar-window small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cal-text-muted);
+  font-size: 0.75rem;
+}
+@media (max-width: 640px) {
+  .equipment-availability-calendar { min-width: 0; }
+  .equipment-availability-calendar thead { display: none; }
+  .equipment-availability-calendar,
+  .equipment-availability-calendar tbody,
+  .equipment-availability-calendar tr,
+  .equipment-availability-calendar td { display: block; width: 100%; }
+  .equipment-calendar-day { height: auto; border-width: 0 0 1px; }
+  .equipment-calendar-day.is-outside-range { display: none; }
+  .equipment-calendar-day::before {
+    content: attr(data-weekday);
+    margin-right: 0.5rem;
+    color: var(--cal-text-muted);
+    font-weight: 600;
+  }
+}
+
+/* Overrides: scoped one level deeper so the app's global th/td/li/button rules cannot leak in. */
+.equipment-calendar-section .equipment-availability-calendar thead th {
+  color: var(--cal-text-muted);
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.equipment-calendar-section .equipment-availability-calendar td {
+  text-align: center;
+  vertical-align: top;
+}
+.equipment-calendar-section .equipment-calendar-day.is-outside-range {
+  background: transparent;
+  border-color: transparent;
+}
+.equipment-calendar-section .equipment-calendar-windows,
+.equipment-calendar-section .equipment-calendar-windows li {
+  list-style: none;
+  margin: 0;
+}
+.equipment-calendar-section .equipment-calendar-window small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: hidden;
+}
+.equipment-calendar-section .equipment-calendar-windows li::before,
+.equipment-calendar-section .equipment-calendar-windows li::after {
+  content: none;
+  display: none;
+}
+.equipment-calendar-section .equipment-calendar-window {
+  position: static;
+  gap: 0.0625rem;
+  /* Match quiet-day status height; reservation wrappers must not add vertical inset. */
+  padding: 0 0.5rem;
+  border: 0;
+  justify-items: center;
+  text-align: center;
+}
+.equipment-calendar-section .equipment-calendar-window .equipment-calendar-status {
+  color: var(--cal-text-muted);
+  font-weight: 400;
+}
+.equipment-calendar-section .equipment-calendar-day-number {
+  display: flex;
+  justify-content: center;
+  width: fit-content;
+  margin-inline: auto;
+  font-size: 18px;
+  background: none;
+  color: var(--cal-text);
+  font-weight: 500;
+}
+/* Quiet days: a plain stock count in muted text, so only exceptions draw the eye. */
+.equipment-calendar-section .equipment-calendar-day > .equipment-calendar-status.is-available {
+  color: var(--cal-text-muted);
+  font-weight: 400;
+}
+.equipment-calendar-section .equipment-calendar-navigation button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--cal-border);
+  border-radius: 8px;
+  background: var(--cal-surface);
+  box-shadow: none;
+  color: var(--cal-text);
+}
+.equipment-calendar-section .equipment-calendar-navigation button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+`;
 
 function calendarDateAtOffset(offset) {
   const date = new Date();
@@ -116,7 +402,7 @@ function getWindowState(item, window) {
     : 'unavailable';
 }
 
-/** Keeps a maintenance/damage reason visible beside reservation counts when a blocked asset is already booked. */
+/** Shows fully booked windows as unavailable while preserving partial quantities and specific maintenance/damage reasons. */
 function getWindowDetails(item, window, state) {
   const available = Number(window.availableQuantity) || 0;
   const reserved = Number(window.reservedQuantity) || 0;
@@ -125,19 +411,10 @@ function getWindowDetails(item, window, state) {
     if (reserved > 0) return `${getBlockedReason(item, window)} · ${reserved} reserved · ${available} available`;
     return getBlockedReason(item, window);
   }
-  if (hasReservation) return `${reserved} reserved · ${available} available`;
+  if (hasReservation) return state === 'unavailable' ? 'Unavailable' : `${reserved} reserved · ${available} available`;
   if (state === 'unavailable') return getBlockedReason(item, window);
-  return `${available} available`;
-}
-
-/** Distinguishes available, reservation-limited, fully reserved, and maintenance/damage-blocked windows. */
-function getWindowLabel(item, window, state) {
-  if (isBlockedWindow(item, window)) return 'Maintenance / damage blocked';
-  const available = Number(window.availableQuantity) || 0;
-  const reserved = Number(window.reservedQuantity) || 0;
-  const hasReservation = reserved > 0 || /reserv|book|hold/i.test(String(window.status)) || Boolean(window.eventName);
-  if (hasReservation) return available > 0 ? 'Partially reserved' : 'Fully reserved';
-  return state === 'available' ? 'Available' : 'Unavailable';
+  // Legacy windows without quantities retain their explicit availability instead of inventing a zero count.
+  return window.availableQuantity == null ? 'Available' : `${available} available`;
 }
 
 /**
@@ -152,6 +429,15 @@ export default function EquipmentInventorySection({
   onMarkUnavailable,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [calendarSelection, setCalendarSelection] = useState({ id: '', navigate: false });
+  const calendarEquipmentId = calendarSelection.id;
+  const calendarHeadingRef = useRef(null);
+  // Navigate after React renders the selected calendar, including repeated clicks on the same asset.
+  useEffect(() => {
+    if (!calendarSelection.navigate) return;
+    calendarHeadingRef.current?.focus({ preventScroll: true });
+    calendarHeadingRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [calendarSelection]);
   const [dateFilter, setDateFilter] = useState('');
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
@@ -174,7 +460,7 @@ export default function EquipmentInventorySection({
     ? inventory.filter(item => (
       `${item.asset_code} ${item.name}`.toLocaleLowerCase().includes(search)
     ))
-    : [];
+    : inventory.filter(item => String(item.id) === calendarEquipmentId);
   const searchCalendarAssets = searchCalendarMatches.map(item => ({
     ...item,
     matchingWindows: getMatchingWindows(item, dateFilter, fromTime, toTime).filter(window => (
@@ -182,6 +468,8 @@ export default function EquipmentInventorySection({
       window.date < calendarDateAtOffset(CALENDAR_HORIZON_DAYS)
     )),
   }));
+  // Keep a single readable grid; a narrower search falls back to its first match without retaining unrelated stock.
+  const calendarEquipment = searchCalendarAssets.find(item => String(item.id) === calendarEquipmentId) || searchCalendarAssets[0];
   // Selecting a date should reveal the month that contains it, even when it lies outside the month the staff member
   // last paged to. Paging (no date filter) still follows the calendarMonth state so Previous/Next keep working, and a
   // date outside the rolling horizon leaves the paged month untouched rather than scrolling to an unreachable month.
@@ -235,8 +523,10 @@ export default function EquipmentInventorySection({
     return Math.max(0, ...quantities);
   }
 
+  /** Restores the initial catalogue view, including closing a calendar selected through an inventory ID. */
   function clearFilters() {
     setSearchTerm('');
+    setCalendarSelection({ id: '', navigate: false });
     setDateFilter('');
     setFromTime('');
     setToTime('');
@@ -316,10 +606,7 @@ export default function EquipmentInventorySection({
   }
 
   return (
-    <section aria-labelledby="equipment-inventory-heading">
-      <div className="section-heading">
-        <h2 id="equipment-inventory-heading">Equipment inventory</h2>
-      </div>
+    <section aria-label="Equipment inventory">
       <div className="equipment-inventory-filters">
         <label>
           Search by ID or name
@@ -383,6 +670,7 @@ export default function EquipmentInventorySection({
                   <th scope="col">Status</th>
                   <th scope="col">{dateFilter ? 'Available quantity' : 'Total quantity'}</th>
                   <th scope="col">Status history</th>
+                  <th scope="col">Calendar</th>
                 </tr>
               </thead>
               <tbody>
@@ -473,124 +761,142 @@ export default function EquipmentInventorySection({
                         </ul>
                       ) : <span className="equipment-status-history-empty">No status history</span>}
                     </td>
+                    <td>
+                      <button type="button" className="equipment-calendar-link"
+                        aria-label={`View calendar for ${item.asset_code}`} title="View calendar"
+                        onClick={() => setCalendarSelection({ id: String(item.id), navigate: true })}>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="3" y="5" width="18" height="16" rx="2" />
+                          <path d="M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2M8 18h2" />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           )}
-          {searchTerm.trim() && searchCalendarAssets.length > 0 && (
+          {searchCalendarAssets.length > 0 && (
             <section className="equipment-calendar-section" aria-labelledby="equipment-calendar-heading">
+              <style>{CALENDAR_STYLES}</style>
               <div className="section-heading">
-                <h3 id="equipment-calendar-heading">Availability calendar</h3>
+                <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>Availability calendar</h2>
               </div>
-              <p className="equipment-calendar-note">
-                Unscheduled dates are available unless the equipment is marked unavailable.
-              </p>
+              <h3 className="equipment-calendar-selected-name">{calendarEquipment.asset_code} — {calendarEquipment.name}</h3>
               <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                 <button
                   type="button"
                   className="button-secondary"
+                  aria-label="Previous month"
+                  title="Previous month"
                   onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() - 1, 1)))}
                   disabled={!canMoveToPreviousMonth}
                 >
-                  Previous month
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m14 6-6 6 6 6" /></svg>
                 </button>
-                <span>
+                <span aria-live="polite" aria-atomic="true">
                   {getMonthLabel(displayedMonth.toISOString().slice(0, 10))}
                 </span>
                 <button
                   type="button"
                   className="button-secondary"
+                  aria-label="Next month"
+                  title="Next month"
                   onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1)))}
                   disabled={!canMoveToNextMonth}
                 >
-                  Next month
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
                 </button>
               </div>
+              <ul className="equipment-calendar-legend" aria-label="Legend">
+                <li className="is-available">Available</li>
+                <li className="is-unavailable">Reserved or blocked</li>
+              </ul>
               <div className="equipment-calendar-assets">
-                {searchCalendarAssets.map(item => (
+                {[calendarEquipment].map(item => (
                   <section className="equipment-calendar-asset" key={item.id}>
-                    <h4>{item.asset_code} — {item.name}</h4>
-                    <table
-                      className="equipment-availability-calendar"
-                      aria-label={`${item.asset_code} monthly availability`}
-                    >
-                      <thead>
-                        <tr>
-                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                            <th scope="col" key={day}>{day}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Array.from({ length: calendarGridDates.length / 7 }, (_, week) => (
-                          <tr key={week}>
-                            {calendarGridDates.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
-                              const isVisibleDate = date !== null;
-                              const dayWindows = isVisibleDate
-                                ? getAvailabilityWindows(item).filter(window => window.date === date)
-                                : [];
-                              const defaultState = isEquipmentAvailable(item)
-                                ? 'available'
-                                : 'unavailable';
-                              return (
-                                <td
-                                  key={date || `empty-${week}-${dayIndex}`}
-                                  className={[
-                                    'equipment-calendar-day',
-                                    isVisibleDate ? `is-${defaultState}` : 'is-outside-range',
-                                    dateFilter === date ? 'is-filtered-date' : '',
-                                  ].filter(Boolean).join(' ')}
-                                  aria-label={isVisibleDate
-                                    ? `Availability on ${formatDate(date)} for ${item.asset_code}`
-                                    : undefined}
-                                >
-                                  {isVisibleDate && (
-                                    <>
-                                      <span className="equipment-calendar-day-number">
-                                        {new Date(`${date}T00:00:00Z`).getUTCDate()}
-                                      </span>
-                                      {dayWindows.length === 0 ? (
-                                        <>
-                                          <strong className={`equipment-calendar-status is-${defaultState}`}>
-                                            {defaultState === 'available' ? 'Available' : 'Maintenance / damage blocked'}
-                                          </strong>
-                                          <small>{defaultState === 'available'
-                                            ? `${Number(item.quantity) || 0} available`
-                                            : getBlockedReason(item, { status: 'Available' })}</small>
-                                        </>
-                                      ) : (
-                                        <ul className="equipment-calendar-windows">
-                                          {dayWindows.map((window, index) => {
-                                            const state = getWindowState(item, window);
-                                            const statusLabel = getWindowLabel(item, window, state);
-                                            return (
-                                              <li
-                                                key={`${window.startTime}-${window.endTime}-${index}`}
-                                                className={`equipment-calendar-window is-${state}`}
-                                              >
-                                                <span className="equipment-calendar-time">
-                                                  {window.startTime.slice(0, 5)}–{window.endTime.slice(0, 5)}
-                                                </span>
-                                                <strong className={`equipment-calendar-status is-${state}`}>
-                                                  {statusLabel}
-                                                </strong>
-                                                <small>{getWindowDetails(item, window, state)}</small>
-                                              </li>
-                                            );
-                                          })}
-                                        </ul>
-                                      )}
-                                    </>
-                                  )}
-                                </td>
-                              );
-                            })}
+                    <div className="equipment-calendar-scroll">
+                      <table
+                        className="equipment-availability-calendar"
+                        aria-label={`${item.asset_code} monthly availability`}
+                      >
+                        <thead>
+                          <tr>
+                            {WEEKDAYS.map(day => (
+                              <th scope="col" key={day}>{day}</th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: calendarGridDates.length / 7 }, (_, week) => (
+                            <tr key={week}>
+                              {calendarGridDates.slice(week * 7, week * 7 + 7).map((date, dayIndex) => {
+                                const isVisibleDate = date !== null;
+                                const dayWindows = isVisibleDate
+                                  ? getAvailabilityWindows(item).filter(window => window.date === date)
+                                  : [];
+                                const defaultState = isEquipmentAvailable(item)
+                                  ? 'available'
+                                  : 'unavailable';
+                                return (
+                                  <td
+                                    key={date || `empty-${week}-${dayIndex}`}
+                                    className={[
+                                      'equipment-calendar-day',
+                                      isVisibleDate ? `is-${defaultState}` : 'is-outside-range',
+                                      dateFilter === date ? 'is-filtered-date' : '',
+                                      date === firstVisibleDate ? 'is-today' : '',
+                                    ].filter(Boolean).join(' ')}
+                                    data-weekday={isVisibleDate ? WEEKDAYS[dayIndex] : undefined}
+                                    aria-label={isVisibleDate
+                                      ? `Availability on ${formatDate(date)} for ${item.asset_code}`
+                                      : undefined}
+                                  >
+                                    {isVisibleDate && (
+                                      <>
+                                        <span className="equipment-calendar-day-number">
+                                          {new Date(`${date}T00:00:00Z`).getUTCDate()}
+                                        </span>
+                                        {dayWindows.length === 0 ? (
+                                          <>
+                                            {/* A single stock label keeps quiet days compact without repeating availability. */}
+                                            <strong className={`equipment-calendar-status is-${defaultState}`}>
+                                              {defaultState === 'available'
+                                                ? `${Number(item.quantity) || 0} available`
+                                                : 'Maintenance / damage blocked'}
+                                            </strong>
+                                            {defaultState === 'unavailable' && (
+                                              <small className="equipment-calendar-blocked-reason">{getBlockedReason(item, { status: 'Available' })}</small>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <ul className="equipment-calendar-windows">
+                                            {dayWindows.map((window, index) => {
+                                              const state = getWindowState(item, window);
+                                              const details = getWindowDetails(item, window, state) || 'Unavailable';
+                                              return (
+                                                <li
+                                                  key={`${window.startTime}-${window.endTime}-${index}`}
+                                                  className={`equipment-calendar-window is-${state}`}
+                                                >
+                                                  {/* Scheduled and quiet days share the same dot-and-quantity presentation. */}
+                                                  <span className={`equipment-calendar-status is-${state}`}>{details}</span>
+                                                </li>
+                                              );
+                                            })}
+                                          </ul>
+                                        )}
+                                      </>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 ))}
               </div>

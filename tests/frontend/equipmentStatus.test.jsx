@@ -313,7 +313,7 @@ it('ES AC1 - an organiser viewing the event does not see the equipment request s
 async function openReviewCard() {
   user = support;
   open('/tech-support/dashboard');
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment request review' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Requests' }));
   return screen.findByRole('article', { name: 'Gala' });
 }
 const choose = (card, outcome, reason) => {

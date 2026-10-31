@@ -333,3 +333,40 @@ it('AR AC1 - the safety queue distinguishes loading, empty and failed states', a
   panel = await openSafety(() => { throw new Error('Unable to load safety checks.'); });
   expect((await within(panel).findByRole('alert')).textContent).toBe('Unable to load safety checks.');
 });
+
+// Outcome AC2/AC4/AC5/AC6: dashboard notices remain historical, while their links load current owner-scoped facts.
+it.each([
+  ['event_approved','Event initially approved: Community Workshop','Initially approved; final confirmation is pending.'],
+  ['event_confirmed','Event finally confirmed: Community Workshop','The event is finally confirmed.'],
+  ['event_rejected','Event rejected: Community Workshop','The event was rejected.\nReason: Venue unavailable'],
+  ['change_request_approved','Amendment applied: Community Workshop','Updated attendance: 20 → 30.'],
+  ['event_clarification_requested','Clarification needed: Community Workshop','Please explain the learning objectives.'],
+])('Organiser outcomes AC2 AC4 AC5 AC6 - %s opens latest event information', async (type,title,message) => {
+  user = {id:12,role:'event_organiser',full_name:'Olivia'};
+  event = {...event,name:'Latest workshop information',status:'confirmed'};
+  review = {...decidedReview('approved',null),status:'confirmed'};
+  routes['/notifications'] = {unreadCount:1,notifications:[{id:19,event_id:101,type,title,message,created_at:'2030-01-02T03:04:05Z',read_at:null}]};
+  api.post.mockResolvedValue({notification:{id:19,read_at:'2030-01-02T04:00:00Z'}});
+  open('/organizer/dashboard');
+  const panel = await screen.findByRole('region',{name:'Notifications'});
+  const item = (await within(panel).findByText(title)).closest('li');
+  expect(within(item).getByText(message.includes('\n') ? /Reason: Venue unavailable/ : message)).toBeTruthy();
+  fireEvent.click(within(item).getByRole('button',{name:`${title} (new)`}));
+  expect(await screen.findByRole('heading',{name:'Latest workshop information'})).toBeTruthy();
+  const decision = await decisionPanel();
+  expect(await within(decision).findByText(/Initial approval is separate from final confirmation/)).toBeTruthy();
+  expect(within(decision).getByText('confirmed',{selector:'strong'})).toBeTruthy();
+  expect(api.get).toHaveBeenCalledWith('/events/101','session-token');
+});
+
+it('Organiser outcomes AC6 - a notification link never reveals an event outside the current owner permissions', async () => {
+  user = {id:99,role:'event_organiser'};
+  routes['/notifications'] = {unreadCount:1,notifications:[{id:19,event_id:101,type:'event_confirmed',title:'Historical outcome',message:'Open event',created_at:'2030-01-02T03:04:05Z',read_at:null}]};
+  const original = api.get.getMockImplementation();
+  api.get.mockImplementation(path => path==='/events/101' ? Promise.reject(new Error('Event not found.')) : original(path));
+  api.post.mockResolvedValue({notification:{id:19,read_at:'2030-01-02T04:00:00Z'}});
+  open('/organizer/dashboard');
+  fireEvent.click(await screen.findByRole('button',{name:'Historical outcome (new)'}));
+  expect(await screen.findByText('Event not found.')).toBeTruthy();
+  expect(screen.queryByRole('heading',{name:'Community Workshop'})).toBeNull();
+});
