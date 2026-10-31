@@ -156,7 +156,12 @@ test('AC1/AC3 - records unavailable status and flags its future reservations', a
   assert.deepEqual(result.affectedIssues.map(issue => issue.reservationId), [301, 302]);
   assert.deepEqual(result.affectedIssues.map(issue => issue.noAlternativeAvailable), [true, true]);
   assert.deepEqual(notifications.map(note => note.userId), [6, 5, 8, 7]);
-  assert.ok(notifications.every(note => note.type === 'equipment_reservation_affected'));
+  // The on-site-assigned staff now receive an equipment_status_changed notice (AC3); the coordinator still receives the
+  // reservation-affected notice. Recipients are ordered [staff 6, coordinator 5, staff 8, coordinator 7].
+  assert.deepEqual(notifications.map(note => note.type),
+    ['equipment_status_changed', 'equipment_reservation_affected', 'equipment_status_changed', 'equipment_reservation_affected']);
+  // The staff headline names the item and its new status so the preview reads it at a glance (AC3.2).
+  assert.match(notifications[0].message, /Equipment MIC-001 \(Microphone\) is now unavailable/);
   assert.deepEqual(notifications.map(note => note.details.issueId), [71, 71, 72, 72]);
   assert.equal(queries.filter(({ sql }) => /SET suggestion_status='no_alternative'/.test(sql)).length, 2);
   assert.ok(queries.some(({ sql, values }) => /equipment_status_history/.test(sql) &&
@@ -449,4 +454,67 @@ test('AC3 - creates protected reservation-impact records and permits impact noti
   assert.match(migration, /CREATE TABLE IF NOT EXISTS equipment_reservation_unavailability/);
   assert.match(migration, /ALTER TABLE equipment_reservation_unavailability ENABLE ROW LEVEL SECURITY/);
   assert.match(migration, /'equipment_reservation_affected'/);
+});
+
+// AC3 - The staff member who manages the affected reservation (reserved_by) is notified even when they are not an
+// on-site assignee, so they can propose a replacement.
+test('AC3 - notifies the reservation manager even when they are not assigned on-site', async () => {
+  // Arrange: one affected reservation whose on-site assignee is staff 6, but whose managing (reserving) staff is 20.
+  const affectedRows = [{
+    reservation_id: 301,
+    event_id: 401,
+    event_name: 'Town Hall',
+    coordinator_id: 5,
+    reserved_by: 20,
+    event_date: '2026-11-18',
+    start_time: '09:00:00',
+    end_time: '12:00:00',
+    quantity: 2,
+    support_ids: [6],
+  }];
+  const { client } = createDatabase({ affectedRows });
+  const notifications = [];
+  mock.method(pool, 'connect', async () => client);
+  mock.method(notificationService, 'insertNotifications', async (_db, notes) => { notifications.push(...notes); return [{ id: 1 }]; });
+  mock.method(notificationService, 'emailNotifications', async () => 1);
+
+  // Act
+  await workflow.markUnavailable(92, 'Battery failed inspection', 9);
+
+  // Assert: the on-site assignee (6) AND the managing staff member (20) both get an equipment_status_changed notice;
+  // the coordinator (5) still gets the reservation-affected notice. A faulty impl that only told on-site assignees
+  // would omit user 20.
+  const statusRecipients = notifications.filter(note => note.type === 'equipment_status_changed').map(note => note.userId);
+  assert.deepEqual(statusRecipients, [6, 20]);
+  assert.ok(notifications.some(note => note.userId === 20 && /is now unavailable/.test(note.message)));
+  assert.deepEqual(notifications.filter(note => note.type === 'equipment_reservation_affected').map(note => note.userId), [5]);
+});
+
+// AC3 - When the managing staff member is also an on-site assignee, they are notified exactly once (no duplicate).
+test('AC3 - does not notify the reservation manager twice when they are also an on-site assignee', async () => {
+  // Arrange: the managing staff member (6) is already in the on-site assignee list.
+  const affectedRows = [{
+    reservation_id: 301,
+    event_id: 401,
+    event_name: 'Town Hall',
+    coordinator_id: 5,
+    reserved_by: 6,
+    event_date: '2026-11-18',
+    start_time: '09:00:00',
+    end_time: '12:00:00',
+    quantity: 2,
+    support_ids: [6, 8],
+  }];
+  const { client } = createDatabase({ affectedRows });
+  const notifications = [];
+  mock.method(pool, 'connect', async () => client);
+  mock.method(notificationService, 'insertNotifications', async (_db, notes) => { notifications.push(...notes); return [{ id: 1 }]; });
+  mock.method(notificationService, 'emailNotifications', async () => 1);
+
+  // Act
+  await workflow.markUnavailable(92, 'Battery failed inspection', 9);
+
+  // Assert: recipients are exactly the two distinct assignees (6, 8), with no repeated entry for 6.
+  const statusRecipients = notifications.filter(note => note.type === 'equipment_status_changed').map(note => note.userId);
+  assert.deepEqual(statusRecipients, [6, 8]);
 });

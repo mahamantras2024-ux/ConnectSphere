@@ -54,18 +54,30 @@ const assign = asyncHandler(async (req, res) => {
       'SELECT staff_id FROM event_technical_support_assignments WHERE event_id=$1', [eventId])).rows.map(row => row.staff_id);
     const added = staffIds.filter(id => !current.includes(id));
     const removed = current.filter(id => !staffIds.includes(id));
+    // Members who stay assigned across this change; they are notified their assignment was updated only when the
+    // on-site team actually changed around them (someone added or removed), never on a no-op save (AC2).
+    const kept = staffIds.filter(id => current.includes(id));
+    const rosterChanged = added.length > 0 || removed.length > 0;
     await client.query('DELETE FROM event_technical_support_assignments WHERE event_id=$1', [eventId]);
     if (staffIds.length) {
       await client.query(`INSERT INTO event_technical_support_assignments (event_id, staff_id)
         SELECT $1, unnest($2::int[])`, [eventId, staffIds]);
     }
     const notes = [
-      ...added.map(userId => ({ userId, eventId, changeRequestId: null, type: 'technical_support_assigned',
-        title: `On-site support assigned: ${event.name}`, message: `You are assigned to provide on-site technical support for ${event.name}.`,
-        details: { eventId, change: 'assigned' } })),
-      ...removed.map(userId => ({ userId, eventId, changeRequestId: null, type: 'technical_support_unassigned',
-        title: `On-site support assignment changed: ${event.name}`, message: `You are no longer assigned to provide on-site technical support for ${event.name}.`,
-        details: { eventId, change: 'unassigned' } })),
+      // A newly added member is notified their on-site assignment was created; the first message line names the event so
+      // the notification preview headline identifies it (AC1).
+      ...added.map(userId => ({ userId, eventId, changeRequestId: null, type: 'tech_support_assignment_created',
+        title: `On-site support assigned: ${event.name}`, message: `On-site support assigned: ${event.name}\nYou are assigned to provide on-site technical support for ${event.name}.`,
+        details: { eventId, change: 'created' } })),
+      // A removed member is notified their assignment was cancelled (AC2); the first line again names the event.
+      ...removed.map(userId => ({ userId, eventId, changeRequestId: null, type: 'tech_support_assignment_cancelled',
+        title: `On-site support cancelled: ${event.name}`, message: `On-site support cancelled: ${event.name}\nYou are no longer assigned to provide on-site technical support for ${event.name}.`,
+        details: { eventId, change: 'cancelled' } })),
+      // A member who stays assigned while the team changes around them is notified their assignment was updated
+      // (AC2); the first line names the event so the preview headline identifies it.
+      ...(rosterChanged ? kept : []).map(userId => ({ userId, eventId, changeRequestId: null, type: 'tech_support_assignment_updated',
+        title: `On-site support updated: ${event.name}`, message: `On-site support updated: ${event.name}\nThe on-site technical support team for ${event.name} has changed. Your assignment remains active.`,
+        details: { eventId, change: 'updated' } })),
     ];
     const stored = notes.length ? await notificationService.insertNotifications(client, notes) : [];
     await client.query('COMMIT');

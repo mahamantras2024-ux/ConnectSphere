@@ -49,7 +49,9 @@ const stories = {
   // Coordinator tracks equipment request status: statuses, affected items, notifications and the review form.
   'equipment-status': ['equipmentStatus','equipmentStatus.unit','equipmentStatusPostgres','equipmentReviewUpgradePostgres','techSupportAssignmentGatePostgres','equipmentRequestReview','equipmentRequirements','changeRequestReview'],
   // Parent notification system: the bell and previews for every role, plus the Lead and Safety Officer triggers.
-  'parent-notifications': ['parentNotifications','parentNotificationsPostgres','notificationMigration','migrateExternalEvents','equipmentStatus','eventDecision','venueBookingApproval','sharedUiRegressions']
+  'parent-notifications': ['parentNotifications','parentNotificationsPostgres','notificationMigration','migrateExternalEvents','equipmentStatus','eventDecision','venueBookingApproval','sharedUiRegressions'],
+  // Technical Support assignment + equipment-status notifications and opt-in periodic reminders.
+  'tech-support-assignment-notifications': ['techSupportReminderPreferences','techSupportReminderPreferenceController','technicalSupportAssignment','equipmentUnavailableStatus','notificationMigration']
 };
 const storyIndex = options.indexOf('story');
 const storyName = storyIndex < 0 ? null : options[storyIndex + 1];

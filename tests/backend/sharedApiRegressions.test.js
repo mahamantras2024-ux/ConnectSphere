@@ -383,6 +383,7 @@ test('Completion AC - API startup initializes before listening and starting comp
    // Capture job wiring only: the real completion service is tested separately against PostgreSQL.
    if(name==='./services/eventCompletion')return {startEventCompletionScheduler(db){completionCalls.push(db);}};
    if(name==='./services/venueEventStatus')return {startDailyVenueReminderScheduler(){}};
+   if(name==='./services/techSupportReminderPreferences')return {startTechSupportReminderScheduler(){}};
    if(name==='./middleware/errorHandler')return {errorHandler(){}};
    if(name.startsWith('./routes/'))return {};
    throw new Error(`Unexpected startup dependency: ${name}`);

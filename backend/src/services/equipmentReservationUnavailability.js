@@ -35,7 +35,7 @@ async function markUnavailable(inventoryId, reason, staffId) {
 
     const affected = (await client.query(`
       SELECT reservation.id AS reservation_id, reservation.event_id, event.name AS event_name,
-        event.coordinator_id, reservation.event_date::text AS event_date,
+        event.coordinator_id, reservation.reserved_by, reservation.event_date::text AS event_date,
         reservation.start_time::text AS start_time, reservation.end_time::text AS end_time,
         reserved_item.quantity,
         ARRAY(SELECT assignment.staff_id FROM event_technical_support_assignments assignment
@@ -88,15 +88,25 @@ async function markUnavailable(inventoryId, reason, staffId) {
         inventoryId,
         assetCode: equipment.asset_code,
       };
-      for (const userId of reservation.support_ids) {
+      // Notify every Technical Support member responsible for this reservation (AC3): the on-site assignees for the
+      // reserving event (reservation.support_ids), PLUS the staff member who manages the reservation itself
+      // (reservation.reserved_by) even when they are not assigned on-site, so the person who booked the equipment can
+      // propose a replacement. The managing staff member is only added when not already an on-site assignee, so no one
+      // is notified twice. The first message line names the item and its new status so the notification preview
+      // headline reads, e.g. "Equipment PROJ-001 is now unavailable" (AC3.2).
+      const recipientIds = [...reservation.support_ids];
+      if (reservation.reserved_by != null && !recipientIds.includes(reservation.reserved_by)) {
+        recipientIds.push(reservation.reserved_by);
+      }
+      for (const userId of recipientIds) {
         notes.push({
           userId,
           eventId: reservation.event_id,
           changeRequestId: null,
-          type: 'equipment_reservation_affected',
-          title: `Reserved equipment unavailable: ${reservation.event_name}`,
-          message: `${equipment.asset_code} (${equipment.name}) is unavailable for ${reservation.event_name}. Review the affected reservation.`,
-          details,
+          type: 'equipment_status_changed',
+          title: `Equipment status changed: ${reservation.event_name}`,
+          message: `Equipment ${equipment.asset_code} (${equipment.name}) is now unavailable\nIt is reserved for ${reservation.event_name}. Review the affected reservation and propose a replacement.`,
+          details: { ...details, status: 'unavailable' },
         });
       }
       if (reservation.coordinator_id) {

@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
 import OnSiteSupportSection from './OnSiteSupportSection';
+import ReminderPreference from './ReminderPreference';
 import { requestedItems } from './requestedItems';
 
 // Styles for the equipment request review cards only; tabs and other sections keep their existing styling.
@@ -511,6 +512,8 @@ export default function TechSupportDashboard() {
       />
       <NotificationsPanel />
       <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
+      {/* Opt-in periodic reminders for pending technical support and equipment requests (AC4). */}
+      <ReminderPreference />
       {toast && (
         <div
           role="status"

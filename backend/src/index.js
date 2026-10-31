@@ -12,6 +12,7 @@ const { errorHandler } = require('./middleware/errorHandler');
 const { pool } = require('./config/db');
 const { startEventCompletionScheduler } = require('./services/eventCompletion');
 const { startDailyVenueReminderScheduler } = require('./services/venueEventStatus');
+const { startTechSupportReminderScheduler } = require('./services/techSupportReminderPreferences');
 
 const app = express();
 
@@ -37,6 +38,8 @@ app.use('/api/safety', require('./routes/safetyRoutes'));
 app.use('/api/venues', venueRoutes);
 app.use('/api/registrations', require('./routes/registrationRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+// Technical Support reminder preference (opt-in periodic reminders for pending work).
+app.use('/api/tech-support', require('./routes/techSupportReminderPreferenceRoutes'));
 
 // 404 & Error Handling
 app.use((req, res) => // Returns the JSON 404 response for an unmatched API route.
@@ -58,6 +61,8 @@ if (require.main === module) {
     });
     // The persisted last-sent timestamp makes this hourly scheduler safe across restarts and multiple checks.
     startDailyVenueReminderScheduler(pool);
+    // Periodic reminders for Technical Support members who opted in, at their chosen cadence.
+    startTechSupportReminderScheduler(pool);
     startEventCompletionScheduler(pool);
   });
 }
