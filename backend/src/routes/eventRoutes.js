@@ -21,6 +21,9 @@ router.get('/planning-calendar',requireRole('event_coordinator'),asyncHandler(re
 router.get('/:id/lead-registrations',requireRole('event_coordinator_lead'),asyncHandler(require('../controllers/leadRegistrationController').getRegistrations));
 router.get('/:id/review-history', requireRole('event_organiser', 'event_coordinator', 'event_coordinator_lead'), require('../controllers/eventReconsiderationController').getHistory);
 router.post('/:id/reconsider', requireRole('event_coordinator'), require('../controllers/eventReconsiderationController').reopen);
+const registrationSettings=require('../controllers/registrationSettingsController');
+router.put('/:id/registration-settings',requireRole('event_organiser'),asyncHandler(registrationSettings.save));
+router.put('/:id/registration-availability',requireRole('event_organiser'),asyncHandler(registrationSettings.setOpen));
 router.get('/:id/request-status', requireRole('event_organiser'), require('../controllers/organiserRequestStatusController').getRequestStatus);
 router.get('/:id/organiser-venue-bookings', requireRole('event_organiser'), asyncHandler(organiserVenues.listArrangements));
 router.get('/technical-support-staff', requireRole('event_coordinator'), technicalSupportAssignmentController.listStaff);

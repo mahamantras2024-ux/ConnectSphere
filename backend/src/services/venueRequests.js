@@ -5,6 +5,7 @@ const { requirements } = require('./venueRequestRequirements');
 
 const { reject, validId, timestamp, withVenue, recordedPeriods } = require('./venueBookingStore');
 const { approveTentativeHold } = require('./venueHolds');
+const { assertSessionSuitability } = require('./sessionVenueRequests');
 
 /** Creates an assignment-authorized hold with a requirements snapshot and opt-in cancellation policy; returns the stored request after checking the full occupied window. */
 async function createVenueRequest(venueId, body, userId) {
@@ -16,6 +17,7 @@ async function createVenueRequest(venueId, body, userId) {
   return withVenue(Number(venueId), async (client, venue) => {
     const event = (await client.query('SELECT id, coordinator_id FROM events WHERE id=$1 FOR SHARE', [Number(body.eventId)])).rows[0];
     if (!event || event.coordinator_id !== userId) throw reject(403, 'This event is not assigned to you.');
+    assertSessionSuitability(details.requirements, venue);
     const periods = await recordedPeriods(client, venue.id);
     // Sample after the lock and reads, so waiting for another transaction cannot preserve an already-expired hold.
     const now = Date.now();
@@ -32,9 +34,9 @@ async function createVenueRequest(venueId, body, userId) {
 /** Routes approvals through the finite-hold lifecycle and records rejections with a durable coordinator notice. */
 async function decideVenueRequest(venueId, requestId, decision, userId, reason, holdExpiresAt) {
   // SCRUM-107: every new approval is tentative; only coordinator confirmation makes it final.
-  if (decision === 'approved') return approveTentativeHold(venueId, requestId, userId, holdExpiresAt);
-  if (!validId(venueId) || !validId(requestId) || decision !== 'rejected') throw reject(400, 'Choose a valid request and approval or rejection decision.');
   if (reason != null && typeof reason !== 'string') throw reject(400, 'The decision reason must be text.');
+  if (decision === 'approved') return approveTentativeHold(venueId, requestId, userId, holdExpiresAt, reason);
+  if (!validId(venueId) || !validId(requestId) || decision !== 'rejected') throw reject(400, 'Choose a valid request and approval or rejection decision.');
   // Rejection notes explain why the booking was declined; approvals use their separate finite-hold flow above.
   const decisionNotes = reason?.trim() || null;
   let safetyNotes = [];
@@ -49,7 +51,7 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason, 
     const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [request.event_id])).rows[0];
     // Store the notification inside the same transaction: a decision cannot commit without its coordinator notice.
     // The existing event-details type covers this venue-arrangement change without widening database permissions or constraints.
-    await insertNotifications(client, [{ userId: event.coordinator_id ?? request.requested_by, eventId: event.id, changeRequestId: null,
+    if (event.coordinator_id) await insertNotifications(client, [{ userId: event.coordinator_id, eventId: event.id, changeRequestId: null,
       type: 'event_details_changed', title: `Venue booking ${decision}: ${event.name}`,
       message: `${event.name}: venue booking #${request.id} at ${venue.name} was ${decision}.${decisionNotes ? `\nReason or alternative arrangement: ${decisionNotes}` : ''}`,
       // Keep a separate durable audit snapshot, even if a later arrangement change updates the booking timestamp.
@@ -80,6 +82,8 @@ async function recheckVenueBooking(venueId, requestId, decision, userId, reason)
     const booking = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
     if (!booking) throw reject(404, 'Venue booking not found.');
     if (booking.status !== 'approved' || !booking.recheck_required_at) throw reject(409, 'This booking does not need re-confirmation.');
+    // Re-confirming a named session is another approval path: its own venue must still fit its independent requirements.
+    if (decision === 'confirmed') assertSessionSuitability(booking.requirements, venue);
     const wasReady = await isReadyForSafetyCheck(client, booking.event_id);
     const saved = (await client.query(decision === 'confirmed'
       ? `UPDATE venue_bookings SET recheck_required_at=NULL, recheck_reason=NULL, decision_by=$3, updated_at=now()

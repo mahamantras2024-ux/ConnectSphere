@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import App from '../../frontend/src/App';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
@@ -29,7 +29,10 @@ for (const role of ['event_coordinator', 'event_organiser']) {
       };
       return { bookings: [], items: [], requests: [] };
     });
-    render(<MemoryRouter initialEntries={['/events/101']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+    // Resolve auth and event HTTP effects before querying; no wall-clock wait is needed for resolved mocks.
+    await act(async () => {
+      render(<MemoryRouter initialEntries={['/events/101']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+    });
     await screen.findByRole('heading', { name: 'Workshop' });
     // Act: PR #51 supplies the organiser drawer button; its earlier standalone page uses a link.
     const drawerButton = screen.queryByRole('button', { name: 'Registration details' });

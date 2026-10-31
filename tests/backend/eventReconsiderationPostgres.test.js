@@ -35,6 +35,8 @@ test('Reconsider AC1 AC2 AC3 AC4 - corrected rejections re-enter review with pri
       await client.query(sqlFile('migrations/001-external-events.sql'));
       for (const file of ['sprintOneSchema.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql']) await client.query(sqlFile(file));
       for (const file of runnerOrder) await client.query(sqlFile(file));
+      // Registration settings have a separate production runner; event detail reads now depend on this column.
+      await client.query(sqlFile('migrations/021-registration-settings.sql'));
       // Venue booking requests have their own runner.
       await client.query(sqlFile('migrations/20261018064942_venue_booking_requests.sql'));
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['cara', 'event_coordinator'], ['otto', 'event_organiser']];

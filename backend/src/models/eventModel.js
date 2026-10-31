@@ -49,12 +49,14 @@ async function findAccessibleById(id, user) {
       e.proposed_start_time, e.proposed_end_time, e.expected_attendance,
       e.programme_details, e.room_layout_preference, e.accessibility_requirements,
       e.equipment_notes, e.registration_required, e.registration_capacity,
+      e.registration_deadline,e.withdrawal_deadline,e.registration_open,
       e.special_arrangements, e.is_draft, e.status, e.created_at, e.updated_at,
-      e.registration_deadline, e.withdrawal_deadline, e.safety_recheck_required_at,
+      e.safety_recheck_required_at,
       e.equipment_items, e.technical_support_required, e.technical_support_details,
       e.video_conferencing_required, e.technical_specifications,
       e.equipment_confirmed_at IS NOT NULL AS equipment_confirmed,
-      EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id=e.id AND vb.status='approved') AS venue_confirmed,
+      (EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id=e.id AND vb.status='approved')
+        AND NOT EXISTS (SELECT 1 FROM venue_booking_disruptions d JOIN venue_bookings vb ON vb.id=d.booking_id WHERE vb.event_id=e.id AND d.resolved_at IS NULL)) AS venue_confirmed,
       EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding,
       COALESCE((SELECT jsonb_agg(jsonb_build_object(
         'id', cr.id, 'coordinator_id', cr.coordinator_id, 'organiser_id', cr.organiser_id,
@@ -1409,7 +1411,7 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
       SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
         e.proposed_start_time::text AS proposed_start_time,
         e.proposed_end_time::text AS proposed_end_time, e.equipment_items,
-        e.equipment_requirements_version AS request_version,
+        e.equipment_requirements_version AS request_version, e.coordinator_id,
         review.outcome AS review_outcome,
         venue.name AS venue_name, venue.location AS venue_location
       FROM events e
@@ -1602,6 +1604,8 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
     `, [reservation.id, JSON.stringify(availabilitySelections)]);
     // Reservation freezes the reviewed equipment details so later organiser edits become change requests.
     await client.query('UPDATE events SET equipment_confirmed_at=COALESCE(equipment_confirmed_at, now()) WHERE id=$1', [event.id]);
+    // SCRUM-85 AC4: confirmation and its coordinator notice share this reservation transaction.
+    await require('../services/coordinatorNotifications').notifyEquipmentReserved(client, event, reservation);
     await client.query('COMMIT');
     return { reservation, items: inventory.map(item => ({
       inventoryId: item.id, assetCode: item.asset_code, name: item.name,

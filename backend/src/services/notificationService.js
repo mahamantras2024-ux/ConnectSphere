@@ -3,6 +3,8 @@ const emailService = require('./emailService');
 
 /**
  * Inserts one notification row per recipient in a single statement and returns each row with the recipient's email.
+ * Titles are capped at PostgreSQL's 255-character limit without splitting Unicode code points.
+ * Messages, event links and metadata retain their full context.
  * Every caller notifies at least one person (a decision always notifies the organiser), so `notes` is never empty.
  * @param {{ query: Function }} db pool or transaction client, so callers can keep the insert inside their transaction.
  * @param {{ userId: number, eventId: number, changeRequestId: number|null, type: string, title: string, message: string, details: object }[]} notes
@@ -18,7 +20,7 @@ async function insertNotifications(db, notes) {
       RETURNING id, user_id, title, message)
     SELECT inserted.*, users.email FROM inserted JOIN users ON users.id = inserted.user_id`,
   [notes.map((note) => note.userId), notes.map((note) => note.eventId), notes.map((note) => note.changeRequestId),
-    notes.map((note) => note.type), notes.map((note) => note.title), notes.map((note) => note.message),
+    notes.map((note) => note.type), notes.map((note) => Array.from(note.title).slice(0, 255).join('')), notes.map((note) => note.message),
     notes.map((note) => JSON.stringify(note.details))]);
   return result.rows;
 }

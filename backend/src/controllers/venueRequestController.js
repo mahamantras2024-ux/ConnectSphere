@@ -1,12 +1,13 @@
 const { createVenueRequest, decideVenueRequest, recheckVenueBooking } = require('../services/venueRequests');
 const { pool } = require('../config/db');
 const { updateHoldExpiry, confirmVenueHold } = require('../services/venueHolds');
+const { changeSessionRequest } = require('../services/sessionVenueRequests');
 
 /**
  * Returns pending requests with their submitted requirements (older unspecified fields fall back to the event record),
  * and confirmed bookings an applied amendment flagged for re-confirmation (Record Offline AC5). A flagged booking shows
- * the event's current, amended requirements, since that is what Venue Staff re-confirm, with the original snapshot kept
- * alongside for comparison.
+ * the event's current, amended requirements for event-wide bookings; named sessions retain their independent snapshot.
+ * The original snapshot is kept alongside for comparison.
  */
 async function listPendingRequests(req, res) {
   const result = await pool.query(`SELECT booking.id, booking.venue_id, booking.event_id, booking.start_datetime,
@@ -19,11 +20,12 @@ async function listPendingRequests(req, res) {
       OR (booking.status='approved' AND booking.recheck_required_at IS NOT NULL)
     ORDER BY booking.created_at, booking.id`);
   const requests = result.rows.map((request) => {
-    // The amendment changed the event after this booking was confirmed, so its snapshot is out of date.
-    if (request.recheck_required_at) return { ...request, original_requirements: request.requirements };
+    const original = request.recheck_required_at ? { original_requirements: request.requirements } : {};
+    // Event-wide bookings follow amended event values; named sessions keep their independently recorded requirements.
+    if (request.recheck_required_at && !request.requirements?.sessionName) return { ...request, ...original };
     // Coordinators may edit a pending or held request's requirements independently of the event; never replace a
     // specified snapshot with current event values.
-    return { ...request,
+    return { ...request, ...original,
       expected_attendance: request.requirements?.capacity ?? request.expected_attendance,
       room_layout_preference: request.requirements?.layout || request.room_layout_preference,
       accessibility_requirements: request.requirements?.accessibility ?? request.accessibility_requirements,
@@ -58,4 +60,8 @@ async function changeExpiry(req,res) {
 async function confirmHold(req,res) {
   return res.json({request:await confirmVenueHold(req.params.id,req.params.requestId,req.user.id)});
 }
-module.exports = { createRequest, decideRequest, listPendingRequests, recheckRequest, changeExpiry, confirmHold };
+/** Applies an assigned coordinator's single-session revision or cancellation. */
+async function changeSession(req,res){
+  res.json({request:await changeSessionRequest(req.params.id,req.params.requestId,req.body,req.user.id)});
+}
+module.exports = { createRequest, decideRequest, listPendingRequests, changeExpiry, confirmHold, changeSession, recheckRequest };

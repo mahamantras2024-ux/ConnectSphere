@@ -12,6 +12,11 @@ function deadlineFor(event) {
 
 /** Explains why a new attendee cannot join; existing registrations are returned before applying these rules. */
 function registrationBlocker(event, now) {
+  // New settings require an explicit organiser opening after final confirmation; legacy schemas retain their old read behavior.
+  if(event.registration_open !== undefined){
+    if(event.status!=='confirmed')return 'Registration opens only after the event is Confirmed.';
+    if(!event.registration_open)return 'Registration closed by the Event Organiser.';
+  }
   if (event.is_draft || !['approved', 'confirmed'].includes(event.status)) return 'Registration opens after final coordinator approval.';
   if (!event.registration_required) return 'Registration is not enabled for this event.';
   const deadline = deadlineFor(event);

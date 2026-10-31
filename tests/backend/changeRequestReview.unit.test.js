@@ -143,4 +143,3 @@ test('CR AC3 - each venue booking is checked independently', () => {
   const result = assess({ proposedEndTime: '12:16' }, [venueA, venueB]);
   assert.deepEqual(result.map((item) => [item.venueName, item.reasons.includes(CONFLICT)]), [['Hall A', false], ['Room B', true]]);
 });
-
