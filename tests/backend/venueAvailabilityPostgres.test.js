@@ -388,7 +388,9 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     const approval=await request(`/7/requests/${created.body.request.id}/decision`,{decision:'approved',holdExpiresAt:'2099-01-01T00:00:00Z'},'PUT',2);
     assert.equal(approval.status,400);
     assert.equal((await database.query('SELECT status FROM venue_bookings')).rows[0].status,'pending');
-  });  test('SCRUM-107 AC1 AC2 AC4 - maximum event names save approval and updates without rolling back mixed expiry batches', async () => {
+  });
+
+  test('SCRUM-107 AC1 AC2 AC4 - maximum event names save approval and updates without rolling back mixed expiry batches', async () => {
     // Arrange: match the real event and notification VARCHAR(255) constraints; keep a second ordinary event in the batch.
     const longName = '🎉'.repeat(255);
     await database.query('UPDATE events SET name=$1 WHERE id=3', [longName]);
