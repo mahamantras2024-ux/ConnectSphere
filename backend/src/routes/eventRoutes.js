@@ -32,6 +32,7 @@ router.get('/on-site-support/:id', requireRole('technical_support'), technicalSu
 router.put('/:id/technical-support-assignment', requireRole('event_coordinator'), technicalSupportAssignmentController.assign);
 const lead = require('../controllers/coordinatorLeadController');
 router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
+router.get('/:id/assignment-history', requireRole('event_organiser', 'event_coordinator', 'event_coordinator_lead'), lead.assignmentHistory);
 router.put('/:id/assignment', requireRole('event_coordinator_lead'), lead.assign);
 
 const drafts=require('../controllers/eventDraftController');

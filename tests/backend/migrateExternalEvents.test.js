@@ -153,9 +153,11 @@ test('SCRUM-98 upload AC / Register AC3 / Withdraw AC2 AC3 / equipment replaceme
   assert.ok(historyIndex < technicalStatusIndex, 'technical status follows the amendment history');
   // SCRUM-93 preserves every earlier type and installs the transactional status trigger last.
   assert.ok(technicalStatusIndex < requestStatusIndex, 'organiser status follows the technical lifecycle migration');
-  assert.equal(requestStatusIndex, queries.length - 3);
+  assert.equal(requestStatusIndex, queries.length - 4);
+  // Handover AC3: install history after its event/user schema dependencies.
+  assert.equal(queries.at(-1), migrationSql('027-coordinator-handover-history.sql'));
   // Reconsider AC3: history is installed after the shared schema and remains repeatable.
-  assert.equal(queries.at(-1), migrationSql('026-event-reconsideration.sql'));
+  assert.equal(queries.at(-2), migrationSql('026-event-reconsideration.sql'));
   assert.equal(queries[requestStatusIndex - 1], 'BEGIN');
   assert.equal(queries[requestStatusIndex + 1], 'COMMIT');
   assert.match(queries[requestStatusIndex], /AFTER UPDATE OF status ON events/);

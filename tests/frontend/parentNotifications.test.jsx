@@ -101,6 +101,8 @@ describe('previews and targets', () => {
     ['safety_officer', note({ type: 'safety_check_ready', event_id: null }), '/safety/dashboard'],
     // A new amendment request is decided in the coordinator dashboard's inbox, not on the event page.
     ['event_coordinator', note({ type: 'change_request_submitted' }), '/coordinator/dashboard'],
+    // Outgoing notice AC3: responsibility ended, so the notice must not link to the revoked event page.
+    ['event_coordinator', note({ type: 'event_details_changed', details: { kind: 'event_reassigned_away' } }), '/coordinator/dashboard'],
     ['venue_staff', note(), '/venue/dashboard'], ['technical_support', note(), '/tech-support/dashboard'],
     ['event_organiser', note({ event_id: null }), '/organizer/dashboard'],
   ])('NT AC4 - a %s opens the right page', (role, notification, path) => {
@@ -434,6 +436,27 @@ it('NT AC1 - more than 99 unread notifications show as 99+', async () => {
   open('/organizer/dashboard');
   expect((await bell()).getAttribute('aria-label')).toBe('Notifications, 120 unread');
   expect(screen.getByText('99+', { selector: '.notification-count' })).toBeTruthy();
+});
+
+// Outgoing notice AC3: the real bell marks the notice read and stays on the dashboard, never loading revoked event data.
+it('Outgoing notice AC3 - a reassigned coordinator opens their dashboard instead of inaccessible event details', async () => {
+  const scrollDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype,'scrollIntoView');
+  Object.defineProperty(HTMLElement.prototype,'scrollIntoView',{configurable:true,value:vi.fn()}); // jsdom lacks this browser API.
+  try {
+    user = roles.event_coordinator;
+    inbox = { notifications:[note({type:'event_details_changed',title:'Event reassigned: Gala',details:{kind:'event_reassigned_away'}})],unreadCount:1 };
+    open('/coordinator/dashboard');
+    fireEvent.click(await bell());
+    fireEvent.click(within(screen.getByRole('region',{name:'Recent notifications'})).getByRole('button',{name:'Event reassigned: Gala (new)'}));
+    await act(async()=>{});
+    expect(page()).toBe('/coordinator/dashboard');
+    expect(api.post).toHaveBeenCalledWith('/notifications/9/read',{},'session');
+    expect(api.get).not.toHaveBeenCalledWith('/events/101','session');
+  } finally {
+    cleanup();
+    if(scrollDescriptor)Object.defineProperty(HTMLElement.prototype,'scrollIntoView',scrollDescriptor);
+    else delete HTMLElement.prototype.scrollIntoView;
+  }
 });
 
 // Assignment AC5: the saved assignment uses the shared coordinator dashboard inbox and its real event route.

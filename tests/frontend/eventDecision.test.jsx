@@ -334,6 +334,19 @@ it('AR AC1 - the safety queue distinguishes loading, empty and failed states', a
   expect((await within(panel).findByRole('alert')).textContent).toBe('Unable to load safety checks.');
 });
 
+// Handover AC3: the new coordinator reaches recorded handovers through the real event route.
+it('Handover AC3 - confirmed event details include coordinator handover history', async () => {
+  event = {...event,status:'confirmed'};
+  routes['/events/101/assignment-history'] = {history:[{id:9,previous_coordinator_id:31,new_coordinator_id:30,changed_by:1,
+    previous_name:'Previous Coordinator',new_name:'Chris',changed_by_name:'Lead Lee',changed_at:'2030-01-02T02:00:00Z'}]};
+  open('/events/101');
+  const table = await screen.findByRole('table',{name:'Coordinator assignment history'});
+  expect(within(table).getByText('Previous Coordinator')).toBeTruthy();
+  expect(within(table).getByText('Chris')).toBeTruthy();
+  expect(within(table).getByText('Lead Lee')).toBeTruthy();
+  expect(api.get).toHaveBeenCalledWith('/events/101/assignment-history','session-token');
+});
+
 // Reconsider AC2 AC3: the real event route wires the history action back to current decision readiness.
 it('Reconsider AC2 AC3 - assigned coordinator reopens from event history and sees fresh review controls', async () => {
   event = { ...event, status: 'rejected' };

@@ -75,3 +75,15 @@ it('AC2 AC5 - pending assignment prevents duplicate writes and retains other car
   await screen.findByRole('button', { name: 'Reassign coordinator' });
   expect(screen.getByText('Other request')).toBeTruthy();
 });
+
+// Handover AC1/AC2: confirmed events use the same optimistic assignment action without changing their lifecycle badge.
+it('Handover AC1 AC2 - Lead reassigns a confirmed event with explicit preservation guidance', async () => {
+  loadWorkspace.mockResolvedValueOnce({events:[{...event,status:'confirmed',coordinator_id:3,coordinator_name:'Chris'}],coordinators:[{id:3,full_name:'Chris',email:'chris@example.com'},{id:4,full_name:'Cara',email:'cara@example.com'}]});
+  api.put.mockResolvedValue({event:{...event,status:'confirmed',coordinator_id:4},message:'Coordinator assignment saved.'});
+  open();
+  expect(await screen.findByText(/Confirmed event details, venue bookings, technical arrangements and safety approvals stay unchanged/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Coordinator for Workshop'),{target:{value:'4'}});
+  fireEvent.click(screen.getByRole('button',{name:'Reassign coordinator'}));
+  await waitFor(()=>expect(api.put).toHaveBeenCalledWith('/events/7/assignment',{coordinatorId:4,expectedCoordinatorId:3},'lead'));
+  expect(await screen.findByText('Cara')).toBeTruthy();expect(screen.getByText('confirmed')).toBeTruthy();
+});

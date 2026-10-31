@@ -750,6 +750,15 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .onsite-event-card .status-planning { background: var(--cream); color: #685019; }
 .onsite-event-card .status-completed { background: #EFEFE3; color: #616351; }
 
+/* Handover history stays readable and scrolls within the event card on narrow screens. */
+.coordinator-history { min-width: 0; }
+.coordinator-history-scroll { max-width: 100%; overflow-x: auto; margin-top: 16px; border: 1px solid #dfe5e0; border-radius: 10px; background: #fff; }
+.coordinator-history-table { width: 100%; min-width: 640px; border-collapse: collapse; text-align: left; font-size: 14px; }
+.coordinator-history-table th { background: #f2f5f3; color: #536052; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.coordinator-history-table th, .coordinator-history-table td { padding: 14px 16px; border-bottom: 1px solid #e5e9e5; vertical-align: top; }
+.coordinator-history-table tbody tr:last-child td { border-bottom: 0; }
+.coordinator-history-table tbody tr:nth-child(even) { background: #fafbf9; }
+.coordinator-history-table time { color: #656c65; font-size: 13px; }
 /* Keep audit rows easy to scan; narrow screens scroll the table without widening the event page. */
 .review-history-card { min-width: 0; }
 .review-history-table-wrap { width: 100%; max-width: 100%; margin-top: 18px; overflow-x: auto; border: 1px solid #dfe5e0; border-radius: 10px; background: #fff; }

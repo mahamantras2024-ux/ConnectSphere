@@ -45,7 +45,9 @@ export default function CoordinatorLeadDashboard() {
     return events.length === 0 ? <section className="empty-state"><p>{empty}</p></section> : <div className="record-grid">{events.map(event =>
       <article className="record-card" key={event.id}>
         <div className="record-top"><span className="record-number">EVENT / {event.id}</span><span className={`status-badge status-${event.status}`}>{event.status}</span></div>
-        <h3>{event.name}</h3><p>{event.purpose || 'Purpose not recorded'}</p>
+        <h3>{event.name}</h3>
+        {event.status === 'confirmed' && <p>Reassignment transfers coordinator access only. Confirmed event details, venue bookings, technical arrangements and safety approvals stay unchanged.</p>}
+        <p>{event.purpose || 'Purpose not recorded'}</p>
         <dl className="detail-facts"><div><dt>Organiser</dt><dd>{event.organiser_name}</dd></div>
           <div><dt>Proposed date</dt><dd>{event.proposed_date || 'Not specified'}</dd></div>
           <div><dt>Expected attendance</dt><dd>{event.expected_attendance ?? 'Not specified'}</dd></div>
