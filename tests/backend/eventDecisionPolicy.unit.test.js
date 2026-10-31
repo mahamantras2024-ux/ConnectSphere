@@ -28,19 +28,19 @@ test('AR AC1 - a request with confirmed arrangements and a passed safety check c
 });
 
 // Test case: The agreed rule is pinned so an accidental edit to the rules table is noticed in review.
-test('SCRUM-92 AC4 - initial approval and rejection require resolved clarifications', () => {
+test('Reconsider AC1 / SCRUM-92 AC4 - only initial approval requires resolved clarifications', () => {
   assert.deepEqual(DECISION_REQUIREMENTS, {
     approved: ['clarificationsResolved'],
-    rejected: ['clarificationsResolved'],
+    rejected: [],
   });
 });
 
-// AC7: zero outstanding clarifications is fine; one blocks both decisions.
+// Reconsider AC1: pending clarifications block approval; incomplete information may still justify rejection.
 for (const [count, expected] of [[0, null], [1, 'CLARIFICATION_OUTSTANDING'], [2, 'CLARIFICATION_OUTSTANDING']]) {
   // Test case: Varies the number of pending clarifications across the zero/one boundary.
-  test(`AR AC7 - ${count} outstanding clarification(s) ${expected ? 'block' : 'allow'} approval and rejection`, () => {
+  test(`Reconsider AC1 - ${count} outstanding clarification(s) gate approval while rejection remains available`, () => {
     assert.equal(codeFor('approved', { pending_clarifications: count }), expected);
-    assert.equal(codeFor('rejected', { pending_clarifications: count }), expected);
+    assert.equal(codeFor('rejected', { pending_clarifications: count }), null);
   });
 }
 

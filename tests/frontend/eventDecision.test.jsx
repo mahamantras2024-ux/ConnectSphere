@@ -333,3 +333,25 @@ it('AR AC1 - the safety queue distinguishes loading, empty and failed states', a
   panel = await openSafety(() => { throw new Error('Unable to load safety checks.'); });
   expect((await within(panel).findByRole('alert')).textContent).toBe('Unable to load safety checks.');
 });
+
+// Reconsider AC2 AC3: the real event route wires the history action back to current decision readiness.
+it('Reconsider AC2 AC3 - assigned coordinator reopens from event history and sees fresh review controls', async () => {
+  event = { ...event, status: 'rejected' };
+  review = decidedReview('rejected','Incomplete audience information');
+  const prior = { id:1,kind:'review',outcome:'rejected',occurred_at:'2030-01-01T00:00:00Z',details:{reason:'Incomplete audience information'} };
+  routes['/events/101/review-history'] = {history:[prior],rejectionId:1,blocked:null};
+  api.post.mockImplementation(async path => {
+    expect(path).toBe('/events/101/reconsider');
+    event = {...event,status:'under_review'};review={...readyReview,status:'under_review'};
+    routes['/events/101/review-history'] = {history:[prior,{...prior,id:2,kind:'reconsideration',outcome:'under_review',details:{}}],blocked:{message:'Already under review'}};
+    return {event,message:'Request reopened for review.'};
+  });
+  open('/events/101');
+  const history = await screen.findByRole('region',{name:'Review history'});
+  fireEvent.click(await within(history).findByRole('button',{name:'Reopen for reconsideration'}));
+  expect(await within(history).findByText('Request reopened for review.')).toBeTruthy();
+  expect(await within(history).findByText('Reopened for review')).toBeTruthy();
+  expect(within(history).getByText('Incomplete audience information')).toBeTruthy();
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'Reopen for reconsideration'})).toBeNull());
+  expect((await within(await decisionPanel()).findByRole('button',{name:'Approve event'})).disabled).toBe(false);
+});

@@ -90,6 +90,7 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/019-technical-support-event-status.sql'), 'utf8'));
     // SCRUM-93 installs status notifications after all earlier notification type upgrades.
     await applyOrganiserRequestStatus(client, fs.readFileSync(path.join(__dirname, 'migrations/023-organiser-request-status.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/026-event-reconsideration.sql'), 'utf8'));
     console.log('External event, equipment reservation and repair, venue safety, emergency-document, attendee-registration, Venue Staff status, notification and amendment migrations are ready.');
   } catch (error) {
     await client.query('ROLLBACK');
