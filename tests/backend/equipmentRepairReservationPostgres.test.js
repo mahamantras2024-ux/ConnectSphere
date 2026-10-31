@@ -108,6 +108,8 @@ test('AC1-AC2 - repaired equipment can be reserved and its resolution note persi
         [event.id, support.id],
       );
 
+      // AC6: production authorization reads this relation even when a prior review grants responsibility.
+      await client.query('CREATE TABLE IF NOT EXISTS event_technical_support_assignments (event_id INT,staff_id INT)');
       mock.method(pool, 'query', (sql, values) => client.query(sql, values));
       mock.method(pool, 'connect', async () => ({
         query: (sql, values) => client.query(sql, values),

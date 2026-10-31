@@ -37,6 +37,22 @@ async function cancelEvent(eventId, user) {
       details: { status: 'cancelled' },
     }));
     if (notes.length) stored = await notificationService.insertNotifications(client, notes);
+    // Technical Support Staff assigned to provide on-site support for this event lose their assignment when it is
+    // cancelled, so notify each of them (SCRUM-86 AC2). Reuse tech_support_assignment_cancelled: it already routes to
+    // the tech-support dashboard and its first message line names the event for the preview headline.
+    const supportStaff = await eventCancellationModel.listAssignedTechnicalSupport(client, eventId);
+    if (supportStaff.length) {
+      const supportNotes = supportStaff.map(({ staff_id: userId }) => ({
+        userId,
+        eventId,
+        changeRequestId: null,
+        type: 'tech_support_assignment_cancelled',
+        title: `On-site support cancelled: ${event.name}`,
+        message: `On-site support cancelled: ${event.name}\n${event.name} has been cancelled, so your on-site technical support assignment is no longer required.`,
+        details: { eventId, change: 'cancelled', reason: 'event_cancelled' },
+      }));
+      stored.push(...await notificationService.insertNotifications(client, supportNotes));
+    }
     // Venue Staff notices share the cancellation transaction so a committed cancellation always has matching venue guidance.
     stored.push(...await notifyVenueStaffOfEventStatus(client, event));
     await client.query('COMMIT');

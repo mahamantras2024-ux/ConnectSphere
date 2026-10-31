@@ -59,6 +59,9 @@ test('SCRUM-54 AC3-AC4 - preview uses peak overlap and calendar splits short res
         reservation_id INTEGER NOT NULL, inventory_id INTEGER NOT NULL, quantity INTEGER NOT NULL
       )`);
 
+      // AC6: the preview caller has an explicit assignment; the other reservations remain stock blockers.
+      await client.query('CREATE TABLE event_technical_support_assignments (event_id INT, staff_id INT); INSERT INTO event_technical_support_assignments VALUES (1,10)');
+      await client.query('ALTER TABLE event_equipment_reviews ADD COLUMN reviewed_by INT; ALTER TABLE event_equipment_reservations ADD COLUMN reserved_by INT');
       const reservationDate = (await client.query(
         'SELECT (CURRENT_DATE + 30)::text AS date',
       )).rows[0].date;
@@ -106,7 +109,7 @@ test('SCRUM-54 AC3-AC4 - preview uses peak overlap and calendar splits short res
       mock.method(pool, 'query', (sql, values) => client.query(sql, values));
 
       // A complete interval must use the worst concurrent occupancy, not the best remaining window.
-      const fullInterval = await eventModel.getEquipmentReservationAvailability(1);
+      const fullInterval = await eventModel.getEquipmentReservationAvailability(1, [], 10);
       assert.deepEqual(fullInterval.items.map(item => [item.item, item.availableQuantity]), [
         ['Projector', 0],
         ['Unscheduled Projector', 3],
@@ -114,7 +117,7 @@ test('SCRUM-54 AC3-AC4 - preview uses peak overlap and calendar splits short res
 
       // A narrower selection excludes the later full reservation but retains stock on the unscheduled date.
       await client.query("UPDATE events SET proposed_end_time='10:00' WHERE id=1");
-      const firstWindow = await eventModel.getEquipmentReservationAvailability(1);
+      const firstWindow = await eventModel.getEquipmentReservationAvailability(1, [], 10);
       assert.deepEqual(firstWindow.items.map(item => [item.item, item.availableQuantity]), [
         ['Projector', 1],
         ['Unscheduled Projector', 3],

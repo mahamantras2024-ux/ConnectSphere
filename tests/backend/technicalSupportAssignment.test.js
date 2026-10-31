@@ -63,3 +63,84 @@ test('AC1 - lists only the signed-in staff member assignments', async () => {
   const result = await invoke(controller.listAssigned);
   assert.deepEqual(result.body.events, [{ id: 7, name: 'Workshop', equipment_items: [] }]);
 });
+
+// AC1/AC2: additions emit tech_support_assignment_created and removals emit tech_support_assignment_cancelled, each with
+// a first message line that names the event so the notification preview headline identifies it.
+test('AC1 AC2 - emits created and cancelled assignment notifications naming the event', async () => {
+  let notes;
+  const client = { release() {}, async query(sql, values) {
+    if (sql.includes('FROM events')) return { rows: [{ id: 7, name: 'Spring Gala', coordinator_id: 41, status: 'submitted', technical_support_required: true, proposed_date: '2026-10-12', equipment_items: [], venue: {} }] };
+    if (sql.includes('SELECT id FROM users')) return { rows: [{ id: 42 }] };
+    if (sql.includes('SELECT staff_id')) return { rows: [{ staff_id: 41 }] }; // 41 currently assigned, will be removed
+    return { rows: [] };
+  } };
+  mock.method(pool, 'connect', async () => client);
+  // Capture the exact notes the controller builds so we can assert their type and headline.
+  mock.method(require('../../backend/src/services/notificationService'), 'insertNotifications', async (_db, built) => { notes = built; return built.map((_, i) => ({ id: i + 1 })); });
+  mock.method(require('../../backend/src/services/notificationService'), 'emailNotifications', async () => {});
+
+  // Act: assign staff 42 (added) while 41 is dropped (removed/cancelled).
+  await invoke(controller.assign, { staffIds: [42] });
+
+  // Assert: a plausible impl that kept the old technical_support_assigned/unassigned types, or that dropped the event
+  // name from the headline, would fail here.
+  const created = notes.find(note => note.userId === 42);
+  const cancelled = notes.find(note => note.userId === 41);
+  assert.equal(created.type, 'tech_support_assignment_created');
+  assert.equal(cancelled.type, 'tech_support_assignment_cancelled');
+  assert.match(created.message.split('\n')[0], /Spring Gala/);
+  assert.match(cancelled.message.split('\n')[0], /Spring Gala/);
+});
+
+// AC2 - a member who stays assigned while the team changes around them receives tech_support_assignment_updated with an
+// event-identifying message; the added member still gets created. Captures the notes passed to insertNotifications.
+test('AC2 - notifies a kept-on member that their assignment was updated when the team changes', async () => {
+  let notes;
+  const client = { release() {}, async query(sql, values) {
+    if (sql.includes('FROM events')) return { rows: [{ id: 7, name: 'Spring Gala', coordinator_id: 41, status: 'submitted', technical_support_required: true, proposed_date: '2026-10-12', equipment_items: [], venue: {} }] };
+    // Both the kept member (41) and the added member (42) are eligible Technical Support users.
+    if (sql.includes('SELECT id FROM users')) return { rows: [{ id: 41 }, { id: 42 }] };
+    // 41 is already assigned; the new team is [41, 42], so 41 stays (kept) and 42 is added.
+    if (sql.includes('SELECT staff_id')) return { rows: [{ staff_id: 41 }] };
+    return { rows: [] };
+  } };
+  mock.method(pool, 'connect', async () => client);
+  mock.method(require('../../backend/src/services/notificationService'), 'insertNotifications', async (_db, built) => { notes = built; return built.map((_, i) => ({ id: i + 1 })); });
+  mock.method(require('../../backend/src/services/notificationService'), 'emailNotifications', async () => {});
+
+  // Act: keep 41, add 42.
+  const result = await invoke(controller.assign, { staffIds: [41, 42] });
+
+  // Assert: 42 is created, 41 (kept) is updated, and the update message names the event on its first line.
+  assert.equal(result.status, 200);
+  const created = notes.find(note => note.userId === 42);
+  const updated = notes.find(note => note.userId === 41);
+  assert.equal(created.type, 'tech_support_assignment_created');
+  assert.equal(updated.type, 'tech_support_assignment_updated');
+  assert.match(updated.message.split('\n')[0], /Spring Gala/);
+  // A faulty impl that notified every staff member as "created", or omitted the kept member, would fail here.
+  assert.equal(notes.filter(note => note.type === 'tech_support_assignment_updated').length, 1);
+});
+
+// AC2 - a no-op save (unchanged team) emits no notifications at all, so a kept member is not falsely told "updated".
+test('AC2 - does not notify an updated assignment when the team is unchanged', async () => {
+  const calls = [];
+  let inserted = false;
+  const client = { release() {}, async query(sql, values) {
+    calls.push({ sql, values });
+    if (sql.includes('FROM events')) return { rows: [{ id: 7, name: 'Spring Gala', coordinator_id: 41, status: 'submitted', technical_support_required: true, proposed_date: '2026-10-12', equipment_items: [], venue: {} }] };
+    if (sql.includes('SELECT id FROM users')) return { rows: [{ id: 41 }] };
+    if (sql.includes('SELECT staff_id')) return { rows: [{ staff_id: 41 }] }; // same team
+    if (sql.includes('INSERT INTO notifications')) { inserted = true; return { rows: [] }; }
+    return { rows: [] };
+  } };
+  mock.method(pool, 'connect', async () => client);
+
+  // Act: save the identical team [41].
+  const result = await invoke(controller.assign, { staffIds: [41] });
+
+  // Assert: the save succeeds but no notification insert runs (nothing added, removed, or updated).
+  assert.equal(result.status, 200);
+  assert.equal(inserted, false);
+  assert.ok(calls.some(call => call.sql === 'COMMIT'));
+});
