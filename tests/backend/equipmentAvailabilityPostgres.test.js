@@ -10,7 +10,7 @@ after(async () => {
   await pool.end();
 });
 
-test('SCRUM-54 AC3-AC4 - preview uses peak overlap and calendar splits short reservations',
+test('SCRUM-54 AC1 AC2 AC3 - calculates stock, splits reservations and preserves maintenance/damage blocks',
   { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
     const schema = `cs_equipment_availability_${crypto.randomBytes(8).toString('hex')}`;
     const client = await pool.connect();
@@ -140,6 +140,32 @@ test('SCRUM-54 AC3-AC4 - preview uses peak overlap and calendar splits short res
         ['10:00:00', '11:00:00', 1, 0],
         ['11:00:00', '17:00:00', 0, 1],
       ]);
+
+      // SCRUM-54 AC3: persisted maintenance and damage records must survive the actual calendar SQL.
+      // Change existing stock so the original reservation assertions above still exercise operational assets.
+      await client.query("UPDATE equipments SET status='maintenance', availability_status='Unavailable' WHERE id=1");
+      await client.query("UPDATE equipments SET availability_status='Unavailable' WHERE id=2");
+      await client.query(`
+        INSERT INTO equipment_status_history (id, inventory_id, status, note, changed_by)
+        VALUES (1, 1, 'Unavailable', 'Routine maintenance: lamp inspection', NULL),
+               (2, 2, 'Unavailable', 'Damage: cracked lens', NULL)
+      `);
+      const blockedInventory = await eventModel.listEquipmentInventory();
+      for (const [id, reason] of [
+        [1, 'Routine maintenance: lamp inspection'],
+        [2, 'Damage: cracked lens'],
+      ]) {
+        const asset = blockedInventory.find(item => item.id === id);
+        assert.ok(asset.availabilities.length > 0, 'blocked schedules must remain visible');
+        assert.equal(asset.availability_status, 'Unavailable');
+        // Each split interval must retain the reason and zero stock, including the unreserved intervals.
+        for (const window of asset.availabilities) {
+          assert.equal(window.status, 'Unavailable');
+          assert.equal(window.availableQuantity, 0);
+          assert.equal(window.blockReason, reason);
+        }
+      }
+
     } finally {
       try {
         if (schemaCreated) await client.query(`DROP SCHEMA ${schema} CASCADE`);
@@ -148,3 +174,4 @@ test('SCRUM-54 AC3-AC4 - preview uses peak overlap and calendar splits short res
       }
     }
   });
+
