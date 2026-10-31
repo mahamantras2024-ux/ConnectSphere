@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 const notificationService = require('../services/notificationService');
 const asyncHandler = require('../utils/asyncHandler');
+const eventModel = require('../models/eventModel');
 
 /** Returns active submitted events and provisioned coordinators for manual lead selection. */
 const workspace = asyncHandler(async (req, res) => {
@@ -41,6 +42,12 @@ const assign = asyncHandler(async (req, res) => {
     }
     // One nullable foreign key represents responsibility; replacing it never creates a second coordinator.
     const updated = (await client.query('UPDATE events SET coordinator_id=$1,updated_at=now() WHERE id=$2 RETURNING *', [coordinatorId,event.id])).rows[0];
+    // Handover AC2/AC3: only the current assignment changes; snapshots and notification commit with it or all roll back.
+    if (event.coordinator_id !== coordinatorId) await client.query(`INSERT INTO event_coordinator_history
+      (event_id,previous_coordinator_id,new_coordinator_id,changed_by,previous_name,new_name,changed_by_name,event_status)
+      VALUES($1,$2,$3,$4,(SELECT full_name FROM users WHERE id=$2),
+        (SELECT full_name FROM users WHERE id=$3),(SELECT full_name FROM users WHERE id=$4),$5)`,
+    [event.id,event.coordinator_id,coordinatorId,req.user.id,event.status]);
     // SCRUM-85 AC1: the current assignee receives one event-identifying notice only when responsibility changes.
     if (event.coordinator_id !== coordinatorId) stored = await notificationService.insertNotifications(client, [{
       userId:coordinatorId,eventId:event.id,changeRequestId:null,type:'event_details_changed',
@@ -53,4 +60,17 @@ const assign = asyncHandler(async (req, res) => {
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
 });
-module.exports = { workspace, assign };
+/** Handover AC1/AC3: history follows current event access, so a past assignment grants no lasting read permission. */
+const assignmentHistory = asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!/^[1-9]\d*$/.test(id) || Number(id)>2147483647) return res.status(400).json({ message: 'Choose a valid event.' });
+  if (!await eventModel.findAccessibleById(id, req.user)) return res.status(404).json({ message: 'Event not found.' });
+  // Repeat current responsibility inside the data query: a handover between the access check and this read must not leak newer history.
+  const leadViewer = req.user.role === 'event_coordinator_lead';
+  const ownerField = req.user.role === 'event_organiser' ? 'organiser_id' : 'coordinator_id';
+  const history = await pool.query(`SELECT h.* FROM event_coordinator_history h WHERE h.event_id=$1
+    AND EXISTS(SELECT 1 FROM events e WHERE e.id=h.event_id AND ${leadViewer ? 'e.is_draft=false' : `e.${ownerField}=$2`})
+    ORDER BY h.id DESC`, leadViewer ? [id] : [id,req.user.id]);
+  return res.json({ history: history.rows });
+});
+module.exports = { workspace, assign, assignmentHistory };

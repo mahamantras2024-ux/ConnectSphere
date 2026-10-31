@@ -9,6 +9,7 @@ const { Pool } = require('../../backend/node_modules/pg');
 const { applyLiveSchema } = require('./support/liveSchema');
 const { pool } = require('../../backend/src/config/db');
 const jwt = require('../../backend/node_modules/jsonwebtoken');
+const emailService = require('../../backend/src/services/emailService');
 
 // Opt-in tests use only a generated disposable schema; handlers, auth, SQL and locks remain real.
 describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: process.env.RUN_LEAD_DB !== '1' }, () => {
@@ -61,6 +62,8 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
     try {
       // Every production migration in runner order, so this schema never falls behind a later story's columns.
       await applyLiveSchema(client);
+      // Event detail reads also depend on the independently deployed registration settings upgrade.
+      await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db/migrations/021-registration-settings.sql'),'utf8'));
     } finally { client.release(); }
     // Redirect acquisition to isolated real tables. No mock decides authorization, filters, updates or lock outcomes.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));
@@ -72,6 +75,8 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
         return result;
       }, release() { client.release(); } };
     });
+    // Mail delivery is an external boundary; handover persistence and notices remain real SQL.
+    mock.method(emailService,'sendNotificationEmail',async()=>{});
     server = require('../../backend/src/index').listen(0,'127.0.0.1');
     await new Promise(resolve => server.once('listening',resolve));
     base = `http://127.0.0.1:${server.address().port}/api`;
