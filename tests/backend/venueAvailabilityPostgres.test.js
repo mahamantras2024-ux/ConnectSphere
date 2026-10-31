@@ -26,7 +26,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // pg keeps the password non-enumerable; preserve it explicitly without logging credentials.
     database = new Pool({ ...pool.options, password: pool.options.password, options: `-c search_path=${schema}`, application_name: schema, max: 10 });
     await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT, full_name TEXT, role TEXT, auth_version INTEGER DEFAULT 0, roles TEXT[] DEFAULT '{}');
-      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id), name TEXT,
+      CREATE TABLE events(id INTEGER PRIMARY KEY, coordinator_id INTEGER REFERENCES users(id), name VARCHAR(255),
         organiser_id INTEGER, status TEXT DEFAULT 'submitted', is_draft BOOLEAN DEFAULT false, equipment_items JSONB DEFAULT '[]',
         technical_support_required BOOLEAN DEFAULT false, video_conferencing_required BOOLEAN DEFAULT false,
         equipment_notes TEXT, equipment_confirmed_at TIMESTAMPTZ, decision_reason TEXT, decided_at TIMESTAMPTZ,
@@ -36,7 +36,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
       CREATE TABLE event_safety_checks(id SERIAL PRIMARY KEY,event_id INTEGER,safety_officer_id INTEGER,
         outcome TEXT,notes TEXT,checked_at TIMESTAMPTZ,change_areas TEXT[]);
       CREATE TABLE notifications(id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id), event_id INTEGER,
-        change_request_id INTEGER, type TEXT, title TEXT, message TEXT, details JSONB);
+        change_request_id INTEGER, type TEXT, title VARCHAR(255), message TEXT, details JSONB);
       CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00');
       INSERT INTO users(id,role) VALUES (1,'event_coordinator'),(2,'venue_staff');
       INSERT INTO events(id,coordinator_id,name) VALUES (3,1,'Gala'),(4,1,'Workshop');
@@ -69,6 +69,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Test data is isolated even between cases; catalogue status must never become a venue-wide hold.
     await database.query('TRUNCATE venue_bookings, venue_unavailability, venue_schedule_periods, notifications RESTART IDENTITY');
     writerPids.clear();
+    await database.query("UPDATE events SET name=CASE id WHEN 3 THEN 'Gala' ELSE 'Workshop' END");
     await database.query("UPDATE venues SET is_active=true, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
   });
 
@@ -352,6 +353,47 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     const saved=(await database.query('SELECT status,hold_expires_at,confirmed_by,confirmed_at FROM venue_bookings')).rows[0];
     assert.equal(saved.status,'approved');assert.equal(saved.hold_expires_at.toISOString(),replacement);
     assert.equal(saved.confirmed_by,1);assert.ok(saved.confirmed_at instanceof Date);
+  });
+
+  test('SCRUM-107 AC1 AC2 AC4 - maximum event names save approval and updates without rolling back mixed expiry batches', async () => {
+    // Arrange: match the real event and notification VARCHAR(255) constraints; keep a second ordinary event in the batch.
+    const longName = '🎉'.repeat(255);
+    await database.query('UPDATE events SET name=$1 WHERE id=3', [longName]);
+    const created = await request('/7/requests', body);
+    assert.equal(created.status, 201);
+    const route = `/7/requests/${created.body.request.id}`;
+    const deadline = new Date(Date.now() + 3600000).toISOString();
+    // Act / Assert: both transactions must persist, not merely format a title in memory.
+    assert.equal((await request(`${route}/decision`, { decision: 'approved', holdExpiresAt: deadline }, 'PUT', 2)).status, 200);
+    const replacement = new Date(Date.now() + 7200000).toISOString();
+    assert.equal((await request(`${route}/expiry`, { holdExpiresAt: replacement }, 'PUT', 2)).status, 200);
+    assert.equal((await database.query('SELECT hold_expires_at FROM venue_bookings')).rows[0].hold_expires_at.toISOString(), replacement);
+    const notices = (await database.query('SELECT title,message FROM notifications ORDER BY id')).rows;
+    assert.equal(notices.length, 2);
+    for (const [index, action] of ['approved', 'updated'].entries()) {
+      assert.equal(notices[index].title, `Venue hold ${action}: ` + '🎉'.repeat(255 - `Venue hold ${action}: `.length));
+      assert.ok(notices[index].message.includes(longName));
+    }
+    // Arrange: two live holds expire while the app is offline.
+    await database.query('TRUNCATE venue_bookings,notifications RESTART IDENTITY');
+    await database.query(`INSERT INTO venue_bookings
+      (venue_id,event_id,requested_by,start_datetime,end_datetime,status,hold_expires_at)
+      VALUES (7,3,1,$1,$2,'tentative',clock_timestamp()+interval '1 second'),
+             (8,4,1,$1,$2,'tentative',clock_timestamp()+interval '1 second')`, [at('10:00'), at('11:00')]);
+    await database.query('SELECT pg_sleep(1.1)');
+    // Act: contend two workers, proving a long name neither aborts its neighbour nor causes duplicate notices.
+    const { expireVenueHolds } = require('../../backend/src/services/venueHolds');
+    const counts = await Promise.all([expireVenueHolds(database), expireVenueHolds(database)]);
+    assert.equal(counts[0] + counts[1], 2);
+    const expired = (await database.query('SELECT event_id,title,message,details FROM notifications ORDER BY event_id')).rows;
+    assert.equal(expired.length, 2);
+    assert.equal(expired[0].title, 'Venue hold expired: ' + '🎉'.repeat(255 - 'Venue hold expired: '.length));
+    assert.ok(expired[0].message.includes(longName));
+    assert.equal(expired[1].title, 'Venue hold expired: Workshop');
+    assert.deepEqual(expired.map(note => note.details.kind), ['venue_hold_expired', 'venue_hold_expired']);
+    assert.deepEqual((await database.query('SELECT status FROM venue_bookings ORDER BY id')).rows, [{ status: 'expired' }, { status: 'expired' }]);
+    assert.equal(await expireVenueHolds(database), 0);
+    assert.equal((await database.query('SELECT count(*)::int AS count FROM notifications')).rows[0].count, 2);
   });
 
 });
