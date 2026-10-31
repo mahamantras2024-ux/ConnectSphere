@@ -34,7 +34,7 @@ function requireLiveHold(booking) {
 }
 
 /** Saves a staff-approved deadline, or replaces a live deadline, only after rechecking the occupied venue window. */
-async function saveHold(venueId, bookingId, staffId, value, updating) {
+async function saveHold(venueId, bookingId, staffId, value, updating, reason) {
   if (!validId(venueId) || !validId(bookingId)) throw reject(400, 'Choose a valid venue booking request.');
   return withVenue(Number(venueId), async (client, venue) => {
     const booking = await bookingFor(client, venue.id, bookingId);
@@ -47,20 +47,23 @@ async function saveHold(venueId, bookingId, staffId, value, updating) {
     expiryInstant(deadline);
     // Both approval and rescheduling must account for intervening bookings and closures under the same venue lock.
     if (hasConflict(booking, periods, venue, Date.now(), booking.id)) throw reject(409, 'The requested period is no longer available.');
-    const saved = (await client.query(`UPDATE venue_bookings SET status=$1,hold_expires_at=$2,updated_at=$3,decision_by=$4,decision_notes=NULL
-      WHERE id=$5 AND venue_id=$6 RETURNING *`, ['tentative', deadline, new Date(Date.now()).toISOString(), staffId, booking.id, venue.id])).rows[0];
+    // SCRUM-85 AC2: retain supplied approval reasons; changing only the deadline preserves its existing explanation.
+    const decisionNotes = updating ? booking.decision_notes ?? null : reason?.trim() || null;
+    const saved = (await client.query(`UPDATE venue_bookings SET status=$1,hold_expires_at=$2,updated_at=$3,decision_by=$4,decision_notes=$7
+      WHERE id=$5 AND venue_id=$6 RETURNING *`, ['tentative', deadline, new Date(Date.now()).toISOString(), staffId, booking.id, venue.id, decisionNotes])).rows[0];
     const event = (await client.query('SELECT id,name,coordinator_id FROM events WHERE id=$1 FOR SHARE', [booking.event_id])).rows[0];
-    await insertNotifications(client, [{ userId: event.coordinator_id ?? booking.requested_by, eventId: event.id, changeRequestId: null,
+    // The agreed decision recipient is the current coordinator, never a former requester after reassignment.
+    if (event.coordinator_id) await insertNotifications(client, [{ userId: event.coordinator_id, eventId: event.id, changeRequestId: null,
       type: 'event_details_changed', title: holdNotificationTitle(updating ? 'updated' : 'approved', event.name),
-      message: `${event.name}: tentative venue hold #${booking.id} at ${venue.name} was approved and expires at ${deadline}. Coordinator confirmation is required before expiry.`,
+      message: `${event.name}: tentative venue hold #${booking.id} at ${venue.name} was approved and expires at ${deadline}. Coordinator confirmation is required before expiry.${decisionNotes ? ` Reason or alternative arrangement: ${decisionNotes}` : ''}`,
       details: { kind: 'venue_tentative_hold', bookingId: booking.id, venueId: venue.id, holdExpiresAt: deadline,
-        decision:'approved',decisionBy: staffId,decidedAt:saved.updated_at,notes:null } }]);
+        decision:'approved',decisionBy: staffId,decidedAt:saved.updated_at,notes:decisionNotes } }]);
     return saved;
   });
 }
 
-/** A new staff approval always creates a tentative hold with an explicit deadline. */
-function approveTentativeHold(venueId, bookingId, staffId, expiry) { return saveHold(venueId, bookingId, staffId, expiry, false); }
+/** Returns a new tentative booking with its explicit deadline and optional staff explanation saved together. */
+function approveTentativeHold(venueId, bookingId, staffId, expiry, reason) { return saveHold(venueId, bookingId, staffId, expiry, false, reason); }
 /** Staff may shorten or extend an unexpired hold; expired requests must pass through a fresh approval. */
 function updateHoldExpiry(venueId, bookingId, staffId, expiry) { return saveHold(venueId, bookingId, staffId, expiry, true); }
 

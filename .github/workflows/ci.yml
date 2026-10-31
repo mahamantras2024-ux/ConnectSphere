@@ -50,6 +50,46 @@ jobs:
       - name: Build frontend
         run: npm run build --prefix frontend
 
+  scrum85-postgres:
+    name: SCRUM-85 PostgreSQL workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: connectsphere_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d connectsphere_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-only-test-signing-secret
+      RUN_DB_TESTS: '1'
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_USER: connectsphere
+      DB_PASSWORD: test-only-password
+      DB_NAME: connectsphere_test
+      DB_SSL: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci --prefix backend
+      # Run explicitly with PostgreSQL enabled so this regression cannot silently skip in CI.
+      - run: node --test ../tests/backend/scrum85Postgres.test.js
+        working-directory: backend
+
   scrum106-postgres:
     name: SCRUM-106 PostgreSQL workflow
     runs-on: ubuntu-latest

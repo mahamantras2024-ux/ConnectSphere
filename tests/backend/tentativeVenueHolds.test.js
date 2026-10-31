@@ -38,7 +38,7 @@ async function query(sql, args = []) {
     if (state.writeError) throw state.writeError;
     state.writes.push({ sql, args });
     // Persist the exact fields requested by production, never manufacture a conflict/expiry decision here.
-    state.booking = { ...state.booking, status: args[0], hold_expires_at: args[1], updated_at: args[2] };
+    state.booking = { ...state.booking, status: args[0], hold_expires_at: args[1], updated_at: args[2], decision_notes: args[6] };
     return { rows: [structuredClone(state.booking)] };
   }
   throw new Error(`Unexpected hold SQL: ${sql}`);
@@ -72,11 +72,11 @@ test('SCRUM-107 AC3 AC6 - a database expiry guard rejection rolls back and requi
   assert.equal(state.calls.some(call=>call.sql==='COMMIT'),false);
 });
 
-test('SCRUM-107 AC4 - staff approval notifies the recorded requester when no current coordinator is assigned', async () => {
-  // Arrange / Act / Assert: historical requests still receive a finite-deadline notice without a null recipient.
+test('SCRUM-85 AC2 - staff approval of an unassigned event does not notify its former requester', async () => {
+  // The agreed recipient is the current coordinator; a historical requester must not receive a new decision.
   state.coordinator=null;
   await approveTentativeHold(7,20,9,future);
-  assert.deepEqual(state.notifications[0][0],[4]);
+  assert.deepEqual(state.notifications,[]);
 });
 afterEach(() => { mock.restoreAll(); mock.timers.reset(); });
 after(() => pool.end());
@@ -296,3 +296,15 @@ for (const action of ['approved', 'updated', 'expired']) {
     });
   }
 }
+
+// SCRUM-85 AC2: expiry changes must not erase why Venue Staff selected this arrangement.
+test('SCRUM-85 AC2 - changing a finite hold deadline preserves its saved reason',async()=>{
+  state.booking.status='tentative';state.booking.decision_notes='Use the side entrance.';
+  const result=await updateHoldExpiry(7,20,9,future);
+  assert.equal(result.decision_notes,'Use the side entrance.');
+  assert.equal(JSON.parse(state.notifications[0][6][0]).notes,'Use the side entrance.');
+});
+test('SCRUM-85 AC2 - whitespace-only approval notes are stored as no explanation',async()=>{
+  const result=await approveTentativeHold(7,20,9,future,'   ');
+  assert.equal(result.decision_notes,null);
+});
