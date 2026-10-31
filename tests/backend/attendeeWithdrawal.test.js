@@ -77,14 +77,14 @@ test('Withdraw AC1/AC2 - leaving the waitlist changes status without promoting a
   const db = database({ registration: { id: 7, status: 'waitlisted' } });
   const result = await request();
   assert.equal(result.body.registration.status, 'withdrawn');
-  assert.equal(db.statements.some(row => row.sql.includes('INSERT INTO notifications')), false);
+  assert.equal(db.statements.some(row => row.values[3]?.includes('waitlist_promoted')), false);
   assert.equal(db.statements.some(row => row.sql.startsWith("UPDATE registrations SET status='registered'")), false);
 });
 for (const occupied of [2, 3, 4]) {
   test(`Withdraw AC2 - ${occupied - 1} remaining registrations against capacity 2 ${occupied < 3 ? 'allows' : 'blocks'} promotion`, async () => {
     const db = database({ occupied });
     await request();
-    assert.equal(db.statements.some(row => row.sql.includes('INSERT INTO notifications')), occupied < 3);
+    assert.equal(db.statements.some(row => row.values[3]?.includes('waitlist_promoted')), occupied < 3);
   });
 }
 test('Withdraw AC2 - no waitlist, disabled registration or unknown capacity creates no promotion notification', async () => {
@@ -92,7 +92,7 @@ test('Withdraw AC2 - no waitlist, disabled registration or unknown capacity crea
     { context: { ...event, registration_capacity: null, venue_capacity: null } }]) {
     const db = database(options);
     assert.equal((await request()).status, 200);
-    assert.equal(db.statements.some(row => row.sql.includes('INSERT INTO notifications')), false);
+    assert.equal(db.statements.some(row => row.values[3]?.includes('waitlist_promoted')), false);
     mock.restoreAll();
   }
 });

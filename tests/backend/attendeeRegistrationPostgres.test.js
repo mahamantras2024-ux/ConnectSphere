@@ -19,7 +19,7 @@ test('Register AC1/AC2/AC4 - PostgreSQL serializes the last seat and duplicate s
     try {
       mock.method(Date, 'now', () => Date.parse('2031-06-01T00:00:00Z'));
       await admin.query(`CREATE SCHEMA ${schema}`); created = true;
-      await isolated.query(`CREATE TABLE users (id int PRIMARY KEY);
+      await isolated.query(`CREATE TABLE users (id int PRIMARY KEY,email text);
         CREATE TABLE events (id int PRIMARY KEY, name text, status text, is_draft boolean,
           registration_required boolean, registration_capacity int, registration_deadline timestamptz,
           proposed_date date, proposed_start_time time);
@@ -27,7 +27,8 @@ test('Register AC1/AC2/AC4 - PostgreSQL serializes the last seat and duplicate s
         CREATE TABLE venue_bookings (event_id int, venue_id int, status text);
         CREATE TABLE registrations (id serial PRIMARY KEY, event_id int REFERENCES events(id), attendee_id int REFERENCES users(id),
           status text, registered_at timestamptz DEFAULT clock_timestamp(), withdrawn_at timestamptz, UNIQUE(event_id,attendee_id));
-        INSERT INTO users VALUES (8),(9),(10);
+        CREATE TABLE notifications(id serial PRIMARY KEY,user_id int,event_id int,change_request_id int,type text,title varchar(255),message text,details jsonb);
+        INSERT INTO users(id) VALUES (8),(9),(10);
         INSERT INTO events VALUES (44,'Arts Day','approved',false,true,1,NULL,'2099-06-12','09:30');
         INSERT INTO venues VALUES (1,1);
         INSERT INTO venue_bookings VALUES (44,1,'approved');`);
