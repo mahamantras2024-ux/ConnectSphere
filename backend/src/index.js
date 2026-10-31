@@ -12,6 +12,7 @@ const { errorHandler } = require('./middleware/errorHandler');
 const { pool } = require('./config/db');
 const { startEventCompletionScheduler } = require('./services/eventCompletion');
 const { startDailyVenueReminderScheduler } = require('./services/venueEventStatus');
+const { startHoldExpiryScheduler } = require('./services/venueHolds');
 const { startTechSupportReminderScheduler } = require('./services/techSupportReminderPreferences');
 
 const app = express();
@@ -61,6 +62,7 @@ if (require.main === module) {
     });
     // The persisted last-sent timestamp makes this hourly scheduler safe across restarts and multiple checks.
     startDailyVenueReminderScheduler(pool);
+    startHoldExpiryScheduler(pool);
     // Periodic reminders for Technical Support members who opted in, at their chosen cadence.
     startTechSupportReminderScheduler(pool);
     startEventCompletionScheduler(pool);

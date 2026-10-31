@@ -34,7 +34,7 @@ const SAFETY_CHANGE_AREAS = {
 /** True when a booking still occupies the venue as a decided or undecided arrangement (not rejected/cancelled/expired). */
 function isLiveBooking(booking, now) {
   if (booking.status === 'approved') return true;
-  return booking.status === 'pending' && booking.hold_expires_at != null && new Date(booking.hold_expires_at).getTime() > now;
+  return ['pending','tentative'].includes(booking.status) && booking.hold_expires_at != null && new Date(booking.hold_expires_at).getTime() > now;
 }
 
 /** True when the event asks for any equipment, technical support, hybrid facilities or other equipment help.
@@ -72,7 +72,7 @@ const REQUIREMENTS = {
       return { met: false, code: 'VENUE_NOT_CONFIRMED', message: 'No venue booking has been confirmed by Venue Staff.' };
     }
     // Multiple venues (Week 7 change 3): every venue still being held must be decided before the event can proceed.
-    if (live.some((booking) => booking.status === 'pending')) {
+    if (live.some((booking) => ['pending','tentative'].includes(booking.status))) {
       return { met: false, code: 'VENUE_PENDING', message: 'A venue booking is still awaiting Venue Staff approval.' };
     }
     // An applied amendment changed details this confirmed booking depended on: Venue Staff must re-confirm it (AC5).

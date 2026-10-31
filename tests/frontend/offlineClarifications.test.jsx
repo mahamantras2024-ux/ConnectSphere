@@ -379,18 +379,33 @@ it('OC AC5 - a flagged booking shows the amended requirements and what was origi
   expect(screen.getByText((_, node) => node.tagName === 'P' && node.textContent === 'Originally requested: accessibility: Lift')).toBeTruthy();
 });
 // Test case: An ordinary pending request is still approved through the normal decision.
-it('OC AC5 - an unflagged pending request still uses the normal approval', async () => {
+it('OC AC5 - an unflagged pending request still uses the normal approval with a hold expiry', async () => {
   user = venueStaff;
   const pending = { ...flaggedBooking, status: 'pending', recheck_required_at: null, recheck_reason: null };
   const base = api.get.getMockImplementation();
   api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [pending] } : base(path)));
-  api.put.mockResolvedValue({ request: { ...pending, status: 'approved', decision_by: 41, updated_at: '2030-01-03T03:00:00.000Z' } });
+  api.put.mockResolvedValue({ request: { ...pending, status: 'tentative', hold_expires_at: '2099-01-02T04:00:00.000Z', decision_by: 41,
+    updated_at: '2030-01-03T03:00:00.000Z' } });
   open('/venue/dashboard');
   fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   expect(screen.queryByText(/Re-check required/)).toBeNull();
+  // Main's tentative-hold workflow: approval needs an expiry and goes through the normal decision, not the re-check.
+  fireEvent.change(screen.getByLabelText('Hold expiry (Singapore time)'), { target: { value: '2099-01-02T12:00' } });
   fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
-  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/5/requests/9/decision', { decision: 'approved', reason: '' }, 'session'));
-  expect(await screen.findByText(/^Approved: Gala at Hall A\./)).toBeTruthy();
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/5/requests/9/decision',
+    { decision: 'approved', reason: '', holdExpiresAt: '2099-01-02T04:00:00.000Z' }, 'session'));
+  expect(await screen.findByText(/^Tentative hold approved: Gala at Hall A\./)).toBeTruthy();
+});
+// Test case: A flagged booking is already confirmed, so it has no hold expiry to set.
+it('OC AC5 - a flagged booking is re-checked without a hold expiry', async () => {
+  user = venueStaff;
+  const base = api.get.getMockImplementation();
+  api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [flaggedBooking] } : base(path)));
+  open('/venue/dashboard');
+  fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
+  expect(screen.queryByLabelText('Hold expiry (Singapore time)')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Approve request' })).toBeNull();
+  expect(screen.getByText('Re-confirming keeps the confirmed booking; rejecting ends it. The Coordinator is told either way.')).toBeTruthy();
 });
 // Test case: When an approval reopens the safety check, the coordinator's confirmation names the Safety Officers told.
 it('OC AC4 - approving a change reports the Safety Officers and registered attendees notified', async () => {

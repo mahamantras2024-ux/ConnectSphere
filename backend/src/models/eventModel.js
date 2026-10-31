@@ -178,7 +178,7 @@ async function loadArrangements(db, eventId, withPeriods) {
     SELECT vb.id, vb.venue_id, vb.status, vb.start_datetime, vb.end_datetime, vb.hold_expires_at, vb.decision_by,
       v.name AS venue_name, v.capacity, v.supported_layouts, v.setup_minutes, v.turnaround_minutes
     FROM venue_bookings vb JOIN venues v ON v.id=vb.venue_id
-    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'approved')
+    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'tentative', 'approved')
     ORDER BY vb.id`, [eventId])).rows;
   if (!withPeriods || !bookings.length) return bookings;
   const periods = (await db.query(`
@@ -213,7 +213,7 @@ async function loadArrangements(db, eventId, withPeriods) {
     SELECT vb.id, vb.venue_id, vb.status, vb.start_datetime, vb.end_datetime, vb.hold_expires_at, vb.decision_by,
       v.name AS venue_name, v.capacity, v.supported_layouts, v.setup_minutes, v.turnaround_minutes
     FROM venue_bookings vb JOIN venues v ON v.id=vb.venue_id
-    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'approved')
+    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'tentative', 'approved')
     ORDER BY vb.id`, [eventId])).rows;
   if (!withPeriods || !bookings.length) return bookings;
   const periods = (await db.query(`

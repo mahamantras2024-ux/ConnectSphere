@@ -13,7 +13,7 @@ async function records(client,id,nextTurnaround=0) {
  const bookings=(await client.query(`SELECT b.id AS booking_id,b.status,b.start_datetime,b.end_datetime,b.hold_expires_at,
  e.id AS event_id,e.name AS event_name,e.expected_attendance,e.room_layout_preference,e.accessibility_requirements
  FROM venue_bookings b JOIN events e ON e.id=b.event_id
- WHERE b.venue_id=$1 AND b.status IN ('pending','approved','confirmed')
+ WHERE b.venue_id=$1 AND b.status IN ('pending','tentative','approved','confirmed')
  AND b.end_datetime + $2::integer * interval '1 minute' > now()
  ORDER BY b.start_datetime,b.id`,[id,Math.max(venue.turnaround_minutes ?? 0,nextTurnaround)])).rows;
  return {venue,bookings};

@@ -27,6 +27,7 @@ export default function Navbar() {
       <NavLink to={getDashboardRoute(user.role)}>{workspaceLabel}</NavLink>
       {/* Venue discovery has its own workspace; it does not belong inside Assigned Events. */}
       {user.role === 'event_coordinator' && <NavLink to="/coordinator/venues">Find venues</NavLink>}
+      {user.role === 'event_coordinator' && <NavLink to="/coordinator/planning-calendar">Planning calendar</NavLink>}
       {user.roles?.length > 1 && <label className="role-switch">Workspace<select aria-label="Active role" value={user.role} disabled={busy} onChange={changeRole}>{user.roles.map(role =>
       // Converts each record into its displayed or submitted representation.
       <option key={role} value={role}>{roleLabels[role] || role}</option>)}</select></label>}

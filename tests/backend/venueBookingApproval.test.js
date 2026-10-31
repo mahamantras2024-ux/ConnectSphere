@@ -41,16 +41,53 @@ async function query(sql, values = []) {
   if (sql.includes("SET status='rejected', recheck_required_at=NULL")) {
     return { rows: [{ ...state.request, status: 'rejected', recheck_required_at: null, decision_by: values[2], decision_notes: values[3] }] };
   }
-  if (sql.startsWith('UPDATE venue_bookings')) return { rows: [{ ...state.request, status: values[0], decision_by: values[1], updated_at: values[2], decision_notes: values[3] }] };
+  if (sql.startsWith('UPDATE venue_bookings')) return { rows: [{ ...state.request, status: values[0], decision_by: sql.includes('hold_expires_at=$2')?values[3]:values[1], updated_at: values[2], decision_notes: sql.includes('hold_expires_at=$2')?null:values[3], hold_expires_at: sql.includes('hold_expires_at=$2')?values[1]:state.request.hold_expires_at }] };
   throw new Error(`Unexpected SQL: ${sql}`);
 }
 /** Calls the actual staff API using a signed session; identity supplied in JSON must never become the audit actor. */
 async function request(path = '/7/requests/20/decision', body) {
   const response = await fetch(base + path, { method: body ? 'PUT' : 'GET', headers: {
     'Content-Type': 'application/json', Authorization: `Bearer ${jwt.sign({ sub: 9 }, process.env.JWT_SECRET)}`,
-  }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  }, ...(body ? { body: JSON.stringify(body.decision==='approved'?{holdExpiresAt:'2099-01-01T00:00:00Z',...body}:body) } : {}) });
   return { status: response.status, body: await response.json() };
 }
+
+test('SCRUM-107 AC2 AC5 - role boundaries protect expiry changes and coordinator confirmation', async () => {
+  // Arrange: a live hold exists, but staff and coordinators have distinct responsibilities.
+  state.request={...state.request,status:'tentative',hold_expires_at:'2099-01-01T00:00:00Z'};
+  // Act / Assert: staff cannot finalize and a coordinator cannot change the staff-approved deadline.
+  assert.equal((await request('/7/requests/20/confirm',{})).status,403);
+  state.role='event_coordinator';
+  assert.equal((await request('/7/requests/20/expiry',{holdExpiresAt:'2099-01-02T00:00:00Z'})).status,403);
+  assert.equal(state.calls.some(sql=>sql.startsWith('UPDATE venue_bookings')),false);
+});
+
+test('SCRUM-107 AC2 - staff expiry endpoint returns the persisted replacement deadline', async () => {
+  // Arrange / Act: exercise the real route and controller, rather than calling only the domain service.
+  state.request={...state.request,status:'tentative',hold_expires_at:'2099-01-01T00:00:00Z'};
+  const response=await request('/7/requests/20/expiry',{holdExpiresAt:'2099-01-02T00:00:00Z'});
+  // Assert: the response reflects the stored instant and keeps the hold tentative.
+  assert.equal(response.status,200);assert.equal(response.body.request.status,'tentative');
+  assert.equal(response.body.request.hold_expires_at,'2099-01-02T00:00:00.000Z');
+});
+
+test('SCRUM-107 AC3 AC5 - assigned coordinator confirmation endpoint finalizes only a live hold', async () => {
+  // Arrange: the signed-in coordinator is assigned to this event and the hold is live.
+  state.role='event_coordinator';state.coordinator=9;
+  state.request={...state.request,status:'tentative',hold_expires_at:'2099-01-01T00:00:00Z'};
+  // Act / Assert: the route delegates through real expiry/availability checks to the final booking write.
+  const response=await request('/7/requests/20/confirm',{});
+  assert.equal(response.status,200);assert.equal(response.body.request.status,'approved');
+});
+
+test('SCRUM-107 AC1 - a missing request cannot receive a staff rejection or approval', async () => {
+  // Arrange: an expired/removed selection must not accidentally apply a decision to another request.
+  state.request=null;
+  // Act / Assert: both staff decision paths return the same missing-resource result without any write.
+  assert.equal((await request(undefined,{decision:'rejected'})).status,404);
+  assert.equal((await request(undefined,{decision:'approved'})).status,404);
+  assert.equal(state.calls.some(sql=>sql.startsWith('UPDATE venue_bookings')),false);
+});
 test('SCRUM-43 AC1 - staff pending list includes event requirements and requested venue/time', async () => {
   // Arrange/Act: the full HTTP route must read the pending queue, not the public catalogue.
   const response = await request('/requests/pending');
@@ -88,7 +125,7 @@ for (const decision of ['approved', 'rejected']) {
   test(`SCRUM-43 AC2 AC3 AC4 AC5 AC7 - ${decision} stores trusted audit and coordinator notification before commit`, async () => {
     const response = await request(undefined, { decision, reason: '  Maintenance; try Hall B at 2pm.  ', decision_by: 999 });
     assert.equal(response.status, 200);
-    assert.equal(response.body.request.status, decision);
+    assert.equal(response.body.request.status, decision==='approved'?'tentative':decision);
     assert.equal(response.body.request.decision_by, 9);
     assert.ok(Number.isFinite(Date.parse(response.body.request.updated_at)));
     assert.equal(response.body.request.decision_notes, decision === 'rejected' ? 'Maintenance; try Hall B at 2pm.' : null);
@@ -226,7 +263,9 @@ test('OC AC5 - the Venue Staff inbox lists flagged bookings with the reason', as
   state.request = flagged();
   const response = await request('/requests/pending');
   assert.equal(response.status, 200);
-  assert.match(state.calls.find((sql) => sql.includes('booking.recheck_reason')), /WHERE booking\.status='pending' OR \(booking\.status='approved' AND booking\.recheck_required_at IS NOT NULL\)/);
+  // Pending requests and live tentative holds (main's hold workflow) are listed alongside flagged confirmed bookings.
+  assert.match(state.calls.find((sql) => sql.includes('booking.recheck_reason')),
+    /WHERE \(booking\.status='pending' OR \(booking\.status='tentative' AND booking\.hold_expires_at > clock_timestamp\(\)\)\)\s+OR \(booking\.status='approved' AND booking\.recheck_required_at IS NOT NULL\)/);
   assert.equal(response.body.requests[0].recheck_reason, 'Event details relevant to the venue changed: Expected attendance.');
 });
 // Test case (reviewer regression): the booking was confirmed for 40 guests in a Theatre layout without access needs, then
