@@ -31,6 +31,8 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[],
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
       await applyLiveSchema(client);
+      // Registration settings have a dedicated migration outside the common event runner used by this fixture.
+      await client.query(sqlFile('migrations/021-registration-settings.sql'));
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['lee', 'event_coordinator_lead'], ['vera', 'venue_staff'],
         ['vic', 'venue_staff'], ['tess', 'technical_support'], ['sam', 'safety_officer'], ['otto', 'event_organiser'], ['ann', 'attendee']];
       for (const [name, role] of people) {

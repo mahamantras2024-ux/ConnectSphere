@@ -4,6 +4,7 @@ const { pool } = require('../config/db');
 const publishedEventSelect = `
   SELECT e.id, e.name, e.registration_required, e.proposed_date::text AS proposed_date,
     e.proposed_start_time, e.proposed_end_time, e.description,
+    e.registration_deadline,e.withdrawal_deadline,e.registration_open,
     e.accessibility_requirements, e.special_arrangements,
     CASE WHEN e.status = 'approved' THEN 'confirmed' ELSE e.status END AS status,
     organiser.full_name AS organiser_name, venue.venue_name, venue.location

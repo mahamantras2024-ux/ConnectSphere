@@ -1,5 +1,5 @@
 import {afterEach,beforeEach,it,expect,vi} from 'vitest';
-import {render,screen,fireEvent,cleanup,waitFor,within} from '@testing-library/react';
+import {render,screen,fireEvent,cleanup,waitFor,within,act} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import App from '../../frontend/src/App';
 import {AuthProvider} from '../../frontend/src/context/AuthContext';
@@ -11,6 +11,21 @@ const event={id:1,name:'Workshop',purpose:'Community learning',status:'draft',is
 function open(path='/organizer/dashboard'){localStorage.setItem('cs_token','test');render(<MemoryRouter initialEntries={[path]}><AuthProvider><App/></AuthProvider></MemoryRouter>);}
 beforeEach(()=>{localStorage.clear();vi.resetAllMocks();api.get.mockImplementation(async path=>path==='/auth/me'?{user:{id:2,role:'event_organiser',full_name:'Alice'}}:path==='/events'?{events:[event]}:{event});});
 afterEach(cleanup);
+it('Registration settings AC1 - saving cutoffs updates the real organiser event page',async()=>{
+ // Arrange: keep routing, session and parent/child interaction real; only the server response is controlled.
+ api.put.mockResolvedValue({event:{...event,registration_deadline:'2090-01-01T01:00:00Z',withdrawal_deadline:'2090-01-01T00:00:00Z'},message:'Registration deadlines saved.'});
+ open('/events/1');
+ await screen.findByLabelText('Registration deadline (Singapore time)');
+ // The routed page can expose its controls before their initial passive effects finish; settle initialization before editing.
+ await act(async()=>{});
+ fireEvent.change(screen.getByLabelText('Registration deadline (Singapore time)'),{target:{value:'2090-01-01T09:00'}});
+ fireEvent.change(screen.getByLabelText('Withdrawal deadline (Singapore time)'),{target:{value:'2090-01-01T08:00'}});
+ // Act / Assert: successful persistence updates accepted settings in the event page, rather than only showing a toast.
+ fireEvent.click(screen.getByRole('button',{name:'Save deadlines'}));
+ expect(await screen.findByText('Registration deadlines saved.')).toBeTruthy();
+ expect(screen.getByLabelText('Registration deadline (Singapore time)')).toHaveProperty('value','2090-01-01T09:00');
+ expect(api.put).toHaveBeenCalledWith('/events/1/registration-settings',{registrationDeadline:'2090-01-01T01:00:00.000Z',withdrawalDeadline:'2090-01-01T00:00:00.000Z'},'test');
+});
 // AC1: row placement reflects persisted draft and assignment state, not invented client state.
 it('Workflow AC1 - dashboard separates draft submitted and assigned rows',async()=>{
  api.get.mockImplementation(async path=>path==='/auth/me'?{user:{id:2,role:'event_organiser'}}:{events:[event,{...event,id:2,name:'Submitted event',status:'submitted',is_draft:false},{...event,id:3,name:'Assigned event',status:'submitted',is_draft:false,coordinator_id:4}]});

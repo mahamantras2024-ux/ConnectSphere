@@ -10,6 +10,7 @@ const { notifyLeadsOfSubmission } = require('../services/roleNotifications');
 const { validTopics } = require('../services/clarificationFields');
 const { decideChangeRequest } = require('../services/changeRequestDecisions');
 const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements } = require('../services/changeRequestReview');
+const { assertDeadlines } = require('../services/registrationSettingsPolicy');
 const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
 // Reuses the completed owner/assignment-scoped event read handlers.
 const { getEvent, listEvents } = require('./eventReadController');
@@ -38,6 +39,8 @@ const updateEventInformation = asyncHandler(async (req, res) => {
   if (isSubmitted(current)) return res.status(409).json(AMENDMENT_REQUIRED);
   const { data, error } = validateEventChanges(input, current);
   if (error) return res.status(400).json({ message: error });
+  // A schedule-only edit must not leave an already accepted cutoff after the new event start.
+  assertDeadlines(applyToEvent(current, data));
   const event = await eventModel.updateEditable(id, req.user.id, data);
   // No row means the draft was submitted between the read above and this write.
   if (!event) return res.status(409).json(AMENDMENT_REQUIRED);

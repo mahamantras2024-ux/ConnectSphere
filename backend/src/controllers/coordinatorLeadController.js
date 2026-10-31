@@ -27,7 +27,7 @@ const assign = asyncHandler(async (req, res) => {
   let updated, stored = [];
   try {
     await client.query('BEGIN');
-    const event = (await client.query('SELECT id,coordinator_id,is_draft,status FROM events WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    const event = (await client.query('SELECT id,name,coordinator_id,is_draft,status FROM events WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!event || event.is_draft || ['draft','cancelled','completed'].includes(event.status)) {
       await client.query('ROLLBACK'); return res.status(404).json({ message: 'Active event not found.' });
     }
@@ -45,9 +45,10 @@ const assign = asyncHandler(async (req, res) => {
     if (event.coordinator_id !== coordinatorId) {
       stored = await notificationService.insertNotifications(client, [{
         userId: coordinatorId, eventId: event.id, changeRequestId: null, type: 'event_coordinator_assigned',
-        title: `Event assigned: ${updated.name}`.slice(0, 255),
+        // The shared notification service caps Unicode titles without splitting code points.
+        title: `Event assigned: ${updated.name}`,
         message: `You have been assigned as Event Coordinator for ${updated.name}. Open the event to review the latest information and pending work.`,
-        details: { assignedBy: req.user.id, previousCoordinatorId: event.coordinator_id },
+        details: { kind: 'event_assignment', assignedBy: req.user.id, previousCoordinatorId: event.coordinator_id },
       }]);
     }
     await client.query('COMMIT');

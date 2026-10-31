@@ -4,7 +4,8 @@
 const eventModel = require('../models/eventModel');
 const { listActiveAttendees } = require('../models/eventCancellationModel');
 const { needsTechnicalArrangements } = require('./eventDecisionPolicy');
-const { TIME_FIELDS, isSupportedField, describeChanges, assessArrangements, changeLines } = require('./changeRequestReview');
+const { TIME_FIELDS, isSupportedField, describeChanges, assessArrangements, changeLines, applyToEvent } = require('./changeRequestReview');
+const { assertDeadlines } = require('./registrationSettingsPolicy');
 
 /** The equipment request Technical Support reviews. */
 const EQUIPMENT_FIELDS = ['equipmentItems', 'technicalSupportRequired', 'technicalSupportDetails', 'videoConferencingRequired',
@@ -51,6 +52,8 @@ async function applyAmendment(client, before, requested) {
   if (unsupported.length) {
     throw failure(409, `This change request includes changes that cannot be applied yet: ${unsupported.join(', ')}.`, 'UNSUPPORTED_CHANGE');
   }
+  // Revalidate the resulting event at application time, for both reviewed requests and offline agreed amendments.
+  assertDeadlines(applyToEvent(before, requested));
   const changes = describeChanges(before, requested);
   const changed = new Set(changes.map((change) => change.field));
   const touches = (fields) => fields.some((field) => changed.has(field));

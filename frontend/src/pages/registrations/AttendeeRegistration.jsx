@@ -47,6 +47,7 @@ export default function AttendeeRegistration({ eventId }) {
       {status && <p>Registration status: <span className="status-badge">{statusLabel}</span></p>}
       {status === 'waitlisted' && data.event_status !== 'cancelled' && <p>Waitlist position: {data.waitlistPosition}</p>}
       {data.deadline && <p>Registration deadline: {deadlineLabel(data.deadline)} (Singapore time)</p>}
+      {data.withdrawalDeadline && <p>Withdrawal deadline: {deadlineLabel(data.withdrawalDeadline)} (Singapore time)</p>}
       {activeRegistration ? <Link className="button-link button-secondary" to="/registrations">View my registrations</Link>
         : data.blocker ? <p>{data.blocker}</p> : <>
           <p>{data.remaining > 0 ? `${data.remaining} places remaining` : 'This event is full. You can join the waitlist.'}</p>

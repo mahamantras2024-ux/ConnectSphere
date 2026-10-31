@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import CoordinatorRegistrations from '../../frontend/src/pages/events/CoordinatorRegistrations';
 import { api } from '../../frontend/src/api/client';
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn() } }));
@@ -25,8 +25,9 @@ it('AC1 AC2 - displays withdrawals and separate calculated overflow alongside nu
     waitlist: [{ id: 201, attendee_name: 'Waiting Bea', registered_at: '2031-01-01T09:00:00Z' },
       { id: 202, attendee_name: 'Waiting Chen', registered_at: '2031-01-01T09:00:00Z' },
       { id: 203, attendee_name: 'Waiting Devi', registered_at: '2031-01-01T09:01:00Z' }] });
-  // Act
+  // Act: flush the resolved report request before expensive accessible queries over 103 attendees.
   open();
+  await act(async () => {});
   // Assert: exact totals and source timestamp catch swapped counts and fabricated joining dates.
   expect(await screen.findByLabelText('Registration summary')).toHaveProperty('textContent', '103 registered · 3 on waitlist · 2 withdrawn');
   const registered = screen.getByRole('region', { name: 'Registered attendees' });

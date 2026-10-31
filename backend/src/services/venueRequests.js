@@ -49,9 +49,9 @@ async function createVenueRequest(venueId, body, userId) {
 /** Routes approvals through the finite-hold lifecycle and records rejections with a durable coordinator notice. */
 async function decideVenueRequest(venueId, requestId, decision, userId, reason, holdExpiresAt) {
   // SCRUM-107: every new approval is tentative; only coordinator confirmation makes it final.
-  if (decision === 'approved') return approveTentativeHold(venueId, requestId, userId, holdExpiresAt);
-  if (!validId(venueId) || !validId(requestId) || decision !== 'rejected') throw reject(400, 'Choose a valid request and approval or rejection decision.');
   if (reason != null && typeof reason !== 'string') throw reject(400, 'The decision reason must be text.');
+  if (decision === 'approved') return approveTentativeHold(venueId, requestId, userId, holdExpiresAt, reason);
+  if (!validId(venueId) || !validId(requestId) || decision !== 'rejected') throw reject(400, 'Choose a valid request and approval or rejection decision.');
   // Rejection notes explain why the booking was declined; approvals use their separate finite-hold flow above.
   const decisionNotes = reason?.trim() || null;
   let safetyNotes = [];
@@ -66,7 +66,7 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason, 
     const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [request.event_id])).rows[0];
     // Store the notification inside the same transaction: a decision cannot commit without its coordinator notice.
     // The existing event-details type covers this venue-arrangement change without widening database permissions or constraints.
-    await insertNotifications(client, [{ userId: event.coordinator_id ?? request.requested_by, eventId: event.id, changeRequestId: null,
+    if (event.coordinator_id) await insertNotifications(client, [{ userId: event.coordinator_id, eventId: event.id, changeRequestId: null,
       type: 'event_details_changed', title: `Venue booking ${decision}: ${event.name}`,
       message: `${event.name}: venue booking #${request.id} at ${venue.name} was ${decision}.${decisionNotes ? `\nReason or alternative arrangement: ${decisionNotes}` : ''}`,
       // Keep a separate durable audit snapshot, even if a later arrangement change updates the booking timestamp.

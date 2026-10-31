@@ -146,12 +146,13 @@ test('Assignment notification AC4 - email failure preserves the committed assign
 });
 
 // AC1 boundary: the event name stays complete in the message when the title reaches its storage limit.
-for(const delta of [-1,0,1])test(`Assignment notification AC1 - title length boundary offset ${delta}`,async()=>{
+for(const character of ['x','😀'])for(const delta of [-1,0,1])test(`Assignment notification AC1 - ${character} title length boundary offset ${delta}`,async()=>{
   const prefix='Event assigned: ';
-  const name='x'.repeat(255-prefix.length+delta);
+  const name=character.repeat(255-prefix.length+delta);
   const {calls}=assignmentDatabase(null,undefined,name);
   assert.equal((await invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:null})).status,200);
   const note=calls.find(call=>call.sql.includes('INSERT INTO notifications'));
-  assert.equal(note.values[4][0],(prefix+name).slice(0,255));
+  // PostgreSQL counts Unicode code points; splitting a surrogate pair corrupts a valid event title.
+  assert.equal(note.values[4][0],prefix+character.repeat(Math.min(255-prefix.length+delta,255-prefix.length)));
   assert.ok(note.values[5][0].includes(name));
 });

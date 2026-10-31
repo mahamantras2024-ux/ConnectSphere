@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { capacityFor, deadlineFor, registrationBlocker } = require('./attendeeRegistrationPolicy');
+const {withdrawalDeadline}=require('./attendeeWithdrawalPolicy');
 
 /** Loads one event; locking its row serializes every registration writer before seats are counted. */
 async function loadEvent(client, eventId, lock = false) {
@@ -33,7 +34,7 @@ function present(event, facts, now) {
     event_status: ['approved', 'confirmed'].includes(event.status) ? 'confirmed'
       : ['cancelled', 'completed'].includes(event.status) ? event.status : null,
     capacity: capacityFor(event), remaining: Math.max(0, (capacityFor(event) || 0) - facts.occupied),
-    deadline: closesAt, blocker: registrationBlocker(event, now) };
+    deadline: closesAt, withdrawalDeadline: withdrawalDeadline(event), blocker: registrationBlocker(event, now) };
 }
 
 /** Retrieves availability and an existing registration for the authenticated attendee. */
