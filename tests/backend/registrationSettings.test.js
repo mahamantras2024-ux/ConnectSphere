@@ -122,3 +122,24 @@ for(const body of [null,{}, {open:'yes'},{open:true,organiserId:999}])test(`Regi
   await assert.rejects(setRegistrationOpen(7,3,body),error=>error.status===400);
   assert.equal(state.calls.length,0);
 });
+
+for (const titleLength of [254, 255, 256, 255 + 'Registration deadline change: '.length]) {
+  test(`Registration settings AC2 - a ${titleLength}-character notice title cannot prevent a submitted deadline request`, async () => {
+    // Arrange: PostgreSQL permits 255 Unicode characters in an event name, even when they use surrogate pairs in JavaScript.
+    const prefix = 'Registration deadline change: ';
+    const eventName = '🎉'.repeat(titleLength - prefix.length);
+    state.event = { ...state.event, name: eventName, is_draft: false, status: 'submitted', registration_deadline: '2030-11-01T08:15:00Z' };
+    // Act: execute real amendment and notification logic; only database transport is mocked.
+    const result = await saveDeadlines(7, 3, deadlines);
+    // Assert: the title fits the database, while the full name and requested cutoffs remain available for review.
+    assert.equal(state.notices[0][4][0], prefix + '🎉'.repeat(Math.min(titleLength, 255) - prefix.length));
+    assert.ok(state.notices[0][5][0].includes(eventName));
+    assert.deepEqual(JSON.parse(state.notices[0][6][0]).changes, { registrationDeadline: '2030-11-01T09:00:00.000Z', withdrawalDeadline: '2030-11-01T08:30:00.000Z' });
+    assert.equal(result.changeRequest.status, 'pending');
+    assert.equal(state.requests.length, 1);
+    assert.equal(state.writes.length, 0);
+    assert.equal(state.event.registration_deadline, '2030-11-01T08:15:00Z');
+    assert.ok(state.calls.some(call => call.sql === 'COMMIT'));
+    assert.equal(state.calls.some(call => call.sql === 'ROLLBACK'), false);
+  });
+}

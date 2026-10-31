@@ -34,8 +34,10 @@ async function saveDeadlines(eventId,userId,body){
       if(!event.coordinator_id)throw Object.assign(new Error('A Coordinator must be assigned before requesting a deadline change.'),{status:409});
       const request=(await client.query(`INSERT INTO event_change_requests(event_id,organiser_id,coordinator_id,requested_changes)
         VALUES($1,$2,$3,$4::jsonb) RETURNING *`,[event.id,userId,event.coordinator_id,JSON.stringify(changes)])).rows[0];
+      // Bound the complete title to PostgreSQL's 255-character limit without splitting Unicode; keep the full name in the message.
+      const title=Array.from(`Registration deadline change: ${event.name}`).slice(0,255).join('');
       await insertNotifications(client,[{userId:event.coordinator_id,eventId:event.id,changeRequestId:request.id,type:'change_request_submitted',
-        title:`Registration deadline change: ${event.name}`,message:`Review the requested registration or withdrawal deadline change for ${event.name}. Existing deadlines remain in effect until approval.`,details:{changes}}]);
+        title,message:`Review the requested registration or withdrawal deadline change for ${event.name}. Existing deadlines remain in effect until approval.`,details:{changes}}]);
       result={changeRequest:request,message:'Deadline change requested. The accepted deadlines remain in effect until your Coordinator approves.'};
     }
     await client.query('COMMIT');return result;

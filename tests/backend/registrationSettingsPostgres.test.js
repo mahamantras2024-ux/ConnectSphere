@@ -114,4 +114,26 @@ describe('Registration settings PostgreSQL evidence',{skip:process.env.RUN_REGIS
     assert.equal(fallback.body.withdrawalDeadline,'2090-01-10T02:00:00.000Z');
     assert.equal((await db.query('SELECT registration_open FROM events WHERE id=42')).rows[0].registration_open,true);
   });
+  test('Registration settings AC2 - maximum-length event names persist a pending proposal and Coordinator notice atomically', async () => {
+    // Arrange: the actual migration supplies VARCHAR(255), so an overlong notice fails at the real database boundary.
+    const eventName = '🎉'.repeat(255);
+    await db.query("UPDATE events SET name=$1,is_draft=false,status='submitted',registration_deadline='2090-01-10T00:30:00Z' WHERE id=7", [eventName]);
+    // Act: use the authenticated owner endpoint, not a title helper in isolation.
+    const proposed = await request('/events/7/registration-settings', settings);
+    // Assert: both durable rows commit and the accepted deadline stays unchanged pending review.
+    assert.equal(proposed.status, 202);
+    const saved = (await db.query('SELECT * FROM event_change_requests WHERE event_id=7')).rows;
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].status, 'pending');
+    assert.equal(saved[0].requested_changes.registrationDeadline, '2090-01-10T01:00:00.000Z');
+    // Main also emits lifecycle notices for this event; inspect the notice belonging to this specific amendment.
+    const notes = (await db.query("SELECT user_id,event_id,change_request_id,title,message FROM notifications WHERE event_id=7 AND type='change_request_submitted' AND change_request_id=$1", [saved[0].id])).rows;
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].title, 'Registration deadline change: ' + '🎉'.repeat(255 - 'Registration deadline change: '.length));
+    assert.ok(notes[0].message.includes(eventName));
+    assert.equal(notes[0].user_id, 4);
+    assert.equal(notes[0].change_request_id, saved[0].id);
+    assert.equal((await db.query('SELECT registration_deadline FROM events WHERE id=7')).rows[0].registration_deadline.toISOString(), '2090-01-10T00:30:00.000Z');
+  });
+
 });
