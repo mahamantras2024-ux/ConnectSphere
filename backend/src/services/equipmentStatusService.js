@@ -71,20 +71,4 @@ async function recordReview(eventId, reviewerId, { outcome, reason, requestVersi
   });
 }
 
-/**
- * Saves the organiser's edit to an unconfirmed request (a new version, so it is pending again). If the replaced version
- * had already been reviewed, its status changes back to pending and the coordinator is told (AC2).
- * @returns {Promise<object|null>} the updated event, or null when the request was confirmed meanwhile.
- */
-async function resubmitRequest(eventId, organiserId, data) {
-  return inTransaction(async (client) => {
-    const before = await statusModel.lockRequest(client, eventId);
-    const event = await eventModel.updateEquipment(eventId, organiserId, data, client);
-    if (!event) return { event: null, stored: [] };
-    const notes = before.reviewed ? coordinatorNotice(event, 'pending', ['The organiser changed the requirements, so Technical Support will review them again.']) : [];
-    const stored = notes.length ? await notificationService.insertNotifications(client, notes) : [];
-    return { event, stored };
-  });
-}
-
-module.exports = { recordReview, resubmitRequest };
+module.exports = { recordReview };

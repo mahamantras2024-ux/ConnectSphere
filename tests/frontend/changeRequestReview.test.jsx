@@ -35,7 +35,7 @@ const card = async (eventName) => (await screen.findByText(eventName, { selector
 // Returns the cells of a comparison row as [current, requested].
 const rowValues = (container, label) => within(within(container).getByRole('rowheader', { name: label }).closest('tr')).getAllByRole('cell').map((cell) => cell.textContent);
 const notificationsPanel = () => screen.getByRole('region', { name: 'Notifications' });
-const inbox = () => screen.getByRole('region', { name: 'Critical change requests' });
+const inbox = () => screen.getByRole('region', { name: 'Amendment requests' });
 
 beforeEach(() => {
   localStorage.clear();
@@ -81,7 +81,7 @@ it('CR AC1 - a failed inbox load is reported rather than shown as no requests', 
     return {};
   });
   open('/coordinator/dashboard');
-  expect((await within(await screen.findByRole('region', { name: 'Critical change requests' })).findByRole('alert')).textContent).toBe('Unable to load change requests.');
+  expect((await within(await screen.findByRole('region', { name: 'Amendment requests' })).findByRole('alert')).textContent).toBe('Unable to load change requests.');
   expect(screen.queryByText('No pending change requests.')).toBeNull();
 });
 
@@ -220,7 +220,7 @@ it.each([
   open(path);
   expect(await within(await screen.findByRole('region', { name: 'Notifications' })).findByText(title)).toBeTruthy();
   // Only coordinators get the review inbox.
-  expect(screen.queryByRole('region', { name: 'Critical change requests' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Amendment requests' })).toBeNull();
 });
 
 // Test case: Slow responses must not be mistaken for "no change requests" or "no notifications" (a coordinator could
@@ -235,7 +235,7 @@ it('CR AC1/AC2 - while loading, the inbox and notifications say they are loading
   });
   open('/coordinator/dashboard');
   // Assert while pending: loading text, no empty-state claims and no counts.
-  expect(await within(await screen.findByRole('region', { name: 'Critical change requests' })).findByText('Loading change requests...')).toBeTruthy();
+  expect(await within(await screen.findByRole('region', { name: 'Amendment requests' })).findByText('Loading change requests...')).toBeTruthy();
   expect(within(notificationsPanel()).getByText('Loading notifications...')).toBeTruthy();
   expect(screen.queryByText('No pending change requests.')).toBeNull();
   expect(screen.queryByText('No notifications yet.')).toBeNull();

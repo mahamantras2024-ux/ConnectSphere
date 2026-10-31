@@ -64,4 +64,40 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason, 
   return decided;
 }
 
-module.exports = { createVenueRequest, decideVenueRequest };
+/**
+ * Venue Staff re-confirm (or reject) a confirmed booking that an applied amendment changed the event under (Record
+ * Offline Clarifications and Apply Agreed Amendments AC5). Re-confirming clears the flag so the venue counts as confirmed
+ * again; rejecting ends the booking with the reason. The coordinator is told, and Safety Officers hear if the event is
+ * now ready for its safety check, in the same transaction.
+ * @param {'confirmed'|'rejected'} decision Venue Staff's outcome of the re-check.
+ */
+async function recheckVenueBooking(venueId, requestId, decision, userId, reason) {
+  if (!validId(venueId) || !validId(requestId) || !['confirmed', 'rejected'].includes(decision)) throw reject(400, 'Choose a valid booking and re-confirm or reject it.');
+  if (reason != null && (typeof reason !== 'string' || reason.length > 4000)) throw reject(400, 'The reason must be text of at most 4000 characters.');
+  const notes = decision === 'rejected' ? reason?.trim() || null : null;
+  let safetyNotes = [];
+  const updated = await withVenue(Number(venueId), async (client, venue) => {
+    const booking = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
+    if (!booking) throw reject(404, 'Venue booking not found.');
+    if (booking.status !== 'approved' || !booking.recheck_required_at) throw reject(409, 'This booking does not need re-confirmation.');
+    const wasReady = await isReadyForSafetyCheck(client, booking.event_id);
+    const saved = (await client.query(decision === 'confirmed'
+      ? `UPDATE venue_bookings SET recheck_required_at=NULL, recheck_reason=NULL, decision_by=$3, updated_at=now()
+         WHERE id=$1 AND venue_id=$2 RETURNING *`
+      : `UPDATE venue_bookings SET status='rejected', recheck_required_at=NULL, decision_by=$3, decision_notes=$4, updated_at=now()
+         WHERE id=$1 AND venue_id=$2 RETURNING *`,
+    decision === 'confirmed' ? [booking.id, venue.id, userId] : [booking.id, venue.id, userId, notes])).rows[0];
+    const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [booking.event_id])).rows[0];
+    const outcome = decision === 'confirmed' ? 're-confirmed' : 'rejected after the event changed';
+    await insertNotifications(client, [{ userId: event.coordinator_id ?? booking.requested_by, eventId: event.id, changeRequestId: null,
+      type: 'event_details_changed', title: `Venue booking ${outcome}: ${event.name}`,
+      message: `${event.name}: venue booking #${booking.id} at ${venue.name} was ${outcome}.${notes ? `\nReason or alternative arrangement: ${notes}` : ''}`,
+      details: { kind: 'venue_booking_recheck', bookingId: booking.id, venueId: venue.id, decision, decisionBy: userId, notes } }]);
+    safetyNotes = await notifySafetyIfNewlyReady(client, event.id, wasReady);
+    return saved;
+  });
+  await emailNotifications(safetyNotes);
+  return updated;
+}
+
+module.exports = { createVenueRequest, decideVenueRequest, recheckVenueBooking };

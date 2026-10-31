@@ -1,8 +1,9 @@
 // File: Lets an Event Coordinator review pending change requests field by field and approve (apply) or reject them.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
+import useNotificationOpened from '../../notifications/useNotificationOpened';
 
 /** Formats a stored or requested value for the comparison table without inventing data for empty values. */
 export function formatChangeValue(value) {
@@ -24,6 +25,10 @@ function notifiedSummary(notified) {
   const groups = ['the organiser'];
   if (notified.venueStaff.length) groups.push(`Venue Staff (${notified.venueStaff.length})`);
   if (notified.technicalSupport.length) groups.push(`Technical Support (${notified.technicalSupport.length})`);
+  // Safety Officers hear when the change needs a new operational safety check (Record Offline Clarifications AC4/AC5).
+  if (notified.safetyOfficers?.length) groups.push(`Safety Officers (${notified.safetyOfficers.length})`);
+  // Registered and waitlisted attendees hear about changes they can see, such as a new time or deadline.
+  if (notified.attendees?.length) groups.push(`registered attendees (${notified.attendees.length})`);
   return `Notified: ${groups.join(', ')}.`;
 }
 
@@ -45,6 +50,10 @@ export default function ChangeRequestInbox() {
   const [reason, setReason] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  // Opening a new-amendment notification lands here: the inbox re-reads (the request may have arrived after this page
+  // loaded) and scrolls into view so the request and its Approve/Reject controls are what the coordinator sees.
+  const notificationOpened = useNotificationOpened();
+  const section = useRef(null);
 
   useEffect(() => {
     // Reloads after a 404/409 decision (reloadKey). Decisions are only possible once a load has finished,
@@ -54,7 +63,12 @@ export default function ChangeRequestInbox() {
     }).catch((err) => {
       setLoadError(err.message || 'Unable to load change requests.');
     }).finally(() => setLoading(false));
-  }, [token, reloadKey]);
+  }, [token, reloadKey, notificationOpened]);
+
+  // Once the list has loaded after a notification was opened, bring the inbox into view.
+  useEffect(() => {
+    if (notificationOpened && !loading) section.current.scrollIntoView({ block: 'start' });
+  }, [notificationOpened, loading]);
 
   // Sends the decision; buttons stay disabled while `deciding` is set, so one click sends one decision.
   async function decide(request, decision) {
@@ -75,8 +89,8 @@ export default function ChangeRequestInbox() {
   }
 
   return (
-    <section className="change-request-inbox" aria-labelledby="change-requests-title">
-      <div className="section-heading"><h2 id="change-requests-title">Critical change requests</h2>{!loading && <span className="badge">{requests.length} pending</span>}</div>
+    <section ref={section} className="change-request-inbox" aria-labelledby="change-requests-title">
+      <div className="section-heading"><h2 id="change-requests-title">Amendment requests</h2>{!loading && <span className="badge">{requests.length} pending</span>}</div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {loading ? <p role="status" className="loading-state">Loading change requests...</p>
@@ -85,6 +99,8 @@ export default function ChangeRequestInbox() {
         : <ul className="change-request-list">{requests.map((request) => (
           <li key={request.id} className="change-request-card">
             <div><strong>{request.event_name}</strong><span> from {request.organiser_name}</span><span className="status-badge status-under_review">Pending review</span></div>
+            {/* The organiser explains every amendment (amendment story AC2); requests made before then have none. */}
+            {request.explanation && <p className="change-explanation"><strong>Organiser&apos;s explanation:</strong> {request.explanation}</p>}
             <table className="change-table">
               <caption>Requested changes to {request.event_name}</caption>
               <thead><tr><th scope="col">Field</th><th scope="col">Current</th><th scope="col">Requested</th></tr></thead>

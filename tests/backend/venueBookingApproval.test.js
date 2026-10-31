@@ -36,6 +36,11 @@ async function query(sql, values = []) {
   if (sql.includes('FROM venues')) return { rows: [{ id: 7, name: 'Hall A', is_active: true, setup_minutes: 0, turnaround_minutes: 0 }] };
   if (sql.includes('FROM events')) return { rows: [{ id: 3, name: 'Gala', coordinator_id: state.coordinator }] };
   if (sql.includes('FROM venue_bookings')) return { rows: sql.includes('UNION') ? [] : [state.request] };
+  // Re-confirmation after an applied amendment (Record Offline AC5): clearing the flag, or rejecting the booking.
+  if (sql.includes('SET recheck_required_at=NULL')) return { rows: [{ ...state.request, recheck_required_at: null, decision_by: values[2] }] };
+  if (sql.includes("SET status='rejected', recheck_required_at=NULL")) {
+    return { rows: [{ ...state.request, status: 'rejected', recheck_required_at: null, decision_by: values[2], decision_notes: values[3] }] };
+  }
   if (sql.startsWith('UPDATE venue_bookings')) return { rows: [{ ...state.request, status: values[0], decision_by: sql.includes('hold_expires_at=$2')?values[3]:values[1], updated_at: values[2], decision_notes: sql.includes('hold_expires_at=$2')?null:values[3], hold_expires_at: sql.includes('hold_expires_at=$2')?values[1]:state.request.hold_expires_at }] };
   throw new Error(`Unexpected SQL: ${sql}`);
 }
@@ -183,4 +188,96 @@ test('SCRUM-43 AC5 - unassigned event notifies the requesting coordinator rather
 test('SCRUM-43 AC4 - structured rejection notes are rejected before any database mutation', async () => {
   assert.equal((await request(undefined, { decision: 'rejected', reason: { text: 'Try Hall B' } })).status, 400);
   assert.equal(state.calls.some(sql => sql.startsWith('UPDATE venue_bookings')), false);
+});
+
+// ---------- Record Offline Clarifications and Apply Agreed Amendments AC5: Venue Staff re-confirm a flagged booking ----------
+
+/** A confirmed booking an applied amendment flagged for re-confirmation. */
+const flagged = () => ({ ...state.request, status: 'approved', recheck_required_at: '2031-10-01T00:00:00Z', recheck_reason: 'Event details relevant to the venue changed: Expected attendance.' });
+const recheck = (body) => request('/7/requests/20/recheck', body);
+
+// Test case: Re-confirming clears the flag so the venue counts again; the coordinator is told before the commit.
+test('OC AC5 - Venue Staff re-confirm a flagged booking and the coordinator is told', async () => {
+  state.request = flagged();
+  const response = await recheck({ decision: 'confirmed' });
+  assert.equal(response.status, 200);
+  assert.deepEqual([response.body.request.status, response.body.request.recheck_required_at, response.body.request.decision_by], ['approved', null, 9]);
+  const update = state.calls.find((sql) => sql.includes('SET recheck_required_at=NULL'));
+  assert.match(update, /decision_by=\$3, updated_at=now\(\)/);
+  const [userIds, , , , titles, messages] = state.notes[0];
+  assert.deepEqual([userIds, titles], [[4], ['Venue booking re-confirmed: Gala']]);
+  assert.match(messages[0], /venue booking #20 at Hall A was re-confirmed\.$/);
+  assert.ok(state.calls.findIndex((sql) => sql.includes('WITH inserted')) < state.calls.indexOf('COMMIT'));
+});
+// Test case: Rejecting ends the booking with the reason (the coordinator must find another arrangement).
+test('OC AC5 - Venue Staff reject a flagged booking with a reason', async () => {
+  state.request = flagged();
+  const response = await recheck({ decision: 'rejected', reason: '  Too small for 150 guests.  ' });
+  assert.equal(response.status, 200);
+  assert.deepEqual([response.body.request.status, response.body.request.decision_notes], ['rejected', 'Too small for 150 guests.']);
+  assert.match(state.notes[0][5][0], /was rejected after the event changed\.\nReason or alternative arrangement: Too small for 150 guests\.$/);
+});
+// Test case: A rejection without a reason stores none and the coordinator's message adds no reason line.
+test('OC AC5 - Venue Staff reject a flagged booking without a reason', async () => {
+  state.request = flagged();
+  const response = await recheck({ decision: 'rejected' });
+  assert.equal(response.body.request.decision_notes, null);
+  assert.match(state.notes[0][5][0], /was rejected after the event changed\.$/);
+});
+// Test case: On an event without a coordinator, the coordinator who requested the booking hears about the re-check.
+test('OC AC5 - a re-check on an unassigned event tells the requesting coordinator', async () => {
+  state.request = flagged();
+  state.coordinator = null;
+  assert.equal((await recheck({ decision: 'confirmed' })).status, 200);
+  assert.deepEqual(state.notes[0][0], [5]);
+});
+// Test case: Rejecting a flagged booking can leave the event ready for its safety check; Safety Officers then hear.
+test('OC AC5 - a re-confirmation that makes the event ready tells Safety Officers', async () => {
+  state.request = flagged();
+  state.readiness = [context([{ ...approvedBooking, recheck_required_at: '2031-10-01T00:00:00Z' }]), context([approvedBooking])];
+  assert.equal((await recheck({ decision: 'confirmed' })).status, 200);
+  assert.ok(state.notes.some((values) => values[3].includes('safety_check_ready')));
+});
+// Test case: Only a flagged confirmed booking can be re-checked, with a valid decision and reason.
+for (const [label, booking, body, status] of [
+  ['a booking that is not flagged', () => ({ ...state.request, status: 'approved' }), { decision: 'confirmed' }, 409],
+  ['a pending request', () => ({ ...state.request, recheck_required_at: '2031-10-01T00:00:00Z' }), { decision: 'confirmed' }, 409],
+  ['an unknown decision', flagged, { decision: 'approved' }, 400],
+  ['a reason that is not text', flagged, { decision: 'rejected', reason: 5 }, 400],
+  ['a 4001-character reason', flagged, { decision: 'rejected', reason: 'x'.repeat(4001) }, 400],
+  ['a 4000-character reason', flagged, { decision: 'rejected', reason: 'x'.repeat(4000) }, 200],
+]) {
+  test(`OC AC5 - re-checking ${label} returns ${status}`, async () => {
+    state.request = booking();
+    assert.equal((await recheck(body)).status, status);
+  });
+}
+test('OC AC5 - re-checking a missing booking returns 404 and other roles 403', async () => {
+  state.request = undefined;
+  assert.equal((await recheck({ decision: 'confirmed' })).status, 404);
+  state.role = 'event_coordinator';
+  assert.equal((await recheck({ decision: 'confirmed' })).status, 403);
+});
+// Test case: Venue Staff's inbox includes flagged confirmed bookings alongside pending requests.
+test('OC AC5 - the Venue Staff inbox lists flagged bookings with the reason', async () => {
+  state.request = flagged();
+  const response = await request('/requests/pending');
+  assert.equal(response.status, 200);
+  // Pending requests and live tentative holds (main's hold workflow) are listed alongside flagged confirmed bookings.
+  assert.match(state.calls.find((sql) => sql.includes('booking.recheck_reason')),
+    /WHERE \(booking\.status='pending' OR \(booking\.status='tentative' AND booking\.hold_expires_at > clock_timestamp\(\)\)\)\s+OR \(booking\.status='approved' AND booking\.recheck_required_at IS NOT NULL\)/);
+  assert.equal(response.body.requests[0].recheck_reason, 'Event details relevant to the venue changed: Expected attendance.');
+});
+// Test case (reviewer regression): the booking was confirmed for 40 guests in a Theatre layout without access needs, then
+// an amendment changed the event to 100 / Seminar / Ramp. Venue Staff must re-confirm against the amended requirements,
+// with the original snapshot kept only for comparison.
+test('OC AC5 - a flagged booking shows the amended event requirements, not its outdated snapshot', async () => {
+  state.request = { ...flagged(), requirements: { capacity: 40, layout: 'Theatre', accessibility: [] } };
+  const [listed] = (await request('/requests/pending')).body.requests;
+  assert.deepEqual([listed.expected_attendance, listed.room_layout_preference, listed.accessibility_requirements], [100, 'Seminar', ['Ramp']]);
+  assert.deepEqual(listed.original_requirements, { capacity: 40, layout: 'Theatre', accessibility: [] });
+  // An unflagged pending request in the same state still shows what it asked for.
+  state.request = { ...state.request, status: 'pending', recheck_required_at: null };
+  const [pending] = (await request('/requests/pending')).body.requests;
+  assert.deepEqual([pending.expected_attendance, pending.room_layout_preference, pending.original_requirements], [40, 'Theatre', undefined]);
 });

@@ -136,4 +136,18 @@ describe('Registration settings PostgreSQL evidence',{skip:process.env.RUN_REGIS
     assert.equal((await db.query('SELECT registration_deadline FROM events WHERE id=7')).rows[0].registration_deadline.toISOString(), '2090-01-10T00:30:00.000Z');
   });
 
+  for (const [start, allowed] of [['08:59:59', false], ['09:00:00', true], ['09:00:01', true]]) {
+    test(`Registration settings AC3 / AM AC1 - draft schedule ${start} respects an accepted 09:00 cutoff`, async () => {
+      // Arrange: the existing registration deadline stays fixed as the organiser moves the draft event's start.
+      await db.query("UPDATE events SET registration_deadline='2090-01-10T01:00:00Z' WHERE id=7");
+      // Act: use the common event editor affected by main's amendment refactor, not the separate settings endpoint.
+      const result = await request('/events/7/non-critical', { proposedStartTime: start });
+      // Assert: a second before the cutoff is rejected clearly; equality and a second after it are valid.
+      assert.equal(result.status, allowed ? 200 : 400);
+      if (!allowed) assert.match(result.body.message, /deadline.*on or before.*start/i);
+      const saved = (await db.query('SELECT proposed_start_time::text AS start FROM events WHERE id=7')).rows[0];
+      assert.equal(saved.start, allowed ? start : '10:00:00');
+    });
+  }
+
 });
