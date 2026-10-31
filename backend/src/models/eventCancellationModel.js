@@ -25,4 +25,11 @@ async function listActiveAttendees(db, eventId) {
   return result.rows;
 }
 
-module.exports = { loadCancellationContext, recordCancellation, listActiveAttendees };
+/** Returns the Technical Support Staff assigned to provide on-site support for the event, so a cancellation can notify them. */
+async function listAssignedTechnicalSupport(db, eventId) {
+  const result = await db.query(`SELECT staff_id FROM event_technical_support_assignments
+    WHERE event_id=$1 ORDER BY staff_id`, [eventId]);
+  return result.rows;
+}
+
+module.exports = { loadCancellationContext, recordCancellation, listActiveAttendees, listAssignedTechnicalSupport };
