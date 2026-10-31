@@ -235,3 +235,20 @@ test('OC AC4 - notices say what changed, what was agreed and which checks must b
     reason: 'Fine', explanation: 'More guests', changes, arrangements: [], rechecks: noRechecks, recipients: { ...recipients, venueStaff: [], technicalSupport: [], safetyOfficers: [] } });
   assert.equal(approved.message, 'Your requested changes to Gala were approved and applied.\nExpected attendance: 60 → 150\nNote: Fine');
 });
+
+for (const offset of [-1, 0, 1]) {
+  test(`Registration settings AC3 / OC AC3 - shared amendment deadline at event-start offset ${offset}ms`, async () => {
+    // Arrange: the event starts at 10:00 Singapore; a saved proposal must still satisfy this cutoff when applied.
+    const deadline = new Date(Date.parse('2030-10-15T02:00:00Z') + offset).toISOString();
+    const client = fakeClient({ after: { ...event, registration_deadline: deadline }, bookings: [] });
+    // Act / Assert: before and equality are valid; one millisecond late must fail before any SQL write.
+    if (offset > 0) {
+      await assert.rejects(applyAmendment(client, event, { registrationDeadline: deadline }), error => error.status === 400);
+      assert.equal(client.statements.length, 0);
+    } else {
+      const saved = await applyAmendment(client, event, { registrationDeadline: deadline });
+      assert.equal(saved.event.registration_deadline, deadline);
+      assert.equal(client.find('UPDATE events SET').length, 1);
+    }
+  });
+}
