@@ -44,9 +44,9 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     // Apply prerequisites and the new migration on a single checked-out connection per transaction.
     const client = await database.connect();
     try {
-      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql','migrations/019-venue-tentative-holds.sql','migrations/020-session-venue-requests.sql']) await client.query(migration(file));
-    // The focused fixture needs the additive booking recheck columns introduced by main's amendment migration.
-    await client.query('ALTER TABLE venue_bookings ADD COLUMN recheck_required_at TIMESTAMPTZ, ADD COLUMN recheck_reason TEXT');
+      for (const file of ['venueManagementSchema.sql', 'venueScheduleSchema.sql', 'venueAvailabilitySchema.sql', 'migrations/20261018064942_venue_booking_requests.sql','migrations/019-venue-disruptions.sql','migrations/019-venue-tentative-holds.sql','migrations/020-session-venue-requests.sql']) await client.query(migration(file));
+      // Match main's additive booking recheck columns; disruption tables are applied above from their actual migration.
+      await client.query('ALTER TABLE venue_bookings ADD COLUMN recheck_required_at TIMESTAMPTZ, ADD COLUMN recheck_reason TEXT');
     } finally { client.release(); }
     // Redirect only connection acquisition. All route SQL, constraints, locking and commits run on real PostgreSQL.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));
@@ -69,7 +69,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
 
   beforeEach(async () => {
     // Test data is isolated even between cases; catalogue status must never become a venue-wide hold.
-    await database.query('TRUNCATE venue_bookings, venue_unavailability, venue_schedule_periods, notifications RESTART IDENTITY');
+    await database.query('TRUNCATE venue_booking_disruptions,venue_bookings, venue_unavailability, venue_schedule_periods, notifications RESTART IDENTITY');
     writerPids.clear();
     await database.query("UPDATE events SET name=CASE id WHEN 3 THEN 'Gala' ELSE 'Workshop' END");
     await database.query("UPDATE venues SET is_active=true, capacity=40, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
@@ -416,7 +416,7 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
       assert.ok(notices[index].message.includes(longName));
     }
     // Arrange: two live holds expire while the app is offline.
-    await database.query('TRUNCATE venue_bookings,notifications RESTART IDENTITY');
+    await database.query('TRUNCATE venue_booking_disruptions,venue_bookings,notifications RESTART IDENTITY');
     await database.query(`INSERT INTO venue_bookings
       (venue_id,event_id,requested_by,start_datetime,end_datetime,status,hold_expires_at)
       VALUES (7,3,1,$1,$2,'tentative',clock_timestamp()+interval '1 second'),

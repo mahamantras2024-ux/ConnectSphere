@@ -37,6 +37,8 @@ test('AM AC1-AC4 - post-submission amendments go through the assigned coordinato
       for (const file of runnerOrder) await client.query(sqlFile(file));
       // Venue booking requests have their own runner.
       await client.query(sqlFile('migrations/20261018064942_venue_booking_requests.sql'));
+      // This branch's registration settings use a dedicated migration outside the common event runner.
+      await client.query(sqlFile('migrations/021-registration-settings.sql'));
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['cara', 'event_coordinator'], ['otto', 'event_organiser']];
       for (const [name, role] of people) {
         await client.query('INSERT INTO users (email, full_name, role, roles) VALUES ($1, $2, $3::text, ARRAY[$3::text])', [`${name}@example.test`, name, role]);

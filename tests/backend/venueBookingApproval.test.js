@@ -41,7 +41,7 @@ async function query(sql, values = []) {
   if (sql.includes("SET status='rejected', recheck_required_at=NULL")) {
     return { rows: [{ ...state.request, status: 'rejected', recheck_required_at: null, decision_by: values[2], decision_notes: values[3] }] };
   }
-  if (sql.startsWith('UPDATE venue_bookings')) return { rows: [{ ...state.request, status: values[0], decision_by: sql.includes('hold_expires_at=$2')?values[3]:values[1], updated_at: values[2], decision_notes: sql.includes('hold_expires_at=$2')?null:values[3], hold_expires_at: sql.includes('hold_expires_at=$2')?values[1]:state.request.hold_expires_at }] };
+  if (sql.startsWith('UPDATE venue_bookings')) return { rows: [{ ...state.request, status: values[0], decision_by: sql.includes('hold_expires_at=$2')?values[3]:values[1], updated_at: values[2], decision_notes: sql.includes('hold_expires_at=$2')?values[6]:values[3], hold_expires_at: sql.includes('hold_expires_at=$2')?values[1]:state.request.hold_expires_at }] };
   throw new Error(`Unexpected SQL: ${sql}`);
 }
 /** Calls the actual staff API using a signed session; identity supplied in JSON must never become the audit actor. */
@@ -122,17 +122,17 @@ for (const role of ['event_coordinator', 'event_organiser', 'attendee', 'technic
   });
 }
 for (const decision of ['approved', 'rejected']) {
-  test(`SCRUM-43 AC2 AC3 AC4 AC5 AC7 - ${decision} stores trusted audit and coordinator notification before commit`, async () => {
+  test(`SCRUM-85 AC2 / SCRUM-43 AC2 AC3 AC4 AC5 AC7 - ${decision} stores trusted audit and coordinator notification before commit`, async () => {
     const response = await request(undefined, { decision, reason: '  Maintenance; try Hall B at 2pm.  ', decision_by: 999 });
     assert.equal(response.status, 200);
     assert.equal(response.body.request.status, decision==='approved'?'tentative':decision);
     assert.equal(response.body.request.decision_by, 9);
     assert.ok(Number.isFinite(Date.parse(response.body.request.updated_at)));
-    assert.equal(response.body.request.decision_notes, decision === 'rejected' ? 'Maintenance; try Hall B at 2pm.' : null);
+    assert.equal(response.body.request.decision_notes, 'Maintenance; try Hall B at 2pm.');
     const note = state.notes[0];
     assert.deepEqual(note[0], [4]);
     assert.match(note[5][0], new RegExp(`Gala.*${decision}`, 's'));
-    if (decision === 'rejected') assert.match(note[5][0], /Maintenance; try Hall B at 2pm\./);
+    assert.match(note[5][0], /Maintenance; try Hall B at 2pm\./);
     const audit = JSON.parse(note[6][0]);
     assert.equal(audit.decisionBy, 9); assert.equal(audit.bookingId, 20);
     assert.equal(audit.decidedAt, response.body.request.updated_at);
@@ -180,13 +180,13 @@ test('SCRUM-43 AC5 - notification persistence failure rolls the whole decision b
   assert.equal((await request(undefined, { decision: 'approved' })).status, 500);
   assert.ok(state.calls.includes('ROLLBACK')); assert.ok(!state.calls.includes('COMMIT'));
 });
-test('SCRUM-43 AC5 - unassigned event notifies the requesting coordinator rather than losing the decision', async () => {
+for(const decision of ['approved','rejected'])test(`SCRUM-85 AC2 - an unassigned event retains its ${decision} decision without notifying a former requester`, async () => {
   state.coordinator = null;
-  assert.equal((await request(undefined, { decision: 'rejected' })).status, 200);
-  assert.deepEqual(state.notes[0][0], [5]);
+  assert.equal((await request(undefined, { decision })).status, 200);
+  assert.deepEqual(state.notes, []);
 });
-test('SCRUM-43 AC4 - structured rejection notes are rejected before any database mutation', async () => {
-  assert.equal((await request(undefined, { decision: 'rejected', reason: { text: 'Try Hall B' } })).status, 400);
+for(const decision of ['approved','rejected'])test(`SCRUM-85 AC2 / SCRUM-43 AC4 - structured ${decision} notes are rejected before any database mutation`, async () => {
+  assert.equal((await request(undefined, { decision, reason: { text: 'Try Hall B' } })).status, 400);
   assert.equal(state.calls.some(sql => sql.startsWith('UPDATE venue_bookings')), false);
 });
 

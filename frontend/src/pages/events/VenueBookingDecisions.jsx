@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import VenueHoldState from './VenueHoldState';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import SessionVenueActions from './SessionVenueActions';
@@ -61,6 +62,7 @@ export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
                     <li key={booking.id} aria-label={`${booking.venue_name} ${status}`} className="ed-clar-item">
                       <h3>{booking.venue_name}</h3>
                       {booking.requirements?.sessionName && <p className="eyebrow">Session: {booking.requirements.sessionName}</p>}
+                      <VenueHoldState booking={booking} />
                       <p><strong>Status:</strong> <span>{status}</span></p>
                       {booking.status==='tentative' && <p>Expires {new Date(booking.hold_expires_at).toLocaleString('en-SG',{timeZone:'Asia/Singapore'})} (SGT)</p>}
                       {expired ? <p>Submit a new venue request for fresh availability checks and staff approval.</p>
@@ -73,7 +75,7 @@ export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
                         <dt>Required facilities</dt><dd>{booking.requirements.requiredFacilities.join(', ') || 'None specified'}</dd>
                       </dl>}
                       <p>{booking.cancel_other_pending ? 'Other pending requests will be cancelled if this arrangement changes or is cancelled.' : 'Other requests are kept if this arrangement changes or is cancelled.'}</p>
-                      {booking.status === 'rejected' && booking.decision_notes?.trim() && (
+                      {booking.decision_notes?.trim() && (
                         <p><strong>Venue Staff reason:</strong> {booking.decision_notes}</p>
                       )}
                       {booking.requirements?.sessionName && !expired && ['pending','tentative','approved','confirmed'].includes(booking.status) &&

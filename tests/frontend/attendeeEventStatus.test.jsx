@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import App from '../../frontend/src/App';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
@@ -13,9 +13,12 @@ const publicEvent = { id: 45, name: 'Public Festival', status: 'confirmed', prop
 const cancelledEvent = { ...publicEvent, id: 44, name: 'River Festival', status: 'cancelled' };
 
 /** Opens the actual attendee route and auth guard while replacing only the HTTP boundary. */
-function open(path = '/attendee/dashboard') {
+async function open(path = '/attendee/dashboard') {
   localStorage.setItem('cs_token', 'attendee-session');
-  return render(<MemoryRouter initialEntries={[path]}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  // Flush the resolved auth and page HTTP promises before querying the routed dashboard.
+  await act(async () => {
+    render(<MemoryRouter initialEntries={[path]}><AuthProvider><App /></AuthProvider></MemoryRouter>);
+  });
 }
 
 beforeEach(() => {
@@ -39,7 +42,7 @@ afterEach(cleanup);
 describe('SCRUM-90 Attendee Views Status of Events Available to Them', () => {
   it('AC1 AC2 - shows published events as Confirmed and displays only public status labels', async () => {
     // Arrange / Act: open the dashboard with one published event and one personal cancelled registration.
-    open();
+    await open();
     // Assert: public listing and registration summary show attendee-facing statuses without internal labels.
     expect(await screen.findByText('Confirmed')).toBeTruthy();
     expect(screen.getByText('Cancelled')).toBeTruthy();
@@ -48,7 +51,7 @@ describe('SCRUM-90 Attendee Views Status of Events Available to Them', () => {
 
   it('AC4 AC5 - shows a cancellation alert and opens the latest cancelled event details from My Registrations', async () => {
     // Arrange: the attendee has an active registration and an unread cancellation notice.
-    open();
+    await open();
     const notification = await screen.findByRole('region', { name: 'Notifications' });
     // Assert notification copy is visible in the attendee dashboard.
     expect(await within(notification).findByText('Event cancelled: River Festival')).toBeTruthy();
@@ -70,7 +73,7 @@ describe('SCRUM-90 Attendee Views Status of Events Available to Them', () => {
       throw new Error(`Unexpected GET ${path}`);
     });
     // Act
-    open('/attendee/events/44');
+    await open('/attendee/events/44');
     // Assert: internal planning text is never rendered as the event's public status.
     expect(await screen.findByText('Status unavailable')).toBeTruthy();
     expect(screen.queryByText('planning')).toBeNull();
