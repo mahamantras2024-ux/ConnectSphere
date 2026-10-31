@@ -119,7 +119,8 @@ async function updateEditable(id, organiserId, data) {
 }
 
 // Event statuses that no longer take amendments: the request is finished or withdrawn.
-const AMENDMENT_CLOSED_STATUSES = ['cancelled', 'completed', 'rejected'];
+// Rejected requests may be corrected, but remain rejected until explicitly reconsidered.
+const AMENDMENT_CLOSED_STATUSES = ['cancelled', 'completed'];
 
 /**
  * Stores a pending amendment request with the organiser's explanation and, in the same statement, the assigned

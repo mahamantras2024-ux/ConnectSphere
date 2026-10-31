@@ -212,15 +212,15 @@ test('AR AC2 - after a failed safety check the event can be rejected', async () 
   assert.equal((await decide({ decision: 'rejected', reason: 'Failed safety check' })).status, 200);
 });
 
-// Test case: AC7 - while a clarification is outstanding neither decision is possible.
-test('AR AC7 - an outstanding clarification blocks both approval and rejection', async () => {
+// Reconsider AC1: an unresolved clarification prevents approval; insufficient information can still justify rejection.
+test('Reconsider AC1 - an outstanding clarification blocks approval but permits recorded rejection', async () => {
   for (const decision of ['approved', 'rejected']) {
     mockAuth();
     const tx = mockTransaction({ context: { ...readyContext, pending_clarifications: 1 } });
     const result = await decide({ decision });
-    assert.equal(result.status, 409);
-    assert.equal(result.body.code, 'CLARIFICATION_OUTSTANDING');
-    assert.equal(tx.find('UPDATE events').length, 0);
+    assert.equal(result.status, decision === 'approved' ? 409 : 200);
+    if (decision === 'approved') assert.equal(result.body.code, 'CLARIFICATION_OUTSTANDING');
+    assert.equal(tx.find('UPDATE events').length, decision === 'approved' ? 0 : 1);
     mock.restoreAll();
   }
 });

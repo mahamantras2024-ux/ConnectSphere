@@ -110,7 +110,7 @@ test('AM AC2 AC3 AC4 - a combined amendment stores only the changes and explanat
   // AC3: the event row is never updated; the insert itself is guarded to submitted, open events of this coordinator.
   assert.equal(db.statements.filter((s) => /UPDATE events/.test(s.sql)).length, 0);
   assert.match(insert.sql, /e\.coordinator_id=\$3\s+AND e\.is_draft=false AND e\.status <> ALL\(\$9::text\[\]\)/);
-  assert.deepEqual(closed, ['cancelled', 'completed', 'rejected', 'draft']);
+  assert.deepEqual(closed, ['cancelled', 'completed', 'draft']);
   // AC4: the coordinator's notification is part of the same statement and names the changes and the explanation.
   assert.match(insert.sql, /INSERT INTO notifications[\s\S]*SELECT cr\.coordinator_id, cr\.event_id, cr\.id, 'change_request_submitted'/);
   assert.equal(title, 'New amendment request: Gala');
@@ -179,7 +179,7 @@ for (const [label, event, status, code] of [
   ['a draft', { ...submitted, status: 'draft', is_draft: true }, 409, 'USE_DRAFT_EDIT'],
   ['a cancelled event', { ...submitted, status: 'cancelled' }, 409, 'AMENDMENT_CLOSED'],
   ['a completed event', { ...submitted, status: 'completed' }, 409, 'AMENDMENT_CLOSED'],
-  ['a rejected event', { ...submitted, status: 'rejected' }, 409, 'AMENDMENT_CLOSED'],
+  ['a corrected rejected request', { ...submitted, status: 'rejected' }, 202, undefined],
   ['an event with no coordinator', { ...submitted, coordinator_id: null }, 409, 'COORDINATOR_NOT_ASSIGNED'],
   ['an event under review', { ...submitted, status: 'under_review' }, 202, undefined],
   ['an approved event', { ...submitted, status: 'approved' }, 202, undefined],

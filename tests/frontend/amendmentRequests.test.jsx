@@ -100,7 +100,6 @@ it.each([
   [{ coordinator_id: null }, 'An Event Coordinator must be assigned before you can request an amendment.'],
   [{ status: 'cancelled' }, 'This event is cancelled, so amendments can no longer be requested.'],
   [{ status: 'completed' }, 'This event is completed, so amendments can no longer be requested.'],
-  [{ status: 'rejected' }, 'This event is rejected, so amendments can no longer be requested.'],
 ])('AM AC2 AC4 - %o explains why no amendment can be requested', async (changes, message) => {
   event = { ...submitted, ...changes };
   await openEvent();
@@ -331,4 +330,11 @@ it('AM AC4 - the coordinator inbox shows the organiser explanation', async () =>
   expect(within(inbox).getByText('Ticket sales are up.')).toBeTruthy();
   expect(within(inbox).getAllByText(/Organiser's explanation:/)).toHaveLength(1);
   expect(within(inbox).getAllByRole('button', { name: 'Approve and apply' }).length).toBe(2);
+});
+
+// Reconsider AC2: the correction workflow must remain available while the event is still rejected.
+it('Reconsider AC2 - a rejected request can submit corrections through its coordinator', async () => {
+  event = { ...submitted, status: 'rejected' };
+  await openEvent();
+  expect(screen.getByRole('button', { name: 'Request an amendment' })).toBeTruthy();
 });
