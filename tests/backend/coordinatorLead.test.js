@@ -130,3 +130,36 @@ test('Handover AC2 AC3 - an audit failure rolls back the reassignment and does n
   await assert.rejects(invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:2}),/Audit unavailable/);
   assert.equal(calls.at(-1),'ROLLBACK');assert.equal(calls.includes('COMMIT'),false);assert.equal(released,true);
 });
+
+// Outgoing notice AC1/AC2: recipient selection follows the locked previous assignment and email follows COMMIT.
+for (const previous of [null,2]) test(`Outgoing notice AC1 AC2 - previous coordinator ${previous} is notified only after commit`,async()=>{
+  const notesService=require('../../backend/src/services/notificationService');
+  const calls=[];let saved;
+  mock.method(pool,'connect',async()=>({release(){},async query(sql){calls.push(sql);
+    if(sql.startsWith('SELECT id,name,coordinator_id'))return {rows:[{id:7,name:'Workshop',coordinator_id:previous,is_draft:false,status:'confirmed'}]};
+    if(sql.startsWith('SELECT id FROM users'))return {rows:[{id:3}]};
+    if(sql.startsWith('UPDATE events'))return {rows:[{id:7,coordinator_id:3,status:'confirmed'}]};
+    return {rows:[]};
+  }}));
+  mock.method(notesService,'insertNotifications',async(_,notes)=>{saved=notes;return notes;});
+  const mail=mock.method(notesService,'emailNotifications',async rows=>{assert.equal(calls.at(-1),'COMMIT');assert.deepEqual(rows,saved);});
+  assert.equal((await invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:previous})).status,200);
+  assert.deepEqual(saved.map(note=>note.userId),previous===null?[3]:[3,2]);
+  assert.equal(saved.filter(note=>note.details.kind==='event_reassigned_away').length,previous===null?0:1);
+  assert.equal(mail.mock.callCount(),1);
+});
+test('Outgoing notice AC1 - a failed commit sends neither coordinator an email',async()=>{
+  const notesService=require('../../backend/src/services/notificationService');
+  const calls=[];
+  mock.method(pool,'connect',async()=>({release(){},async query(sql){calls.push(sql);
+    if(sql==='COMMIT')throw new Error('Commit failed');
+    if(sql.startsWith('SELECT id,name,coordinator_id'))return {rows:[{id:7,name:'Workshop',coordinator_id:2,is_draft:false,status:'confirmed'}]};
+    if(sql.startsWith('SELECT id FROM users'))return {rows:[{id:3}]};
+    if(sql.startsWith('UPDATE events'))return {rows:[{id:7,coordinator_id:3,status:'confirmed'}]};
+    return {rows:[]};
+  }}));
+  mock.method(notesService,'insertNotifications',async(_,notes)=>notes);
+  const mail=mock.method(notesService,'emailNotifications',async()=>{});
+  await assert.rejects(invoke(lead.assign,{coordinatorId:3,expectedCoordinatorId:2}),/Commit failed/);
+  assert.equal(calls.at(-1),'ROLLBACK');assert.equal(mail.mock.callCount(),0);
+});

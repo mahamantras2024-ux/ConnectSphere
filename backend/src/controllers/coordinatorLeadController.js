@@ -48,12 +48,17 @@ const assign = asyncHandler(async (req, res) => {
       VALUES($1,$2,$3,$4,(SELECT full_name FROM users WHERE id=$2),
         (SELECT full_name FROM users WHERE id=$3),(SELECT full_name FROM users WHERE id=$4),$5)`,
     [event.id,event.coordinator_id,coordinatorId,req.user.id,event.status]);
-    // SCRUM-85 AC1: the current assignee receives one event-identifying notice only when responsibility changes.
+    // Notify both sides atomically; an initial assignment has no outgoing coordinator and repeated saves notify nobody.
     if (event.coordinator_id !== coordinatorId) stored = await notificationService.insertNotifications(client, [{
       userId:coordinatorId,eventId:event.id,changeRequestId:null,type:'event_details_changed',
       title:`Event assigned: ${event.name}`,message:`You are now the Event Coordinator for ${event.name}. Open the event for its current details.`,
       details:{kind:'event_assignment',previousCoordinatorId:event.coordinator_id},
-    }]);
+    }, ...(event.coordinator_id === null ? [] : [{
+      userId:event.coordinator_id,eventId:event.id,changeRequestId:null,type:'event_details_changed',
+      title:`Event reassigned: ${event.name}`,
+      message:`${event.name} has been reassigned to another Event Coordinator. You are no longer responsible for this event and no longer have access to its details.`,
+      details:{kind:'event_reassigned_away',newCoordinatorId:coordinatorId},
+    }])]);
     await client.query('COMMIT');
     await notificationService.emailNotifications(stored);
     res.json({ event: updated, message: 'Coordinator assignment saved.' });

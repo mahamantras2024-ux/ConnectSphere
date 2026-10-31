@@ -60,8 +60,11 @@ test('Handover AC1 AC2 AC3 - confirmed reassignment transfers access, preserves 
         await session.query(`SET search_path TO ${schema}`);
         return { query: (sql, values) => session.query(sql, values), release() { session.release(); } };
       });
-      const emails = [];
-      mock.method(emailService, 'sendNotificationEmail', async (to, subject) => { emails.push([to, subject]); });
+      const emails = [];let failingRecipient = null;
+      mock.method(emailService, 'sendNotificationEmail', async (to, subject) => {
+        emails.push([to, subject]);
+        if (to === failingRecipient) throw new Error('Email unavailable');
+      });
       const app = require('../../backend/src/index');
       server = app.listen(0, '127.0.0.1');
       await new Promise((resolve) => server.once('listening', resolve));
@@ -107,6 +110,13 @@ test('Handover AC1 AC2 AC3 - confirmed reassignment transfers access, preserves 
       const result = await assign('lee',3,2);
       assert.equal(result.status,200); assert.equal(result.body.event.status,'confirmed');
       assert.deepEqual(await snapshot(),before,'only coordinator_id and updated_at may change');
+      // Outgoing notice AC1: the previous coordinator hears about the successful handover without retaining access.
+      const outgoing = (await as('chris','GET','/notifications')).body.notifications.filter(note=>note.details.kind==='event_reassigned_away');
+      assert.equal(outgoing.length,1);assert.equal(outgoing[0].event_id,1);
+      assert.equal(outgoing[0].details.newCoordinatorId,3);
+      assert.match(outgoing[0].message,/Gala.*reassigned/);assert.match(outgoing[0].message,/no longer.*access/);
+      assert.ok(emails.some(([to,subject])=>to==='chris@example.test' && subject==='Event reassigned: Gala'));
+
       for (const path of ['/events/1','/events/1/decision','/events/1/venue-bookings','/events/1/coordinator-registrations','/events/1/equipment-status','/events/1/amendment-requests','/events/1/assignment-history']) {
         assert.equal((await as('chris','GET',path)).status,404,`previous coordinator denied ${path}`);
         assert.equal((await as('cara','GET',path)).status,200,`new coordinator allowed ${path}`);
@@ -132,21 +142,28 @@ test('Handover AC1 AC2 AC3 - confirmed reassignment transfers access, preserves 
       assert.equal((await assign('lee',3,3)).status,200,'saving the current assignment is not a new handover');
       assert.deepEqual((await history('lee')).body.history,entries);
       assert.equal((await client.query("SELECT count(*)::int AS n FROM notifications WHERE event_id=1 AND details->>'kind'='event_assignment'")).rows[0].n,1);
+      assert.equal((await client.query("SELECT count(*)::int AS n FROM notifications WHERE event_id=1 AND details->>'kind'='event_reassigned_away'")).rows[0].n,1);
+      const mailCount = emails.length;
       // Audit and notification failures both roll back the event and all newly inserted history.
       await client.query(`CREATE FUNCTION fail_handover_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'history unavailable'; END $$;
         CREATE TRIGGER fail_handover_audit BEFORE INSERT ON event_coordinator_history FOR EACH ROW EXECUTE FUNCTION fail_handover_audit()`);
       assert.equal((await assign('lee',2,3)).status,500);
       await client.query('DROP TRIGGER fail_handover_audit ON event_coordinator_history');
       await client.query(`CREATE FUNCTION fail_handover_notice() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
-        IF NEW.details->>'kind'='event_assignment' THEN RAISE EXCEPTION 'notice unavailable'; END IF; RETURN NEW; END $$;
+        IF NEW.details->>'kind'='event_reassigned_away' THEN RAISE EXCEPTION 'notice unavailable'; END IF; RETURN NEW; END $$;
         CREATE TRIGGER fail_handover_notice BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION fail_handover_notice()`);
       assert.equal((await assign('lee',2,3)).status,500);
       await client.query('DROP TRIGGER fail_handover_notice ON notifications');
       assert.equal((await client.query('SELECT coordinator_id FROM events WHERE id=1')).rows[0].coordinator_id,3);
       assert.deepEqual((await history('lee')).body.history,entries);
       assert.deepEqual(await snapshot(),before);
+      assert.equal(emails.length,mailCount,'rolled-back handovers cannot email either coordinator');
+      assert.equal((await client.query("SELECT count(*)::int AS n FROM notifications WHERE event_id=1 AND details->>'kind'='event_reassigned_away'")).rows[0].n,1);
+      failingRecipient = 'cara@example.test'; // Delivery is best-effort after the successful commit.
       const concurrent = await Promise.all([assign('lee',2,3),assign('lee',2,3)]);
       assert.deepEqual(concurrent.map(response=>response.status).sort(),[200,409]);
+      failingRecipient = null;
+      assert.equal((await client.query("SELECT count(*)::int AS n FROM notifications WHERE event_id=1 AND details->>'kind'='event_reassigned_away'")).rows[0].n,2);
       assert.equal((await history('lee')).body.history.length,2);
       assert.equal((await history('cara')).status,404);
       assert.equal((await history('chris')).status,200);
@@ -160,6 +177,9 @@ test('Handover AC1 AC2 AC3 - confirmed reassignment transfers access, preserves 
       const work = {informationNeeded:['purpose'],message:'Handover follow-up'};
       assert.equal((await as('cara','POST','/events/1/clarifications',work)).status,404);
       assert.equal((await as('chris','POST','/events/1/clarifications',work)).status,201);
+      // Outgoing notice AC2: assigning a previously unassigned event creates no outgoing recipient.
+      assert.equal((await as('lee','PUT','/events/2/assignment',{coordinatorId:2,expectedCoordinatorId:null})).status,200);
+      assert.equal((await client.query("SELECT count(*)::int AS n FROM notifications WHERE event_id=2 AND details->>'kind'='event_reassigned_away'")).rows[0].n,0);
       // AC1 race: transfer a second event after its real access check but before history is read.
       await client.query("UPDATE events SET coordinator_id=2,status='confirmed' WHERE id=2");
       const model = require('../../backend/src/models/eventModel');
@@ -175,7 +195,8 @@ test('Handover AC1 AC2 AC3 - confirmed reassignment transfers access, preserves 
       const interrupted = await as('chris','GET','/events/2/assignment-history');
       assert.equal(interrupted.status,200);assert.deepEqual(interrupted.body.history,[]);
       const currentHistory = await as('cara','GET','/events/2/assignment-history');
-      assert.equal(currentHistory.status,200);assert.equal(currentHistory.body.history.length,1);
+      assert.equal(currentHistory.status,200);assert.equal(currentHistory.body.history.length,2); // Initial assignment plus the subsequent reassignment.
+      assert.equal(currentHistory.body.history[0].new_coordinator_id,3);
 
     } finally {
       mock.restoreAll();
