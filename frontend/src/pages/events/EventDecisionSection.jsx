@@ -98,6 +98,8 @@ export default function EventDecisionSection({ event, onDecided }) {
         <h2 id="decision-heading">Review decision</h2>
         {review && <span className={`status-badge status-${outcome ? outcome.decision : 'under_review'}`}>{outcome ? (outcome.decision === 'approved' ? 'Approved' : 'Rejected') : 'Awaiting decision'}</span>}
       </div>
+      {/* AC2: organisers see the actual lifecycle stage even though the initial decision is retained for audit. */}
+      {!coordinator && review && <p>Current event status: <strong>{review.status.replaceAll('_', ' ')}</strong>. Initial approval is separate from final confirmation.</p>}
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {assignedCoordinator && review?.transitions && (

@@ -72,6 +72,8 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
         return result;
       }, release() { client.release(); } };
     });
+    // SMTP is the external boundary; assignment and notification persistence remain real.
+    mock.method(require('../../backend/src/services/emailService'),'sendNotificationEmail',async()=>{});
     server = require('../../backend/src/index').listen(0,'127.0.0.1');
     await new Promise(resolve => server.once('listening',resolve));
     base = `http://127.0.0.1:${server.address().port}/api`;
@@ -175,6 +177,9 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
     assert.deepEqual(results.map(result=>result.status).sort(),[200,409]);
     const winner = results.find(result=>result.status===200).body.event.coordinator_id;
     assert.ok([3,4].includes(winner));
+    // AC1/AC4: only the committed winner is notified; the rejected competing assignment is silent.
+    const assignmentNotes=(await database.query("SELECT user_id FROM notifications WHERE event_id=$1 AND type='event_coordinator_assigned'",[event.id])).rows;
+    assert.deepEqual(assignmentNotes,[{user_id:winner}]);
     assert.equal((await database.query('SELECT coordinator_id FROM events WHERE id=$1',[event.id])).rows[0].coordinator_id,winner);
   });
 
@@ -216,4 +221,45 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
     assert.equal(hold.status,201); assert.equal(hold.body.request.requested_by,4); assert.equal(hold.body.request.event_id,event.id);
     assert.equal((await request('/events/assignments',4)).status,403);
   });
+  test('Assignment notification AC1 AC2 AC3 AC5 - initial assignment and handover produce private event-linked notices without duplicates', async () => {
+    const event = await submit();
+    // Arrange/Act: initial assignment reaches only Chris; the same save is not a new assignment.
+    assert.equal((await request(`/events/${event.id}/assignment`,1,{coordinatorId:3,expectedCoordinatorId:null},'PUT')).status,200);
+    assert.equal((await request(`/events/${event.id}/assignment`,1,{coordinatorId:3,expectedCoordinatorId:3},'PUT')).status,200);
+    let notes=(await database.query("SELECT * FROM notifications WHERE type='event_coordinator_assigned' ORDER BY id")).rows;
+    assert.equal(notes.length,1);assert.equal(notes[0].user_id,3);assert.equal(notes[0].event_id,event.id);
+    assert.equal(notes[0].title,'Event assigned: Workshop');assert.match(notes[0].message,/assigned.*Workshop/);
+    // Additive upgrades can be repeated after this new notification type has been stored.
+    const migration=fs.readFileSync(path.join(__dirname,'../../backend/src/db/migrations/020-coordinator-assignment-notifications.sql'),'utf8');
+    await database.query(migration);await database.query(migration);
+    const inbox=(await request('/notifications',3)).body;
+    assert.equal(inbox.unreadCount,1);assert.equal(inbox.notifications[0].type,'event_coordinator_assigned');
+    assert.equal(inbox.notifications[0].event_id,event.id);
+    assert.deepEqual((await request('/notifications',4)).body.notifications,[]);
+    assert.equal((await request(`/notifications/${notes[0].id}/read`,4,{},'POST')).status,404);
+    // Reassignment adds only a new recipient notice; historical links cannot bypass revoked responsibility.
+    assert.equal((await request(`/events/${event.id}/assignment`,1,{coordinatorId:4,expectedCoordinatorId:3},'PUT')).status,200);
+    notes=(await database.query("SELECT * FROM notifications WHERE type='event_coordinator_assigned' ORDER BY id")).rows;
+    assert.deepEqual(notes.map(note=>note.user_id),[3,4]);
+    assert.equal((await request(`/events/${notes[0].event_id}`,3)).status,404);
+    await database.query('UPDATE events SET purpose=$1 WHERE id=$2',['Latest agreed information',event.id]);
+    assert.equal((await request(`/events/${notes[1].event_id}`,4)).body.event.purpose,'Latest agreed information');
+    // Stale writes are rejected and cannot send another notice.
+    assert.equal((await request(`/events/${event.id}/assignment`,1,{coordinatorId:3,expectedCoordinatorId:null},'PUT')).status,409);
+    assert.equal((await database.query("SELECT count(*)::int AS n FROM notifications WHERE type='event_coordinator_assigned'")).rows[0].n,2);
+  });
+
+  test('Assignment notification AC4 - a failed notice insert rolls back the assignment in PostgreSQL', async () => {
+    const event=await submit();
+    // A true database failure proves the event update cannot commit without its notification.
+    await database.query(`CREATE FUNCTION reject_assignment_note() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.type='event_coordinator_assigned' THEN RAISE EXCEPTION 'notice failed'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_assignment_note BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION reject_assignment_note()`);
+    try {
+      assert.equal((await request(`/events/${event.id}/assignment`,1,{coordinatorId:3,expectedCoordinatorId:null},'PUT')).status,500);
+      assert.equal((await database.query('SELECT coordinator_id FROM events WHERE id=$1',[event.id])).rows[0].coordinator_id,null);
+      assert.equal((await database.query("SELECT count(*)::int AS n FROM notifications WHERE type='event_coordinator_assigned'")).rows[0].n,0);
+    } finally { await database.query('DROP TRIGGER reject_assignment_note ON notifications; DROP FUNCTION reject_assignment_note()'); }
+  });
+
 });

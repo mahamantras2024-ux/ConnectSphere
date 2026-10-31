@@ -100,7 +100,7 @@ afterEach(() => {
 // Assert the authenticated API is called for both associated reservations.
 it('AC1 - lets staff release reservations for cancelled and rescheduled events', async () => {
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   const cancelledRelease = await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
@@ -150,7 +150,7 @@ it('AC1 - keeps reservations for unchanged events protected from release', async
   });
 
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   expect(screen.getByText('Reserved')).toBeTruthy();
   expect(screen.queryByRole('button', {
@@ -165,7 +165,7 @@ it('AC1 - keeps reservations for unchanged events protected from release', async
 it('AC1 - surfaces a release conflict without hiding the active reservation', async () => {
   api.delete.mockRejectedValueOnce(new Error('This equipment reservation is no longer active.'));
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
   }));
@@ -183,7 +183,7 @@ it('AC1 - surfaces a release conflict without hiding the active reservation', as
 it('AC1 - displays a useful fallback when a release error has no message', async () => {
   api.delete.mockRejectedValueOnce(new Error(''));
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
   }));
@@ -204,7 +204,7 @@ it('AC1 - disables competing release actions while one reservation is being rele
   }));
 
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   const cancelledRelease = await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
   });
@@ -246,7 +246,7 @@ it('AC2 - shows released equipment as available during a subsequent availability
   });
 
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
   }));
@@ -282,7 +282,7 @@ it('AC3 - displays who released the reservation and when for audit', async () =>
   });
 
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   fireEvent.click(await screen.findByRole('button', {
     name: 'Release reservation for Cancelled Community Workshop',
   }));
@@ -318,7 +318,7 @@ it('AC3 - distinguishes a legacy cancelled reservation with no release audit', a
   });
 
   render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   expect(screen.getByText('Cancelled')).toBeTruthy();
   expect(screen.queryByText(/Released by/)).toBeNull();

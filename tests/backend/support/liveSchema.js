@@ -17,7 +17,9 @@ const runnerMigrations = [...runnerSource.slice(runnerSource.indexOf('async func
  * venue booking requests (which have their own runner, migrateVenueBookingRequests.js).
  */
 const liveSchemaFiles = ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql',
-  'venueAvailabilitySchema.sql', ...runnerMigrations, 'migrations/20261018064942_venue_booking_requests.sql'];
+  'venueAvailabilitySchema.sql', ...runnerMigrations, 'migrations/20261018064942_venue_booking_requests.sql',
+  // Registration settings ship through a separate runner, but current event reads require these columns.
+  'migrations/021-registration-settings.sql'];
 
 /**
  * Applies the full current schema on a client whose search_path is already the disposable schema.

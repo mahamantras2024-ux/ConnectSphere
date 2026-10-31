@@ -34,17 +34,20 @@ async function inTransaction(work) {
   return result;
 }
 
-/** Plain-text organiser notification for a decision; the rejection reason is included when given (AC3/AC6). */
+/** Builds an owner-addressed outcome notice; initial approval is explicitly separate from final confirmation (AC2). */
 function decisionNotification(event, decision, reason) {
-  const approved = decision === 'approved';
+  const labels = { approved: 'initially approved', confirmed: 'finally confirmed', rejected: 'rejected' };
+  const messages = {
+    approved: `Your event request ${event.name} has been initially approved by the Event Coordinator. This is not final confirmation.`,
+    confirmed: `Your event ${event.name} has been finally confirmed. Open the event for the latest arrangements.`,
+    rejected: `Your event request ${event.name} was not approved by the Event Coordinator.${reason ? `\nReason: ${reason}` : ''}`,
+  };
   return {
     userId: event.organiser_id, eventId: event.id, changeRequestId: null,
-    type: approved ? 'event_approved' : 'event_rejected',
-    title: approved ? `Event approved: ${event.name}` : `Event request not approved: ${event.name}`,
-    message: approved
-      ? `Your event request ${event.name} has been approved by the Event Coordinator and can proceed.`
-      : `Your event request ${event.name} was not approved by the Event Coordinator.${reason ? `\nReason: ${reason}` : ''}`,
-    details: { decision, reason },
+    type: { approved: 'event_approved', confirmed: 'event_confirmed', rejected: 'event_rejected' }[decision],
+    // Event names may already use all 255 characters allowed by the notification title column.
+    title: `Event ${labels[decision]}: ${event.name}`.slice(0, 255),
+    message: messages[decision], details: { decision, reason, status: decision },
   };
 }
 
@@ -92,6 +95,8 @@ async function recordSafetyCheck(eventId, safetyOfficerId, outcome, notes, chang
     }
     const safetyCheck = await eventDecisionModel.insertSafetyCheck(client, eventId, safetyOfficerId, outcome, notes, changeAreas);
     if (changeAreas.length) await eventDecisionModel.reopenStages(client, eventId, changeAreas);
+    // Technical rework invalidates the old allocations; release them with the safety decision, never in a later save.
+    if (changeAreas.includes('technical')) await eventDecisionModel.releaseEquipmentForSafetyRework(client, eventId, safetyOfficerId);
     const label = { approved: 'passed', rejected: 'failed', changes_requested: 'needs changes' }[outcome];
     const stages = changeAreas.map((area) => STAGE_LABELS[area]).join(', ');
     const stageLine = stages ? `\nChanges needed to: ${stages}.` : '';
@@ -146,7 +151,10 @@ async function transitionEvent(eventId, coordinatorId, status) {
     const result = await client.query('UPDATE events SET status=$2, updated_at=now() WHERE id=$1 RETURNING id, status', [eventId, status]);
     const event = result.rows[0];
     // Venue staff receive the actual lifecycle change only after all confirmation prerequisites pass.
-    const stored = status === 'confirmed' ? await notifyVenueStaffOfEventStatus(client, { ...context, ...event }, status) : [];
+    const stored = status === 'confirmed' ? [
+      ...await notificationService.insertNotifications(client, [decisionNotification(context, status, null)]),
+      ...await notifyVenueStaffOfEventStatus(client, { ...context, ...event }, status),
+    ] : [];
     return { event, stored };
   });
 }

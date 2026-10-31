@@ -4,6 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
 
+/** Repairs legacy safety-invalidated stock without replaying schema changes or historical seeds. */
+async function repairSafetyEquipment() {
+  const client = await pool.connect();
+  try { await client.query(fs.readFileSync(path.join(__dirname, 'migrations/025-safety-equipment-release-repair.sql'), 'utf8')); }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
 /** Runs the transaction-free SCRUM-93 SQL as one atomic upgrade; callers roll back and release on failure. */
 async function applyOrganiserRequestStatus(client, migration) {
   await client.query('BEGIN');
@@ -85,6 +93,13 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/020-coordinator-notifications.sql'), 'utf8'));
     // Parent notification system: Coordinator Lead and Safety Officer notification types (after every other type change).
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/017-parent-notifications.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/019-organiser-event-outcomes.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/020-coordinator-assignment-notifications.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/021-clarification-reply-notifications.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/022-venue-booking-request-notifications.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/023-safety-readiness-notification-deduplication.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/024-revisable-safety-rejections.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/025-safety-equipment-release-repair.sql'), 'utf8'));
     // Post-submission amendments: the organiser's explanation on each amendment (change) request.
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/019-amendment-explanations.sql'), 'utf8'));
     // Offline clarifications, amendment history and the re-checks an applied amendment reopens.
@@ -100,7 +115,8 @@ async function migrate() {
   } finally { client.release(); }
 }
 if (require.main === module) {
-  const operation = process.argv.includes('--organiser-request-status') ? migrateOrganiserRequestStatus
+  const operation = process.argv.includes('--repair-safety-equipment') ? repairSafetyEquipment
+    : process.argv.includes('--organiser-request-status') ? migrateOrganiserRequestStatus
     : process.argv.includes('--attendee-withdrawal') ? migrateAttendeeWithdrawal
     : process.argv.includes('--attendee-registration') ? migrateAttendeeRegistration
     : process.argv.includes('--venue-emergency-documents') ? migrateVenueEmergencyDocuments : migrate;
@@ -110,4 +126,4 @@ if (require.main === module) {
     process.exitCode = 1;
   }).finally(() => pool.end());
 }
-module.exports = { migrateOrganiserRequestStatus, migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal };
+module.exports = { migrateOrganiserRequestStatus, migrate, migrateVenueEmergencyDocuments, migrateAttendeeRegistration, migrateAttendeeWithdrawal, repairSafetyEquipment };

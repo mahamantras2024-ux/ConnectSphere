@@ -6,6 +6,9 @@ const eventDecisionModel = require('../models/eventDecisionModel');
 const { decideEvent, recordSafetyCheck, resolveSafetyChange } = require('../services/eventDecisionService');
 const { readiness, evaluateDecision, evaluateSafetyReview, resolutionBlocker, SAFETY_CHANGE_AREAS } = require('../services/eventDecisionPolicy');
 
+const { storeSafetyReadyNotifications } = require('../services/safetyReadyNotifications');
+const notificationService = require('../services/notificationService');
+
 const MAX_TEXT = 4000;
 const SAFETY_OUTCOMES = ['approved', 'rejected', 'changes_requested'];
 // Event ids are PostgreSQL INTEGER keys.
@@ -106,8 +109,15 @@ const postDecision = asyncHandler(async (req, res) => {
 const getSafetyQueue = asyncHandler(async (req, res) => {
   const now = Date.now();
   const candidates = await eventDecisionModel.safetyCandidates(db);
-  const events = candidates.filter((event) => !evaluateSafetyReview({ ...event, now }))
-    .map(({ bookings, equipment_confirmed_at: confirmedAt, status, is_draft: isDraft, safety_changes_open: open, ...event }) => event);
+  const ready = candidates.filter((event) => !evaluateSafetyReview({ ...event, now }));
+  const stored = [];
+  // Recover missed readiness transitions for this officer; a repair outage must never hide the review queue.
+  for (const event of ready) {
+    try { stored.push(...await storeSafetyReadyNotifications(db, event, [req.user.id])); }
+    catch (error) { console.error(`Safety readiness notification recovery failed: ${error.message}`); }
+  }
+  await notificationService.emailNotifications(stored);
+  const events = ready.map(({ bookings, equipment_confirmed_at: confirmedAt, status, is_draft: isDraft, safety_changes_open: open, ...event }) => event);
   return res.json({ events });
 });
 
