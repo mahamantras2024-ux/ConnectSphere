@@ -114,7 +114,13 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       assert.equal((await as('ann', 'GET', '/events/1/amendment-requests')).status, 403);
       // AC4: the organiser, the booking's Venue Staff, the assigned Technical Support and Safety Officers. Ann is not told:
       // the expected attendance is planning information attendees never see.
-      const told = await notes();
+      const all = await notes();
+      // Moving the confirmed event back to planning also fires main's status triggers in the same transaction (SCRUM-93
+      // organiser status, TS status AC5 stage change). They are database notices, not emailed by the amendment.
+      const triggered = all.filter((note) => note.type === 'event_request_status_changed' || note.title.startsWith('Technical support: '));
+      assert.deepEqual(triggered.map((note) => [note.user_id, note.title, note.message.split('.')[0]]),
+        [[id.olivia, 'Event request status updated', 'Gala: Planning'], [id.tess, 'Technical support: Planning - Gala', 'Gala is now planning']]);
+      const told = all.filter((note) => !triggered.includes(note));
       assert.deepEqual(told.map((note) => [note.user_id, note.type]), [[id.olivia, 'change_request_approved'], [id.vera, 'event_details_changed'],
         [id.tess, 'event_details_changed'], [id.sam, 'event_details_changed']]);
       assert.match(told[0].message, /^The Event Coordinator applied the amendment agreed with you to Gala\.\nExpected attendance: 60 → 90\nWhat was agreed: Agreed by phone\./);
@@ -137,7 +143,7 @@ test('OC AC1-AC6 - offline clarifications, agreed amendments, history and re-che
       assert.deepEqual([reconfirmed.status, reconfirmed.body.request.status, reconfirmed.body.request.recheck_required_at], [200, 'approved', null]);
       assert.equal((await as('vera', 'PUT', '/venues/1/requests/1/recheck', { decision: 'confirmed' })).status, 409);
       assert.equal(await blocker(), null);
-      const after = (await notes()).slice(told.length);
+      const after = (await notes()).slice(all.length);
       assert.deepEqual(after.map((note) => [note.user_id, note.type, note.title]), [[id.chris, 'event_details_changed', 'Venue booking re-confirmed: Gala'],
         [id.sam, 'safety_check_ready', 'Ready for safety check: Gala']]);
 
