@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 
 /** Lets the assigned coordinator request one venue period and revise the choices after an availability conflict. */
-export default function VenueBookingRequest({ event, token, onSubmitted, initialVenueId }) {
+export default function VenueBookingRequest({ event, token, onSubmitted, initialVenueId, editingBooking }) {
   const [venues, setVenues] = useState([]);
   const [venueId, setVenueId] = useState('');
   const [date, setDate] = useState(event.proposed_date || '');
@@ -16,6 +16,7 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
   const [accessibility, setAccessibility] = useState((event.accessibility_requirements || []).join(', '));
   const [facilities, setFacilities] = useState((event.required_facilities || []).join(', '));
   const [cancelOtherPending, setCancelOtherPending] = useState(false);
+  const [sessionName,setSessionName]=useState(editingBooking?.requirements.sessionName || '');
 
   useEffect(() => {
     let current = true;
@@ -42,7 +43,7 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
     setBusy(true);
     setFeedback(null);
     try {
-      await api.post(`/venues/${venueId}/requests`, {
+      const body = {
         eventId: event.id,
         startDatetime: `${date}T${startTime}:00+08:00`,
         endDatetime: `${date}T${endTime}:00+08:00`,
@@ -50,10 +51,14 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
         layout: layout.trim(),
         accessibility: splitRequirements(accessibility),
         requiredFacilities: splitRequirements(facilities),
-        cancelOtherPending,
-      }, token);
+        cancelOtherPending: sessionName.trim()?false:cancelOtherPending,
+        ...(sessionName.trim()?{sessionName:sessionName.trim()}:{}),
+      };
+      const result=editingBooking
+        ? await api.put(`/venues/${venueId}/requests/${editingBooking.id}/session`,body,token)
+        : await api.post(`/venues/${venueId}/requests`,body,token);
       setFeedback({ kind: 'success', message: 'Venue request submitted.' });
-      onSubmitted?.();
+      onSubmitted?.(result.request);
     } catch (error) {
       const selectedVenue = venues.find(venue => String(venue.id) === venueId);
       // Explain the unavailable period and retain every field so the coordinator can correct and resubmit it.
@@ -78,8 +83,10 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
     <h2 className="ed-card-title" id="venue-booking-request-heading">Request a venue booking</h2>
     {feedback && <p role={feedback.kind === 'success' ? 'status' : 'alert'} className={feedback.kind === 'conflict' ? 'ed-badge ed-badge--warn' : undefined}>{feedback.message}</p>}
     {loading ? <p role="status">Loading venues…</p> : venues.length === 0 ? <p>No active venues are available to request.</p> : <form onSubmit={submit}>
+      <label>Session / track (optional)<input value={sessionName} onChange={update(setSessionName)} maxLength={120} disabled={Boolean(editingBooking)} placeholder="e.g. Breakout session A"/></label>
+      <p className="ed-muted">Name each session to keep its timing, attendance and venue arrangements independent.</p>
       <label>Venue
-        <select required value={venueId} onChange={update(setVenueId)}>
+        <select required value={venueId} onChange={update(setVenueId)} disabled={Boolean(editingBooking)}>
           {!venueId && <option value="">Choose an active venue</option>}
           {venues.map(venue => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
         </select>
@@ -94,15 +101,15 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
         <input required type="time" value={endTime} onChange={update(setEndTime)} />
       </label>
       <label>Expected attendance / capacity
-        <input type="number" min="1" max="2147483647" step="1" value={capacity} onChange={update(setCapacity)} />
+        <input type="number" required={Boolean(sessionName.trim())} min="1" max="2147483647" step="1" value={capacity} onChange={update(setCapacity)} />
       </label>
       <label>Room layout<input value={layout} maxLength={200} onChange={update(setLayout)} /></label>
       <label>Accessibility requirements<input value={accessibility} maxLength={2000} onChange={update(setAccessibility)} /></label>
       <label>Required facilities<input value={facilities} maxLength={2000} onChange={update(setFacilities)} /></label>
       <p className="ed-muted">Separate multiple accessibility requirements or facilities with commas.</p>
-      <label><input type="checkbox" checked={cancelOtherPending} onChange={change => setCancelOtherPending(change.target.checked)} />
+      {!sessionName.trim() && <label><input type="checkbox" checked={cancelOtherPending} onChange={change => setCancelOtherPending(change.target.checked)} />
         Automatically cancel my other pending venue requests for this event if this arrangement changes or is cancelled.
-      </label>
+      </label>}
       <p className="ed-muted">Approved bookings are kept. Approval alone does not cancel other requests.</p>
       <button type="submit" disabled={busy || !venueId}>{busy ? 'Submitting…' : 'Request venue'}</button>
     </form>}

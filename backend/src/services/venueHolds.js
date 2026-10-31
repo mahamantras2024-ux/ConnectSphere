@@ -4,6 +4,7 @@ const { reject, validId, timestamp, withVenue, recordedPeriods } = require('./ve
 const { hasConflict } = require('./venueAvailability');
 const { insertNotifications, emailNotifications } = require('./notificationService');
 const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
+const { assertSessionSuitability } = require('./sessionVenueRequests');
 
 /** Fits a complete hold title into notifications.title; the message retains the full event name and hold context. */
 function holdNotificationTitle(action, eventName) {
@@ -41,6 +42,7 @@ async function saveHold(venueId, bookingId, staffId, value, updating, reason) {
     if (updating) requireLiveHold(booking);
     else if (booking.status !== 'pending') throw reject(409, 'This request has already been decided.');
     const deadline = expiryInstant(value);
+    assertSessionSuitability(booking.requirements, venue);
     const periods = await recordedPeriods(client, venue.id);
     // Database reads can outlast a very short deadline; do not extend a hold that expired during those reads.
     if (updating) requireLiveHold(booking);
@@ -76,6 +78,7 @@ async function confirmVenueHold(venueId, bookingId, coordinatorId) {
     const event = (await client.query('SELECT id,name,coordinator_id FROM events WHERE id=$1 FOR SHARE', [booking.event_id])).rows[0];
     if (!event || event.coordinator_id !== coordinatorId) throw reject(403, 'This event is not assigned to you.');
     requireLiveHold(booking);
+    assertSessionSuitability(booking.requirements, venue);
     const wasReady = await isReadyForSafetyCheck(client, event.id);
     const periods = await recordedPeriods(client, venue.id);
     // Read the deadline again after all awaited reads; a hold may expire while waiting for another database operation.

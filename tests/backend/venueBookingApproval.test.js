@@ -33,7 +33,7 @@ async function query(sql, values = []) {
   if (sql.includes('AS pending_clarifications')) return { rows: state.readiness?.length ? [state.readiness.shift()] : [] };
   if (sql.includes('FROM users')) return { rows: [{ id: 9, role: state.role }] };
   if (sql.includes('JOIN venues')) return { rows: [{ ...state.request, venue_name: 'Hall A', event_name: 'Gala', expected_attendance: 100, room_layout_preference: 'Seminar', accessibility_requirements: ['Ramp'] }] };
-  if (sql.includes('FROM venues')) return { rows: [{ id: 7, name: 'Hall A', is_active: true, setup_minutes: 0, turnaround_minutes: 0 }] };
+  if (sql.includes('FROM venues')) return { rows: [{ id: 7, name: 'Hall A', capacity: state.venueCapacity, is_active: true, setup_minutes: 0, turnaround_minutes: 0 }] };
   if (sql.includes('FROM events')) return { rows: [{ id: 3, name: 'Gala', coordinator_id: state.coordinator }] };
   if (sql.includes('FROM venue_bookings')) return { rows: sql.includes('UNION') ? [] : [state.request] };
   // Re-confirmation after an applied amendment (Record Offline AC5): clearing the flag, or rejecting the booking.
@@ -280,4 +280,27 @@ test('OC AC5 - a flagged booking shows the amended event requirements, not its o
   state.request = { ...state.request, status: 'pending', recheck_required_at: null };
   const [pending] = (await request('/requests/pending')).body.requests;
   assert.deepEqual([pending.expected_attendance, pending.room_layout_preference, pending.original_requirements], [40, 'Theatre', undefined]);
+});
+
+for (const capacity of [19, 20, 21]) {
+  test(`Session venues AC3 AC5 / OC AC5 - recheck compares session attendance 20 with venue capacity ${capacity}`, async () => {
+    // Arrange: global attendance is 100, but this named session has its own 20-person requirement.
+    state.venueCapacity = capacity;
+    state.request = { ...flagged(), requirements: { sessionName: 'Track A', capacity: 20, layout: '', accessibility: [], requiredFacilities: [] } };
+    // Act: re-confirmation is a distinct staff approval path and must retain per-session suitability.
+    const result = await request('/7/requests/20/recheck', { decision: 'confirmed' });
+    // Assert: below capacity is rejected without clearing the flag; equality and above use only this session's attendance.
+    assert.equal(result.status, capacity < 20 ? 400 : 200);
+    assert.equal(state.calls.some(sql => sql.includes('SET recheck_required_at=NULL')), capacity >= 20);
+  });
+}
+test('Session venues AC2 AC5 / OC AC5 - a flagged named session retains its own requirements in the staff queue', async () => {
+  // Arrange: the inherited event-wide recheck must not replace a named session's independent snapshot.
+  state.request = { ...flagged(), requirements: { sessionName: 'Track A', capacity: 20, layout: 'Theatre', accessibility: [] } };
+  // Act / Assert: staff see this session's values rather than the event-wide 100-person defaults.
+  const result = await request('/requests/pending');
+  assert.equal(result.status, 200);
+  const [listed] = result.body.requests;
+  assert.deepEqual([listed.expected_attendance, listed.room_layout_preference, listed.accessibility_requirements], [20, 'Theatre', []]);
+  assert.equal(listed.original_requirements.sessionName, 'Track A');
 });
