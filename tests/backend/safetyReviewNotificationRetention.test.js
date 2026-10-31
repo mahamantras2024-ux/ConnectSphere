@@ -43,4 +43,3 @@ test('AC4 - marking an unresolved safety notification read preserves the row and
   assert.match(statements[0].sql, /read_at=COALESCE\(read_at, now\(\)\)/);
   assert.doesNotMatch(statements[0].sql, /DELETE FROM notifications/);
 });
-

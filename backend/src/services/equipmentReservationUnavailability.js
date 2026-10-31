@@ -1,5 +1,6 @@
 // File: Records unavailable equipment and flags future reservations affected by the status change.
 const { pool } = require('../config/db');
+const { responsibilityScope } = require('./technicalEventStatus');
 const notificationService = require('./notificationService');
 
 const failure = (status, message) => Object.assign(new Error(message), { status });
@@ -188,8 +189,8 @@ async function listAlternatives(db, issue) {
   `, [issue.inventory_id, issue.event_date, issue.start_time, issue.end_time, issue.quantity])).rows;
 }
 
-/** Lists open affected reservations and currently eligible replacements for Technical Support follow-up. */
-async function listOpenIssues() {
+/** Lists affected reservations and replacements only for the authenticated staff member's events (AC6). */
+async function listOpenIssues(staffId) {
   const issues = (await pool.query(`
     SELECT impact.id, impact.reservation_id, impact.inventory_id, impact.reason,
       impact.suggestion_status, reservation.event_id, event.name AS event_name,
@@ -202,9 +203,9 @@ async function listOpenIssues() {
       ON reserved_item.reservation_id=reservation.id AND reserved_item.inventory_id=impact.inventory_id
     JOIN equipments original ON original.id=impact.inventory_id
     JOIN events event ON event.id=reservation.event_id
-    WHERE impact.status='open'
+    WHERE impact.status='open' AND ${responsibilityScope('event')}
     ORDER BY reservation.event_date, reservation.start_time, impact.id
-  `)).rows;
+  `, [staffId])).rows;
   return Promise.all(issues.map(async issue => ({
     ...issue,
     alternatives: await listAlternatives(pool, issue),

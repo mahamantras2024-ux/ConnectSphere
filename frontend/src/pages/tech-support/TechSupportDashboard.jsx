@@ -511,7 +511,7 @@ export default function TechSupportDashboard() {
         description="Review equipment requests, reserve equipment, and release allocations when events change."
       />
       <NotificationsPanel />
-      <OnSiteSupportSection token={token} />
+      <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
       {/* Opt-in periodic reminders for pending technical support and equipment requests (AC4). */}
       <ReminderPreference />
       {toast && (

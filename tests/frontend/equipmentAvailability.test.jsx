@@ -1,7 +1,15 @@
 // File: Tests the fixed equipment catalogue, filters, and search-triggered availability calendar.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import EquipmentInventorySection from '../../frontend/src/pages/tech-support/EquipmentInventorySection';
+
+// AC2/AC3: keep relative fixtures and the displayed month aligned across month-end runs.
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+});
 
 afterEach(() => {
   cleanup();

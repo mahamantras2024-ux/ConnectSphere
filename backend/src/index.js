@@ -10,6 +10,7 @@ const eventRoutes = require('./routes/eventRoutes');
 const venueRoutes = require('./routes/venueRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { pool } = require('./config/db');
+const { startEventCompletionScheduler } = require('./services/eventCompletion');
 const { startDailyVenueReminderScheduler } = require('./services/venueEventStatus');
 const { startTechSupportReminderScheduler } = require('./services/techSupportReminderPreferences');
 
@@ -62,6 +63,7 @@ if (require.main === module) {
     startDailyVenueReminderScheduler(pool);
     // Periodic reminders for Technical Support members who opted in, at their chosen cadence.
     startTechSupportReminderScheduler(pool);
+    startEventCompletionScheduler(pool);
   });
 }
 
