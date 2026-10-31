@@ -1,10 +1,14 @@
 -- Seeds the supplied equipment assets and availability windows, then records asset-level reservations.
-BEGIN;
 DO $$
 BEGIN
-  IF to_regclass('public.equipments') IS NULL
-     AND to_regclass('public.technical_equipment_inventory') IS NOT NULL THEN
-    ALTER TABLE technical_equipment_inventory RENAME TO equipments;
+  IF to_regclass(format('%I.equipments', current_schema())) IS NULL
+     AND to_regclass(
+       format('%I.technical_equipment_inventory', current_schema())
+     ) IS NOT NULL THEN
+    EXECUTE format(
+      'ALTER TABLE %I.technical_equipment_inventory RENAME TO equipments',
+      current_schema()
+    );
   END IF;
 END $$;
 
