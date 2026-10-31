@@ -28,7 +28,7 @@ async function query(sql, args = []) {
   }
   if (sql.includes('AS pending_clarifications')) return { rows: [] };
   if (sql.includes('FROM venue_bookings') && sql.includes('FOR UPDATE')) return { rows: state.booking ? [structuredClone(state.booking)] : [] };
-  if (sql.includes('FROM events')) return { rows: [{ id: 3, name: 'Workshop', coordinator_id: state.coordinator }] };
+  if (sql.includes('FROM events')) return { rows: [{ id: 3, name: state.eventName, coordinator_id: state.coordinator }] };
   if (sql.includes('WITH inserted')) {
     if (state.notificationError) throw new Error('Notification write failed');
     state.notifications.push(args);
@@ -46,7 +46,7 @@ async function query(sql, args = []) {
 
 beforeEach(() => {
   mock.timers.enable({ apis: ['Date'], now });
-  state = { coordinator: 4, calls: [], writes: [], notifications: [], blockers: [], due: [],
+  state = { eventName: 'Workshop', coordinator: 4, calls: [], writes: [], notifications: [], blockers: [], due: [],
     booking: { id: 20, venue_id: 7, event_id: 3, requested_by: 4, status: 'pending',
       start_datetime: '2030-10-10T10:00:00Z', end_datetime: '2030-10-10T11:00:00Z', hold_expires_at: future } };
   mock.method(pool, 'connect', async () => ({ query, release() {} }));
@@ -271,3 +271,28 @@ test('SCRUM-107 AC4 - scheduler retries after a database outage without exposing
   assert.equal(connections,2);assert.equal(logged.mock.callCount(),2);
   assert.doesNotMatch(logged.mock.calls.map(call=>call.arguments.join(' ')).join(' '),/private connection/);
 });
+
+// Exercise the complete persisted title, since the event name alone may already fit VARCHAR(255).
+for (const action of ['approved', 'updated', 'expired']) {
+  for (const titleLength of [254, 255, 256, 255 + `Venue hold ${action}: `.length]) {
+    test(`SCRUM-107 AC1 AC2 AC4 - ${action} preserves details and bounds a ${titleLength}-character title`, async () => {
+      // Arrange: include astral Unicode so truncation must count PostgreSQL characters rather than split surrogate pairs.
+      const prefix = `Venue hold ${action}: `;
+      const eventName = '🎉'.repeat(titleLength - prefix.length);
+      state.eventName = eventName;
+      state.booking.status = action === 'updated' ? 'tentative' : 'pending';
+      state.due = [{ ...state.booking, coordinator_id: 4, event_name: eventName, venue_name: 'Garden Hall' }];
+      // Act: use the actual service and notification insertion with only database transport mocked.
+      if (action === 'expired') assert.equal(await expireVenueHolds(), 1);
+      else await (action === 'updated' ? updateHoldExpiry : approveTentativeHold)(7, 20, 9, future);
+      // Assert: untouched short titles, a 255-character ceiling, and the full event and hold context in the message.
+      const note = state.notifications[0];
+      assert.equal(note[4][0], prefix + '🎉'.repeat(Math.min(titleLength, 255) - prefix.length));
+      assert.ok(note[5][0].includes(eventName));
+      assert.ok(note[5][0].includes('Garden Hall'));
+      assert.equal(JSON.parse(note[6][0]).bookingId, 20);
+      assert.ok(state.calls.some(call => call.sql === 'COMMIT'));
+      assert.equal(state.calls.some(call => call.sql === 'ROLLBACK'), false);
+    });
+  }
+}
