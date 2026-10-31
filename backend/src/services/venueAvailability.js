@@ -4,7 +4,7 @@ const HOLD_DURATION_MS = 24 * 60 * 60 * 1000;
 /** Returns true only for maintenance, confirmed bookings or pending requests whose deadline is still future. */
 function blocksTime(record, now) {
   return record.kind === 'unavailability' || ['approved', 'confirmed'].includes(record.status) ||
-    (record.status === 'pending' && new Date(record.hold_expires_at).getTime() > now);
+    (['pending', 'tentative'].includes(record.status) && new Date(record.hold_expires_at).getTime() > now);
 }
 
 /** Produces the full occupied window; maintenance is already complete, while events need independent buffers. */

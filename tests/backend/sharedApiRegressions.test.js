@@ -367,7 +367,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 // Test case: Captures startup calls and checks initialization finishes before listening on configured/default ports.
-test('Completion AC - API startup initializes before listening and starting completion on configured/default ports',async()=>{
+test('SCRUM-107 AC4 / Completion AC - API startup initializes before listening and starting both schedulers on configured/default ports',async()=>{
  const filename=path.join(__dirname,'../../backend/src/index.js');
  for(const port of [undefined,'4321']) {
   const seen=[];const completionCalls=[];let initialize;const startupPool={};
@@ -383,6 +383,7 @@ test('Completion AC - API startup initializes before listening and starting comp
    // Capture job wiring only: the real completion service is tested separately against PostgreSQL.
    if(name==='./services/eventCompletion')return {startEventCompletionScheduler(db){completionCalls.push(db);}};
    if(name==='./services/venueEventStatus')return {startDailyVenueReminderScheduler(){}};
+   if(name==='./services/venueHolds')return {startHoldExpiryScheduler(){seen.push('expiry-scheduler');}};
    if(name==='./services/techSupportReminderPreferences')return {startTechSupportReminderScheduler(){}};
    if(name==='./middleware/errorHandler')return {errorHandler(){}};
    if(name.startsWith('./routes/'))return {};
@@ -391,7 +392,7 @@ test('Completion AC - API startup initializes before listening and starting comp
   requireFixture.main=entry;
   vm.runInNewContext(fs.readFileSync(filename,'utf8'),{require:requireFixture,module:entry,process:{env:{PORT:port,CORS_ORIGIN:port?'http://localhost:5173':undefined}},console:{log(){}}},{filename});
   assert.deepEqual(seen,[]);assert.deepEqual(completionCalls,[]);
-  initialize();await Promise.resolve();assert.deepEqual(seen,[port||4000]);
+  initialize();await Promise.resolve();assert.deepEqual(seen,[port||4000,'expiry-scheduler']);
   assert.deepEqual(completionCalls,[startupPool]);assert.equal(entry.exports,application);
  }
 });
