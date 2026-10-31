@@ -15,6 +15,10 @@ const details = { id: 101, organiser_id: 12, name: 'Workshop', purpose: 'Communi
   programme_details: '09:00 Welcome\n10:00 Workshop', room_layout_preference: 'classroom', accessibility_requirements: ['wheelchair access'],
   equipment_notes: 'Two microphones', registration_required: true, registration_capacity: 40,
   special_arrangements: 'Vegetarian lunch', organiser_name: 'Alice', status: 'submitted' };
+// Direct edits apply only to a draft; a submitted request changes through an amendment request
+// (Request All Post-Submission Amendments AC1/AC2).
+const draft = { ...details, status: 'draft', is_draft: true };
+const amendment = (changes) => ({ method: 'POST', body: { changes, explanation: 'Our plans changed.' } });
 // Signs a test-only JWT for the supplied user and current session version.
 function token(user = organiser) { return jwt.sign({ sub: user.id, role: user.role, email: user.email, authVersion: user.auth_version }, process.env.JWT_SECRET); }
 // Calls the local test HTTP server with the requested payload/session and returns status plus JSON.
@@ -176,51 +180,43 @@ test('attendees cannot create organiser requests', async () => {
   assert.equal((await request('/api/events', { user, method: 'POST', body: submission })).status, 403);
 });
 
-// Test case: AC1 - before venue confirmation, an organiser may update a critical event field.
-test('AC1 - unconfirmed venue allows an organiser to update critical event fields', async () => {
-  const updated = { ...details, description: 'Updated description', programme_details: 'Updated agenda', updated_at: new Date() };
+// Test case: AC1 / AM AC1 - the organiser's own draft is updated directly, including critical fields.
+test('AC1 / AM AC1 - a draft is updated directly, including critical fields', async () => {
+  const updated = { ...draft, name: 'Renamed Workshop', updated_at: new Date() };
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
-    if (sql.includes('FROM events e')) return { rows: [{ ...details, venue_confirmed: false }] };
+    if (sql.includes('FROM events e')) return { rows: [draft] };
+    // The draft condition is part of the UPDATE, so an edit racing the submission cannot change the submitted request.
     assert.match(sql, /UPDATE events SET name=\$1/);
-    assert.match(sql, /WHERE id=\$2 AND organiser_id=\$3/);
-    assert.deepEqual(values, ['Renamed Workshop', '101', 12, true]);
+    assert.match(sql, /WHERE id=\$2 AND organiser_id=\$3 AND is_draft=true AND status='draft'/);
+    assert.deepEqual(values, ['Renamed Workshop', '101', 12]);
     return { rows: [updated] };
   });
-  const result = await request('/api/events/101/non-critical', { method: 'PUT', body: {
-    name: 'Renamed Workshop',
-  } });
+  const result = await request('/api/events/101/non-critical', { method: 'PUT', body: { name: 'Renamed Workshop' } });
   assert.equal(result.status, 200);
   assert.equal(result.body.message, 'Event information saved.');
 });
 
-// Test case: AC2 - a confirmed venue rejects critical edits but allows a non-critical edit.
-test('AC2 - confirmed venue requires a change request for critical fields and saves non-critical fields', async () => {
-  const updated = { ...details, programme_details: 'Updated agenda' };
-  const pendingRequest = { id: 501, event_id: 101, organiser_id: 12, coordinator_id: 30, requested_changes: { name: 'Updated title' }, status: 'pending' };
-  // The coordinator email is only used for delivery; email itself is an external boundary.
-  mock.method(emailService, 'sendNotificationEmail', async () => {});
-  const query = mock.method(pool, 'query', async (sql, values) => {
-    if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
-    if (sql.includes('INSERT INTO event_change_requests')) {
-      assert.deepEqual(values.slice(0, 4), ['101', 12, 30, JSON.stringify({ name: 'Updated title' })]);
-      return { rows: [{ ...pendingRequest, coordinator_email: 'chris@example.com' }] };
-    }
-    if (sql.includes('FROM events e')) return { rows: [{ ...details, coordinator_id: 30, venue_confirmed: true }] };
-    assert.match(sql, /NOT EXISTS \(\s*SELECT 1 FROM venue_bookings/);
-    assert.deepEqual(values, ['Updated agenda', '101', 12, false]);
-    return { rows: [updated] };
-  });
-  const blocked = await request('/api/events/101/non-critical', { method: 'PUT', body: { name: 'Updated title' } });
-  assert.equal(blocked.status, 202);
-  assert.equal(blocked.body.changeRequest.status, 'pending');
-  assert.equal(blocked.body.changeRequest.coordinator_email, undefined);
-  assert.match(blocked.body.message, /confirmed event information remains in effect/);
-  const saved = await request('/api/events/101/non-critical', { method: 'PUT', body: { programmeDetails: 'Updated agenda' } });
-  assert.equal(saved.status, 200);
-  assert.equal(saved.body.message, 'Non-critical event information saved.');
-  assert.equal(query.mock.callCount(), 6);
-});
+// Test case: AM AC1 - after submission nothing is edited directly: critical or non-critical, venue confirmed or not.
+for (const [field, value] of [['name', 'Updated title'], ['programmeDetails', 'Updated agenda'], ['registrationCapacity', 30]]) {
+  for (const venueConfirmed of [false, true]) {
+    test(`AM AC1 - a submitted request's ${field} cannot be edited directly (venue confirmed ${venueConfirmed})`, async () => {
+      // Arrange: any write (update or change request) fails the test.
+      const query = mock.method(pool, 'query', async (sql) => {
+        if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
+        if (sql.includes('FROM events e')) return { rows: [{ ...details, coordinator_id: 30, venue_confirmed: venueConfirmed }] };
+        assert.fail(`A submitted request must not be written directly: ${sql}`);
+      });
+      // Act
+      const result = await request('/api/events/101/non-critical', { method: 'PUT', body: { [field]: value } });
+      // Assert: refused with the amendment route; only the session and event reads ran.
+      assert.equal(result.status, 409);
+      assert.equal(result.body.code, 'AMENDMENT_REQUIRED');
+      assert.match(result.body.message, /Request an amendment for your Event Coordinator to review/);
+      assert.equal(query.mock.callCount(), 2);
+    });
+  }
+}
 
 // Test case: AC2 - a different organiser cannot update an event they do not own.
 test('AC2 - non-owner event updates return not found without writing', async () => {
@@ -235,18 +231,17 @@ test('AC2 - non-owner event updates return not found without writing', async () 
   assert.equal(query.mock.callCount(), 2);
 });
 
-// Test case: AC2 - a critical edit racing venue approval is rejected by the update guard.
-test('AC2 - critical edit racing venue approval is rejected without applying the change', async () => {
-  mock.method(pool, 'query', async (sql, values) => {
+// Test case: AM AC1 - a draft submitted between the read and the write is not changed by the direct edit.
+test('AM AC1 - a direct edit racing the submission is rejected without applying the change', async () => {
+  mock.method(pool, 'query', async (sql) => {
     if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
-    if (sql.includes('FROM events e')) return { rows: [{ ...details, venue_confirmed: false }] };
-    assert.match(sql, /vb\.status='approved'/);
-    assert.equal(values.at(-1), true);
+    if (sql.includes('FROM events e')) return { rows: [draft] };
+    assert.match(sql, /is_draft=true AND status='draft'/);
     return { rows: [] };
   });
   const result = await request('/api/events/101/non-critical', { method: 'PUT', body: { name: 'Workshop v2' } });
   assert.equal(result.status, 409);
-  assert.equal(result.body.code, 'ARRANGEMENT_CHANGED');
+  assert.equal(result.body.code, 'AMENDMENT_REQUIRED');
 });
 
 // Test case: AC3 - the assigned coordinator receives pending critical change requests in the dashboard inbox.
@@ -373,32 +368,36 @@ for (const field of ['name','proposedDate','proposedStartTime','proposedEndTime'
     assert.equal(result.status,400);
   });
 }
-// Workflow AC2: submitted requirements cannot be cleared; optional legacy fields remain editable.
+// Workflow AC2: submitted requirements cannot be cleared, now through an amendment request (AM AC2).
 for (const [field,value] of [['proposedDate',null],['proposedStartTime',null],['proposedEndTime',null],['expectedAttendance',0]]) {
-  test(`Workflow AC2 - HTTP update cannot clear submitted ${field}`,async()=>{
-    mock.method(pool,'query',async sql=>{if(sql.includes('FROM users WHERE'))return {rows:[organiser]};assert.match(sql,/SELECT/);return {rows:[details]};});
-    assert.equal((await request('/api/events/101/non-critical',{method:'PUT',body:{[field]:value}})).status,400);
+  test(`Workflow AC2 / AM AC2 - an amendment cannot clear submitted ${field}`,async()=>{
+    mock.method(pool,'query',async sql=>{if(sql.includes('FROM users WHERE'))return {rows:[organiser]};assert.match(sql,/SELECT/);return {rows:[{...details,coordinator_id:30}]};});
+    const result=await request('/api/events/101/amendment-requests',amendment({[field]:value}));
+    assert.equal(result.status,400);assert.equal(result.body.message,'Name, date, times and attendance cannot be cleared on submitted requests.');
   });
 }
-// Workflow AC5: controller integration must not bypass attachment validation on creation or update.
-for (const method of ['POST','PUT'])for (const attachments of [null,{accessibilityRequirements:null},{purpose:{name:'fake.pdf',data:Buffer.from('not a PDF').toString('base64')}}]) {
-  test(`Workflow AC5 - ${method} rejects invalid attachments ${JSON.stringify(attachments)}`,async()=>{
-    mock.method(pool,'query',async sql=>{if(sql.includes('FROM users WHERE'))return {rows:[organiser]};assert.match(sql,/SELECT/);return {rows:[details]};});
-    const route=method==='POST'?'/api/events':'/api/events/101/non-critical';
-    const body=method==='POST'?{...submission,attachments}:{attachments};
-    assert.equal((await request(route,{method,body})).status,400);
+// Workflow AC5: controller integration must not bypass attachment validation on creation, draft update or amendment.
+for (const route of ['create','draft update','amendment'])for (const attachments of [null,{accessibilityRequirements:null},{purpose:{name:'fake.pdf',data:Buffer.from('not a PDF').toString('base64')}}]) {
+  test(`Workflow AC5 / AM AC2 - ${route} rejects invalid attachments ${JSON.stringify(attachments)}`,async()=>{
+    const stored=route==='draft update'?draft:{...details,coordinator_id:30};
+    mock.method(pool,'query',async sql=>{if(sql.includes('FROM users WHERE'))return {rows:[organiser]};assert.match(sql,/SELECT/);return {rows:[stored]};});
+    const result=route==='create'?await request('/api/events',{method:'POST',body:{...submission,attachments}})
+      :route==='draft update'?await request('/api/events/101/non-critical',{method:'PUT',body:{attachments}})
+        :await request('/api/events/101/amendment-requests',amendment({attachments}));
+    assert.equal(result.status,400);
   });
 }
-// Workflow AC5: critical attachment changes must use the confirmed-event review path.
-test('Workflow AC5 - critical attachment replacement awaits coordinator review',async()=>{
+// Workflow AC5 / AM AC2: after submission an attachment replacement is an amendment awaiting coordinator review.
+test('Workflow AC5 / AM AC2 - attachment replacement on a submitted request awaits coordinator review',async()=>{
   const file={name:'purpose.pdf',data:Buffer.from('%PDF-purpose').toString('base64')};
+  mock.method(emailService,'sendNotificationEmail',async()=>{});
   mock.method(pool,'query',async(sql,values)=>{
     if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
-    if(sql.includes('INSERT INTO event_change_requests')){assert.equal(JSON.parse(values[3]).attachments.purpose.name,file.name);return {rows:[{id:1,status:'pending'}]};}
+    if(sql.includes('INSERT INTO event_change_requests')){assert.equal(JSON.parse(values[3]).attachments.purpose.name,file.name);return {rows:[{id:1,status:'pending',coordinator_email:'chris@example.com'}]};}
     assert.match(sql,/SELECT/);return {rows:[{...details,venue_confirmed:true,coordinator_id:30}]};
   });
-  const result=await request('/api/events/101/non-critical',{method:'PUT',body:{attachments:{purpose:file}}});
-  assert.equal(result.status,202);assert.equal(result.body.changeRequest.status,'pending');
+  const result=await request('/api/events/101/amendment-requests',amendment({attachments:{purpose:file}}));
+  assert.equal(result.status,202);assert.equal(result.body.amendmentRequest.status,'pending');
 });
 // Workflow AC2: a completely blank draft is intentional and must retain an empty (non-null) stored name.
 test('Workflow AC2 - HTTP creation saves an entirely incomplete draft',async()=>{
@@ -410,11 +409,11 @@ test('Workflow AC2 - HTTP creation saves an entirely incomplete draft',async()=>
   });
   assert.equal((await request('/api/events',{method:'POST',body:{isDraft:true}})).status,201);
 });
-// Workflow AC5: replacing/removing a non-critical attachment uses JSONB and preserves unrelated files.
-for(const removing of [false,true])test(`Workflow AC5 - non-critical attachment ${removing?'removal':'replacement'} persists without losing other files`,async()=>{
+// Workflow AC5: replacing/removing a draft attachment uses JSONB and preserves unrelated files.
+for(const removing of [false,true])test(`Workflow AC5 - draft attachment ${removing?'removal':'replacement'} persists without losing other files`,async()=>{
   const keep={name:'keep.pdf',data:Buffer.from('%PDF-keep').toString('base64'),type:'application/pdf',size:9};
   const incoming={name:'equipment.pdf',data:Buffer.from('%PDF-equipment').toString('base64')};
-  const current={...details,attachments:{purpose:keep,equipmentNotes:keep}};
+  const current={...draft,attachments:{purpose:keep,equipmentNotes:keep}};
   mock.method(pool,'query',async(sql,values)=>{
     if(sql.includes('FROM users WHERE'))return {rows:[organiser]};
     if(sql.includes('UPDATE events')){

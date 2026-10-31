@@ -33,7 +33,7 @@ function validateAdditionalItems(items) {
  * Returns upcoming equipment requests that still need Technical Support review.
  */
 const listEquipmentRequests = asyncHandler(async (req, res) => {
-  const requests = await eventModel.listPendingEquipmentRequests();
+  const requests = await eventModel.listPendingEquipmentRequests(req.user.id);
   return res.status(200).json({ requests });
 });
 
@@ -124,9 +124,9 @@ const repairEquipment = asyncHandler(async (req, res) => {
  */
 const listEquipmentReservations = asyncHandler(async (req, res) => {
   const [requests, reservations, affectedReservations] = await Promise.all([
-    eventModel.listEquipmentReservationCandidates(),
+    eventModel.listEquipmentReservationCandidates(req.user.id),
     eventModel.listActiveEquipmentReservations(req.user.id),
-    reservationUnavailability.listOpenIssues(),
+    reservationUnavailability.listOpenIssues(req.user.id),
   ]);
   return res.status(200).json({ requests, reservations, affectedReservations });
 });
@@ -159,7 +159,7 @@ const checkEquipmentAvailability = asyncHandler(async (req, res) => {
   }
   const validation = validateAdditionalItems(req.body?.additionalItems);
   if (validation.error) return res.status(400).json({ message: validation.error });
-  const availability = await eventModel.getEquipmentReservationAvailability(Number(id), validation.items);
+  const availability = await eventModel.getEquipmentReservationAvailability(Number(id), validation.items, req.user.id);
   if (!availability) return res.status(404).json({ message: 'Reviewed equipment request not found.' });
   if (availability.alreadyReserved) {
     return res.status(409).json({ message: 'This request already has a confirmed equipment reservation.' });

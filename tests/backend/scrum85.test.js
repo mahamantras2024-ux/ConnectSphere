@@ -5,9 +5,9 @@ const {pool}=require('../../backend/src/config/db');
 const service=require('../../backend/src/services/coordinatorNotifications');
 afterEach(()=>mock.restoreAll());
 const now=Date.parse('2031-10-20T02:00:00Z');
-for(const [offset,expected]of [[-1,false],[0,true],[1,true]])test(`SCRUM-85 AC7 - warning ${offset}ms from one-minute-before-expiry threshold is due=${expected}`,()=>{
+for(const status of ['pending','tentative'])for(const [offset,expected]of [[-1,false],[0,true],[1,true]])test(`SCRUM-85 AC7 - ${status} warning ${offset}ms from one-minute-before-expiry threshold is due=${expected}`,()=>{
  const expiry=new Date(now+60000).toISOString();
- assert.equal(service.holdWarningDue({status:'pending',hold_expires_at:expiry},now+offset),expected);
+ assert.equal(service.holdWarningDue({status,hold_expires_at:expiry},now+offset),expected);
 });
 for(const days of [1,3,7])for(const [offset,expected]of [[-1,false],[0,true],[1,true]])test(`SCRUM-85 AC9 - ${days}-day reminder at cadence ${offset}ms is due=${expected}`,()=>{
  assert.equal(service.reminderDue(new Date(now).toISOString(),days,now+days*86400000+offset),expected);

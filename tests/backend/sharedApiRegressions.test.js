@@ -367,10 +367,10 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 // Test case: Captures startup calls and checks initialization finishes before listening on configured/default ports.
-test('SCRUM-85 AC7 AC9 - API startup waits for initialization before listening and starting coordinator jobs',async()=>{
+test('SCRUM-85 AC7 AC9 / SCRUM-107 AC4 / Completion AC - API startup initializes before listening and starting both schedulers on configured/default ports',async()=>{
  const filename=path.join(__dirname,'../../backend/src/index.js');
  for(const port of [undefined,'4321']) {
-  const seen=[];const jobs=[];let initialize;
+  const seen=[];const jobs=[];const completionCalls=[];let initialize;const startupPool={};
   const application={use(){},get(){},listen(value,callback){seen.push(value);callback();}};
   const express=()=>application;express.json=()=>()=>{};express.urlencoded=()=>()=>{};
   const entry={exports:{}};
@@ -379,16 +379,22 @@ test('SCRUM-85 AC7 AC9 - API startup waits for initialization before listening a
    if(name==='dotenv')return {config(){}};
    if(name==='express')return express;
    if(name==='cors'||name==='morgan')return ()=>()=>{};
-   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;}),pool:{}};
+   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;}),pool:startupPool};
+   // Capture job wiring only: the real completion service is tested separately against PostgreSQL.
+   if(name==='./services/eventCompletion')return {startEventCompletionScheduler(db){completionCalls.push(db);}};
    if(name==='./services/venueEventStatus')return {startDailyVenueReminderScheduler(){}};
    if(name==='./services/coordinatorNotifications')return {startCoordinatorNotificationScheduler(){jobs.push('coordinator');}};
+   if(name==='./services/venueHolds')return {startHoldExpiryScheduler(){seen.push('expiry-scheduler');}};
+   if(name==='./services/techSupportReminderPreferences')return {startTechSupportReminderScheduler(){}};
    if(name==='./middleware/errorHandler')return {errorHandler(){}};
    if(name.startsWith('./routes/'))return {};
    throw new Error(`Unexpected startup dependency: ${name}`);
   }
   requireFixture.main=entry;
   vm.runInNewContext(fs.readFileSync(filename,'utf8'),{require:requireFixture,module:entry,process:{env:{PORT:port,CORS_ORIGIN:port?'http://localhost:5173':undefined}},console:{log(){}}},{filename});
-  assert.deepEqual(seen,[]);assert.deepEqual(jobs,[]);initialize();await Promise.resolve();assert.deepEqual(seen,[port||4000]);assert.deepEqual(jobs,['coordinator']);assert.equal(entry.exports,application);
+  assert.deepEqual(seen,[]);assert.deepEqual(jobs,[]);assert.deepEqual(completionCalls,[]);
+  initialize();await Promise.resolve();assert.deepEqual(seen,[port||4000,'expiry-scheduler']);
+  assert.deepEqual(jobs,['coordinator']);assert.deepEqual(completionCalls,[startupPool]);assert.equal(entry.exports,application);
  }
 });
 

@@ -3,10 +3,10 @@ const {insertNotifications,emailNotifications}=require('./notificationService');
 const {loadDecisionContext}=require('../models/eventDecisionModel');
 const {evaluateSafetyReview}=require('./eventDecisionPolicy');
 const FREQUENCIES=[1,3,7];
-/** A warning becomes due one minute before expiry; late recovery is retained rather than silently losing the warning. */
-function holdWarningDue(booking,now){return booking.status==='pending'&&Number.isFinite(Date.parse(booking.hold_expires_at))&&Date.parse(booking.hold_expires_at)-now<=60000;}
+/** Pending requests and staff-approved tentative holds remain live until expiry. A warning becomes due one minute before expiry; late recovery is retained rather than silently losing the warning. */
+function holdWarningDue(booking,now){return ['pending','tentative'].includes(booking.status)&&Number.isFinite(Date.parse(booking.hold_expires_at))&&Date.parse(booking.hold_expires_at)-now<=60000;}
 /** Hold state reflects the current saved decision and deadline, including the exact expiry boundary. */
-function holdState(booking,now){return booking.status!=='pending'?booking.status:Date.parse(booking.hold_expires_at)<=now?'expired':'held';}
+function holdState(booking,now){return !['pending','tentative'].includes(booking.status)?booking.status:Date.parse(booking.hold_expires_at)<=now?'expired':'held';}
 /** Matches Venue Staff's elapsed-day policy; the first enabled run is immediately eligible. */
 function reminderDue(last,days,now){return !last||now-Date.parse(last)>=days*86400000;}
 /** Reads the persisted choice; a coordinator who has never opted in remains disabled. */
@@ -31,7 +31,7 @@ async function notifyEquipmentReserved(db,event,reservation){
 async function warnHolds(client,now){
  const holds=(await client.query(`SELECT b.id,b.event_id,b.status,b.hold_expires_at,b.venue_id,e.name AS event_name,e.coordinator_id,v.name AS venue_name
   FROM venue_bookings b JOIN events e ON e.id=b.event_id JOIN venues v ON v.id=b.venue_id
-  WHERE b.status='pending' AND b.hold_expires_at<=to_timestamp($1/1000.0)+interval '1 minute'
+  WHERE b.status IN ('pending','tentative') AND b.hold_expires_at<=to_timestamp($1/1000.0)+interval '1 minute'
   AND e.coordinator_id IS NOT NULL AND e.status NOT IN ('cancelled','completed','rejected','draft')
   AND NOT EXISTS (SELECT 1 FROM coordinator_hold_warnings w WHERE w.booking_id=b.id AND w.user_id=e.coordinator_id)
   ORDER BY b.id FOR SHARE OF b,e`,[now])).rows;
@@ -55,7 +55,7 @@ async function remindReviews(client,now){
  for(const preference of preferences){
   if(!reminderDue(preference.last_sent_at,preference.frequency_days,now))continue;
   const events=(await client.query(`SELECT e.id,e.name,
-    (SELECT count(*)::int FROM venue_bookings b WHERE b.event_id=e.id AND b.status='pending') AS venue_pending,
+    (SELECT count(*)::int FROM venue_bookings b WHERE b.event_id=e.id AND b.status IN ('pending','tentative')) AS venue_pending,
     (SELECT count(*)::int FROM event_change_requests r WHERE r.event_id=e.id AND r.status='pending') AS change_pending,
     CASE WHEN e.equipment_confirmed_at IS NULL AND (jsonb_array_length(e.equipment_items)>0 OR e.technical_support_required OR e.video_conferencing_required OR NULLIF(trim(e.equipment_notes),'') IS NOT NULL)
       AND NOT EXISTS (SELECT 1 FROM event_equipment_reviews r WHERE r.event_id=e.id AND r.request_version=e.equipment_requirements_version)

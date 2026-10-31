@@ -14,7 +14,7 @@ const { liveSchemaFiles: migrations } = require('./support/liveSchema');
 const sqlFile = (file) => fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
 
 // Exercise notification-producing transactions and the scheduler; persisted state proves long names cannot roll back other work.
-test('SCRUM-85 AC1 AC4 AC6 AC7 AC9 - PostgreSQL long-name transactions and multi-coordinator delivery',
+test('SCRUM-85 AC1 AC2 AC4 AC6 AC7 AC9 - PostgreSQL long-name transactions and multi-coordinator delivery',
   { skip: process.env.RUN_DB_TESTS !== '1' }, async (t) => {
     const schema = `cs_scrum85_${crypto.randomBytes(8).toString('hex')}`;
     const client = await pool.connect();
@@ -28,6 +28,8 @@ test('SCRUM-85 AC1 AC4 AC6 AC7 AC9 - PostgreSQL long-name transactions and multi
       await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[],
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
       for (const file of migrations) await client.query(sqlFile(file));
+      // Finite venue holds have a separate migration runner, so include that production schema as well.
+      await client.query(sqlFile('migrations/019-venue-tentative-holds.sql'));
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['cara', 'event_coordinator'], ['sam', 'safety_officer'], ['vera', 'venue_staff'], ['tina', 'technical_support'], ['lee','event_coordinator_lead']];
       for (const [name, role] of people) {
         await client.query('INSERT INTO users (email, full_name, password_hash, role, roles) VALUES ($1, $2, $3, $4::text, ARRAY[$4::text])', [`${name}@example.test`, name, 'unused', role]);
@@ -102,7 +104,7 @@ test('SCRUM-85 AC1 AC4 AC6 AC7 AC9 - PostgreSQL long-name transactions and multi
         // Give each hold a separate booking day so occupancy constraints remain active and valid.
         const now=Date.parse('2030-10-14T12:00:00Z');
         await client.query(`INSERT INTO venue_bookings(event_id,venue_id,requested_by,start_datetime,end_datetime,status,hold_expires_at)
-          SELECT e.id,1,e.coordinator_id,'2030-10-18T02:00Z'::timestamptz+e.id*interval '1 day','2030-10-18T04:00Z'::timestamptz+e.id*interval '1 day','pending',to_timestamp($1/1000.0)+interval '30 seconds'
+          SELECT e.id,1,e.coordinator_id,'2030-10-18T02:00Z'::timestamptz+e.id*interval '1 day','2030-10-18T04:00Z'::timestamptz+e.id*interval '1 day','tentative',to_timestamp($1/1000.0)+interval '30 seconds'
           FROM events e ORDER BY e.id`,[now]);
         await client.query('INSERT INTO coordinator_notification_preferences(user_id,enabled,frequency_days) VALUES($1,true,1),($2,true,1)',[id.chris,id.cara]);
         // Act: execute the actual atomic worker against PostgreSQL, including advisory locks and receipts.
@@ -130,6 +132,18 @@ test('SCRUM-85 AC1 AC4 AC6 AC7 AC9 - PostgreSQL long-name transactions and multi
           assert.equal(row.title,cases[i].prefix+'x'.repeat(Math.min(cases[i].length,255)-cases[i].prefix.length));
           assert.equal(row.message,longName);
         });
+      });
+      await t.test('SCRUM-85 AC2 - finite approval retains its explanation and notifies only the current coordinator',async()=>{
+        // The requester differs from the current assignee, so an old-recipient fallback fails this regression.
+        const booking=(await client.query(`INSERT INTO venue_bookings(event_id,venue_id,requested_by,start_datetime,end_datetime,status)
+          VALUES(2,1,$1,'2030-10-25T02:00Z','2030-10-25T04:00Z','pending') RETURNING id`,[id.chris])).rows[0];
+        const result=await as('vera','PUT',`/venues/1/requests/${booking.id}/decision`,{
+          decision:'approved',reason:'  Use the side entrance.  ',holdExpiresAt:'2030-10-24T12:00:00Z'});
+        assert.equal(result.status,200,JSON.stringify(result.body));
+        assert.equal((await client.query('SELECT decision_notes FROM venue_bookings WHERE id=$1',[booking.id])).rows[0].decision_notes,'Use the side entrance.');
+        const notes=(await client.query("SELECT user_id,message FROM notifications WHERE details->>'kind'='venue_tentative_hold' AND (details->>'bookingId')::int=$1",[booking.id])).rows;
+        assert.equal(notes.length,1);assert.equal(notes[0].user_id,id.cara);
+        assert.match(notes[0].message,/Use the side entrance/);
       });
     } finally {
       mock.restoreAll();

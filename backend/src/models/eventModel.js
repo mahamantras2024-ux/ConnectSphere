@@ -2,14 +2,17 @@
 const pool = require('../config/db');
 const { pool: databasePool } = require('../config/db');
 const { EVENT_FIELDS } = require('../services/eventFields');
+const { responsibilityScope } = require('../services/technicalEventStatus');
+const { ORGANISATION_STATUS_SCOPE } = require('./organiserRequestStatusModel');
 
-// Lists events owned by the supplied organiser, newest first.
+// Lists own and same-organisation request statuses; can_manage preserves submitter-only mutation controls.
 async function listForOrganiser(organiserId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.purpose, e.status, e.organiser_id, e.coordinator_id, e.created_at, e.updated_at,
+      (e.organiser_id=$1) AS can_manage,
       EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding
     FROM events e
-    WHERE organiser_id = $1
+    WHERE organiser_id = $1 OR ${ORGANISATION_STATUS_SCOPE}
     ORDER BY e.created_at DESC
   `, [organiserId]);
 
@@ -47,6 +50,7 @@ async function findAccessibleById(id, user) {
       e.programme_details, e.room_layout_preference, e.accessibility_requirements,
       e.equipment_notes, e.registration_required, e.registration_capacity,
       e.special_arrangements, e.is_draft, e.status, e.created_at, e.updated_at,
+      e.registration_deadline, e.withdrawal_deadline, e.safety_recheck_required_at,
       e.equipment_items, e.technical_support_required, e.technical_support_details,
       e.video_conferencing_required, e.technical_specifications,
       e.equipment_confirmed_at IS NOT NULL AS equipment_confirmed,
@@ -56,9 +60,13 @@ async function findAccessibleById(id, user) {
       COALESCE((SELECT jsonb_agg(jsonb_build_object(
         'id', cr.id, 'coordinator_id', cr.coordinator_id, 'organiser_id', cr.organiser_id,
         'information_needed', cr.information_needed, 'message', cr.message, 'status', cr.status,
-        'organiser_response', cr.organiser_response, 'created_at', cr.created_at, 'responded_at', cr.responded_at
+        'organiser_response', cr.organiser_response, 'created_at', cr.created_at, 'responded_at', cr.responded_at,
+        'source', cr.source, 'outcome', cr.outcome, 'coordinator_comments', cr.coordinator_comments,
+        'resolved_at', cr.resolved_at, 'resolved_by_name', resolver.full_name,
+        'resolution_outcome', cr.resolution_outcome, 'resolution_comments', cr.resolution_comments
       ) ORDER BY cr.created_at DESC, cr.id DESC)
-        FROM event_clarification_requests cr WHERE cr.event_id=e.id), '[]'::jsonb) AS clarification_requests,
+        FROM event_clarification_requests cr LEFT JOIN users resolver ON resolver.id = cr.resolved_by
+        WHERE cr.event_id=e.id), '[]'::jsonb) AS clarification_requests,
       organiser.full_name AS organiser_name, organiser.email AS organiser_email, coordinator.full_name AS coordinator_name
     FROM events e
     JOIN users organiser ON organiser.id = e.organiser_id
@@ -98,44 +106,63 @@ function assignmentsFor(data, firstIndex = 1) {
   return { values, assignments };
 }
 
-// Updates a fixed set of event fields; critical changes are blocked once a venue is approved.
-async function updateEditable(id, organiserId, data, hasCriticalChanges) {
+// Updates an organiser's own draft. A submitted request is never edited directly (amendment story AC1), and the
+// draft condition is repeated here so an edit racing the submission cannot change the submitted record.
+async function updateEditable(id, organiserId, data) {
   const { values, assignments } = assignmentsFor(data);
-  const idIndex = values.length + 1;
-  const organiserIndex = values.length + 2;
-  const criticalIndex = values.length + 3;
   const result = await pool.query(`
     UPDATE events SET ${assignments.join(', ')}, updated_at=now()
-    WHERE id=$${idIndex} AND organiser_id=$${organiserIndex}
-      AND (NOT $${criticalIndex} OR NOT EXISTS (
-        SELECT 1 FROM venue_bookings vb WHERE vb.event_id=events.id AND vb.status='approved'
-      ))
-    RETURNING *`, [...values, id, organiserId, hasCriticalChanges]);
+    WHERE id=$${values.length + 1} AND organiser_id=$${values.length + 2} AND is_draft=true AND status='draft'
+    RETURNING *`, [...values, id, organiserId]);
   return result.rows[0] || null;
 }
 
-// Persists a pending critical-change request for an organiser-owned event with an approved venue and, in the
-// same statement, the assigned coordinator's notification, so a request can never exist without its notification.
-// Returns the request plus `coordinator_email` (for the follow-up email only; never sent to the organiser).
-async function createChangeRequest(id, organiserId, coordinatorId, changes, notification) {
+// Event statuses that no longer take amendments: the request is finished or withdrawn.
+const AMENDMENT_CLOSED_STATUSES = ['cancelled', 'completed', 'rejected'];
+
+/**
+ * Stores a pending amendment request with the organiser's explanation and, in the same statement, the assigned
+ * coordinator's notification, so a request can never exist without its notification (AC2, AC4). The event row itself is
+ * not touched: its accepted information stays in effect until the coordinator approves (AC3).
+ * The guard repeats the controller's rules (owner, current coordinator, submitted and still open) so a submission racing
+ * a reassignment, cancellation or decision stores nothing.
+ * @returns {Promise<object|null>} the request plus `coordinator_email` (delivery only; never sent to the organiser).
+ */
+async function createAmendmentRequest(id, organiserId, coordinatorId, changes, explanation, notification) {
   const result = await pool.query(`
     WITH cr AS (
-      INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes)
-      SELECT e.id, e.organiser_id, e.coordinator_id, $4::jsonb
+      INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes, explanation)
+      SELECT e.id, e.organiser_id, e.coordinator_id, $4::jsonb, $5
       FROM events e
       WHERE e.id=$1 AND e.organiser_id=$2 AND e.coordinator_id=$3
-        AND EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id=e.id AND vb.status='approved')
-      RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at
+        AND e.is_draft=false AND e.status <> ALL($9::text[])
+      RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, explanation, status, submitted_at
     ), notified AS (
       INSERT INTO notifications (user_id, event_id, change_request_id, type, title, message, details)
-      SELECT cr.coordinator_id, cr.event_id, cr.id, 'change_request_submitted', $5, $6, $7::jsonb FROM cr
+      SELECT cr.coordinator_id, cr.event_id, cr.id, 'change_request_submitted', $6, $7, $8::jsonb FROM cr
     )
     SELECT cr.*, coordinator.email AS coordinator_email FROM cr JOIN users coordinator ON coordinator.id=cr.coordinator_id`,
-  [id, organiserId, coordinatorId, JSON.stringify(changes), notification.title, notification.message,
-    JSON.stringify(notification.details)]);
+  [id, organiserId, coordinatorId, JSON.stringify(changes), explanation, notification.title, notification.message,
+    JSON.stringify(notification.details), [...AMENDMENT_CLOSED_STATUSES, 'draft']]);
   return result.rows[0] || null;
 }
 
+/**
+ * An event's amendment history, newest first: organiser requests and amendments the coordinator applied, with the
+ * decision, who made it, what an applied amendment changed and the checks it reopened. Callers check access first.
+ * @returns {Promise<Array<object>>} rows with requested/applied changes, explanation, status, source and review details.
+ */
+async function listAmendmentRequests(eventId) {
+  const result = await pool.query(`
+    SELECT r.id, r.requested_changes, r.applied_changes, r.explanation, r.status, r.source, r.clarification_id, r.rechecks,
+      r.submitted_at, r.reviewed_at, r.decision_reason, reviewer.full_name AS reviewed_by_name
+    FROM event_change_requests r
+    LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
+    WHERE r.event_id=$1
+    ORDER BY r.submitted_at DESC, r.id DESC`, [eventId]);
+  return result.rows;
+}
+
 // Applies approved changes to an event inside the caller's transaction and returns the updated row as JSON
 // (dates/times as plain text) so it can be compared and displayed consistently.
 async function applyChanges(db, eventId, changes) {
@@ -152,7 +179,7 @@ async function loadArrangements(db, eventId, withPeriods) {
     SELECT vb.id, vb.venue_id, vb.status, vb.start_datetime, vb.end_datetime, vb.hold_expires_at, vb.decision_by,
       v.name AS venue_name, v.capacity, v.supported_layouts, v.setup_minutes, v.turnaround_minutes
     FROM venue_bookings vb JOIN venues v ON v.id=vb.venue_id
-    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'approved')
+    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'tentative', 'approved')
     ORDER BY vb.id`, [eventId])).rows;
   if (!withPeriods || !bookings.length) return bookings;
   const periods = (await db.query(`
@@ -187,7 +214,7 @@ async function loadArrangements(db, eventId, withPeriods) {
     SELECT vb.id, vb.venue_id, vb.status, vb.start_datetime, vb.end_datetime, vb.hold_expires_at, vb.decision_by,
       v.name AS venue_name, v.capacity, v.supported_layouts, v.setup_minutes, v.turnaround_minutes
     FROM venue_bookings vb JOIN venues v ON v.id=vb.venue_id
-    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'approved')
+    WHERE vb.event_id=$1 AND vb.status IN ('pending', 'tentative', 'approved')
     ORDER BY vb.id`, [eventId])).rows;
   if (!withPeriods || !bookings.length) return bookings;
   const periods = (await db.query(`
@@ -206,15 +233,15 @@ async function userIdsWithRole(db, role) {
   return result.rows.map((row) => row.id);
 }
 
-// Replaces an owned event's equipment requirements before confirmation and advances its reviewable version.
-// The confirmation check lives in the UPDATE so a confirmation committed mid-edit cannot be overwritten.
-// `db` may be a transaction client so a status-change notification commits with the edit.
-async function updateEquipment(id, organiserId, data, db = pool) {
-  const result = await db.query(`
+// Replaces an owned draft's equipment requirements and advances its reviewable version. After submission equipment
+// changes are amendment requests (amendment story AC1); the draft check lives in the UPDATE so a submission committed
+// mid-edit cannot be overwritten.
+async function updateEquipment(id, organiserId, data) {
+  const result = await pool.query(`
     UPDATE events SET equipment_items=$3::jsonb, technical_support_required=$4, technical_support_details=$5,
       video_conferencing_required=$6, technical_specifications=$7,
       equipment_requirements_version=equipment_requirements_version+1, updated_at=now()
-    WHERE id=$1 AND organiser_id=$2 AND equipment_confirmed_at IS NULL
+    WHERE id=$1 AND organiser_id=$2 AND is_draft=true AND status='draft'
     RETURNING *`, [id, organiserId, JSON.stringify(data.equipmentItems), data.technicalSupportRequired,
     data.technicalSupportDetails, data.videoConferencingRequired, data.technicalSpecifications]);
   return result.rows[0] || null;
@@ -457,6 +484,8 @@ async function releaseEquipmentReservation(reservationId, staffId) {
         SET status='cancelled', released_by=$2, released_at=now()
         FROM events event_record
         WHERE allocation.id=$1 AND allocation.status='reserved'
+          -- Release permission follows the same current responsibility scope as the event-status view.
+          AND ${responsibilityScope('event_record', '$2')}
           AND event_record.id=allocation.event_id
           AND (
             event_record.status='cancelled'
@@ -835,10 +864,10 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
 
 /**
  * Lists upcoming active equipment requests that have not been reviewed at their current version.
- * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
+ * Requires an assigned Event Coordinator and an explicit responsibility for the authenticated staffId.
  * @returns {Promise<Array<object>>} event, venue, and organiser-submitted technical requirements.
  */
-async function listPendingEquipmentRequests() {
+async function listPendingEquipmentRequests(staffId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date, e.proposed_start_time,
       e.proposed_end_time, e.equipment_items, e.equipment_notes, e.technical_support_required,
@@ -854,7 +883,8 @@ async function listPendingEquipmentRequests() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+    -- AC6: a role alone does not grant responsibility for this event.
+    WHERE ${responsibilityScope()} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND (
@@ -869,7 +899,7 @@ async function listPendingEquipmentRequests() {
         WHERE r.event_id=e.id AND r.request_version=e.equipment_requirements_version
       )
     ORDER BY e.proposed_date, e.proposed_start_time, e.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
@@ -888,7 +918,8 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
     WITH target AS (
       SELECT e.id, e.equipment_requirements_version
       FROM events e
-      WHERE e.id=$1 AND e.equipment_requirements_version=$5
+      -- Check before inserting: a new review must not manufacture responsibility.
+      WHERE e.id=$1 AND ${responsibilityScope('e', '$4')} AND e.equipment_requirements_version=$5
         AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
@@ -1115,9 +1146,9 @@ async function markEquipmentAvailable(inventoryId, resolutionNote, staffId) {
 
 /**
  * Lists reviewed requests with equipment that still needs reservation, including the event's full technical requirements.
- * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
+ * Requires an assigned Event Coordinator and an explicit responsibility for the authenticated staffId.
  */
-async function listEquipmentReservationCandidates() {
+async function listEquipmentReservationCandidates(staffId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
       e.proposed_start_time, e.proposed_end_time, e.equipment_items, e.equipment_notes,
@@ -1136,7 +1167,8 @@ async function listEquipmentReservationCandidates() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+    -- AC6: a role alone does not grant responsibility for this event.
+    WHERE ${responsibilityScope()} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
@@ -1147,15 +1179,15 @@ async function listEquipmentReservationCandidates() {
           AND reservation.status='reserved'
       )
     ORDER BY e.proposed_date, e.proposed_start_time, e.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
 /**
- * Lists actionable active allocations and retained releases with their event and audit details.
+ * Lists actionable allocations and retained releases only within the authenticated staffId responsibility scope.
  * Old event slots remain actionable after cancellation or a changed schedule, even when that original date passed.
  */
-async function listActiveEquipmentReservations() {
+async function listActiveEquipmentReservations(staffId) {
   const result = await pool.query(`
     SELECT reservation.id, reservation.event_id, e.name AS event_name,
       e.status AS event_status,
@@ -1179,7 +1211,7 @@ async function listActiveEquipmentReservations() {
     LEFT JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
     LEFT JOIN equipments inventory ON inventory.id=reserved_item.inventory_id
     -- A cancellation or changed event slot still holds stock until staff explicitly release it.
-    WHERE (reservation.status='reserved' AND (
+    WHERE ${responsibilityScope()} AND ((reservation.status='reserved' AND (
         reservation.event_date > CURRENT_DATE
         OR (reservation.event_date=CURRENT_DATE AND reservation.end_time > LOCALTIME)
         OR e.status='cancelled'
@@ -1188,12 +1220,12 @@ async function listActiveEquipmentReservations() {
           OR e.proposed_start_time IS DISTINCT FROM reservation.start_time
           OR e.proposed_end_time IS DISTINCT FROM reservation.end_time
         ))
-      )) OR reservation.status='cancelled'
+      )) OR reservation.status='cancelled')
     GROUP BY reservation.id, e.name, e.status, e.proposed_date,
       e.proposed_start_time, e.proposed_end_time, staff.full_name, releaser.full_name
     ORDER BY CASE WHEN reservation.status='reserved' THEN 0 ELSE 1 END,
       reservation.event_date, reservation.start_time, reservation.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
@@ -1201,9 +1233,10 @@ async function listActiveEquipmentReservations() {
  * Finds matching operational assets for itemized requests and optional staff-entered equipment.
  * @param {number} eventId event with a current equipment review and an assigned Event Coordinator.
  * @param {Array<{item:string,quantity:number}>} additionalItems equipment extracted from other request text.
+ * @param {number} staffId authenticated staff member whose responsibility authorizes this read.
  * @returns {Promise<object|null>} requested names, quantities and matching available assets.
  */
-async function getEquipmentReservationAvailability(eventId, additionalItems = []) {
+async function getEquipmentReservationAvailability(eventId, additionalItems = [], staffId) {
   const event = (await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
       e.proposed_start_time::text AS proposed_start_time,
@@ -1227,11 +1260,11 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+    WHERE e.id=$1 AND ${responsibilityScope('e', '$2')} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
-  `, [eventId])).rows[0];
+  `, [eventId, staffId])).rows[0];
   if (!event) return null;
   if (event.already_reserved) return { event, alreadyReserved: true, items: [] };
 
@@ -1389,12 +1422,13 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
         ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
         LIMIT 1
       ) venue ON true
-      WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+      -- Authorize inside the transaction before exposing or reserving event equipment.
+      WHERE e.id=$1 AND ${responsibilityScope('e', '$2')} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
       FOR UPDATE OF e
-    `, [eventId])).rows[0];
+    `, [eventId, staffId])).rows[0];
     if (!event) {
       await client.query('ROLLBACK');
       return { conflict: 'This event does not have a current equipment review or is no longer upcoming.' };
@@ -1583,32 +1617,11 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
   }
 }
 
-// Persists a pending equipment change request once arrangements are confirmed, leaving the event untouched, and stores
-// the assigned coordinator's notification in the same statement (as createChangeRequest does for other critical fields).
-// Returns the request plus `coordinator_email` (for the follow-up email only; never sent to the organiser).
-async function createEquipmentChangeRequest(id, organiserId, coordinatorId, changes, notification) {
-  const result = await pool.query(`
-    WITH cr AS (
-      INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes)
-      SELECT e.id, e.organiser_id, e.coordinator_id, $4::jsonb
-      FROM events e
-      WHERE e.id=$1 AND e.organiser_id=$2 AND e.coordinator_id=$3 AND e.equipment_confirmed_at IS NOT NULL
-      RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at
-    ), notified AS (
-      INSERT INTO notifications (user_id, event_id, change_request_id, type, title, message, details)
-      SELECT cr.coordinator_id, cr.event_id, cr.id, 'change_request_submitted', $5, $6, $7::jsonb FROM cr
-    )
-    SELECT cr.*, coordinator.email AS coordinator_email FROM cr JOIN users coordinator ON coordinator.id=cr.coordinator_id`,
-  [id, organiserId, coordinatorId, JSON.stringify(changes), notification.title, notification.message,
-    JSON.stringify(notification.details)]);
-  return result.rows[0] || null;
-}
-
-// Lists pending critical changes for the event's current coordinator, including work inherited at handover.
+// Lists pending amendment requests for the event's current coordinator, including work inherited at handover.
 async function listPendingChangeRequests(coordinatorId) {
   const result = await pool.query(`
     SELECT r.id, r.event_id, e.name AS event_name, r.organiser_id,
-      organiser.full_name AS organiser_name, r.requested_changes, r.status, r.submitted_at,
+      organiser.full_name AS organiser_name, r.requested_changes, r.explanation, r.status, r.submitted_at,
       to_jsonb(e) AS event_record
     FROM event_change_requests r
     JOIN events e ON e.id=r.event_id
@@ -1617,6 +1630,55 @@ async function listPendingChangeRequests(coordinatorId) {
     WHERE e.coordinator_id=$1 AND r.status='pending'
     ORDER BY r.submitted_at DESC, r.id DESC`, [coordinatorId]);
   return result.rows;
+}
+
+// Columns returned for a clarification, including where it took place and its resolution (offline clarifications story).
+const CLARIFICATION_COLUMNS = `id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response,
+  created_at, responded_at, source, outcome, coordinator_comments, resolved_at, resolved_by, resolution_outcome, resolution_comments`;
+
+/**
+ * Records a clarification that took place offline (AC1) for an event assigned to the coordinator: the question, the
+ * organiser's answer and/or the agreed outcome, and comments. It is stored answered, or already resolved (AC2).
+ * @returns {Promise<object|null>} the record, or null when the event is not assigned to the coordinator.
+ */
+async function recordOfflineClarification(eventId, coordinatorId, { informationNeeded, message, response, outcome, comments, resolve }) {
+  const result = await pool.query(`
+    INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message, source, status,
+      organiser_response, responded_at, outcome, coordinator_comments, resolved_at, resolved_by)
+    SELECT e.id, e.coordinator_id, e.organiser_id, $3::jsonb, $4, 'offline', CASE WHEN $8 THEN 'resolved' ELSE 'responded' END,
+      $5::text, CASE WHEN $5::text IS NULL THEN NULL ELSE now() END, $6, $7,
+      CASE WHEN $8 THEN now() END, CASE WHEN $8 THEN e.coordinator_id END
+    FROM events e WHERE e.id=$1 AND e.coordinator_id=$2
+    RETURNING ${CLARIFICATION_COLUMNS}, (SELECT u.full_name FROM users u WHERE u.id = resolved_by) AS resolved_by_name`,
+  [eventId, coordinatorId, JSON.stringify(informationNeeded), message, response, outcome, comments, resolve]);
+  return result.rows[0] || null;
+}
+
+/** One clarification of an event assigned to the coordinator, or null. */
+async function findCoordinatorClarification(eventId, clarificationId, coordinatorId) {
+  const result = await pool.query(`
+    SELECT ${CLARIFICATION_COLUMNS.split(',').map((column) => `cr.${column.trim()}`).join(', ')}
+    FROM event_clarification_requests cr JOIN events e ON e.id = cr.event_id
+    WHERE cr.event_id=$1 AND cr.id=$2 AND e.coordinator_id=$3`, [eventId, clarificationId, coordinatorId]);
+  return result.rows[0] || null;
+}
+
+/**
+ * Marks a clarification resolved (AC2) with its resolution outcome and comments, stored apart from everything recorded
+ * earlier: the question, any answer, the earlier outcome and comments and their times stay as they were, so the history is
+ * complete. Only an open (pending or answered) one can be resolved.
+ * @returns {Promise<object|null>} the resolved record, or null when it was resolved meanwhile.
+ */
+async function resolveClarification(eventId, clarificationId, coordinatorId, { outcome, comments }) {
+  const result = await pool.query(`
+    UPDATE event_clarification_requests cr SET status='resolved', resolved_at=now(), resolved_by=$3,
+      resolution_outcome=$4, resolution_comments=$5
+    FROM events e
+    WHERE e.id=cr.event_id AND cr.event_id=$1 AND cr.id=$2 AND e.coordinator_id=$3 AND cr.status IN ('pending', 'responded')
+    RETURNING ${CLARIFICATION_COLUMNS.split(',').map((column) => `cr.${column.trim()}`).join(', ')},
+      (SELECT u.full_name FROM users u WHERE u.id = cr.resolved_by) AS resolved_by_name`,
+  [eventId, clarificationId, coordinatorId, outcome, comments]);
+  return result.rows[0] || null;
 }
 
 // Saves a coordinator's clarification request only for an event assigned to them.
@@ -1644,8 +1706,9 @@ module.exports = {
   create,
   updateEditable,
   updateEquipment,
-  createEquipmentChangeRequest,
-  createChangeRequest,
+  createAmendmentRequest,
+  listAmendmentRequests,
+  AMENDMENT_CLOSED_STATUSES,
   applyChanges,
   loadArrangements,
   userIdsWithRole,
@@ -1660,6 +1723,9 @@ module.exports = {
   getEquipmentReservationAvailability,
   createEquipmentReservation,
   createClarificationRequest,
+  recordOfflineClarification,
+  findCoordinatorClarification,
+  resolveClarification,
   respondToClarification,
   findAccessibleById,
   listForOrganiser,

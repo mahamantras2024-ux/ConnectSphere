@@ -18,6 +18,9 @@ const baseEvent = { id: 101, name: 'Community Workshop', organiser_id: 12, coord
   equipment_items: [{ item: 'Wireless microphone', quantity: 2 }, { item: 'Projector', quantity: 1 }],
   technical_support_required: true, technical_support_details: 'AV technician 09:00-12:00',
   video_conferencing_required: true, technical_specifications: 'Zoom for 50 remote participants', equipment_confirmed: false };
+// Equipment is only edited directly on a draft; after submission it changes through an amendment request
+// (Request All Post-Submission Amendments AC1), so the direct-edit tests use this record as a draft.
+const draftEvent = { ...baseEvent, status: 'draft', is_draft: true };
 
 // Renders the application at a route with a stored session token.
 function open(path) {
@@ -53,6 +56,7 @@ beforeEach(() => {
     if (path === '/events') return { events: [event] };
     if (path === '/events/change-requests') return { changeRequests: [] };
     if (path === '/events/101') return { event };
+    if (path === '/events/101/amendment-requests') return { amendmentRequests: [] };
     throw new Error('Event not found.');
   });
   api.post.mockResolvedValue({ event: { id: 101 }, message: 'Event request submitted.' });
@@ -176,11 +180,12 @@ it('EQ AC1/AC2 - event details show items, support needs, specifications, other 
   }
 });
 
-// Test case: Edits equipment before confirmation; the PUT carries the full replacement and the page confirms and shows the new list.
-it('EQ AC3/AC4 - before confirmation the organiser updates equipment and sees a saved confirmation', async () => {
+// Test case: Edits a draft's equipment; the PUT carries the full replacement and the page confirms and shows the new list.
+it('EQ AC3/AC4 - the organiser updates a draft\'s equipment and sees a saved confirmation', async () => {
   // Arrange
+  event = { ...draftEvent };
   const savedItems = [{ item: 'Wireless microphone', quantity: 4 }];
-  api.put.mockResolvedValue({ message: 'Equipment requirements saved.', event: { ...baseEvent, equipment_items: savedItems,
+  api.put.mockResolvedValue({ message: 'Equipment requirements saved.', event: { ...draftEvent, equipment_items: savedItems,
     technical_support_required: false, technical_support_details: null, proposed_date: '2026-10-14T16:00:00.000Z' } });
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
@@ -208,27 +213,25 @@ it('EQ AC3/AC4 - before confirmation the organiser updates equipment and sees a 
   expect(screen.getByText('Equipment requirements saved.')).toBeTruthy();
 });
 
-// Test case: Edits equipment after confirmation; the request is sent but the confirmed list stays displayed with the change-request message.
-it('EQ AC3 - after confirmation an edit is submitted as a change request and confirmed equipment stays displayed', async () => {
-  event = { ...baseEvent, equipment_confirmed: true };
-  api.put.mockResolvedValue({ changeRequest: { id: 7, status: 'pending' },
-    message: 'Change request submitted. The confirmed equipment arrangements remain in effect, and the Event Coordinator has been notified.' });
-  open('/organizer/events/101');
-  await screen.findByRole('heading', { name: event.name });
-  expect(within(equipmentSection()).getByText('Arrangements confirmed')).toBeTruthy();
-  expect(within(equipmentSection()).queryByRole('button', { name: 'Edit Equipment requirements' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Request change to Equipment requirements' }));
-  expect(screen.getByText(/sent to the Event Coordinator as a change request/)).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('Quantity for item 1'), { target: { value: '5' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Submit change request' }));
-  expect(api.put).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-  expect(await screen.findByText(/confirmed equipment arrangements remain in effect/)).toBeTruthy();
-  expect(within(equipmentSection()).getByText('Wireless microphone × 2, Projector × 1')).toBeTruthy();
-});
+// Test case: A submitted request offers no direct equipment edit, whether or not Technical Support has confirmed it;
+// equipment changes go through an amendment request instead (Request All Post-Submission Amendments AC1).
+it.each([[false, 'Awaiting technical arrangement'], [true, 'Arrangements confirmed']])(
+  'AM AC1 - a submitted request (confirmed %s) shows equipment read-only', async (confirmed, badge) => {
+    // Arrange: the submitted record from the shared fixture, confirmed or not.
+    event = { ...baseEvent, equipment_confirmed: confirmed };
+    // Act
+    open('/organizer/events/101');
+    await screen.findByRole('heading', { name: event.name });
+    // Assert: the state is shown, but neither the old edit nor the old change-request control is offered.
+    expect(within(equipmentSection()).getByText(badge)).toBeTruthy();
+    expect(within(equipmentSection()).queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Equipment requirements/ })).toBeNull();
+    expect(within(equipmentSection()).getByText('Wireless microphone × 2, Projector × 1')).toBeTruthy();
+  });
 
 // Test case: The save fails; the error is shown, the edits stay in the form, and no saved confirmation appears.
 it('EQ AC4 - a failed save keeps the edits and shows the error instead of a confirmation', async () => {
+  event = { ...draftEvent };
   let rejectSave;
   api.put.mockImplementation(() => new Promise((_, reject) => { rejectSave = reject; }));
   open('/organizer/events/101');
@@ -255,6 +258,7 @@ it('EQ AC4 - a failed save keeps the edits and shows the error instead of a conf
 
 // Test case: Clears a quantity in the detail editor; the reason is shown and nothing is sent.
 it('EQ AC3 - the detail editor blocks invalid quantities before saving', async () => {
+  event = { ...draftEvent };
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: event.name });
   fireEvent.click(screen.getByRole('button', { name: 'Edit Equipment requirements' }));
@@ -278,7 +282,8 @@ it('EQ AC1 - coordinators can read equipment requirements but cannot edit them, 
 
 // Test case: An event saved before this story has no equipment fields; the page states nothing was requested instead of inventing values.
 it('EQ AC1 - events without recorded equipment show that nothing was requested', async () => {
-  event = { id: 101, name: 'Legacy event', organiser_id: 12 };
+  // A legacy draft, so the editor can also be opened.
+  event = { id: 101, name: 'Legacy event', organiser_id: 12, status: 'draft', is_draft: true };
   open('/organizer/events/101');
   await screen.findByRole('heading', { name: 'Legacy event' });
   const section = equipmentSection();

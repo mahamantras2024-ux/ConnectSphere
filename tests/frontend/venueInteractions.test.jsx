@@ -157,12 +157,12 @@ it('[SCRUM-35 AC1] - image read failures show a useful error and a second upload
  fireEvent.change(input,{target:{files:[new File(['image'],'b.png',{type:'image/png'})]}});expect(readers[0].abort).toHaveBeenCalledOnce();readers[1].result='data:image/png;base64,YQ==';act(()=>readers[1].onload());expect(screen.getByAltText('Venue preview').src).toContain('data:image/png');
 });
 // Test case: Changes availability/buffers/hours, receives a proxy warning and checks Continue editing permits the later save.
-it('[SCRUM-35 AC1/AC2] - form controls save optional fields and warnings can be dismissed for further editing',async()=>{
+it('[SCRUM-35 AC1/AC2; SCRUM-105 AC3] - form controls save optional fields and warnings can be dismissed for further editing',async()=>{
  const save=vi.fn();api.put.mockRejectedValueOnce(Object.assign(new Error('Review'),{details:{code:'BOOKING_IMPACT',confirmationToken:'token',affectedBookings:[]}})).mockResolvedValueOnce(venue);
  render(<AddVenueModal venue={venue} onClose={()=>{}} onAdd={save}/>);
  fireEvent.change(screen.getByLabelText('Availability'),{target:{value:'Maintenance'}});fireEvent.change(screen.getByLabelText('Turnaround time (minutes) *'),{target:{value:'30'}});
- fireEvent.change(screen.getByLabelText('Closing time *'),{target:{value:'20:00'}});fireEvent.click(screen.getByRole('button',{name:'Save changes'}));await screen.findByText('These confirmed bookings may be affected');
- fireEvent.click(screen.getByRole('button',{name:'Continue editing'}));expect(screen.queryByText('These confirmed bookings may be affected')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Save changes'}));await waitFor(()=>expect(save).toHaveBeenCalledWith(venue));
+ fireEvent.change(screen.getByLabelText('Closing time *'),{target:{value:'20:00'}});fireEvent.click(screen.getByRole('button',{name:'Save changes'}));await screen.findByText('Bookings to review');
+ fireEvent.click(screen.getByRole('button',{name:'Continue editing'}));expect(screen.queryByText('Bookings to review')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Save changes'}));await waitFor(()=>expect(save).toHaveBeenCalledWith(venue));
 });
 // Test case: Submits twice while saving and checks one update request and no Escape closure before completion.
 it('[SCRUM-35 AC1] - pending form submits do not write twice or close on Escape',async()=>{

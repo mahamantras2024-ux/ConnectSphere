@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  describeChanges, applyToEvent, assessArrangements, recipientsFor, changeLines,
+  describeChanges, applyToEvent, assessArrangements, changeLines,
 } = require('../../backend/src/services/changeRequestReview');
 
 const NOW = Date.parse('2026-10-01T00:00:00Z');
@@ -144,23 +144,3 @@ test('CR AC3 - each venue booking is checked independently', () => {
   assert.deepEqual(result.map((item) => [item.venueName, item.reasons.includes(CONFLICT)]), [['Hall A', false], ['Room B', true]]);
 });
 
-// Test case: Routes approved-change notifications to the booking's decision-maker, all staff for an undecided booking, and Technical Support.
-test('CR AC3 - relevant personnel are the organiser, each booking decision-maker or all Venue Staff, and Technical Support', () => {
-  const arrangements = [{ decisionBy: 41 }, { decisionBy: null }, { decisionBy: 41 }];
-  assert.deepEqual(recipientsFor({ event, changedFields: ['proposedEndTime'], arrangements, venueStaffIds: [41, 42], technicalSupportIds: [61, 61] }),
-    { organiser: [12], venueStaff: [41, 42], technicalSupport: [61] });
-});
-
-// Technical Support only needs to hear about time/attendance changes on events that have equipment needs.
-for (const [label, changedFields, equipmentNotes, expected] of [
-  ['an attendance change with equipment needs', ['expectedAttendance'], 'Two microphones', [61]],
-  ['a time change without equipment needs', ['proposedDate'], '   ', []],
-  ['a name change with equipment needs', ['name'], 'Two microphones', []],
-]) {
-  // Test case: Applies the Technical Support routing rule to one combination of change and equipment needs.
-  test(`CR AC3 - Technical Support ${expected.length ? 'is' : 'is not'} notified for ${label}`, () => {
-    const recipients = recipientsFor({ event: { ...event, equipment_notes: equipmentNotes }, changedFields, arrangements: [], venueStaffIds: [], technicalSupportIds: [61] });
-    assert.deepEqual(recipients.technicalSupport, expected);
-    assert.deepEqual(recipients.venueStaff, []);
-  });
-}

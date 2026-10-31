@@ -1,6 +1,5 @@
 // File: Unit tests for the approve/reject and safety-review rules (Event Coordinator Approves/Rejects Event story).
-// Test scope: Pure rules only. Expected outcomes come from the ACs, Week 7 change 6 and the agreed rule (approve needs
-// every arrangement plus a passed safety check; reject is allowed when arrangements fail; clarifications block both).
+// Test scope: Pure rules only. Expected outcomes come from the ACs, Week 7 change 6 and the agreed rule (SCRUM-92 initial decisions need resolved clarifications; final confirmation needs all arrangements and safety).
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -15,6 +14,9 @@ const ready = Object.freeze({
   equipment_items: [], technical_support_required: false, video_conferencing_required: false, equipment_notes: null,
   equipment_confirmed_at: null, latest_safety_check: { outcome: 'approved' }, now: NOW,
 });
+const { evaluateTransition } = require('../../backend/src/services/eventLifecyclePolicy');
+// SCRUM-92 moves arrangement gates to final confirmation while retaining their boundary cases.
+const confirmationCode = changes => evaluateTransition('confirmed', { ...ready, ...changes, status: 'planning' })?.code ?? null;
 const codeFor = (decision, changes) => evaluateDecision(decision, { ...ready, ...changes })?.code ?? null;
 // The same event before its safety check: `ready` already has a passed check, so it is no longer due for review.
 const unchecked = Object.freeze({ ...ready, latest_safety_check: null });
@@ -26,9 +28,9 @@ test('AR AC1 - a request with confirmed arrangements and a passed safety check c
 });
 
 // Test case: The agreed rule is pinned so an accidental edit to the rules table is noticed in review.
-test('AR AC1 - approval needs every requirement while rejection only needs clarifications resolved', () => {
+test('SCRUM-92 AC4 - initial approval and rejection require resolved clarifications', () => {
   assert.deepEqual(DECISION_REQUIREMENTS, {
-    approved: ['clarificationsResolved', 'venueConfirmed', 'technicalConfirmed', 'safetyPassed'],
+    approved: ['clarificationsResolved'],
     rejected: ['clarificationsResolved'],
   });
 });
@@ -53,9 +55,10 @@ for (const [label, bookings, expected] of [
   ['one approved venue plus a legacy pending row with no hold deadline', [{ status: 'approved' }, { status: 'pending', hold_expires_at: null }], null],
   ['two approved venues', [{ status: 'approved' }, { status: 'approved' }], null],
 ]) {
-  // Test case: Applies the venue rule to one booking combination; only approval depends on it.
-  test(`AR AC1 - venue arrangements with ${label} ${expected ? `block approval (${expected})` : 'allow approval'}`, () => {
-    assert.equal(codeFor('approved', { bookings }), expected);
+  // Test case: Applies the venue rule to one booking combination; only final confirmation depends on it.
+  test(`SCRUM-92 AC6 - venue arrangements with ${label} ${expected ? `block confirmation (${expected})` : 'allow confirmation'}`, () => {
+    assert.equal(confirmationCode({ bookings }), expected);
+    assert.equal(codeFor('approved', { bookings }), null);
     // Agreed rule: unconfirmed arrangements never stop a rejection.
     assert.equal(codeFor('rejected', { bookings }), null);
   });
@@ -72,14 +75,15 @@ for (const [label, needs, confirmed, expected] of [
   ['equipment items, confirmed by Technical Support', { equipment_items: [{ item: 'Projector', quantity: 1 }] }, true, null],
 ]) {
   // Test case: Applies the technical rule to one combination of needs and confirmation.
-  test(`AR AC1 - technical arrangements with ${label} ${expected ? 'block approval' : 'allow approval'}`, () => {
+  test(`SCRUM-92 AC6 - technical arrangements with ${label} ${expected ? 'block confirmation' : 'allow confirmation'}`, () => {
     const changes = { ...needs, equipment_confirmed_at: confirmed ? '2029-12-31T00:00:00Z' : null };
-    assert.equal(codeFor('approved', changes), expected);
+    assert.equal(confirmationCode(changes), expected);
+    assert.equal(codeFor('approved', changes), null);
     assert.equal(codeFor('rejected', changes), null);
   });
 }
 
-// Operational safety check (AC1/AC2): only a passed check allows approval; a failed one still allows rejection.
+// Operational safety check (AC1/AC2): only a passed check allows final confirmation; a failed one still allows rejection.
 for (const [label, check, expected] of [
   ['not yet performed', null, 'SAFETY_NOT_COMPLETED'],
   ['failed', { outcome: 'rejected' }, 'SAFETY_FAILED'],
@@ -87,8 +91,9 @@ for (const [label, check, expected] of [
   ['passed', { outcome: 'approved' }, null],
 ]) {
   // Test case: Applies the safety rule to one latest-check outcome.
-  test(`AR AC2 - a safety check ${label} ${expected ? 'blocks approval but not rejection' : 'allows approval'}`, () => {
-    assert.equal(codeFor('approved', { latest_safety_check: check }), expected);
+  test(`SCRUM-92 AC6 - a safety check ${label} ${expected ? 'blocks confirmation but not initial rejection' : 'allows approval'}`, () => {
+    assert.equal(confirmationCode({ latest_safety_check: check }), expected);
+    assert.equal(codeFor('approved', { latest_safety_check: check }), null);
     assert.equal(codeFor('rejected', { latest_safety_check: check }), null);
   });
 }
@@ -109,7 +114,7 @@ for (const [label, changes, expected] of [
 // Test case: Several blockers at once are reported in the rules table's order (clarifications first).
 test('AR AC7 - when several requirements fail, the outstanding clarification is reported first', () => {
   assert.equal(codeFor('approved', { pending_clarifications: 1, bookings: [], latest_safety_check: null }), 'CLARIFICATION_OUTSTANDING');
-  assert.equal(codeFor('approved', { bookings: [], latest_safety_check: null }), 'VENUE_NOT_CONFIRMED');
+  assert.equal(confirmationCode({ bookings: [], latest_safety_check: null }), 'VENUE_NOT_CONFIRMED');
 });
 
 // Test case: The rules are data-driven - passing a different rules table changes the outcome without code changes.
@@ -135,7 +140,7 @@ for (const [label, changes, expected] of [
   ['an outstanding clarification (not a safety prerequisite)', { pending_clarifications: 1 }, null],
   ['no confirmed venue', { bookings: [] }, 'VENUE_NOT_CONFIRMED'],
   ['unconfirmed technical arrangements', { technical_support_required: true }, 'TECHNICAL_NOT_CONFIRMED'],
-  ['a decided event', { status: 'approved' }, 'NOT_REVIEWABLE'],
+  ['an initially approved event', { status: 'approved' }, null],
   ['a draft', { status: 'draft', is_draft: true }, 'NOT_REVIEWABLE'],
 ]) {
   // Test case: Applies the safety-review prerequisite to one situation.
@@ -185,11 +190,11 @@ for (const [label, area, changes, expected] of [
   });
 }
 
-// Test case: Completing every stage is not enough to proceed; only a new passed check allows approval (AC4/AC5).
-test('OFC AC4/AC5 - after the requested changes are complete, approval still waits for a new passed safety check', () => {
+// Test case: Completing every stage is not enough to proceed; only a new passed check allows final confirmation (AC4/AC5).
+test('SCRUM-92 AC6 / OFC AC4/AC5 - final confirmation waits for a new passed safety check after changes', () => {
   const changed = { ...ready, safety_changes_open: [], latest_safety_check: { outcome: 'changes_requested' } };
   assert.equal(evaluateSafetyReview(changed), null);
-  assert.equal(codeFor('approved', changed), 'SAFETY_CHANGES_REQUESTED');
+  assert.equal(confirmationCode(changed), 'SAFETY_CHANGES_REQUESTED');
   assert.equal(codeFor('approved', { ...changed, latest_safety_check: { outcome: 'approved' } }), null);
 });
 
@@ -205,5 +210,41 @@ for (const [label, check, expected] of [
   // Test case: Whether another safety review is due after this latest outcome.
   test(`OFC AC4/AC5 - after ${label} another safety review is ${expected ? 'not due' : 'due'}`, () => {
     assert.equal(evaluateSafetyReview({ ...unchecked, latest_safety_check: check })?.code ?? null, expected);
+  });
+}
+
+test('SCRUM-92 AC4/AC8 - planning cannot overwrite the stored initial decision', () => {
+  // Arrange an already approved request now in planning; Act / Assert: preserve its decision metadata.
+  assert.equal(codeFor('approved', { status: 'planning', decided_at: '2030-01-01' }), 'ALREADY_DECIDED');
+  assert.equal(codeFor('rejected', { status: 'planning', decided_at: '2030-01-01' }), 'ALREADY_DECIDED');
+});
+
+// ---------- Record Offline Clarifications and Apply Agreed Amendments AC5: re-checks after an applied amendment ----------
+
+// Test case: A confirmed booking flagged by an applied amendment no longer confirms the venue until Venue Staff re-confirm it,
+// so the event cannot be confirmed again (SCRUM-92's final gate) or safety checked.
+for (const [label, bookings, expected] of [
+  ['a flagged confirmed booking', [{ status: 'approved', hold_expires_at: null, recheck_required_at: '2030-01-01T00:00:00Z' }], 'VENUE_RECHECK'],
+  ['one flagged and one clear booking', [{ status: 'approved', hold_expires_at: null }, { status: 'approved', hold_expires_at: null, recheck_required_at: '2030-01-01T00:00:00Z' }], 'VENUE_RECHECK'],
+  ['a re-confirmed booking', [{ status: 'approved', hold_expires_at: null, recheck_required_at: null }], null],
+]) {
+  test(`OC AC5 - ${label} ${expected ? 'blocks' : 'allows'} confirmation and the safety check`, () => {
+    assert.equal(evaluateTransition('confirmed', { ...ready, status: 'planning', bookings })?.code ?? null, expected);
+    assert.equal(evaluateSafetyReview({ ...unchecked, bookings })?.code ?? null, expected);
+  });
+}
+
+// Test case: A safety check recorded before the amendment changed the arrangements no longer counts: confirmation waits for a
+// new passed check, and the Safety Officer may check again. One recorded after the change counts as usual. Boundary: a check
+// at exactly the moment the re-check was required is the old check.
+for (const [label, checkedAt, approval, review] of [
+  ['before the change', '2030-01-01T00:00:00.000Z', 'SAFETY_NOT_COMPLETED', null],
+  ['at the moment of the change', '2030-01-02T00:00:00.000Z', 'SAFETY_NOT_COMPLETED', null],
+  ['after the change', '2030-01-02T00:00:01.000Z', null, 'SAFETY_CHECK_COMPLETE'],
+]) {
+  test(`OC AC5 - a passed safety check recorded ${label} ${approval ? 'no longer counts' : 'counts'}`, () => {
+    const context = { latest_safety_check: { outcome: 'approved', checked_at: checkedAt }, safety_recheck_required_at: '2030-01-02T00:00:00.000Z' };
+    assert.equal(evaluateTransition('confirmed', { ...ready, status: 'planning', ...context })?.code ?? null, approval);
+    assert.equal(evaluateSafetyReview({ ...ready, ...context })?.code ?? null, review);
   });
 }

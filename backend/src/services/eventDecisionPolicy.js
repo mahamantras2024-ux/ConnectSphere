@@ -3,11 +3,11 @@
 /**
  * Which requirements each decision needs, in the order they are reported. This is the single place to change the
  * business rule once the customer clarifies it: add or remove requirement names from a list (see REQUIREMENTS below).
- * Current agreement: approval needs every arrangement and a passed safety check; rejection is possible even when
- * arrangements fail, but never while the organiser still owes a clarification (AC7).
+ * SCRUM-92: initial decisions need resolved clarifications. Arrangement and safety clearance
+ * gate final confirmation separately, so initial approval can precede planning.
  */
 const DECISION_REQUIREMENTS = {
-  approved: ['clarificationsResolved', 'venueConfirmed', 'technicalConfirmed', 'safetyPassed'],
+  approved: ['clarificationsResolved'],
   rejected: ['clarificationsResolved'],
 };
 
@@ -34,7 +34,7 @@ const SAFETY_CHANGE_AREAS = {
 /** True when a booking still occupies the venue as a decided or undecided arrangement (not rejected/cancelled/expired). */
 function isLiveBooking(booking, now) {
   if (booking.status === 'approved') return true;
-  return booking.status === 'pending' && booking.hold_expires_at != null && new Date(booking.hold_expires_at).getTime() > now;
+  return ['pending','tentative'].includes(booking.status) && booking.hold_expires_at != null && new Date(booking.hold_expires_at).getTime() > now;
 }
 
 /** True when the event asks for any equipment, technical support, hybrid facilities or other equipment help.
@@ -45,9 +45,21 @@ function needsTechnicalArrangements(event) {
 }
 
 /**
+ * The safety check that still counts: the latest one, unless an applied amendment changed the arrangements after it was
+ * recorded (Record Offline Clarifications and Apply Agreed Amendments AC5), in which case the event needs a new check.
+ * @returns {object|null} the latest check, or null when there is none or it predates the required re-check.
+ */
+function currentSafetyCheck(context) {
+  const check = context.latest_safety_check;
+  if (!check) return null;
+  const recheckFrom = context.safety_recheck_required_at;
+  return recheckFrom && new Date(check.checked_at).getTime() <= new Date(recheckFrom).getTime() ? null : check;
+}
+
+/**
  * Each requirement inspects the decision context and returns { met, code, message }.
- * Context: the event row (snake_case), `pending_clarifications` (count), `bookings` ({ status, hold_expires_at }[]),
- * `latest_safety_check` ({ outcome } | null) and `now` (ms).
+ * Context: the event row (snake_case), `pending_clarifications` (count), `bookings` ({ status, hold_expires_at,
+ * recheck_required_at }[]), `latest_safety_check` ({ outcome, checked_at } | null), `safety_recheck_required_at` and `now` (ms).
  */
 const REQUIREMENTS = {
   clarificationsResolved: (context) => (context.pending_clarifications > 0
@@ -62,8 +74,12 @@ const REQUIREMENTS = {
       return { met: false, code: 'VENUE_NOT_CONFIRMED', message: 'No venue booking has been confirmed by Venue Staff.' };
     }
     // Multiple venues (Week 7 change 3): every venue still being held must be decided before the event can proceed.
-    if (live.some((booking) => booking.status === 'pending')) {
+    if (live.some((booking) => ['pending','tentative'].includes(booking.status))) {
       return { met: false, code: 'VENUE_PENDING', message: 'A venue booking is still awaiting Venue Staff approval.' };
+    }
+    // An applied amendment changed details this confirmed booking depended on: Venue Staff must re-confirm it (AC5).
+    if (live.some((booking) => booking.recheck_required_at)) {
+      return { met: false, code: 'VENUE_RECHECK', message: 'A venue booking must be re-confirmed by Venue Staff after the event changed.' };
     }
     return { met: true, code: 'VENUE_CONFIRMED', message: 'Venue booking confirmed.' };
   },
@@ -78,7 +94,7 @@ const REQUIREMENTS = {
   },
 
   safetyPassed: (context) => {
-    const outcome = context.latest_safety_check?.outcome;
+    const outcome = currentSafetyCheck(context)?.outcome;
     if (outcome === 'approved') return { met: true, code: 'SAFETY_APPROVED', message: 'Operational safety check passed.' };
     if (outcome === 'rejected') return { met: false, code: 'SAFETY_FAILED', message: 'The event failed the operational safety check.' };
     if (outcome === 'changes_requested') {
@@ -97,9 +113,10 @@ const SAFETY_REVIEW_RULES = {
     ? { met: false, code: 'SAFETY_CHANGES_OUTSTANDING', message: 'Changes requested by the Safety Officer have not been completed yet.' }
     : { met: true, code: 'SAFETY_CHANGES_COMPLETE', message: 'No requested safety changes are outstanding.' }),
   // Approved checks are final. Rejected checks are final only when no revision stages were requested; a rejected
-  // check with change areas is due again once those stages are resolved.
-  safetyCheckDue: (context) => (context.latest_safety_check?.outcome === 'approved'
-    || (context.latest_safety_check?.outcome === 'rejected' && !context.latest_safety_check?.change_areas?.length)
+  // check with change areas is due again once those stages are resolved. A check recorded before an applied amendment
+  // reopened the arrangements no longer counts, so a new one is due (Record Offline Clarifications AC5).
+  safetyCheckDue: (context) => (currentSafetyCheck(context)?.outcome === 'approved'
+    || (currentSafetyCheck(context)?.outcome === 'rejected' && !currentSafetyCheck(context)?.change_areas?.length)
     ? { met: false, code: 'SAFETY_CHECK_COMPLETE', message: 'The operational safety check for this event has already been recorded.' }
     : { met: true, code: 'SAFETY_CHECK_DUE', message: 'An operational safety check is due.' }),
 };
@@ -127,7 +144,7 @@ function readiness(context) {
  * Status is checked first: only a request still awaiting a decision can be approved or rejected.
  */
 function evaluateDecision(decision, context, requirements = DECISION_REQUIREMENTS) {
-  if (['approved', 'rejected'].includes(context.status)) {
+  if (context.decided_at || ['approved', 'rejected'].includes(context.status)) {
     return { code: 'ALREADY_DECIDED', message: `This event has already been ${context.status}.` };
   }
   if (context.is_draft || !DECIDABLE_STATUSES.includes(context.status)) {
@@ -142,7 +159,7 @@ function evaluateDecision(decision, context, requirements = DECISION_REQUIREMENT
 
 /** Returns the first arrangement still blocking a Safety Officer review, or null when the event can be reviewed. */
 function evaluateSafetyReview(context) {
-  if (context.is_draft || !DECIDABLE_STATUSES.includes(context.status)) {
+  if (context.is_draft || ![...DECIDABLE_STATUSES, 'approved'].includes(context.status)) {
     return { code: 'NOT_REVIEWABLE', message: 'Only submitted events awaiting a decision can be safety checked.' };
   }
   for (const name of SAFETY_REVIEW_REQUIREMENTS) {

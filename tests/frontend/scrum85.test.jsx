@@ -34,9 +34,9 @@ it('SCRUM-85 AC9 - failed loading is visible rather than claiming reminders are 
  api.get.mockRejectedValue(new Error('Offline'));render(<CoordinatorReminderPreferences token="session"/>);
  expect(await screen.findByRole('alert')).toHaveTextContent('Offline');expect(screen.getByRole('checkbox')).not.toBeChecked();
 });
-it('SCRUM-85 AC7 AC8 - open event switches from held to expired exactly at the saved expiry',async()=>{
+for(const status of ['pending','tentative'])it(`SCRUM-85 AC7 AC8 - ${status} open event switches from held to expired exactly at the saved expiry`,async()=>{
  vi.useFakeTimers();const now=new Date('2031-10-20T02:00:00Z');vi.setSystemTime(now);
- render(<VenueHoldState booking={{status:'pending',hold_expires_at:new Date(now.getTime()+1000).toISOString()}}/>);
+ render(<VenueHoldState booking={{status,hold_expires_at:new Date(now.getTime()+1000).toISOString()}}/>);
  expect(screen.getByText(/Hold state: Held/)).toBeInTheDocument();
  await act(async()=>vi.advanceTimersByTime(999));expect(screen.getByText(/Hold state: Held/)).toBeInTheDocument();
  await act(async()=>vi.advanceTimersByTime(1));expect(screen.getByText(/Hold state: Expired/)).toBeInTheDocument();
@@ -89,8 +89,8 @@ it('SCRUM-85 AC9 - missing preference data defaults to disabled instead of optin
  api.get.mockResolvedValue({});render(<CoordinatorReminderPreferences token="session"/>);
  expect(await screen.findByRole('checkbox')).not.toBeChecked();expect(screen.getByLabelText('Review reminder frequency')).toHaveValue('1');
 });
-for(const offset of [-1,0,1])it(`SCRUM-85 AC8 - opening a hold ${offset}ms from expiry displays its current state`,()=>{
+for(const status of ['pending','tentative'])for(const offset of [-1,0,1])it(`SCRUM-85 AC8 - opening a ${status} hold ${offset}ms from expiry displays its current state`,()=>{
  vi.useFakeTimers();const now=new Date('2031-10-20T02:00:00Z');vi.setSystemTime(now);
- render(<VenueHoldState booking={{status:'pending',hold_expires_at:new Date(now.getTime()+offset).toISOString()}}/>);
+ render(<VenueHoldState booking={{status,hold_expires_at:new Date(now.getTime()+offset).toISOString()}}/>);
  expect(screen.getByText(offset<=0?/Hold state: Expired/:/Hold state: Held/)).toBeInTheDocument();
 });

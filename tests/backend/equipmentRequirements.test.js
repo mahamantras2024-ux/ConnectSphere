@@ -45,7 +45,10 @@ function mockCreate(user = organiser) {
 }
 // Mocks the database for PUT /equipment: the auth lookup, the scoped event read, then whichever write the handler issues.
 // `event` null simulates a non-owned/missing event; `writeResult` null simulates a guarded write that matched no row.
-function mockUpdate({ event = storedEvent, writeResult = { ...storedEvent } } = {}) {
+// Equipment is edited directly only on a draft; once submitted, changes are amendment requests
+// (Request All Post-Submission Amendments AC1).
+const draftStored = { ...storedEvent, status: 'draft', is_draft: true };
+function mockUpdate({ event = draftStored, writeResult = { ...draftStored } } = {}) {
   const writes = [];
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [organiser] };
@@ -53,17 +56,8 @@ function mockUpdate({ event = storedEvent, writeResult = { ...storedEvent } } = 
     writes.push({ sql, values });
     return { rows: writeResult ? [writeResult] : [] };
   });
-  // Unconfirmed edits run in a transaction (with any status-change notification); the request lock reports no earlier
-  // review, so no notification is written and `writes` holds only the guarded UPDATE as before.
-  mock.method(pool, 'connect', async () => ({
-    release() {},
-    async query(sql, values) {
-      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) return { rows: [] };
-      if (sql.includes('FOR UPDATE OF e')) return { rows: event ? [{ ...event, reviewed: false }] : [] };
-      writes.push({ sql, values });
-      return { rows: writeResult ? [writeResult] : [] };
-    },
-  }));
+  // A draft edit is a single guarded UPDATE, so no transaction is ever opened.
+  mock.method(pool, 'connect', async () => assert.fail('A draft equipment edit must not open a transaction.'));
   return writes;
 }
 const create = (body) => request('/api/events', { method: 'POST', body: { name: 'Workshop', proposedDate: '2030-10-15', proposedStartTime: '09:00', proposedEndTime: '12:00', expectedAttendance: 50, isDraft: false, ...body } });
@@ -210,12 +204,12 @@ test('EQ AC1/AC2 - event details include equipment items, support needs, specifi
   assert.deepEqual(result.body.event.equipment_items, storedEvent.equipment_items);
 });
 
-// Test case: Replaces the stored list before confirmation; the removed projector must not survive and the organiser sees a confirmation.
-test('EQ AC3/AC4 - before confirmation an update replaces the whole equipment list and confirms the save', async () => {
+// Test case: Replaces a draft's stored list; the removed projector must not survive and the organiser sees a confirmation.
+test('EQ AC3/AC4 - a draft update replaces the whole equipment list and confirms the save', async () => {
   // Arrange: stored list is microphone x2 + projector x1.
   const replacement = { equipmentItems: [{ item: 'Wireless microphone', quantity: 3 }, { item: 'Laptop', quantity: 1 }],
     videoConferencingRequired: true, technicalSpecifications: 'Hybrid panel' };
-  const writes = mockUpdate({ writeResult: { ...storedEvent, equipment_items: replacement.equipmentItems } });
+  const writes = mockUpdate({ writeResult: { ...draftStored, equipment_items: replacement.equipmentItems } });
   // Act
   const result = await updateEquipment(replacement);
   // Assert: one guarded UPDATE carries exactly the new list (no merge with the stored projector).
@@ -224,57 +218,36 @@ test('EQ AC3/AC4 - before confirmation an update replaces the whole equipment li
   assert.equal(writes.length, 1);
   assert.match(writes[0].sql, /UPDATE events SET equipment_items=\$3::jsonb/);
   assert.match(writes[0].sql, /equipment_requirements_version=equipment_requirements_version\+1/);
-  assert.match(writes[0].sql, /organiser_id=\$2 AND equipment_confirmed_at IS NULL/);
+  // The draft condition is repeated in the UPDATE so an edit racing the submission cannot change the submitted request.
+  assert.match(writes[0].sql, /organiser_id=\$2 AND is_draft=true AND status='draft'/);
   assert.deepEqual(writes[0].values, ['101', 12, JSON.stringify(replacement.equipmentItems), false, null, true, 'Hybrid panel']);
   assert.deepEqual(result.body.event.equipment_items, replacement.equipmentItems);
 });
 
-// Test case: Technical Support confirms between the organiser's read and write; the guarded update matches nothing and reports a conflict.
-test('EQ AC3 - a confirmation that lands mid-edit rejects the update instead of overwriting confirmed arrangements', async () => {
+// Test case: The draft is submitted between the organiser's read and write; the guarded update matches nothing and the
+// organiser is told to request an amendment instead.
+test('EQ AC3 / AM AC1 - a submission that lands mid-edit rejects the direct update', async () => {
   const writes = mockUpdate({ writeResult: null });
   const result = await updateEquipment({ equipmentItems: [{ item: 'Laptop', quantity: 1 }] });
   assert.equal(result.status, 409);
-  assert.equal(result.body.code, 'ARRANGEMENT_CHANGED');
+  assert.equal(result.body.code, 'AMENDMENT_REQUIRED');
   assert.equal(writes.length, 1);
 });
 
-// Test case: Edits equipment after Technical Support confirmed it; the event is not changed and a change request goes to the assigned coordinator.
-test('EQ AC3 - after confirmation an edit becomes a change request and confirmed equipment stays in effect', async () => {
-  // Arrange
-  const changes = { equipmentItems: [{ item: 'Wireless microphone', quantity: 4 }] };
-  const changeRequest = { id: 7, event_id: 101, status: 'pending' };
-  const writes = mockUpdate({ event: { ...storedEvent, equipment_confirmed: true }, writeResult: changeRequest });
-  // Act
-  const result = await updateEquipment(changes);
-  // Assert: only an INSERT into change requests, gated on confirmation, addressed to coordinator 30.
-  assert.equal(result.status, 202);
-  assert.deepEqual(result.body.changeRequest, changeRequest);
-  assert.match(result.body.message, /Change request submitted\. The confirmed equipment arrangements remain in effect/);
-  assert.equal(writes.length, 1);
-  assert.match(writes[0].sql, /INSERT INTO event_change_requests/);
-  assert.match(writes[0].sql, /equipment_confirmed_at IS NOT NULL/);
-  assert.doesNotMatch(writes[0].sql, /UPDATE events/);
-  assert.deepEqual(writes[0].values.slice(0, 3), ['101', 12, 30]);
-  assert.deepEqual(JSON.parse(writes[0].values[3]), { equipmentItems: changes.equipmentItems,
-    technicalSupportRequired: false, technicalSupportDetails: null, videoConferencingRequired: false, technicalSpecifications: null });
-});
-
-// Test case: Confirmed equipment but no coordinator yet; there is nobody to review a change request, so nothing is written.
-test('EQ AC3 - a confirmed edit without an assigned coordinator is refused without writing', async () => {
-  const writes = mockUpdate({ event: { ...storedEvent, equipment_confirmed: true, coordinator_id: null } });
-  const result = await updateEquipment({ equipmentItems: [] });
-  assert.equal(result.status, 409);
-  assert.equal(result.body.code, 'COORDINATOR_NOT_ASSIGNED');
-  assert.equal(writes.length, 0);
-});
-
-// Test case: The guarded change-request insert matches nothing (assignment changed mid-request) and the organiser is asked to refresh.
-test('EQ AC3 - a change request whose event changed mid-request is reported as a conflict', async () => {
-  mockUpdate({ event: { ...storedEvent, equipment_confirmed: true }, writeResult: null });
-  const result = await updateEquipment({ equipmentItems: [] });
-  assert.equal(result.status, 409);
-  assert.equal(result.body.code, 'ARRANGEMENT_CHANGED');
-});
+// Test case: A submitted request's equipment is never edited directly, whether or not Technical Support confirmed it.
+for (const confirmed of [false, true]) {
+  test(`AM AC1 - a submitted request's equipment (confirmed ${confirmed}) cannot be edited directly`, async () => {
+    // Arrange: the submitted record, confirmed or not.
+    const writes = mockUpdate({ event: { ...storedEvent, equipment_confirmed: confirmed } });
+    // Act
+    const result = await updateEquipment({ equipmentItems: [{ item: 'Wireless microphone', quantity: 4 }] });
+    // Assert: refused with the amendment route, and nothing is written (no update and no change request).
+    assert.equal(result.status, 409);
+    assert.equal(result.body.code, 'AMENDMENT_REQUIRED');
+    assert.match(result.body.message, /Request an amendment/);
+    assert.equal(writes.length, 0);
+  });
+}
 
 // Test case: Updates another organiser's (or a missing) event; the scoped read finds nothing and no write is attempted.
 test('EQ AC3 - organisers cannot update equipment on events they do not own', async () => {

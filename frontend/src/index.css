@@ -220,6 +220,11 @@ p { line-height: 1.65; }
 .field input { font-weight: 400; font-size: 13px; }
 .form-section { margin-top: 27px; padding-top: 23px; border-top: 1px solid var(--border); }
 .form-section h3 { display: flex; justify-content: space-between; }
+.venue-timing-fields { min-width: 0; margin: 24px 0 0; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, #fff); }
+.venue-timing-fields legend { padding: 0 8px; font-weight: 700; }
+.venue-timing-fields > .field-help { margin: 0 0 14px; }
+.venue-timing-fields > .field-help:last-child { margin: 12px 0 0; }
+.venue-timing-fields .field > .field-help { margin-top: -3px; }
 .four-col { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .field-help { font-size: 11px; color: var(--muted); margin-top: 15px; }
 .upload-field { display: flex; flex-direction: column; gap: 10px; padding: 20px; margin-top: 20px; border: 1px dashed #c3d2c5; border-radius: 10px; font-size: 12px; font-weight: 600; }
@@ -691,3 +696,23 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .venue-fit-grid .venue-card-footer { margin-top:auto; }
 /* The disclosure summary already names the other-venues group; do not repeat that heading above its cards. */
 .venue-other-body .venue-fit-group > h2 { display:none; }
+/* Post-submission amendments: the organiser's amendment request form and their list of requests. */
+.amendment-panel { display: grid; gap: 14px; margin-bottom: 18px; }
+.amendment-panel > .button-primary { justify-self: start; }
+.amendment-form { display: grid; gap: 16px; }
+.amendment-group { display: grid; gap: 12px; margin: 0; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }
+.amendment-group legend { padding: 0 6px; font-weight: 700; }
+.amendment-field { display: grid; gap: 6px; }
+.amendment-field > label { font-size: 0.85rem; font-weight: 600; color: #334155; }
+.amendment-items { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.amendment-item { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 10px; background: white; }
+.amendment-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 0.85rem; color: #64748b; }
+.amendment-changes { display: grid; gap: 6px; margin: 0; }
+.amendment-changes div { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 10px; }
+.amendment-changes dt { font-weight: 600; color: #334155; }
+.amendment-changes dd { margin: 0; white-space: pre-wrap; }
+.change-explanation { margin: 8px 0; white-space: pre-wrap; }
+
+/* Staff preparation stages use the established warning and neutral tones; cancellation keeps its shared red badge. */
+.onsite-event-card .status-planning { background: var(--cream); color: #685019; }
+.onsite-event-card .status-completed { background: #EFEFE3; color: #616351; }

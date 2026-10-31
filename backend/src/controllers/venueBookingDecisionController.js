@@ -16,8 +16,8 @@ async function listEventVenueBookings(req, res) {
 
   const result = await pool.query(`
     SELECT booking.id, booking.event_id, booking.venue_id, venue.name AS venue_name,
-      booking.status, booking.decision_notes, booking.start_datetime, booking.end_datetime,
-      booking.created_at, booking.updated_at, booking.hold_expires_at, booking.requirements, booking.cancel_other_pending,
+      booking.status, booking.hold_expires_at, booking.decision_notes, booking.start_datetime, booking.end_datetime,
+      booking.created_at, booking.updated_at, booking.requirements, booking.cancel_other_pending,
       booking.requested_by
     FROM venue_bookings booking
     JOIN venues venue ON venue.id=booking.venue_id
