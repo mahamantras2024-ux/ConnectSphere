@@ -25,6 +25,7 @@ import VenueBookingDecisions from './VenueBookingDecisions';
 import OrganiserVenueDetails from './OrganiserVenueDetails';
 
 import CoordinatorRegistrations from './CoordinatorRegistrations';
+import LeadRegistrations from './LeadRegistrations';
 
 import CancelEventAction from './CancelEventAction';
 
@@ -885,6 +886,7 @@ export default function EventDetail() {
       {backLink}
 
       {user.role === 'event_organiser' && <OrganiserRegistrationAction eventId={event.id} token={token} />}
+      {user.role === 'event_coordinator_lead' && <LeadRegistrations eventId={event.id} token={token}/>}
       {coordinatorWorkspace && <CoordinatorRegistrations eventId={event.id} token={token} />}
 
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
