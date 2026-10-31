@@ -225,7 +225,7 @@ test('OC AC4 - notices say what changed, what was agreed and which checks must b
   assert.equal(organiser.message, ['The Event Coordinator applied the amendment agreed with you to Gala.', 'Expected attendance: 60 → 150',
     'What was agreed: Agreed by phone', 'Checks to complete again:', 'Venue booking at Hall A must be re-confirmed by Venue Staff: Too many guests.',
     'Technical arrangements must be reviewed again by Technical Support.', 'A new operational safety check is needed.',
-    'The event is back in planning until it is approved again.'].join('\n'));
+    'The event is back in planning until it is confirmed again.'].join('\n'));
   // Each staff member is told once, even when in two groups; the still-pending booking is listed as needing attention.
   assert.deepEqual(staff.map((note) => note.userId), [41, 61, 50]);
   assert.match(staff[0].message, /^The Event Coordinator applied an agreed amendment to Gala\. Review your arrangements\./);

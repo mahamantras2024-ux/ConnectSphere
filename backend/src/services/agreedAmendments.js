@@ -38,7 +38,7 @@ async function readEvent(client, eventId) {
  * - Venue: if a detail a booking depends on changed, every confirmed booking waits for Venue Staff to re-confirm it.
  * - Technical: changed equipment, or a new time or audience for an event with technical needs, is reviewed again.
  * - Safety: if a safety check was already recorded and anything it considers changed, a new check is needed.
- * - Status: an approved or confirmed event whose arrangements were reopened returns to planning until approved again.
+ * - Status: an approved or confirmed event whose arrangements were reopened returns to planning until it is confirmed again (SCRUM-92).
  * @param {{ query: Function }} client transaction client; the event row is already locked by the caller.
  * @param {object} before the event as stored before the change (to_jsonb form).
  * @param {object} requested camelCase values to apply (validated).
@@ -87,7 +87,7 @@ async function applyAmendment(client, before, requested) {
     rechecks.safety = true;
   }
   // An approved or confirmed event cannot stay final while its arrangements are being revalidated: it returns to planning
-  // until the re-checks are done and it is approved again.
+  // until the re-checks are done and it is confirmed again.
   if ((arrangementsReopened || rechecks.safety) && FINAL_STATUSES.includes(event.status)) {
     await client.query('UPDATE events SET status = $2 WHERE id = $1 AND status = ANY($3::text[])', [before.id, 'planning', FINAL_STATUSES]);
     rechecks.returnedToPlanning = true;
@@ -139,7 +139,7 @@ function recheckLines(rechecks) {
     ...rechecks.venueBookings.map((booking) => `Venue booking at ${booking.venueName} must be re-confirmed by Venue Staff: ${booking.reason}`),
     ...(rechecks.technical ? ['Technical arrangements must be reviewed again by Technical Support.'] : []),
     ...(rechecks.safety ? ['A new operational safety check is needed.'] : []),
-    ...(rechecks.returnedToPlanning ? ['The event is back in planning until it is approved again.'] : []),
+    ...(rechecks.returnedToPlanning ? ['The event is back in planning until it is confirmed again.'] : []),
   ];
 }
 

@@ -27,7 +27,7 @@ function recheckLines(rechecks) {
     ...rechecks.venueBookings.map((booking) => `Venue booking at ${booking.venueName} to be re-confirmed by Venue Staff`),
     ...(rechecks.technical ? ['Technical arrangements to be reviewed again'] : []),
     ...(rechecks.safety ? ['A new operational safety check'] : []),
-    ...(rechecks.returnedToPlanning ? ['Event returned to planning until approved again'] : []),
+    ...(rechecks.returnedToPlanning ? ['Event returned to planning until confirmed again'] : []),
   ];
 }
 

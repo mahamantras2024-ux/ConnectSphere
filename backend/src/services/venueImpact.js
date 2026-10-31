@@ -1,14 +1,18 @@
 // File: Identifies potentially affected bookings and signs change-specific, expiring confirmations.
 const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
+const { blocksTime } = require('./venueAvailability');
+const { timingConflictReasons } = require('./venueTimingImpact');
 // Compares case-insensitive list entries so formatting changes do not produce false removals.
 function removed(before = [], after = []) { const keep=new Set((Array.isArray(after)?after:[]).map(x=>x.toLowerCase().trim())); return (Array.isArray(before)?before:[]).filter(x=>!keep.has(x.toLowerCase().trim())); }
-// Lists each upcoming confirmed booking with concrete or precautionary reasons for review.
-function affectedBookings(before, next, bookings) {
+// Lists impacted bookings using current blockers; timing changes include live holds and report only newly introduced conflicts.
+function affectedBookings(before, next, bookings, unavailable = [], now = Date.now()) {
  const facilities=removed(before.facilities,next.facilities);
  const access=removed(before.accessibility_features,next.accessibilityFeatures);
  const layouts=removed(before.supported_layouts,next.supportedLayouts);
- return bookings.filter(b=>['approved','confirmed'].includes(b.status)).map(b=> {
+ const timingChanged = next.setupMinutes !== before.setup_minutes || next.turnaroundMinutes !== before.turnaround_minutes;
+ return bookings.filter(b=>['approved','confirmed'].includes(b.status) ||
+  (timingChanged && blocksTime({...b,kind:'booking'},now))).map(b=> {
   // Derives the impact on this booking without exposing personal client information.
   const reasons=[];
   if(next.capacity < before.capacity && (b.expected_attendance == null || b.expected_attendance > next.capacity)) reasons.push(b.expected_attendance == null ? `Capacity reduced to ${next.capacity}; attendance needs review.` : `${b.expected_attendance} expected guests exceed the new capacity of ${next.capacity}.`);
@@ -17,7 +21,7 @@ function affectedBookings(before, next, bookings) {
   if(layouts.length && (!b.room_layout_preference || layouts.some(x=>x.toLowerCase()===b.room_layout_preference.toLowerCase().trim()))) reasons.push(`Removed layout support: ${layouts.join(', ')}.`);
   if(next.location!==before.location || next.latitude!==before.latitude || next.longitude!==before.longitude) reasons.push('Location changed; review travel and venue arrangements.');
   if(next.operatingHours!==before.operating_hours) reasons.push('Operating hours changed; review the booked time.');
-  if(next.setupMinutes!==before.setup_minutes || next.turnaroundMinutes!==before.turnaround_minutes) reasons.push('Setup or turnaround time changed; review the booking schedule.');
+  reasons.push(...timingConflictReasons(b,before,next,bookings,unavailable,now));
   if(next.availabilityStatus!==before.availability_status && next.availabilityStatus!=='Available') reasons.push(`Venue availability changed to ${next.availabilityStatus}.`);
   return {...b,reasons};
  }).filter(b=>b.reasons.length);

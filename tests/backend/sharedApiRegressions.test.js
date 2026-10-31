@@ -367,10 +367,10 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 // Test case: Captures startup calls and checks initialization finishes before listening on configured/default ports.
-test('API startup waits for initialization before listening on a configured or default port',async()=>{
+test('Completion AC - API startup initializes before listening and starting completion on configured/default ports',async()=>{
  const filename=path.join(__dirname,'../../backend/src/index.js');
  for(const port of [undefined,'4321']) {
-  const seen=[];let initialize;
+  const seen=[];const completionCalls=[];let initialize;const startupPool={};
   const application={use(){},get(){},listen(value,callback){seen.push(value);callback();}};
   const express=()=>application;express.json=()=>()=>{};express.urlencoded=()=>()=>{};
   const entry={exports:{}};
@@ -379,15 +379,20 @@ test('API startup waits for initialization before listening on a configured or d
    if(name==='dotenv')return {config(){}};
    if(name==='express')return express;
    if(name==='cors'||name==='morgan')return ()=>()=>{};
-   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;}),pool:{}};
+   if(name==='./config/db')return {connectDB:()=>new Promise(resolve=>{initialize=resolve;}),pool:startupPool};
+   // Capture job wiring only: the real completion service is tested separately against PostgreSQL.
+   if(name==='./services/eventCompletion')return {startEventCompletionScheduler(db){completionCalls.push(db);}};
    if(name==='./services/venueEventStatus')return {startDailyVenueReminderScheduler(){}};
+   if(name==='./services/techSupportReminderPreferences')return {startTechSupportReminderScheduler(){}};
    if(name==='./middleware/errorHandler')return {errorHandler(){}};
    if(name.startsWith('./routes/'))return {};
    throw new Error(`Unexpected startup dependency: ${name}`);
   }
   requireFixture.main=entry;
   vm.runInNewContext(fs.readFileSync(filename,'utf8'),{require:requireFixture,module:entry,process:{env:{PORT:port,CORS_ORIGIN:port?'http://localhost:5173':undefined}},console:{log(){}}},{filename});
-  assert.deepEqual(seen,[]);initialize();await Promise.resolve();assert.deepEqual(seen,[port||4000]);assert.equal(entry.exports,application);
+  assert.deepEqual(seen,[]);assert.deepEqual(completionCalls,[]);
+  initialize();await Promise.resolve();assert.deepEqual(seen,[port||4000]);
+  assert.deepEqual(completionCalls,[startupPool]);assert.equal(entry.exports,application);
  }
 });
 

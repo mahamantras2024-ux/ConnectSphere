@@ -35,11 +35,23 @@ async function emailNotifications(rows) {
   return rows.length - failed;
 }
 
-/** Lists the signed-in user's 50 most recent notifications and their total unread count. */
+/** Lists the newest 50 notifications plus every unresolved safety-review notification for the signed-in user. */
 async function listForUser(db, userId) {
   const [notifications, unread] = await Promise.all([
-    db.query(`SELECT id, event_id, change_request_id, type, title, message, details, created_at, read_at
-      FROM notifications WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 50`, [userId]),
+    db.query(`WITH newest AS (
+        SELECT id FROM notifications WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 50
+      )
+      SELECT n.id, n.event_id, n.change_request_id, n.type, n.title, n.message, n.details, n.created_at, n.read_at
+      FROM notifications n
+      WHERE n.user_id=$1
+        AND (n.id IN (SELECT id FROM newest)
+          OR (n.type='safety_check_ready' AND NOT EXISTS (
+            SELECT 1 FROM event_safety_checks check_record
+            WHERE check_record.event_id=n.event_id
+              AND check_record.outcome IN ('approved', 'rejected')
+              AND check_record.checked_at >= n.created_at
+          )))
+      ORDER BY n.created_at DESC, n.id DESC`, [userId]),
     db.query('SELECT count(*)::int AS unread FROM notifications WHERE user_id=$1 AND read_at IS NULL', [userId]),
   ]);
   return { notifications: notifications.rows, unreadCount: unread.rows[0].unread };

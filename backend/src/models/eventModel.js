@@ -2,14 +2,17 @@
 const pool = require('../config/db');
 const { pool: databasePool } = require('../config/db');
 const { EVENT_FIELDS } = require('../services/eventFields');
+const { responsibilityScope } = require('../services/technicalEventStatus');
+const { ORGANISATION_STATUS_SCOPE } = require('./organiserRequestStatusModel');
 
-// Lists events owned by the supplied organiser, newest first.
+// Lists own and same-organisation request statuses; can_manage preserves submitter-only mutation controls.
 async function listForOrganiser(organiserId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.purpose, e.status, e.organiser_id, e.coordinator_id, e.created_at, e.updated_at,
+      (e.organiser_id=$1) AS can_manage,
       EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding
     FROM events e
-    WHERE organiser_id = $1
+    WHERE organiser_id = $1 OR ${ORGANISATION_STATUS_SCOPE}
     ORDER BY e.created_at DESC
   `, [organiserId]);
 
@@ -480,6 +483,8 @@ async function releaseEquipmentReservation(reservationId, staffId) {
         SET status='cancelled', released_by=$2, released_at=now()
         FROM events event_record
         WHERE allocation.id=$1 AND allocation.status='reserved'
+          -- Release permission follows the same current responsibility scope as the event-status view.
+          AND ${responsibilityScope('event_record', '$2')}
           AND event_record.id=allocation.event_id
           AND (
             event_record.status='cancelled'
@@ -858,10 +863,10 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
 
 /**
  * Lists upcoming active equipment requests that have not been reviewed at their current version.
- * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
+ * Requires an assigned Event Coordinator and an explicit responsibility for the authenticated staffId.
  * @returns {Promise<Array<object>>} event, venue, and organiser-submitted technical requirements.
  */
-async function listPendingEquipmentRequests() {
+async function listPendingEquipmentRequests(staffId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date, e.proposed_start_time,
       e.proposed_end_time, e.equipment_items, e.equipment_notes, e.technical_support_required,
@@ -877,7 +882,8 @@ async function listPendingEquipmentRequests() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+    -- AC6: a role alone does not grant responsibility for this event.
+    WHERE ${responsibilityScope()} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND (
@@ -892,7 +898,7 @@ async function listPendingEquipmentRequests() {
         WHERE r.event_id=e.id AND r.request_version=e.equipment_requirements_version
       )
     ORDER BY e.proposed_date, e.proposed_start_time, e.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
@@ -911,7 +917,8 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
     WITH target AS (
       SELECT e.id, e.equipment_requirements_version
       FROM events e
-      WHERE e.id=$1 AND e.equipment_requirements_version=$5
+      -- Check before inserting: a new review must not manufacture responsibility.
+      WHERE e.id=$1 AND ${responsibilityScope('e', '$4')} AND e.equipment_requirements_version=$5
         AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
@@ -1138,9 +1145,9 @@ async function markEquipmentAvailable(inventoryId, resolutionNote, staffId) {
 
 /**
  * Lists reviewed requests with equipment that still needs reservation, including the event's full technical requirements.
- * Only events with an assigned Event Coordinator are included (unassigned requests stay hidden from Technical Support).
+ * Requires an assigned Event Coordinator and an explicit responsibility for the authenticated staffId.
  */
-async function listEquipmentReservationCandidates() {
+async function listEquipmentReservationCandidates(staffId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
       e.proposed_start_time, e.proposed_end_time, e.equipment_items, e.equipment_notes,
@@ -1159,7 +1166,8 @@ async function listEquipmentReservationCandidates() {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+    -- AC6: a role alone does not grant responsibility for this event.
+    WHERE ${responsibilityScope()} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
@@ -1170,15 +1178,15 @@ async function listEquipmentReservationCandidates() {
           AND reservation.status='reserved'
       )
     ORDER BY e.proposed_date, e.proposed_start_time, e.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
 /**
- * Lists actionable active allocations and retained releases with their event and audit details.
+ * Lists actionable allocations and retained releases only within the authenticated staffId responsibility scope.
  * Old event slots remain actionable after cancellation or a changed schedule, even when that original date passed.
  */
-async function listActiveEquipmentReservations() {
+async function listActiveEquipmentReservations(staffId) {
   const result = await pool.query(`
     SELECT reservation.id, reservation.event_id, e.name AS event_name,
       e.status AS event_status,
@@ -1202,7 +1210,7 @@ async function listActiveEquipmentReservations() {
     LEFT JOIN event_equipment_reservation_items reserved_item ON reserved_item.reservation_id=reservation.id
     LEFT JOIN equipments inventory ON inventory.id=reserved_item.inventory_id
     -- A cancellation or changed event slot still holds stock until staff explicitly release it.
-    WHERE (reservation.status='reserved' AND (
+    WHERE ${responsibilityScope()} AND ((reservation.status='reserved' AND (
         reservation.event_date > CURRENT_DATE
         OR (reservation.event_date=CURRENT_DATE AND reservation.end_time > LOCALTIME)
         OR e.status='cancelled'
@@ -1211,12 +1219,12 @@ async function listActiveEquipmentReservations() {
           OR e.proposed_start_time IS DISTINCT FROM reservation.start_time
           OR e.proposed_end_time IS DISTINCT FROM reservation.end_time
         ))
-      )) OR reservation.status='cancelled'
+      )) OR reservation.status='cancelled')
     GROUP BY reservation.id, e.name, e.status, e.proposed_date,
       e.proposed_start_time, e.proposed_end_time, staff.full_name, releaser.full_name
     ORDER BY CASE WHEN reservation.status='reserved' THEN 0 ELSE 1 END,
       reservation.event_date, reservation.start_time, reservation.id
-  `);
+  `, [staffId]);
   return result.rows;
 }
 
@@ -1224,9 +1232,10 @@ async function listActiveEquipmentReservations() {
  * Finds matching operational assets for itemized requests and optional staff-entered equipment.
  * @param {number} eventId event with a current equipment review and an assigned Event Coordinator.
  * @param {Array<{item:string,quantity:number}>} additionalItems equipment extracted from other request text.
+ * @param {number} staffId authenticated staff member whose responsibility authorizes this read.
  * @returns {Promise<object|null>} requested names, quantities and matching available assets.
  */
-async function getEquipmentReservationAvailability(eventId, additionalItems = []) {
+async function getEquipmentReservationAvailability(eventId, additionalItems = [], staffId) {
   const event = (await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date,
       e.proposed_start_time::text AS proposed_start_time,
@@ -1250,11 +1259,11 @@ async function getEquipmentReservationAvailability(eventId, additionalItems = []
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+    WHERE e.id=$1 AND ${responsibilityScope('e', '$2')} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
       AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
-  `, [eventId])).rows[0];
+  `, [eventId, staffId])).rows[0];
   if (!event) return null;
   if (event.already_reserved) return { event, alreadyReserved: true, items: [] };
 
@@ -1412,12 +1421,13 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
         ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
         LIMIT 1
       ) venue ON true
-      WHERE e.id=$1 AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+      -- Authorize inside the transaction before exposing or reserving event equipment.
+      WHERE e.id=$1 AND ${responsibilityScope('e', '$2')} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
         AND review.outcome IN ('fully_fulfillable', 'partially_fulfillable')
       FOR UPDATE OF e
-    `, [eventId])).rows[0];
+    `, [eventId, staffId])).rows[0];
     if (!event) {
       await client.query('ROLLBACK');
       return { conflict: 'This event does not have a current equipment review or is no longer upcoming.' };

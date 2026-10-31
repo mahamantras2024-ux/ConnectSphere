@@ -6,6 +6,7 @@ import Modal from '../../components/Modal';
 import LocationPicker from './LocationPicker';
 import EmergencyDocuments from './EmergencyDocuments';
 import BookingImpactList from './BookingImpactList';
+import VenueTimingFields from './VenueTimingFields';
 import {hourlyRateValue} from './hourlyRate';
 const fields = [
   ['name', 'Venue name', 'Venue Name *'],
@@ -97,20 +98,15 @@ export default function AddVenueModal({ onClose, onAdd, venue }) {
       change(key, event.target.value)} aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `error-${key}` : undefined} />{errors[key] && <span className="error-text" id={`error-${key}`}>{errors[key]}</span>}</label>)}</div>
     <LocationPicker token={token} value={location} onPendingChange={setMapBusy} onChange={next=>{setLocation(next);setWarning(null);setErrors(current=>({...current,location:''}));}}/>
     {errors.location && <p className="error-text">{errors.location}</p>}
-    <div className="form-section"><h3>Operating information</h3><label className="field">Availability<select value={data.availabilityStatus} onChange={e=>change('availabilityStatus',e.target.value)}><option>Available</option><option>Maintenance</option><option>Unavailable</option></select></label><div className="form-grid four-col">
+    <div className="form-section"><h3>Operating information</h3><label className="field">Availability<select value={data.availabilityStatus} onChange={e=>change('availabilityStatus',e.target.value)}><option>Available</option><option>Maintenance</option><option>Unavailable</option></select></label><div className="form-grid">
       <label className="field">Opening time *<input type="time" value={data.openTime} onChange={event =>
       // Handles this control action and updates the screen state.
       change('openTime', event.target.value)} /></label>
       <label className="field">Closing time *<input type="time" value={data.closeTime} onChange={event =>
       // Handles this control action and updates the screen state.
       change('closeTime', event.target.value)} /></label>
-      <label className="field">Setup time (minutes) *<input type="number" min="0" max="10080" value={data.setupMinutes} onChange={event =>
-      // Handles this control action and updates the screen state.
-      change('setupMinutes', event.target.value)} />{errors.setupMinutes && <span className="error-text">{errors.setupMinutes}</span>}</label>
-      <label className="field">Turnaround time (minutes) *<input type="number" min="0" max="10080" value={data.turnaroundMinutes} onChange={event =>
-      // Handles this control action and updates the screen state.
-      change('turnaroundMinutes', event.target.value)} />{errors.turnaroundMinutes && <span className="error-text">{errors.turnaroundMinutes}</span>}</label>
-    </div>{errors.hours && <p className="error-text">{errors.hours}</p>}<p className="field-help">Setup and turnaround record the time needed before and after an event. Booking checks are handled in the booking workflow.</p></div>
+    </div>{errors.hours && <p className="error-text">{errors.hours}</p>}
+    <VenueTimingFields data={data} errors={errors} onChange={change}/></div>
     {/* SCRUM-98 AC1/AC2: one optional narrative supports all emergency access facts without forcing a fixed checklist. */}
     <div className="form-section"><EmergencyDocuments value={emergencyDocuments} onChange={changeDocument} onBusy={setDocumentReading}/><h3>Additional safety notes <span className="muted">Optional</span></h3><div className="form-grid">
       {[['emergencyAccess', 'Emergency access', 'Optional clarification to accompany the uploaded emergency documents'], ['knownRestrictions', 'Known restrictions', 'For example: no open flames, floor load limits, noise curfew']].map(([key, label, placeholder]) =>
@@ -125,7 +121,7 @@ export default function AddVenueModal({ onClose, onAdd, venue }) {
       change('price', event.target.value)} />{errors.price && <span className="error-text">{errors.price}</span>}<span className="field-help">Enter the amount per hour. For example, 500 is displayed as $500/hr.</span></label>
       {venue?.pricing && hourlyRateValue(venue.pricing)==='' && <p className="field-help">This record has a descriptive legacy price. Enter its hourly rate to replace it.</p>}
     </div><label className="upload-field">Venue image<input type="file" aria-label="Venue image" accept="image/png,image/jpeg,image/webp" onChange={upload} /><span>PNG, JPEG or WEBP · up to 5 MB</span></label>{image && <img className="upload-preview" src={image} alt="Venue preview" />}</div>
-    {warning && <section className="booking-warning" role="alert"><h3>These confirmed bookings may be affected</h3><p>Review the changes before saving. Bookings will stay confirmed; coordinate any necessary arrangements with the Event Coordinator.</p><BookingImpactList bookings={warning.affectedBookings}/><button type="button" disabled={busy||mapBusy||documentReading} onClick={event=>submit(event,warning.confirmationToken)}>Confirm changes & save</button><button type="button" className="button-secondary" onClick={()=>setWarning(null)}>Continue editing</button></section>}
+    {warning && <section className="booking-warning" role="alert"><h3>Bookings to review</h3><p>Review the conflicts before saving. These bookings and their statuses will be kept for follow-up with the Event Coordinator.</p><BookingImpactList bookings={warning.affectedBookings}/><button type="button" disabled={busy||mapBusy||documentReading} onClick={event=>submit(event,warning.confirmationToken)}>Confirm changes & save</button><button type="button" className="button-secondary" onClick={()=>setWarning(null)}>Continue editing</button></section>}
     {error && <p role="alert" className="error-message">{error}</p>}<footer className="form-footer"><button type="button" className="button-secondary" onClick={onClose} disabled={busy}>Cancel</button><button disabled={busy||mapBusy||documentReading||!!warning}>{busy ? 'Saving venue...' : venue?'Save changes':'Save & Publish Venue'}</button></footer>
   </form></Modal>;
 }

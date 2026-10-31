@@ -253,7 +253,7 @@ it.each([['coordinator', coordinator], ['Coordinator Lead', lead]])('OC AC3 - th
   expect(within(applied).getByText('Agreed by phone.')).toBeTruthy();
   expect(within(applied).getByText('What was agreed:')).toBeTruthy();
   expect(within(applied).getByText('Agreed in clarification #601')).toBeTruthy();
-  expect(within(applied).getByText('Venue booking at Hall A to be re-confirmed by Venue Staff; Technical arrangements to be reviewed again; A new operational safety check; Event returned to planning until approved again')).toBeTruthy();
+  expect(within(applied).getByText('Venue booking at Hall A to be re-confirmed by Venue Staff; Technical arrangements to be reviewed again; A new operational safety check; Event returned to planning until confirmed again')).toBeTruthy();
   expect(within(decided).getByText('Requested by the organiser')).toBeTruthy();
   expect(within(decided).getByText('Banquet')).toBeTruthy();
   expect(within(decided).getByText('Decided by Chris on 2 Jan 2030, 12:00 pm')).toBeTruthy();

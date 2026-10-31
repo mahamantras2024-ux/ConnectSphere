@@ -1,7 +1,15 @@
 // File: Tests the fixed equipment catalogue, filters, and search-triggered availability calendar.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import EquipmentInventorySection from '../../frontend/src/pages/tech-support/EquipmentInventorySection';
+
+// AC2/AC3: keep relative fixtures and the displayed month aligned across month-end runs.
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
+});
 
 afterEach(() => {
   cleanup();
@@ -258,7 +266,11 @@ it('AC3 - reports full stock for an unscheduled selected date and time', () => {
 });
 
 // AC3 - Zero total stock stays eligible on an unscheduled date and is reported as zero in both views.
-it('AC3 - reports zero stock for an unscheduled date in inventory and calendar', () => {
+it.each(['2026-10-27', '2026-10-28', '2026-10-29'])('AC3 - reports zero stock in inventory and calendar across the month boundary from %s', (today) => {
+  // Arrange: four days ahead lands just before, exactly on, and just after the next month starts.
+  // Freeze Date alone so calendar coverage is reproducible without changing async timer behavior.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${today}T12:00:00Z`));
   const unscheduledDate = getDateOffset(4);
   const item = { ...inventory[0], quantity: 0, availabilities: [] };
   render(<EquipmentInventorySection inventory={[item]} error="" />);
@@ -273,6 +285,7 @@ it('AC3 - reports zero stock for an unscheduled date in inventory and calendar',
 
   // Assert: zero stock is preserved rather than becoming an empty result or an undefined quantity.
   expect(within(getAssetRow('PROJ-001')).getAllByRole('cell')[3].textContent).toBe('0');
+  // Main now selects the filtered date's month automatically; retain the deterministic boundary cases without paging twice.
   const calendar = screen.getByRole('table', { name: 'PROJ-001 monthly availability' });
   const dateLabel = new Intl.DateTimeFormat('en-SG', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
@@ -283,11 +296,19 @@ it('AC3 - reports zero stock for an unscheduled date in inventory and calendar',
 
 // AC2 - partial time filters and reserved calendar windows retain truthful availability states.
 it('AC2 - handles one-sided time filters, empty calendar days, and non-booked unavailable windows', () => {
+  // Freeze Date to mid-month so the available/reserved/maintenance dates all stay within the rendered month grid,
+  // independent of when the suite runs. Dates are rebuilt locally against the frozen clock for consistency.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-01-12T12:00:00Z'));
+  const localAvailableDate = getDateOffset(1);
+  const localReservedDate = getDateOffset(3);
+  const localMaintenanceDate = getDateOffset(5);
   const edgeInventory = [{
     ...inventory[0],
     availabilities: [
-      ...inventory[0].availabilities,
-      { date: maintenanceDate, startTime: '10:00:00', endTime: '12:00:00', status: 'Maintenance', availableQuantity: 0 },
+      { date: localAvailableDate, startTime: '09:00:00', endTime: '17:00:00', status: 'Available', availableQuantity: 1 },
+      { date: localReservedDate, startTime: '09:00:00', endTime: '18:00:00', status: 'Reserved', availableQuantity: 0, eventName: 'Town Hall' },
+      { date: localMaintenanceDate, startTime: '10:00:00', endTime: '12:00:00', status: 'Maintenance', availableQuantity: 0 },
     ],
   }];
   render(<EquipmentInventorySection inventory={edgeInventory} error="" />);
@@ -549,6 +570,9 @@ it('AC2 - shows a fallback error when the unavailable save fails without a messa
 
 // AC2 - The calendar shows reservation quantities without exposing event names.
 it('AC2 - never displays event names for reserved calendar windows', () => {
+  // Keep these adjacent-day fixtures in one month so the privacy assertions run at month-end too.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T12:00:00Z'));
   const item = {
     ...inventory[0],
     quantity: 3,
@@ -582,6 +606,10 @@ it('AC2 - never displays event names for reserved calendar windows', () => {
 
 // AC2 - A confirmed reservation on an unscheduled date is shown as a timed calendar window without event identity.
 it('AC2 - displays a reservation window when the date has no availability schedule', () => {
+  // Freeze Date to mid-month so the day+3 reservation date stays within the rendered current-month calendar grid
+  // regardless of when the suite runs (otherwise it can roll into next month and not be rendered).
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-01-12T12:00:00Z'));
   // Arrange: an API window represents the confirmed booking, despite no schedule row for its date.
   const reservationDate = getDateOffset(3);
   const item = {
@@ -604,6 +632,10 @@ it('AC2 - displays a reservation window when the date has no availability schedu
   });
 
   // Act: inspect the reservation date in the monthly calendar.
+  // This initial view has no date filter, so page explicitly if the reservation crosses into next month.
+  if (reservationDate.slice(0, 7) !== getDateOffset(0).slice(0, 7)) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+  }
   const calendar = screen.getByRole('table', { name: 'MIC-001 monthly availability' });
 
   // Assert: the reserved time and stock counts appear without exposing the event name.

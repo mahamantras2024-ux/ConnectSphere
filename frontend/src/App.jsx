@@ -12,6 +12,7 @@ import ExternalRegister from './pages/external/ExternalRegister';
 import PasswordReset from './pages/external/PasswordReset';
 
 import EventDetail from './pages/events/EventDetail';
+import EventRequestStatus from './pages/events/EventRequestStatus';
 import EventForm from './pages/events/EventForm';
 import EventList from './pages/events/EventList';
 
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/organizer/events" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventList /></ProtectedRoute>} />
           <Route path="/organizer/events/new" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventForm /></ProtectedRoute>} />
           <Route path="/organizer/events/:id/registrations" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventRegistrationDetails /></ProtectedRoute>} />
+          <Route path="/organizer/events/:id/status" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventRequestStatus /></ProtectedRoute>} />
           <Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventDetail /></ProtectedRoute>} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />

@@ -63,6 +63,9 @@ test('ES AC3 - migration 013 upgrades a database holding older reviews without l
       // also reads (reservation unavailability, migration 014).
       await applyLiveSchema(client);
       // The coordinator sees the legacy partial review's items as not recorded, never as available.
+      // Current route reads require current migrations; the legacy-upgrade assertions above remain intact.
+      await require('./support/liveSchema').applyLiveSchema(client);
+      await client.query('INSERT INTO event_technical_support_assignments (event_id,staff_id) SELECT id,3 FROM events ON CONFLICT DO NOTHING');
       mock.method(pool, 'query', (sql, values) => client.query(sql, values));
       mock.method(pool, 'connect', async () => ({ query: (sql, values) => client.query(sql, values), release() {} }));
       const app = require('../../backend/src/index');

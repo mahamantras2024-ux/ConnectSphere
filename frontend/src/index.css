@@ -220,6 +220,11 @@ p { line-height: 1.65; }
 .field input { font-weight: 400; font-size: 13px; }
 .form-section { margin-top: 27px; padding-top: 23px; border-top: 1px solid var(--border); }
 .form-section h3 { display: flex; justify-content: space-between; }
+.venue-timing-fields { min-width: 0; margin: 24px 0 0; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, #fff); }
+.venue-timing-fields legend { padding: 0 8px; font-weight: 700; }
+.venue-timing-fields > .field-help { margin: 0 0 14px; }
+.venue-timing-fields > .field-help:last-child { margin: 12px 0 0; }
+.venue-timing-fields .field > .field-help { margin-top: -3px; }
 .four-col { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .field-help { font-size: 11px; color: var(--muted); margin-top: 15px; }
 .upload-field { display: flex; flex-direction: column; gap: 10px; padding: 20px; margin-top: 20px; border: 1px dashed #c3d2c5; border-radius: 10px; font-size: 12px; font-weight: 600; }
@@ -551,6 +556,9 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 /* Safety Officer queue. */
 .safety-queue { margin-top: 24px; }
 .safety-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+/* Safety Officer review notification AC3: the event a notification opened onto is highlighted and names its review requirement. */
+.highlighted-safety-event { border-color: #9cc48a; border-left: 6px solid #4f8a35; background: #f4faf0; }
+.safety-review-requirement { margin: 0; padding: 8px 12px; border-radius: 8px; background: #eef6e6; color: #38521f; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
 
 /* SCRUM-43 keeps the queue distinct from the catalogue and gives the review drawer comfortable, readable spacing. */
@@ -704,3 +712,7 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .amendment-changes dt { font-weight: 600; color: #334155; }
 .amendment-changes dd { margin: 0; white-space: pre-wrap; }
 .change-explanation { margin: 8px 0; white-space: pre-wrap; }
+
+/* Staff preparation stages use the established warning and neutral tones; cancellation keeps its shared red badge. */
+.onsite-event-card .status-planning { background: var(--cream); color: #685019; }
+.onsite-event-card .status-completed { background: #EFEFE3; color: #616351; }

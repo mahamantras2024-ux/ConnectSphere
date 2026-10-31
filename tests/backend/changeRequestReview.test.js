@@ -420,7 +420,8 @@ test('CR AC2 - users read only their own notifications with an unread count', as
     if (sql.includes('FROM users WHERE')) return { rows: [coordinator] };
     assert.deepEqual(values, [30]);
     if (sql.includes('count(*)')) return { rows: [{ unread: 1 }] };
-    assert.match(sql, /WHERE user_id=\$1 ORDER BY created_at DESC, id DESC LIMIT 50/);
+    // Safety Officer review notifications are retained outside the ordinary 50-row window while their required review is unresolved.
+    assert.match(sql, /FROM notifications n/);
     return { rows: stored };
   });
   const result = await request('/api/notifications?userId=12');
