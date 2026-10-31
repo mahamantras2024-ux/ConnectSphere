@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('../../backend/node_modules/pg');
+const { applyLiveSchema } = require('./support/liveSchema');
 const { pool } = require('../../backend/src/config/db');
 const jwt = require('../../backend/node_modules/jsonwebtoken');
 
@@ -49,7 +50,7 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
     await admin(`CREATE SCHEMA ${schema}`);
     // Explicitly retain pg's non-enumerable password without printing credentials.
     database = new Pool({ ...pool.options, password: pool.options.password, options: `-c search_path=${schema}`, max: 8 });
-    await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY,email TEXT,full_name TEXT,role TEXT,roles TEXT[] DEFAULT '{}',auth_version INTEGER DEFAULT 0);
+    await database.query(`CREATE TABLE users(id INTEGER PRIMARY KEY,email TEXT,full_name TEXT,role TEXT,roles TEXT[] DEFAULT '{}',organisation_name TEXT,auth_version INTEGER DEFAULT 0);
       INSERT INTO users VALUES (1,'lead@example.test','Lead','event_coordinator_lead','{}',0),
       (2,'organiser@example.test','Organiser','event_organiser','{}',0),
       (3,'chris@example.test','Chris','event_coordinator','{}',0),(4,'sam@example.test','Sam','event_coordinator','{}',0),
@@ -58,14 +59,8 @@ describe('Lead AC1–AC7 - real PostgreSQL assignment workflows', { skip: proces
       INSERT INTO venues VALUES (7,'Hall','Available',200,ARRAY['Theatre'])`);
     const client = await database.connect();
     try {
-      for (const name of ['migrations/001-external-events.sql','migrations/002-event-change-requests.sql','migrations/003-event-clarifications.sql','migrations/004-event-attachments.sql','migrations/004-event-equipment-requirements.sql',
-        'migrations/005-change-request-review.sql','migrations/009-internal-single-role.sql','venueManagementSchema.sql','venueScheduleSchema.sql','venueAvailabilitySchema.sql',
-        // Venue booking requests (own runner) and 017: submissions notify every Coordinator Lead (parent notification system).
-        'migrations/20261018064942_venue_booking_requests.sql','migrations/017-parent-notifications.sql','migrations/019-organiser-event-outcomes.sql','migrations/020-coordinator-assignment-notifications.sql','migrations/021-clarification-reply-notifications.sql','migrations/022-venue-booking-request-notifications.sql']) {
-        await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db',name),'utf8'));
-      }
-      // The real inbox also reads unresolved safety notices; retain its schema dependency in this partial fixture.
-      await client.query('CREATE TABLE event_safety_checks (event_id INT,outcome TEXT,checked_at TIMESTAMPTZ); CREATE TABLE venue_staff_assignments (venue_id INT,staff_user_id INT)');
+      // Every production migration in runner order, so this schema never falls behind a later story's columns.
+      await applyLiveSchema(client);
     } finally { client.release(); }
     // Redirect acquisition to isolated real tables. No mock decides authorization, filters, updates or lock outcomes.
     mock.method(pool, 'query', (sql, values) => database.query(sql, values));

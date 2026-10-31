@@ -1,57 +1,10 @@
-const { pool } = require('../config/db');
 const { HOLD_DURATION_MS, hasConflict } = require('./venueAvailability');
 const { insertNotifications, emailNotifications } = require('./notificationService');
 const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
 const { requirements } = require('./venueRequestRequirements');
 
-/** Attaches an HTTP status to an expected domain error for the existing Express error boundary. */
-function reject(status, message) { return Object.assign(new Error(message), { status }); }
-
-/** Accepts only PostgreSQL positive integer identifiers, including route parameter strings. */
-function validId(value) {
-  // Prevent JSON arrays such as [3] from being coerced into a valid event identifier.
-  return ['string', 'number'].includes(typeof value) && /^[1-9]\d*$/.test(String(value)) && Number(value) <= 2147483647;
-}
-
-/** Requires an explicit timezone and a real calendar date so browser locale and date normalization cannot alter a request. */
-function timestamp(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return NaN;
-  const day = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== value.slice(0, 10)) return NaN;
-  return Date.parse(value);
-}
-
-/** Serializes venue requests with other requests, approvals, maintenance and venue edits before reading conflicts. */
-async function withVenue(venueId, operation) {
-  const client = await pool.connect();
-  let result;
-  try {
-    await client.query('BEGIN');
-    const venue = (await client.query('SELECT * FROM venues WHERE id=$1 FOR UPDATE', [venueId])).rows[0];
-    if (!venue || !venue.is_active) throw reject(404, 'Venue not found or no longer active.');
-    result = await operation(client, venue);
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    // Database guards also protect writes outside these handlers; expose their overlap rejection as a conflict.
-    if (error.code === '23P01') throw reject(409, 'The requested period is no longer available.');
-    throw error;
-  } finally { client.release(); }
-  return result;
-}
-
-/** Reads both sources on the locked venue; timestamps remain raw until the shared conflict calculation expands them. */
-async function recordedPeriods(client, venueId) {
-  return (await client.query(`
-    SELECT id, 'booking' AS kind, status, start_datetime, end_datetime, hold_expires_at
-    FROM venue_bookings WHERE venue_id=$1
-    UNION ALL
-    SELECT id, 'unavailability' AS kind, 'unavailable' AS status, start_datetime, end_datetime, NULL::timestamptz AS hold_expires_at
-    FROM venue_unavailability WHERE venue_id=$1
-    UNION ALL
-    SELECT id, 'unavailability' AS kind, 'unavailable' AS status, start_datetime, end_datetime, NULL::timestamptz AS hold_expires_at
-    FROM venue_schedule_periods WHERE venue_id=$1 AND status='unavailable'`, [venueId])).rows;
-}
+const { reject, validId, timestamp, withVenue, recordedPeriods } = require('./venueBookingStore');
+const { approveTentativeHold } = require('./venueHolds');
 
 /** Creates an authorized hold and assigned Venue Staff notices atomically; sends best-effort email after commit. */
 async function createVenueRequest(venueId, body, userId) {
@@ -93,24 +46,21 @@ async function createVenueRequest(venueId, body, userId) {
   return request;
 }
 
-/** Applies an explicit staff decision; even a late approval must recheck current blockers without relying on the old hold. */
-async function decideVenueRequest(venueId, requestId, decision, userId, reason) {
-  if (!validId(venueId) || !validId(requestId) || !['approved', 'rejected'].includes(decision)) throw reject(400, 'Choose a valid request and approval or rejection decision.');
+/** Routes approvals through the finite-hold lifecycle and records rejections with a durable coordinator notice. */
+async function decideVenueRequest(venueId, requestId, decision, userId, reason, holdExpiresAt) {
+  // SCRUM-107: every new approval is tentative; only coordinator confirmation makes it final.
+  if (decision === 'approved') return approveTentativeHold(venueId, requestId, userId, holdExpiresAt);
+  if (!validId(venueId) || !validId(requestId) || decision !== 'rejected') throw reject(400, 'Choose a valid request and approval or rejection decision.');
   if (reason != null && typeof reason !== 'string') throw reject(400, 'The decision reason must be text.');
-  // Rejection notes explain why the booking was declined; approvals never retain an irrelevant reason.
-  const decisionNotes = decision === 'rejected' ? reason?.trim() || null : null;
+  // Rejection notes explain why the booking was declined; approvals use their separate finite-hold flow above.
+  const decisionNotes = reason?.trim() || null;
   let safetyNotes = [];
   const decided = await withVenue(Number(venueId), async (client, venue) => {
     const request = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
     if (!request) throw reject(404, 'Venue request not found.');
     if (request.status !== 'pending') throw reject(409, 'This request has already been decided.');
-    // Either decision can make the event ready for its safety check: an approval confirms its venue, and rejecting a
-    // still-pending booking can leave an already approved one as the only live arrangement (VENUE_PENDING clears).
+    // Rejecting a pending request can leave an already confirmed booking as the only live arrangement.
     const wasReady = await isReadyForSafetyCheck(client, request.event_id);
-    if (decision === 'approved') {
-      const periods = await recordedPeriods(client, venue.id);
-      if (hasConflict(request, periods, venue, Date.now(), request.id)) throw reject(409, 'The requested period is no longer available.');
-    }
     const decided = (await client.query(`UPDATE venue_bookings SET status=$1, decision_by=$2, updated_at=$3, decision_notes=$4
       WHERE id=$5 AND venue_id=$6 RETURNING *`, [decision, userId, new Date(Date.now()).toISOString(), decisionNotes, request.id, venue.id])).rows[0];
     const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [request.event_id])).rows[0];
@@ -131,4 +81,40 @@ async function decideVenueRequest(venueId, requestId, decision, userId, reason) 
   return decided;
 }
 
-module.exports = { createVenueRequest, decideVenueRequest };
+/**
+ * Venue Staff re-confirm (or reject) a confirmed booking that an applied amendment changed the event under (Record
+ * Offline Clarifications and Apply Agreed Amendments AC5). Re-confirming clears the flag so the venue counts as confirmed
+ * again; rejecting ends the booking with the reason. The coordinator is told, and Safety Officers hear if the event is
+ * now ready for its safety check, in the same transaction.
+ * @param {'confirmed'|'rejected'} decision Venue Staff's outcome of the re-check.
+ */
+async function recheckVenueBooking(venueId, requestId, decision, userId, reason) {
+  if (!validId(venueId) || !validId(requestId) || !['confirmed', 'rejected'].includes(decision)) throw reject(400, 'Choose a valid booking and re-confirm or reject it.');
+  if (reason != null && (typeof reason !== 'string' || reason.length > 4000)) throw reject(400, 'The reason must be text of at most 4000 characters.');
+  const notes = decision === 'rejected' ? reason?.trim() || null : null;
+  let safetyNotes = [];
+  const updated = await withVenue(Number(venueId), async (client, venue) => {
+    const booking = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
+    if (!booking) throw reject(404, 'Venue booking not found.');
+    if (booking.status !== 'approved' || !booking.recheck_required_at) throw reject(409, 'This booking does not need re-confirmation.');
+    const wasReady = await isReadyForSafetyCheck(client, booking.event_id);
+    const saved = (await client.query(decision === 'confirmed'
+      ? `UPDATE venue_bookings SET recheck_required_at=NULL, recheck_reason=NULL, decision_by=$3, updated_at=now()
+         WHERE id=$1 AND venue_id=$2 RETURNING *`
+      : `UPDATE venue_bookings SET status='rejected', recheck_required_at=NULL, decision_by=$3, decision_notes=$4, updated_at=now()
+         WHERE id=$1 AND venue_id=$2 RETURNING *`,
+    decision === 'confirmed' ? [booking.id, venue.id, userId] : [booking.id, venue.id, userId, notes])).rows[0];
+    const event = (await client.query('SELECT id, name, coordinator_id FROM events WHERE id=$1 FOR SHARE', [booking.event_id])).rows[0];
+    const outcome = decision === 'confirmed' ? 're-confirmed' : 'rejected after the event changed';
+    await insertNotifications(client, [{ userId: event.coordinator_id ?? booking.requested_by, eventId: event.id, changeRequestId: null,
+      type: 'event_details_changed', title: `Venue booking ${outcome}: ${event.name}`,
+      message: `${event.name}: venue booking #${booking.id} at ${venue.name} was ${outcome}.${notes ? `\nReason or alternative arrangement: ${notes}` : ''}`,
+      details: { kind: 'venue_booking_recheck', bookingId: booking.id, venueId: venue.id, decision, decisionBy: userId, notes } }]);
+    safetyNotes = await notifySafetyIfNewlyReady(client, event.id, wasReady);
+    return saved;
+  });
+  await emailNotifications(safetyNotes);
+  return updated;
+}
+
+module.exports = { createVenueRequest, decideVenueRequest, recheckVenueBooking };

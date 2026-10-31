@@ -22,6 +22,7 @@ import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
 import EventRegistrationDetails from './pages/event-organiser/EventRegistrationDetails.jsx';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
+import PlanningCalendar from './pages/coordinator/PlanningCalendar';
 import FindVenues from './pages/venues/FindVenues';
 import VenueDashboard from './pages/venue/VenueDashboard';
 import MyRegistrations from './pages/registrations/MyRegistrations';
@@ -95,6 +96,7 @@ export default function App() {
           />
           {/* Keep discovery bookmarkable and enforce coordinator access even for direct URLs. */}
           <Route path="/coordinator/venues" element={<ProtectedRoute roles={['event_coordinator']}><FindVenues /></ProtectedRoute>} />
+          <Route path="/coordinator/planning-calendar" element={<ProtectedRoute roles={['event_coordinator']}><PlanningCalendar /></ProtectedRoute>} />
 
           <Route
             path="/events"

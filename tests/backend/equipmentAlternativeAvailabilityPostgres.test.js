@@ -66,7 +66,7 @@ test('AC1 - rejects a replacement when a reservation commits while its stock loc
         PRIMARY KEY (event_id, staff_id)
       )`);
       await setupClient.query(sqlFile('migrations/014-equipment-reservation-unavailability.sql'));
-      // The current service reads suggestion-state columns introduced by this migration.
+      // The current replacement workflow stores suggestion state added by migration 015.
       await setupClient.query(sqlFile('migrations/015-equipment-replacement-suggestions.sql'));
 
       const support = (await setupClient.query(
@@ -136,6 +136,7 @@ test('AC1 - rejects a replacement when a reservation commits while its stock loc
 
       // Act: start proposing against that locked row, then reserve its only unit before releasing the lock.
       proposalPromise = suggestAlternative(issue.id, alternative.id, support.id);
+      // Observe early rejection immediately so a setup failure cannot become an unhandled rejection.
       proposalPromise.catch(() => {});
       let proposalIsWaiting = false;
       for (let attempt = 0; attempt < 250; attempt += 1) {

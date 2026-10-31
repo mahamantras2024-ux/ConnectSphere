@@ -109,7 +109,7 @@ async function request(path, body, method = 'POST', authenticated = true) {
   const token = jwt.sign({ sub: 1 }, process.env.JWT_SECRET);
   const response = await fetch(base + path, {
     method, headers: { 'Content-Type': 'application/json', ...(authenticated ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
+    ...(body ? { body: JSON.stringify(body.decision==='approved'?{holdExpiresAt:'2099-01-01T00:00:00Z',...body}:body) } : {}),
   });
   return { status: response.status, body: await response.json() };
 }
@@ -260,7 +260,7 @@ for (const [name, expires, expected] of [
   });
 }
 
-for (const [decision, persisted] of [['approved', 'approved'], ['rejected', 'rejected']]) {
+for (const [decision, persisted] of [['approved', 'tentative'], ['rejected', 'rejected']]) {
   test(`AC3 AC7 - Venue Staff can mark an active request ${decision}`, async () => {
     // Arrange: this live hold is the request being decided, not a conflicting second request.
     fixture.role = 'venue_staff';

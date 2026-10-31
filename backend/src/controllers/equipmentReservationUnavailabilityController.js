@@ -24,8 +24,9 @@ const markUnavailable = asyncHandler(async (req, res) => {
   }
 });
 
-const listOpenIssues = asyncHandler(async (_req, res) => {
-  const affectedReservations = await workflow.listOpenIssues();
+/** Reads affected reservations within the authenticated staff member's responsibility (AC6). */
+const listOpenIssues = asyncHandler(async (req, res) => {
+  const affectedReservations = await workflow.listOpenIssues(req.user.id);
   return res.status(200).json({ affectedReservations });
 });
 

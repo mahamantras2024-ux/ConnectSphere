@@ -1,131 +1,51 @@
 const { submissionError } = require('../services/eventRequestValidation');
 const { validateAttachments, mergeAttachments } = require('../services/eventAttachments');
+const { validateEventChanges, INFORMATION_FIELDS } = require('../services/eventChangeValidation');
 // File: Validates and stores organiser event requests and re-exports completed role-scoped reads.
 const asyncHandler = require('../utils/asyncHandler');
 const eventModel = require('../models/eventModel');
 const db = require('../config/db');
 const notificationService = require('../services/notificationService');
-const equipmentStatusService = require('../services/equipmentStatusService');
 const { notifyLeadsOfSubmission } = require('../services/roleNotifications');
+const { validTopics } = require('../services/clarificationFields');
 const { decideChangeRequest } = require('../services/changeRequestDecisions');
-const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements, changeLines } = require('../services/changeRequestReview');
+const { TIME_FIELDS, describeChanges, applyToEvent, assessArrangements } = require('../services/changeRequestReview');
 const { validateEquipmentRequirements } = require('../services/equipmentRequirements');
 // Reuses the completed owner/assignment-scoped event read handlers.
 const { getEvent, listEvents } = require('./eventReadController');
 
-// PUT /api/events/:id/non-critical allows all fields before venue approval and only non-critical fields after.
+// Shown whenever an organiser tries to edit a submitted request directly (amendment story AC1).
+const AMENDMENT_REQUIRED = { code: 'AMENDMENT_REQUIRED',
+  message: 'This event request has been submitted, so it cannot be edited directly. Request an amendment for your Event Coordinator to review.' };
+/** True once the organiser has submitted the request; from then on every change goes through an amendment request. */
+const isSubmitted = (event) => !event.is_draft || event.status !== 'draft';
+
+// PUT /api/events/:id/non-critical saves the organiser's edits to their own draft. A submitted request is never edited
+// directly (AC1): the organiser requests an amendment instead (POST /api/events/:id/amendment-requests).
 const updateEventInformation = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!/^\d+$/.test(id) || Number(id) < 1 || Number(id) > 2147483647) {
     return res.status(400).json({ message: 'Choose a valid event.' });
   }
   const input = req.body || {};
-  const textFields = { name: 255, purpose: 10000, description: 10000, eventType: 100, roomLayoutPreference: 100,
-    programmeDetails: 10000, equipmentNotes: 10000, specialArrangements: 10000 };
-  const editableFields = new Set([...Object.keys(textFields), 'proposedDate', 'proposedStartTime', 'proposedEndTime',
-    'expectedAttendance', 'registrationRequired', 'registrationCapacity', 'accessibilityRequirements','attachments']);
-  const nonCriticalFields = new Set(['description', 'programmeDetails', 'equipmentNotes', 'specialArrangements', 'accessibilityRequirements']);
-  const submittedFields = Object.keys(input);
-  if (!submittedFields.length || submittedFields.some((field) => !editableFields.has(field))) {
+  const fields = Object.keys(input);
+  // Unknown or missing fields are refused before the event is read, as before.
+  if (!fields.length || fields.some((field) => !INFORMATION_FIELDS.includes(field))) {
     return res.status(400).json({ message: 'Choose valid event information to update.' });
   }
   const current = await eventModel.findAccessibleById(id, req.user);
   if (!current) return res.status(404).json({ message: 'Event not found.' });
-  // Attached evidence follows the same critical/non-critical rule as the answer it supports.
-  const hasCriticalChanges = submittedFields.some(field => field === 'attachments'
-    ? Object.keys(input.attachments || {}).some(key => !nonCriticalFields.has(key)) : !nonCriticalFields.has(field));
-  const data = {};
-  for (const [field, max] of Object.entries(textFields)) {
-    if (!(field in input)) continue;
-    const value = input[field];
-    if (typeof value !== 'string' || value.length > max || (field === 'name' && !value.trim() && !current.is_draft)) {
-      return res.status(400).json({ message: `${field} must be text of at most ${max} characters.` });
-    }
-    data[field] = field === 'name' ? value.trim() : value.trim() || null;
-  }
-  if ('accessibilityRequirements' in input) {
-    const accessibility = input.accessibilityRequirements;
-    if (!Array.isArray(accessibility) || accessibility.length > 50 || accessibility.some((item) =>
-      typeof item !== 'string' || !item.trim() || item.length > 500)) {
-      return res.status(400).json({ message: 'Accessibility requirements must be a list of non-empty text entries.' });
-    }
-    data.accessibilityRequirements = accessibility.map((item) => item.trim());
-  }
-  for (const field of ['expectedAttendance', 'registrationCapacity']) {
-    if (!(field in input)) continue;
-    const value = input[field];
-    if (value != null && (!Number.isInteger(value) || value < 0 || value > 2147483647)) {
-      return res.status(400).json({ message: `${field} must be a non-negative whole number.` });
-    }
-    data[field] = value ?? null;
-  }
-  if ('registrationRequired' in input) {
-    if (typeof input.registrationRequired !== 'boolean') return res.status(400).json({ message: 'registrationRequired must be true or false.' });
-    data.registrationRequired = input.registrationRequired;
-  }
-  if ('proposedDate' in input) {
-    const value = input.proposedDate;
-    if (value != null && value !== '' && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
-        Number(value.slice(0, 4)) < 1 || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) {
-      return res.status(400).json({ message: 'Enter a valid event date.' });
-    }
-    data.proposedDate = value || null;
-  }
-  for (const field of ['proposedStartTime', 'proposedEndTime']) {
-    if (!(field in input)) continue;
-    const value = input[field];
-    if (value != null && value !== '' && (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value))) {
-      return res.status(400).json({ message: 'Enter a valid event time.' });
-    }
-    data[field] = value || null;
-  }
-  const resultingStart = Object.hasOwn(data, 'proposedStartTime') ? data.proposedStartTime : current.proposed_start_time;
-  const resultingEnd = Object.hasOwn(data, 'proposedEndTime') ? data.proposedEndTime : current.proposed_end_time;
-  if (resultingStart && resultingEnd && resultingStart.padEnd(8, ':00') >= resultingEnd.padEnd(8, ':00')) {
-    return res.status(400).json({ message: 'End time must be later than start time.' });
-  }
-  if (!current.is_draft && current.status !== 'draft') {
-    // Existing requests may predate required submission fields; optional edits remain possible.
-    // Prevent clearing any required field explicitly included in this update.
-    const required = ['name','proposedDate','proposedStartTime','proposedEndTime','expectedAttendance'];
-    if (required.some(field => Object.hasOwn(data, field) && (data[field] == null || data[field] === '' || (field === 'expectedAttendance' && data[field] < 1)))) {
-      return res.status(400).json({ message: 'Name, date, times and attendance cannot be cleared on submitted requests.' });
-    }
-  }
-  if (Object.hasOwn(input,'attachments')) {
-    try {data.attachments=mergeAttachments(current.attachments || {},validateAttachments(input.attachments));}
-    catch(error){return res.status(400).json({message:error.message});}
-  }
-  if (current.venue_confirmed && hasCriticalChanges) {
-    if (!current.coordinator_id) {
-      return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a critical change request.' });
-    }
-    // The coordinator's notification lists each requested field against its current confirmed value (AC1/AC2).
-    const changes = describeChanges(current, data);
-    const notification = {
-      title: `New change request: ${current.name}`,
-      message: `The Event Organiser requested changes to ${current.name}.\n${changeLines(changes).join('\n')}`,
-      details: { changes },
-    };
-    const created = await eventModel.createChangeRequest(id, req.user.id, current.coordinator_id, data, notification);
-    if (!created) {
-      return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The confirmed arrangements changed. Refresh the event and submit your change request again.' });
-    }
-    // The coordinator's address is only used for delivery and is never returned to the organiser.
-    const { coordinator_email: coordinatorEmail, ...changeRequest } = created;
-    await notificationService.emailNotifications([{ email: coordinatorEmail, ...notification }]);
-    return res.status(202).json({
-      changeRequest,
-      message: 'Change request submitted and pending review by the Event Coordinator. The confirmed event information remains in effect, and the Event Coordinator has been notified.',
-    });
-  }
-  const event = await eventModel.updateEditable(id, req.user.id, data, hasCriticalChanges);
-  if (!event) return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The venue was confirmed while you were editing. Refresh the event and submit a change request for critical information.' });
-  return res.json({ event, message: current.venue_confirmed ? 'Non-critical event information saved.' : 'Event information saved.' });
+  if (isSubmitted(current)) return res.status(409).json(AMENDMENT_REQUIRED);
+  const { data, error } = validateEventChanges(input, current);
+  if (error) return res.status(400).json({ message: error });
+  const event = await eventModel.updateEditable(id, req.user.id, data);
+  // No row means the draft was submitted between the read above and this write.
+  if (!event) return res.status(409).json(AMENDMENT_REQUIRED);
+  return res.json({ event, message: 'Event information saved.' });
 });
 
-// PUT /api/events/:id/equipment replaces the organiser's equipment requirements before Technical Support
-// confirms them; afterwards the same edit becomes a change request so confirmed arrangements stay in effect.
+// PUT /api/events/:id/equipment replaces the equipment requirements of the organiser's own draft. After submission
+// equipment changes are amendment requests too (AC1).
 const updateEquipmentRequirements = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) return res.status(400).json({ message: 'Choose a valid event.' });
@@ -134,36 +54,11 @@ const updateEquipmentRequirements = asyncHandler(async (req, res) => {
   if (equipment.error) return res.status(400).json({ message: equipment.error });
   const current = await eventModel.findAccessibleById(id, req.user);
   if (!current) return res.status(404).json({ message: 'Event not found.' });
-
-  if (!current.equipment_confirmed) {
-    // A reviewed request goes back to pending; the service tells the coordinator in the same transaction.
-    const saved = await equipmentStatusService.resubmitRequest(id, req.user.id, equipment.data);
-    // No row means Technical Support confirmed the arrangements between the read above and this write.
-    if (!saved.event) {
-      return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'Equipment arrangements were confirmed while you were editing. Refresh the event and submit a change request.' });
-    }
-    return res.json({ event: saved.event, message: 'Equipment requirements saved.' });
-  }
-  if (!current.coordinator_id) {
-    return res.status(409).json({ code: 'COORDINATOR_NOT_ASSIGNED', message: 'A coordinator must be assigned before submitting a change request.' });
-  }
-  // Like other critical changes, the coordinator is notified of each changed equipment field (current vs requested).
-  const changes = describeChanges(current, equipment.data);
-  const notification = {
-    title: `New change request: ${current.name}`,
-    message: `The Event Organiser requested equipment changes to ${current.name}.\n${changeLines(changes).join('\n')}`,
-    details: { changes },
-  };
-  const created = await eventModel.createEquipmentChangeRequest(id, req.user.id, current.coordinator_id, equipment.data, notification);
-  if (!created) {
-    return res.status(409).json({ code: 'ARRANGEMENT_CHANGED', message: 'The event arrangements changed. Refresh the event and try again.' });
-  }
-  const { coordinator_email: coordinatorEmail, ...changeRequest } = created;
-  await notificationService.emailNotifications([{ email: coordinatorEmail, ...notification }]);
-  return res.status(202).json({
-    changeRequest,
-    message: 'Change request submitted and pending review by the Event Coordinator. The confirmed equipment arrangements remain in effect, and the Event Coordinator has been notified.',
-  });
+  if (isSubmitted(current)) return res.status(409).json(AMENDMENT_REQUIRED);
+  const event = await eventModel.updateEquipment(id, req.user.id, equipment.data);
+  // No row means the draft was submitted between the read above and this write.
+  if (!event) return res.status(409).json(AMENDMENT_REQUIRED);
+  return res.json({ event, message: 'Equipment requirements saved.' });
 });
 
 // GET /api/events/change-requests returns pending notifications scoped to the assigned coordinator.
@@ -208,19 +103,13 @@ const decideChangeRequestHandler = asyncHandler(async (req, res) => {
   }
 });
 
-const clarificationFields = new Set(['name', 'purpose', 'description', 'event_type', 'proposed_date',
-  'proposed_start_time', 'proposed_end_time', 'expected_attendance', 'programme_details',
-  'room_layout_preference', 'accessibility_requirements', 'equipment_notes', 'registration_required',
-  'registration_capacity', 'special_arrangements']);
 
 // POST /api/events/:id/clarifications sends an event-linked question to its organiser.
 const createClarificationRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!/^[1-9]\d*$/.test(id) || Number(id) > 2147483647) return res.status(400).json({ message: 'Choose a valid event.' });
   const { informationNeeded, message } = req.body || {};
-  if (!Array.isArray(informationNeeded) || !informationNeeded.length || informationNeeded.length > clarificationFields.size ||
-      informationNeeded.some((field) => typeof field !== 'string' || !clarificationFields.has(field)) ||
-      new Set(informationNeeded).size !== informationNeeded.length) {
+  if (!validTopics(informationNeeded)) {
     return res.status(400).json({ message: 'Select one or more valid event fields that need clarification.' });
   }
   if (typeof message !== 'string' || !message.trim() || message.length > 4000) {

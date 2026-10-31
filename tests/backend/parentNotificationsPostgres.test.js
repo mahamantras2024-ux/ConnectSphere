@@ -87,6 +87,8 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       assert.equal((await as('vera', 'PUT', `/venues/1/requests/${booking.body.request.id}/decision`, { decision: 'approved' })).status, 200);
       assert.deepEqual(await notesOf('sam', 'safety_check_ready'), []);
 
+      // AC6: role notifications do not grant unrelated staff access to the equipment request.
+      await client.query('INSERT INTO event_technical_support_assignments (event_id,staff_id) VALUES ($1,$2)', [eventId,id.tina]);
       // Technical Support confirms the projector: the event is now ready, and each Safety Officer hears once.
       const [pending] = (await as('tina', 'GET', '/events/equipment-requests')).body.requests;
       assert.equal((await as('tina', 'POST', `/events/${eventId}/equipment-reviews`, { outcome: 'fully_fulfillable', requestVersion: pending.request_version })).status, 201);

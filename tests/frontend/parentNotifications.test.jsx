@@ -99,6 +99,8 @@ describe('previews and targets', () => {
     ['event_coordinator_lead', note({ type: 'event_awaiting_assignment' }), '/coordinator-lead/dashboard'],
     ['safety_officer', note({ type: 'safety_check_ready' }), '/safety/dashboard#safety-event-101'],
     ['safety_officer', note({ type: 'safety_check_ready', event_id: null }), '/safety/dashboard'],
+    // A new amendment request is decided in the coordinator dashboard's inbox, not on the event page.
+    ['event_coordinator', note({ type: 'change_request_submitted' }), '/coordinator/dashboard'],
     ['venue_staff', note(), '/venue/dashboard'], ['technical_support', note(), '/tech-support/dashboard'],
     ['event_organiser', note({ event_id: null }), '/organizer/dashboard'],
   ])('NT AC4 - a %s opens the right page', (role, notification, path) => {
@@ -216,6 +218,35 @@ it.each([
   await waitFor(() => expect(page()).toBe(start));
   await waitFor(() => expect(reads()).toBe(before + 1));
 });
+// Test case (user report): a coordinator pressing a new amendment request notification must reach the request and its
+// Approve / Reject controls, whether they start elsewhere or are already on the dashboard when the request arrives.
+it.each([['another page', '/events/101'], ['the dashboard itself', '/coordinator/dashboard']])(
+  'NT AC4 - a coordinator opening a new amendment request notification from %s sees the request ready to decide', async (_, start) => {
+    // Arrange: the inbox is empty when first read; the organiser's request arrives before the coordinator presses the bell.
+    user = roles.event_coordinator;
+    // Records which element each scroll targets (the app also scrolls its main area on every navigation).
+    const scrolled = [];
+    Element.prototype.scrollIntoView = function scrollIntoView() { scrolled.push(this); };
+    const pending = { id: 501, event_id: 101, event_name: 'Gala', organiser_name: 'Olivia', explanation: 'More guests.',
+      requested_changes: { expectedAttendance: 90 }, changes: [{ field: 'expectedAttendance', label: 'Expected attendance', current: 60, requested: 90 }], arrangements: [] };
+    let inboxRequests = [];
+    inbox = { notifications: [note({ type: 'change_request_submitted', title: 'New amendment request: Gala' })], unreadCount: 1 };
+    const base = api.get.getMockImplementation();
+    api.get.mockImplementation(async (path) => (path === '/events/change-requests' ? { changeRequests: inboxRequests } : base(path)));
+    open(start);
+    fireEvent.click(await bell());
+    inboxRequests = [pending];
+    // Act
+    fireEvent.click(within(screen.getByRole('region', { name: 'Recent notifications' })).getByRole('button', { name: 'New amendment request: Gala (new)' }));
+    // Assert: on the dashboard, the inbox shows the request with its decision controls, scrolled into view.
+    await waitFor(() => expect(page()).toBe('/coordinator/dashboard'));
+    const inboxRegion = await screen.findByRole('region', { name: 'Amendment requests' });
+    expect(await within(inboxRegion).findByText('Gala')).toBeTruthy();
+    expect(within(inboxRegion).getByRole('button', { name: 'Approve and apply' })).toBeTruthy();
+    await waitFor(() => expect(scrolled).toContain(inboxRegion));
+    delete Element.prototype.scrollIntoView;
+  });
+
 // Test case: An already-read notification opens its page without another mark-read request.
 it('NT AC4 - a read notification in the dashboard panel opens its page without marking it again', async () => {
   inbox = { notifications: [note({ read_at: '2030-01-02T03:56:00.000Z' })], unreadCount: 0 };

@@ -11,6 +11,14 @@ const booking = {
 };
 const hold = { ...booking, status: 'pending', hold_expires_at: '2030-10-09T12:00:00+08:00' };
 
+it.each([[now-1,true],[now,false],[now+1,false]])('SCRUM-107 AC3 - tentative hold occupancy at clock %s is %s', (instant,blocked) => {
+  // Arrange: the staff-approved status must behave like a finite hold, including its setup buffer.
+  const tentative={...hold,status:'tentative'};
+  // Act / Assert: the venue becomes available at equality without waiting for the expiry worker.
+  expect(segmentAt([tentative],'09:45:00',{now:instant,setupMinutes:30}).blocked).toBe(blocked);
+  expect(segmentAt([tentative],'10:30:00',{now:instant,setupMinutes:30}).blocked).toBe(blocked);
+});
+
 /** Looks up one instant in the public schedule output; absence is an assertion failure, never a free slot. */
 function segmentAt(records, time, options = {}) {
   const segments = buildSchedule(date, records, { now, ...options });

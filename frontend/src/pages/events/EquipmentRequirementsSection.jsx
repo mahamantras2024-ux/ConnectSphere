@@ -1,4 +1,4 @@
-// File: Shows an event's equipment and technical-support requirements and lets its organiser update them.
+// File: Shows an event's equipment and technical-support requirements and lets its organiser update them on a draft.
 import { useState } from 'react';
 import { api } from '../../api/client';
 import ActionConfirmation from '../../components/ActionConfirmation';
@@ -18,12 +18,11 @@ const WIDE = { gridColumn: '1 / -1' };
 
 /**
  * Displays equipment items, support needs and technical specifications for an event.
- * Editing follows the rest of the event page: organisers get a pencil control (labelled "Request change" once
- * Technical Support has confirmed the arrangements) and "Save changes"/"Submit change request" with Cancel. After
- * confirmation the edit becomes a change request and the confirmed values stay on screen until the coordinator reviews it.
+ * Editing follows the rest of the event page: on a draft the organiser gets a pencil control with "Save changes" and
+ * Cancel. Once the request is submitted, equipment changes go through an amendment request instead (amendment story).
  * @param {object} props
  * @param {object} props.event the loaded event record.
- * @param {boolean} props.canEdit true for the owning organiser.
+ * @param {boolean} props.canEdit true for the owning organiser while the event is a draft.
  * @param {string} props.token session token for the API.
  * @param {(fields: object) => void} props.onSaved receives saved equipment fields to merge into the event.
  * @param {(message: string) => void} props.onMessage shows the server's confirmation in the page status region.
@@ -36,19 +35,17 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
   const [reviewing, setReviewing] = useState(false);
   const [success, setSuccess] = useState('');
   const confirmed = Boolean(event.equipment_confirmed);
-  const editLabel = confirmed ? 'Request change to Equipment requirements' : 'Edit Equipment requirements';
+  const editLabel = 'Edit Equipment requirements';
 
-  // Runs only after review confirmation: save unconfirmed requirements (200), or request a confirmed change (202).
+  // Runs only after review confirmation: saves the draft's equipment requirements.
   async function save() {
     setSaving(true); setError(''); onMessage('');
     try {
       const data = await api.put(`/events/${event.id}/equipment`, equipmentPayload(draft), token);
       // Only equipment columns are merged: the raw UPDATE row would otherwise overwrite formatted fields such as dates.
-      if (!data.changeRequest) {
-        onSaved({ equipment_items: data.event.equipment_items, technical_support_required: data.event.technical_support_required,
-          technical_support_details: data.event.technical_support_details, video_conferencing_required: data.event.video_conferencing_required,
-          technical_specifications: data.event.technical_specifications });
-      }
+      onSaved({ equipment_items: data.event.equipment_items, technical_support_required: data.event.technical_support_required,
+        technical_support_details: data.event.technical_support_details, video_conferencing_required: data.event.video_conferencing_required,
+        technical_specifications: data.event.technical_specifications });
       setSuccess(data.message);
       setDraft(null);
     } catch (err) {
@@ -78,12 +75,11 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
           // Validate before review; the API runs only after the organiser explicitly confirms.
           e.preventDefault(); const problem = equipmentError(draft); setError(problem); if (!problem) setReviewing(true);
         }}>
-          {confirmed && <p className="ed-muted">Arrangements are confirmed, so your edit is sent to the Event Coordinator as a change request. The confirmed details stay in effect until review.</p>}
           <EquipmentRequirementsFields value={draft} onChange={setDraft} disabled={saving} />
           {error && !reviewing && <p role="alert" className="ed-notice ed-notice--bad">{error}</p>}
           <div className="ed-editor-actions">
             <button type="submit" className="button-primary" disabled={saving}>
-              {saving ? 'Saving…' : confirmed ? 'Submit change request' : 'Save changes'}
+              {saving ? 'Saving…' : 'Save changes'}
             </button>
             <button type="button" className="button-secondary" disabled={saving} onClick={() => { setDraft(null); setError(''); }}>Cancel</button>
           </div>
@@ -112,7 +108,7 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
           </div>
         </dl>
       )}
-      {reviewing && <ActionConfirmation action={confirmed ? 'submit this equipment change request' : 'update these equipment requirements'} busy={saving} error={error} success={success} onConfirm={save} onClose={() => {
+      {reviewing && <ActionConfirmation action="update these equipment requirements" busy={saving} error={error} success={success} onConfirm={save} onClose={() => {
         // Keep cancelled edits available; acknowledge a successful update in the surrounding event page.
         setReviewing(false); setError(''); if (success) { onMessage(success); setSuccess(''); }
       }} />}

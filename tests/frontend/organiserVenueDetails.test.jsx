@@ -11,6 +11,17 @@ const booking = { id: 1, venue_name: 'North Hall', address: '12 North Road', cap
   start_datetime: '2030-04-04T16:30:00Z', end_datetime: '2030-04-04T18:30:00Z', status: 'approved',
   updated_at: '2030-04-01T10:00:00Z' };
 
+it('SCRUM-107 AC1 AC3 - organiser sees a tentative venue as pending confirmation', async () => {
+  // Arrange: staff approval has reserved the venue temporarily but the coordinator has not finalized it.
+  api.get.mockResolvedValue({bookings:[{...booking,status:'tentative'}]});
+  // Act / Assert: the arrangement stays visible without incorrectly promising a confirmed venue.
+  render(<OrganiserVenueDetails eventId={44} token="token"/>);
+  const item=await screen.findByRole('listitem');
+  expect(within(item).getByText('North Hall')).toBeVisible();
+  expect(within(item).getByText('Pending Confirmation')).toBeVisible();
+  expect(within(item).queryByText('Confirmed')).not.toBeInTheDocument();
+});
+
 // An invalid API response cannot establish the AC4 empty state.
 it('SCRUM-104 AC1 AC4 - reports malformed booking data as a load error', async () => {
   // Arrange / Act

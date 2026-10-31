@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, '..');
 const options = process.argv.slice(2);
 // Maps each implemented story to its shared and feature-specific regression suites.
 const stories = {
+  // Technical Support event status AC1-AC6: private lifecycle facts, release and transactional notifications.
+  'technical-event-status': ['technicalEventStatus', 'technicalEventStatusPostgres', 'technicalSupportAssignment', 'eventCompletion'],
   // Coordinator reporting keeps real access middleware and drawer interactions in the story suite.
   'coordinator-view-registration-information': ['coordinatorRegistrations', 'coordinatorRegistrationAccess', 'coordinatorRegistrationNavigation'],
   // Sprint 3 SCRUM-43: staff review/decisions, notifications, trusted audit and existing occupancy/concurrency guards.
@@ -47,7 +49,15 @@ const stories = {
   // Coordinator tracks equipment request status: statuses, affected items, notifications and the review form.
   'equipment-status': ['equipmentStatus','equipmentStatus.unit','equipmentStatusPostgres','equipmentReviewUpgradePostgres','techSupportAssignmentGatePostgres','equipmentRequestReview','equipmentRequirements','changeRequestReview'],
   // Parent notification system: the bell and previews for every role, plus the Lead and Safety Officer triggers.
-  'parent-notifications': ['parentNotifications','parentNotificationsPostgres','notificationMigration','migrateExternalEvents','equipmentStatus','eventDecision','venueBookingApproval','sharedUiRegressions']
+  'parent-notifications': ['parentNotifications','parentNotificationsPostgres','notificationMigration','migrateExternalEvents','equipmentStatus','eventDecision','venueBookingApproval','sharedUiRegressions'],
+  // Request All Post-Submission Amendments Through the Coordinator: no direct edits after submission, amendment requests
+  // with explanations, the coordinator's review, and the edit paths that now stop at submission.
+  'post-submission-amendments': ['amendmentRequests','amendmentRequestsPostgres','changeRequestReview','changeRequestReviewPostgres','organiserEvents','equipmentRequirements','equipmentStatus','migrateExternalEvents','sharedUiRegressions'],
+  // Record Offline Clarifications and Apply Agreed Amendments: offline records and resolution, agreed amendments with
+  // their history, notifications, venue/technical/safety re-checks and deadline changes.
+  'offline-clarifications-agreed-amendments': ['offlineClarifications','offlineClarificationsPostgres','agreedAmendments.unit','amendmentRequests','changeRequestReview','changeRequestReview.unit','eventDecisionPolicy.unit','venueBookingApproval','migrateExternalEvents','organiserEvents','eventDecision','sharedUiRegressions'],
+  // Technical Support assignment + equipment-status notifications and opt-in periodic reminders.
+  'tech-support-assignment-notifications': ['techSupportReminderPreferences','techSupportReminderPreferenceController','technicalSupportAssignment','equipmentUnavailableStatus','notificationMigration']
 };
 const storyIndex = options.indexOf('story');
 const storyName = storyIndex < 0 ? null : options[storyIndex + 1];
@@ -74,7 +84,7 @@ function run(label, args, directory, env = {}) {
 if (backend) {
   const files = readdirSync(path.join(__dirname, 'backend')).filter(name => name.endsWith('.test.js')).sort()
     .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'databaseAcceptance.test.js'))
-    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js','equipmentStatusPostgres.test.js','equipmentReviewUpgradePostgres.test.js','techSupportAssignmentGatePostgres.test.js','equipmentAlternativeAvailabilityPostgres.test.js','equipmentAvailabilityPostgres.test.js','parentNotificationsPostgres.test.js','safetyEquipmentReleasePostgres.test.js','safetyNotificationRecoveryPostgres.test.js','organiserOutcomesPostgres.test.js'].includes(name))
+    .filter(name => !integration || coverage || ['databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js','equipmentStatusPostgres.test.js','equipmentReviewUpgradePostgres.test.js','techSupportAssignmentGatePostgres.test.js','equipmentAlternativeAvailabilityPostgres.test.js','equipmentAvailabilityPostgres.test.js','parentNotificationsPostgres.test.js','safetyEquipmentReleasePostgres.test.js','safetyNotificationRecoveryPostgres.test.js','organiserOutcomesPostgres.test.js','amendmentNotificationBoundariesPostgres.test.js','technicalEventStatusPostgres.test.js','technicalQueueAccessPostgres.test.js','amendmentRequestsPostgres.test.js','offlineClarificationsPostgres.test.js'].includes(name))
     .map(name => path.join(__dirname, 'backend', name));
   const args = ['--test', ...(storyPattern ? [`--test-name-pattern=${storyPattern}`] : []), ...files];
   run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', RUN_LEAD_DB: liveDatabase ? '1' : '0', RUN_VENUE_BOOKING_DB: liveDatabase ? '1' : '0', NODE_ENV: 'test' });

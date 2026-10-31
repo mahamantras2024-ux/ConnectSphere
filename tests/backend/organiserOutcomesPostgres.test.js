@@ -126,9 +126,10 @@ test('Organiser outcomes AC1-AC6 - submission, review, amendments and clarificat
 
       // AC3/AC4 equipment amendments route to the coordinator and notify the owner only when actually applied.
       await client.query('UPDATE events SET equipment_confirmed_at=now() WHERE id=$1',[id]);
-      const amendment = await as(1,'PUT',`/events/${id}/equipment`,{equipmentItems:[{item:'Projector',quantity:1}]});
-      assert.equal(amendment.status,202); assert.match(amendment.body.message,/pending review/i);
-      const applied = await as(2,'POST',`/events/change-requests/${amendment.body.changeRequest.id}/decision`,{decision:'approved'});
+      const amendment = await as(1,'POST',`/events/${id}/amendment-requests`,{changes:{equipmentItems:[{item:'Projector',quantity:1}],
+        technicalSupportRequired:false,technicalSupportDetails:null,videoConferencingRequired:false,technicalSpecifications:null},explanation:'Please provide a projector.'});
+      assert.equal(amendment.status,202); assert.match(amendment.body.message,/reviews it/i);
+      const applied = await as(2,'POST',`/events/change-requests/${amendment.body.amendmentRequest.id}/decision`,{decision:'approved'});
       assert.equal(applied.status,200);
       inbox = (await as(1,'GET','/notifications')).body.notifications;
       const changed = inbox.find(note => note.type==='change_request_approved');

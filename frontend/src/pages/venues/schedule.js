@@ -1,6 +1,6 @@
 /** A pending request reserves time only before its explicit deadline; legacy pending records have no hold. */
 export function isActiveHold(record, now) {
-  return record.status === 'pending' && Date.parse(record.hold_expires_at) > now;
+  return ['pending','tentative'].includes(record.status) && Date.parse(record.hold_expires_at) > now;
 }
 
 /** Splits a Singapore day into half-open intervals, expanding event buffers before clipping to midnight. */

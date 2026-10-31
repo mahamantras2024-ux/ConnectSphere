@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear(); localStorage.setItem('cs_token', 'staff-session');
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 9, role: 'venue_staff' } }
     : path === '/venues/requests/pending' ? { requests: [booking] } : { notifications: [], unreadCount: 0 });
-  api.put.mockResolvedValue({ request: { ...booking, status: 'approved', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } });
+  api.put.mockResolvedValue({ request: { ...booking, status: 'tentative', hold_expires_at:'2099-01-01T00:00:00Z', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } });
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 /** Real authentication and drawer behavior are retained; test data enters only through API responses. */
@@ -25,12 +25,14 @@ it('SCRUM-43 AC1 AC2 AC7 - staff review requirements, approve and see persisted 
   const drawer = screen.getByRole('dialog', { name: 'Review venue booking request' });
   for (const text of ['Hall A', 'Gala', '100', 'Seminar', 'Ramp']) expect(within(drawer).getByText(text)).toBeVisible();
   expect(drawer).toHaveTextContent(/20 Oct 2031/); expect(drawer).toHaveTextContent(/10:00/);
+  // SCRUM-107 AC1: staff choose an explicit deadline before granting a tentative approval.
+  fireEvent.change(screen.getByLabelText('Hold expiry (Singapore time)'),{target:{value:'2099-01-01T08:00'}});
   fireEvent.click(within(drawer).getByRole('button', { name: 'Approve request' }));
-  expect(await screen.findByRole('status')).toHaveTextContent(/Approved/);
-  expect(api.put).toHaveBeenCalledWith('/venues/7/requests/20/decision', { decision: 'approved', reason: '' }, 'staff-session');
+  expect(await screen.findByRole('status')).toHaveTextContent(/Tentative hold approved/);
+  expect(api.put).toHaveBeenCalledWith('/venues/7/requests/20/decision', { decision: 'approved', reason: '', holdExpiresAt:'2099-01-01T00:00:00.000Z' }, 'staff-session');
   expect(screen.getByRole('status')).toHaveTextContent(/9/);
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  expect(screen.getByText('No pending venue booking requests.')).toBeVisible();
+  expect(screen.getByRole('button',{name:'Review Gala at Hall A'})).toBeVisible();
 });
 it.each(['Maintenance; try Hall B at 2pm.', ''])('SCRUM-43 AC3 AC4 - rejection accepts optional reason or alternative %j', async reason => {
   open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
@@ -168,11 +170,12 @@ it('SCRUM-43 AC1 AC2 - access loss closes an open review and a delayed decision 
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   let finish; api.put.mockReturnValue(new Promise(resolve => { finish = resolve; }));
   open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
+  fireEvent.change(screen.getByLabelText('Hold expiry (Singapore time)'),{target:{value:'2099-01-01T08:00'}});
   fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
   api.get.mockRejectedValue(Object.assign(new Error('Access lost'), { status: 403 }));
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  await act(async () => finish({ request: { ...booking, status: 'approved', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } }));
+  await act(async () => finish({ request: { ...booking, status: 'tentative', hold_expires_at:'2099-01-01T00:00:00Z', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } }));
   expect(screen.queryByRole('button', { name: 'Review Gala at Hall A' })).not.toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

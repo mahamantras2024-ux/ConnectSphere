@@ -1,112 +1,50 @@
-// File: Applies an Event Coordinator's approve/reject decision on a change request in one transaction and notifies affected users.
+// File: Applies an Event Coordinator's approve/reject decision on a change (amendment) request, or an amendment the
+// coordinator agreed with the organiser offline, in one transaction, and notifies affected users.
 const { pool } = require('../config/db');
-const eventModel = require('../models/eventModel');
 const notificationService = require('./notificationService');
 const { isReadyForSafetyCheck, notifySafetyIfNewlyReady } = require('./roleNotifications');
-const {
-  isSupportedField, describeChanges, assessArrangements, recipientsFor, changeLines,
-} = require('./changeRequestReview');
-
-// Fields that make up the equipment request Technical Support reviews (the organiser's equipment form).
-const EQUIPMENT_FIELDS = ['equipmentItems', 'technicalSupportRequired', 'technicalSupportDetails', 'videoConferencingRequired', 'technicalSpecifications', 'equipmentNotes'];
+const { describeChanges, changeLines } = require('./changeRequestReview');
+const { applyAmendment, amendmentRecipients, amendmentNotifications } = require('./agreedAmendments');
 
 /** Builds an error carrying the HTTP status and optional machine-readable code for the controller. */
 function failure(status, message, code) { return Object.assign(new Error(message), { status, code }); }
 
-/**
- * Builds the notification rows for a decision; text is plain and rendered as text by the UI and email.
- * Messages name the event as it was when the request was made, so a rename does not leave recipients
- * looking for an event title they have not seen yet; the change lines show the new name.
- */
-function notificationsFor({ request, decision, reason, changes, arrangements, recipients }) {
-  const base = { eventId: request.event_id, changeRequestId: request.id };
-  const event = request.event;
-  const lines = changeLines(changes).join('\n');
-  if (decision === 'rejected') {
-    return [{ ...base, userId: request.organiser_id, type: 'change_request_rejected',
-      title: `Change request not approved: ${event.name}`,
-      message: `Your requested changes to ${event.name} were not approved. The confirmed details remain in effect.`
-        + (reason ? `\nReason: ${reason}` : ''),
-      details: { changes, reason } }];
-  }
-  const arrangementLines = arrangements.map((item) => `${item.venueName}: ${item.reasons.join(' ')}`).join('\n');
-  const staffMessage = `The Event Coordinator approved changes to ${event.name}. Review your arrangements.\n${lines}`
-    + (arrangementLines ? `\nArrangements needing attention:\n${arrangementLines}` : '');
-  return [
-    { ...base, userId: request.organiser_id, type: 'change_request_approved', title: `Change request approved: ${event.name}`,
-      message: `Your requested changes to ${event.name} were approved and applied.\n${lines}` + (reason ? `\nNote: ${reason}` : ''),
-      details: { changes, reason } },
-    ...[...recipients.venueStaff, ...recipients.technicalSupport].map((userId) => ({ ...base, userId,
-      type: 'event_details_changed', title: `Event details changed: ${event.name}`, message: staffMessage,
-      details: { changes, arrangements } })),
-  ];
+/** Caps the stored rejection title; the message retains the complete name, changes and reason. */
+function rejectionNotice(request, changes, reason) {
+  return [{ eventId: request.event_id, changeRequestId: request.id, userId: request.organiser_id, type: 'change_request_rejected',
+    title: (`Change request not approved: ${request.event.name}`).slice(0, 255),
+    message: `Your requested changes to ${request.event.name} were not approved. The confirmed details remain in effect.`
+      + `\n${changeLines(changes).join('\n')}` + (reason ? `\nReason: ${reason}` : ''),
+    details: { changes, reason } }];
 }
 
 /**
- * Approves (applies) or rejects a pending change request for the coordinator currently assigned to its event.
- * Everything that must stay consistent - event values, request status/reviewer/reason and every notification -
- * commits together, so recipients are informed immediately and never about a decision that rolled back.
- * Emails are sent only after commit and can fail without affecting the decision.
- * @param {number} requestId change request id.
- * @param {number} coordinatorId authenticated coordinator.
- * @param {'approved'|'rejected'} decision coordinator's decision.
- * @param {string|null} reason optional explanation (already validated and trimmed).
- * @returns {Promise<object>} decided request, event, changes, flagged arrangements and notified user ids by group.
+ * Applies an amendment on the caller's locked transaction, then stores its history (before -> after and the checks it
+ * reopened, AC3/AC5) on the request and the notifications for everyone affected (AC4). Readiness is measured before and
+ * after, so Safety Officers still hear when the change makes the event ready (parent notification system AC1).
  */
-async function decideChangeRequest(requestId, coordinatorId, decision, reason) {
+async function applyAndRecord(client, { request, source, reason, explanation }) {
+  const wasReady = await isReadyForSafetyCheck(client, request.event_id);
+  const applied = await applyAmendment(client, request.event, request.requested_changes);
+  const recipients = await amendmentRecipients(client, applied.event, applied);
+  const history = applied.changes.map(({ field, label, current, requested }) => ({ field, label, before: current, after: requested }));
+  await client.query('UPDATE event_change_requests SET applied_changes = $2::jsonb, rechecks = $3::jsonb WHERE id = $1',
+    [request.id, JSON.stringify(history), JSON.stringify(applied.rechecks)]);
+  const notes = amendmentNotifications({ eventId: request.event_id, changeRequestId: request.id, eventName: request.event.name, source,
+    reason, explanation, changes: applied.changes, arrangements: applied.arrangements, rechecks: applied.rechecks, recipients });
+  const stored = [...await notificationService.insertNotifications(client, notes),
+    ...await notifySafetyIfNewlyReady(client, request.event_id, wasReady)];
+  return { ...applied, recipients, stored };
+}
+
+/** Runs `work(client)` in one transaction and emails the stored notifications only after commit. */
+async function inTransaction(work) {
   const client = await pool.connect();
   let outcome;
   try {
     await client.query('BEGIN');
-    // Locks the request and its event. Responsibility follows the event's current coordinator (the Lead can reassign
-    // events), so a request inherited at handover is decided by the new coordinator and no longer by the previous one.
-    const request = (await client.query(`
-      SELECT r.id, r.event_id, r.organiser_id, r.coordinator_id, r.requested_changes, r.status, to_jsonb(e) AS event
-      FROM event_change_requests r JOIN events e ON e.id=r.event_id
-      WHERE r.id=$1 AND e.coordinator_id=$2
-      FOR UPDATE OF r, e`, [requestId, coordinatorId])).rows[0];
-    if (!request) throw failure(404, 'Change request not found.');
-    if (request.status !== 'pending') throw failure(409, 'This change request has already been decided.', 'ALREADY_DECIDED');
-
-    let event = request.event;
-    const changes = describeChanges(event, request.requested_changes);
-    let arrangements = [];
-    let recipients = { organiser: [request.organiser_id], venueStaff: [], technicalSupport: [] };
-    let safetyNotes = [];
-    if (decision === 'approved') {
-      // Applying the change can make the event ready for its safety check (e.g. it no longer asks for anything technical),
-      // so readiness is measured before and after on this locked transaction (parent notification system AC1).
-      const wasReady = await isReadyForSafetyCheck(client, request.event_id);
-      // A field this release cannot store (e.g. from a newer client) must not be half-applied.
-      const unsupported = Object.keys(request.requested_changes).filter((field) => !isSupportedField(field));
-      if (unsupported.length) {
-        throw failure(409, `This change request includes changes that cannot be applied yet: ${unsupported.join(', ')}.`, 'UNSUPPORTED_CHANGE');
-      }
-      event = await eventModel.applyChanges(client, request.event_id, request.requested_changes);
-      // Changed equipment has not been reviewed: start a new request version and clear the confirmation so Technical
-      // Support reviews it and its status reads "pending" (Tracks Equipment Request Status AC1).
-      if (Object.keys(request.requested_changes).some((field) => EQUIPMENT_FIELDS.includes(field))) {
-        event = (await client.query(`UPDATE events SET equipment_confirmed_at = NULL,
-          equipment_requirements_version = equipment_requirements_version + 1 WHERE id = $1 RETURNING to_jsonb(events.*) AS event`, [request.event_id])).rows[0].event;
-      }
-      const changedFields = changes.map((change) => change.field);
-      const bookings = await eventModel.loadArrangements(client, request.event_id, true);
-      arrangements = assessArrangements(event, changedFields, bookings, Date.now());
-      // Role lists are only read when a rule could use them.
-      const venueStaffIds = arrangements.some((item) => !item.decisionBy) ? await eventModel.userIdsWithRole(client, 'venue_staff') : [];
-      const technicalSupportIds = event.equipment_notes?.trim() ? await eventModel.userIdsWithRole(client, 'technical_support') : [];
-      recipients = recipientsFor({ event, changedFields, arrangements, venueStaffIds, technicalSupportIds });
-      safetyNotes = await notifySafetyIfNewlyReady(client, request.event_id, wasReady);
-    }
-
-    const decided = (await client.query(`
-      UPDATE event_change_requests SET status=$2, reviewed_at=now(), reviewed_by=$3, decision_reason=$4
-      WHERE id=$1 RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at,
-        reviewed_at, reviewed_by, decision_reason`, [request.id, decision, coordinatorId, reason])).rows[0];
-    const stored = [...await notificationService.insertNotifications(client,
-      notificationsFor({ request, decision, reason, changes, arrangements, recipients })), ...safetyNotes];
+    outcome = await work(client);
     await client.query('COMMIT');
-    outcome = { changeRequest: decided, event, changes, arrangements, notified: recipients, stored };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -118,4 +56,75 @@ async function decideChangeRequest(requestId, coordinatorId, decision, reason) {
   return result;
 }
 
-module.exports = { decideChangeRequest };
+/**
+ * Approves (applies) or rejects a pending change request for the coordinator currently assigned to its event.
+ * Everything that must stay consistent - event values, request status/history and every notification - commits
+ * together, so recipients are informed immediately and never about a decision that rolled back.
+ * @param {number} requestId change request id.
+ * @param {number} coordinatorId authenticated coordinator.
+ * @param {'approved'|'rejected'} decision coordinator's decision.
+ * @param {string|null} reason optional explanation (already validated and trimmed).
+ * @returns {Promise<object>} decided request, event, changes, booking warnings, re-checks and notified user ids by group.
+ */
+function decideChangeRequest(requestId, coordinatorId, decision, reason) {
+  return inTransaction(async (client) => {
+    // Locks the request and its event. Responsibility follows the event's current coordinator (the Lead can reassign
+    // events), so a request inherited at handover is decided by the new coordinator and no longer by the previous one.
+    const request = (await client.query(`
+      SELECT r.id, r.event_id, r.organiser_id, r.coordinator_id, r.requested_changes, r.status, r.explanation, to_jsonb(e) AS event
+      FROM event_change_requests r JOIN events e ON e.id=r.event_id
+      WHERE r.id=$1 AND e.coordinator_id=$2
+      FOR UPDATE OF r, e`, [requestId, coordinatorId])).rows[0];
+    if (!request) throw failure(404, 'Change request not found.');
+    if (request.status !== 'pending') throw failure(409, 'This change request has already been decided.', 'ALREADY_DECIDED');
+
+    let result;
+    if (decision === 'approved') {
+      result = await applyAndRecord(client, { request, source: 'organiser_request', reason, explanation: request.explanation });
+    } else {
+      const changes = describeChanges(request.event, request.requested_changes);
+      const stored = await notificationService.insertNotifications(client, rejectionNotice(request, changes, reason));
+      result = { event: request.event, changes, arrangements: [], rechecks: null,
+        recipients: { organiser: [request.organiser_id], venueStaff: [], technicalSupport: [], safetyOfficers: [] }, stored };
+    }
+    const decided = (await client.query(`
+      UPDATE event_change_requests SET status=$2, reviewed_at=now(), reviewed_by=$3, decision_reason=$4
+      WHERE id=$1 RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, status, submitted_at,
+        reviewed_at, reviewed_by, decision_reason`, [request.id, decision, coordinatorId, reason])).rows[0];
+    return { changeRequest: decided, event: result.event, changes: result.changes, arrangements: result.arrangements,
+      rechecks: result.rechecks, notified: result.recipients, stored: result.stored };
+  });
+}
+
+/**
+ * Applies an amendment the assigned coordinator agreed with the organiser (for example in an offline clarification):
+ * it is recorded as an approved amendment from the coordinator, with what was agreed, and applied like an approved
+ * organiser request (history, re-checks and notifications).
+ * @param {number} eventId the event (already validated).
+ * @param {number} coordinatorId authenticated coordinator; must be the event's current coordinator.
+ * @param {{ changes: object, explanation: string, clarificationId: number|null }} input validated changes (camelCase),
+ *   what was agreed, and the clarification the agreement came from (optional).
+ * @returns {Promise<object>} the recorded amendment, event, changes, re-checks and notified user ids by group.
+ */
+function applyAgreedAmendment(eventId, coordinatorId, { changes, explanation, clarificationId }) {
+  return inTransaction(async (client) => {
+    const event = (await client.query('SELECT to_jsonb(e) AS event FROM events e WHERE e.id = $1 AND e.coordinator_id = $2 FOR UPDATE OF e',
+      [eventId, coordinatorId])).rows[0]?.event;
+    if (!event) throw failure(404, 'Assigned event not found.');
+    if (clarificationId != null) {
+      const linked = await client.query('SELECT 1 FROM event_clarification_requests WHERE id = $1 AND event_id = $2', [clarificationId, eventId]);
+      if (!linked.rowCount) throw failure(400, 'Choose a clarification recorded for this event.');
+    }
+    const request = (await client.query(`
+      INSERT INTO event_change_requests (event_id, organiser_id, coordinator_id, requested_changes, explanation, status, source,
+        clarification_id, reviewed_by, reviewed_at)
+      VALUES ($1, $2, $3, $4::jsonb, $5, 'approved', 'coordinator_agreed', $6, $3, now())
+      RETURNING id, event_id, organiser_id, coordinator_id, requested_changes, explanation, status, source, clarification_id,
+        submitted_at, reviewed_at, reviewed_by`, [eventId, event.organiser_id, coordinatorId, JSON.stringify(changes), explanation, clarificationId])).rows[0];
+    const result = await applyAndRecord(client, { request: { ...request, event }, source: 'coordinator_agreed', reason: null, explanation });
+    return { amendment: request, event: result.event, changes: result.changes, rechecks: result.rechecks, notified: result.recipients,
+      stored: result.stored };
+  });
+}
+
+module.exports = { decideChangeRequest, applyAgreedAmendment };
