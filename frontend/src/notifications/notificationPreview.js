@@ -39,3 +39,15 @@ export function relativeTime(value, now = Date.now()) {
   const days = Math.floor(hours / 24);
   return days < 7 ? `${days} day${days === 1 ? '' : 's'} ago` : null;
 }
+
+/**
+ * Renders a stored Equipment_Status as the words shown to a member (AC3). Statuses are stored in snake_case
+ * (e.g. "under_maintenance"); the underscores are replaced with spaces so the preview reads naturally
+ * ("under maintenance") instead of leaking the storage format. A missing status yields an empty string rather than
+ * throwing, so a malformed notification never breaks the preview.
+ * @param {string} status the stored status value, e.g. "damaged" or "under_maintenance".
+ * @returns {string} human-readable status words, or '' when no status is given.
+ */
+export function humanEquipmentStatus(status) {
+  return String(status || '').replace(/_/g, ' ');
+}

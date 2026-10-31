@@ -40,6 +40,8 @@ test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking
       const migration = fs.readFileSync(path.join(__dirname, '../../backend/src/db', file), 'utf8');
       await client.query(migration);
     }
+    // TS status AC6: production release SQL also checks explicit assignments; include that relation in this partial schema.
+    await client.query('CREATE TABLE event_technical_support_assignments (event_id INTEGER, staff_id INTEGER)');
     // Build only the equipment tables used by the scenario; this avoids invoking inventory seeding that targets public.
     await client.query(`CREATE TABLE equipments (
       id SERIAL PRIMARY KEY, asset_code VARCHAR(20) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL,
@@ -113,12 +115,12 @@ test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking
     await client.query('UPDATE events SET coordinator_id=$1 WHERE id=$2', [staff.id, replacementEvent.id]);
 
     // Arrange two reservations for one two-unit asset at the replacement event's requested time.
-    const beforeRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id);
+    const beforeRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id, [], staff.id);
     assert.equal(beforeRelease.items[0].availableQuantity, 0);
 
     // Act: release both the cancelled event's allocation and the old slot for its postponed event.
     const cancelledRelease = await eventModel.releaseEquipmentReservation(cancelledReservation.id, staff.id);
-    const afterFirstRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id);
+    const afterFirstRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id, [], staff.id);
     const postponedRelease = await eventModel.releaseEquipmentReservation(postponedReservation.id, staff.id);
 
     // Assert: each release returns a complete database audit and frees the stock for a fresh check.
@@ -127,7 +129,7 @@ test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking
     assert.equal(afterFirstRelease.items[0].availableQuantity, 1);
     assert.equal(postponedRelease.released_by, staff.id);
     assert.ok(postponedRelease.released_at instanceof Date);
-    const afterRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id);
+    const afterRelease = await eventModel.getEquipmentReservationAvailability(replacementEvent.id, [], staff.id);
     assert.equal(afterRelease.items[0].availableQuantity, 2);
 
     // Arrange: give one reviewed event a future slot, matching stock windows, and unchanged request version.
@@ -205,7 +207,7 @@ test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking
     assert.equal(rebookingHistory[1].status, 'reserved');
     assert.equal(rebookingHistory[1].request_version, rebookingHistory[0].request_version);
 
-    const reservations = await eventModel.listActiveEquipmentReservations();
+    const reservations = await eventModel.listActiveEquipmentReservations(staff.id);
     assert.equal(reservations.filter(item => item.status === 'cancelled').length, 3);
     assert.ok(reservations
       .filter(item => item.status === 'cancelled')

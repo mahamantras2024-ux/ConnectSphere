@@ -67,13 +67,13 @@ it('AC2 - explains when no Technical Support Staff are available', () => {
   expect(screen.queryByRole('button', { name: 'Assign staff' })).toBeNull();
 });
 
-// AC1: a non-empty status label is rendered instead of the default fallback text.
-it('AC1 - renders the assigned event status label when one is supplied', async () => {
+// TS status AC1/AC2: a valid review-stage event displays Planning rather than a raw database status.
+it('TS status AC1/AC2 - maps an assigned under-review event to Planning', async () => {
   api.get.mockResolvedValue({
     events: [{
       id: 11,
       name: 'Status-tagged event',
-      status: 'ready_for_on_site',
+      status: 'under_review',
       proposed_date: '2026-10-12',
       proposed_start_time: '09:00:00',
       proposed_end_time: '12:00:00',
@@ -83,7 +83,7 @@ it('AC1 - renders the assigned event status label when one is supplied', async (
   });
   render(<OnSiteSupportSection token="staff-token" />);
 
-  expect(await screen.findByText('ready for on site')).toBeTruthy();
+  expect(await screen.findByText('Planning')).toBeTruthy();
 });
 
 // AC1: assigned staff see schedule, venue and all equipment facts in the operational view.

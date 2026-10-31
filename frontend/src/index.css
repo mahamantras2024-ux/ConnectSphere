@@ -696,3 +696,7 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .venue-fit-grid .venue-card-footer { margin-top:auto; }
 /* The disclosure summary already names the other-venues group; do not repeat that heading above its cards. */
 .venue-other-body .venue-fit-group > h2 { display:none; }
+
+/* Staff preparation stages use the established warning and neutral tones; cancellation keeps its shared red badge. */
+.onsite-event-card .status-planning { background: var(--cream); color: #685019; }
+.onsite-event-card .status-completed { background: #EFEFE3; color: #616351; }

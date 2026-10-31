@@ -22,6 +22,7 @@ router.get('/:id/request-status', requireRole('event_organiser'), require('../co
 router.get('/:id/organiser-venue-bookings', requireRole('event_organiser'), asyncHandler(organiserVenues.listArrangements));
 router.get('/technical-support-staff', requireRole('event_coordinator'), technicalSupportAssignmentController.listStaff);
 router.get('/on-site-support', requireRole('technical_support'), technicalSupportAssignmentController.listAssigned);
+router.get('/on-site-support/:id', requireRole('technical_support'), technicalSupportAssignmentController.getAssigned);
 router.put('/:id/technical-support-assignment', requireRole('event_coordinator'), technicalSupportAssignmentController.assign);
 const lead = require('../controllers/coordinatorLeadController');
 router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
