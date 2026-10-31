@@ -5,6 +5,7 @@ const { requirements } = require('./venueRequestRequirements');
 
 const { reject, validId, timestamp, withVenue, recordedPeriods } = require('./venueBookingStore');
 const { approveTentativeHold } = require('./venueHolds');
+const { assertSessionSuitability } = require('./sessionVenueRequests');
 
 /** Creates an authorized hold and assigned Venue Staff notices atomically; sends best-effort email after commit. */
 async function createVenueRequest(venueId, body, userId) {
@@ -17,6 +18,7 @@ async function createVenueRequest(venueId, body, userId) {
   const request = await withVenue(Number(venueId), async (client, venue) => {
     const event = (await client.query('SELECT id, coordinator_id, name FROM events WHERE id=$1 FOR SHARE', [Number(body.eventId)])).rows[0];
     if (!event || event.coordinator_id !== userId) throw reject(403, 'This event is not assigned to you.');
+    assertSessionSuitability(details.requirements, venue);
     const periods = await recordedPeriods(client, venue.id);
     // Sample after the lock and reads, so waiting for another transaction cannot preserve an already-expired hold.
     const now = Date.now();
@@ -97,6 +99,8 @@ async function recheckVenueBooking(venueId, requestId, decision, userId, reason)
     const booking = (await client.query('SELECT * FROM venue_bookings WHERE venue_id=$1 AND id=$2 FOR UPDATE', [venue.id, Number(requestId)])).rows[0];
     if (!booking) throw reject(404, 'Venue booking not found.');
     if (booking.status !== 'approved' || !booking.recheck_required_at) throw reject(409, 'This booking does not need re-confirmation.');
+    // Re-confirming a named session is another approval path: its own venue must still fit its independent requirements.
+    if (decision === 'confirmed') assertSessionSuitability(booking.requirements, venue);
     const wasReady = await isReadyForSafetyCheck(client, booking.event_id);
     const saved = (await client.query(decision === 'confirmed'
       ? `UPDATE venue_bookings SET recheck_required_at=NULL, recheck_reason=NULL, decision_by=$3, updated_at=now()

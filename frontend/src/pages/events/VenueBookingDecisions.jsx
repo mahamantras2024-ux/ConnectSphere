@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import VenueHoldState from './VenueHoldState';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import SessionVenueActions from './SessionVenueActions';
 
 const STATUS_LABELS = { pending: 'Pending', tentative: 'Tentative hold', expired: 'Expired', approved: 'Approved', confirmed:'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
 
@@ -60,6 +61,7 @@ export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
                   return (
                     <li key={booking.id} aria-label={`${booking.venue_name} ${status}`} className="ed-clar-item">
                       <h3>{booking.venue_name}</h3>
+                      {booking.requirements?.sessionName && <p className="eyebrow">Session: {booking.requirements.sessionName}</p>}
                       <VenueHoldState booking={booking} />
                       <p><strong>Status:</strong> <span>{status}</span></p>
                       {booking.status==='tentative' && <p>Expires {new Date(booking.hold_expires_at).toLocaleString('en-SG',{timeZone:'Asia/Singapore'})} (SGT)</p>}
@@ -76,6 +78,8 @@ export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
                       {booking.decision_notes?.trim() && (
                         <p><strong>Venue Staff reason:</strong> {booking.decision_notes}</p>
                       )}
+                      {booking.requirements?.sessionName && !expired && ['pending','tentative','approved','confirmed'].includes(booking.status) &&
+                        <SessionVenueActions booking={booking} token={token} onSaved={saved=>setBookings(current=>current.map(row=>row.id===saved.id?{...row,...saved}:row))}/>}
                     </li>
                   );
                 })}
