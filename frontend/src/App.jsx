@@ -12,6 +12,7 @@ import ExternalRegister from './pages/external/ExternalRegister';
 import PasswordReset from './pages/external/PasswordReset';
 
 import EventDetail from './pages/events/EventDetail';
+import EventRequestStatus from './pages/events/EventRequestStatus';
 import EventForm from './pages/events/EventForm';
 import EventList from './pages/events/EventList';
 
@@ -21,6 +22,7 @@ import OrganizerDashboard from './pages/event-organiser/OrganizerDashboard.jsx';
 import EventRegistrationDetails from './pages/event-organiser/EventRegistrationDetails.jsx';
 import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
+import PlanningCalendar from './pages/coordinator/PlanningCalendar';
 import FindVenues from './pages/venues/FindVenues';
 import VenueDashboard from './pages/venue/VenueDashboard';
 import MyRegistrations from './pages/registrations/MyRegistrations';
@@ -52,6 +54,7 @@ export default function App() {
           <Route path="/organizer/events" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventList /></ProtectedRoute>} />
           <Route path="/organizer/events/new" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventForm /></ProtectedRoute>} />
           <Route path="/organizer/events/:id/registrations" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventRegistrationDetails /></ProtectedRoute>} />
+          <Route path="/organizer/events/:id/status" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventRequestStatus /></ProtectedRoute>} />
           <Route path="/organizer/events/:id" element={<ProtectedRoute roles={['event_organiser']} loginPath="/external/login"><EventDetail /></ProtectedRoute>} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -93,6 +96,7 @@ export default function App() {
           />
           {/* Keep discovery bookmarkable and enforce coordinator access even for direct URLs. */}
           <Route path="/coordinator/venues" element={<ProtectedRoute roles={['event_coordinator']}><FindVenues /></ProtectedRoute>} />
+          <Route path="/coordinator/planning-calendar" element={<ProtectedRoute roles={['event_coordinator']}><PlanningCalendar /></ProtectedRoute>} />
 
           <Route
             path="/events"

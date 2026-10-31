@@ -1,5 +1,11 @@
 // File: Single source of truth for organiser-editable event fields, their database columns and display labels.
 
+/** Shows a stored instant as Singapore time (how event times are entered), e.g. "10 Oct 2030, 6:00 pm (SGT)". */
+function singaporeDateTime(value) {
+  if (value == null) return null;
+  return `${new Date(value).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' })} (SGT)`;
+}
+
 /**
  * Maps each API field an organiser may edit (directly or via a change request) to its `events` column and
  * the label shown to coordinators. Shared by direct edits and by applying approved change requests so both
@@ -22,6 +28,9 @@ const EVENT_FIELDS = {
   registrationRequired: { column: 'registration_required', label: 'Registration required' },
   registrationCapacity: { column: 'registration_capacity', label: 'Registration capacity' },
   specialArrangements: { column: 'special_arrangements', label: 'Special arrangements' },
+  // Attendee deadlines (Record Offline Clarifications AC6); stored as instants, shown in Singapore time.
+  registrationDeadline: { column: 'registration_deadline', label: 'Registration deadline', display: singaporeDateTime },
+  withdrawalDeadline: { column: 'withdrawal_deadline', label: 'Withdrawal deadline', display: singaporeDateTime },
   // Critical answers can carry attachments ({ question: { name, ... } }); shown by file name, never by content.
   attachments: { column: 'attachments', label: 'Attachments', json: true,
     display: (value) => Object.values(value || {}).map((file) => file.name) },
@@ -34,4 +43,4 @@ const EVENT_FIELDS = {
   technicalSpecifications: { column: 'technical_specifications', label: 'Special technical specifications' },
 };
 
-module.exports = { EVENT_FIELDS };
+module.exports = { EVENT_FIELDS, singaporeDateTime };

@@ -78,6 +78,7 @@ beforeEach(() => {
     if (path === '/events/equipment-inventory') return { inventory: [] };
     // The dashboard also fetches assigned events; keep the unrelated panel in its empty state.
     if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       return reservationsResponse([cancelledEventReservation, rescheduledEventReservation]);
@@ -136,6 +137,7 @@ it('AC1 - keeps reservations for unchanged events protected from release', async
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
     if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       return reservationsResponse([{
@@ -226,6 +228,7 @@ it('AC2 - shows released equipment as available during a subsequent availability
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
     if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       reservationFetchCount += 1;
@@ -262,6 +265,7 @@ it('AC3 - displays who released the reservation and when for audit', async () =>
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
     if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       reservationFetchCount += 1;
@@ -300,6 +304,7 @@ it('AC3 - distinguishes a legacy cancelled reservation with no release audit', a
     if (path === '/events/equipment-requests') return { requests: [] };
     if (path === '/events/equipment-inventory') return { inventory: [] };
     if (path === '/events/on-site-support') return { events: [] };
+    if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (path === '/events/equipment-reservation-issues') return { affectedReservations: [] };
     if (path === '/events/equipment-reservations') {
       return reservationsResponse([{

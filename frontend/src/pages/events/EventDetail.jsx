@@ -1,6 +1,6 @@
 // File: Loads and formats persisted event details, handling missing values and request failures.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 
@@ -18,14 +18,24 @@ import useNotificationOpened from '../../notifications/useNotificationOpened';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
+import EventRequestStatus from './EventRequestStatus';
+import { requestStatusLabel } from './requestStatusLabel';
 import EquipmentStatusSection from './EquipmentStatusSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
 import VenueDisruptions from './VenueDisruptions';
 import OrganiserVenueDetails from './OrganiserVenueDetails';
 
 import CoordinatorRegistrations from './CoordinatorRegistrations';
+import LeadRegistrations from './LeadRegistrations';
 
 import CancelEventAction from './CancelEventAction';
+import { toEditValues, toApiChange } from './eventEditValues';
+import { CLARIFICATION_LABELS } from './clarificationLabels';
+import OfflineClarificationForm from './OfflineClarificationForm';
+import ClarificationResolution from './ClarificationResolution';
+import CoordinatorAmendments from './CoordinatorAmendments';
+import EventFieldInput from './EventFieldInput';
+import AmendmentRequestPanel from './AmendmentRequestPanel';
 
 
 
@@ -253,21 +263,15 @@ const PencilIcon = () => (
 
 
 
-const clarificationFieldLabels = {
-
-  name: 'Event name', purpose: 'Purpose', description: 'Description', event_type: 'Event type',
-
-  proposed_date: 'Date', proposed_start_time: 'Start time', proposed_end_time: 'End time',
-
-  expected_attendance: 'Expected attendance', programme_details: 'Programme',
-
-  room_layout_preference: 'Layout requirements', accessibility_requirements: 'Accessibility needs',
-
-  equipment_notes: 'Equipment requirements', registration_required: 'Registration required',
-
-  registration_capacity: 'Registration capacity', special_arrangements: 'Special arrangements',
-
-};
+// Clarification topics are shared with the offline clarification record (Record Offline Clarifications AC1).
+const clarificationFieldLabels = CLARIFICATION_LABELS;
+// How each clarification's state reads in the history (resolved: Record Offline Clarifications AC2).
+const CLARIFICATION_STATUS = { pending: ['Awaiting organiser response', 'ed-badge--warn'], responded: ['Organiser responded', 'ed-badge--ok'],
+  resolved: ['Resolved', 'ed-badge--ok'] };
+/** An attendee deadline in Singapore time, or the fallback the registration rules use when none is set (AC6). */
+const deadlineText = (value) => (value
+  ? `${new Date(value).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' })} (SGT)`
+  : 'Not set (closes when the event starts)');
 
 
 
@@ -299,53 +303,6 @@ const Field = ({ label, children }) => (
 
 
 
-/**
-
- * Converts a stored event (snake_case API fields) into editor values keyed by edit field.
-
- * Missing values become empty inputs (or an unticked box) so editors never show "null"; zero stays zero.
-
- * Used when the event loads, after a save, and to restore a field when an edit is cancelled.
-
- */
-
-function toEditValues(event) {
-
-  return {
-
-    name: event.name || '',
-
-    purpose: event.purpose || '',
-
-    description: event.description || '',
-
-    eventType: event.event_type || '',
-
-    proposedDate: event.proposed_date?.slice(0, 10) || '',
-
-    proposedStartTime: event.proposed_start_time?.slice(0, 5) || '',
-
-    proposedEndTime: event.proposed_end_time?.slice(0, 5) || '',
-
-    expectedAttendance: event.expected_attendance ?? '',
-
-    programmeDetails: event.programme_details || '',
-
-    roomLayoutPreference: event.room_layout_preference || '',
-
-    equipmentNotes: event.equipment_notes || '',
-
-    accessibilityText: (event.accessibility_requirements || []).join('\n'),
-
-    specialArrangements: event.special_arrangements || '',
-
-    registrationRequired: event.registration_required ?? false,
-
-    registrationCapacity: event.registration_capacity ?? '',
-
-  };
-
-}
 
 
 
@@ -362,12 +319,22 @@ export default function EventDetail() {
   const [venueRecoveryVersion, setVenueRecoveryVersion] = useState(0);
 
   const [event, setEvent] = useState(null);
+  // Bumped after the coordinator applies an agreed amendment, so the page shows the changed event.
+  const [reloadKey, setReloadKey] = useState(0);
+
+  /** Refreshes only persisted lifecycle flags so background reads preserve unsaved organiser edits. */
+  const updateRequestStatus = useCallback(snapshot => {
+    setEvent(current => ({ ...current, status: snapshot.status,
+      clarification_outstanding: snapshot.clarification_outstanding, clarification_requests: snapshot.clarification_requests }));
+  }, []);
 
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState('');
 
   const [editValues, setEditValues] = useState(null);
+
+  const [statusRefreshKey, setStatusRefreshKey] = useState(0);
 
   const [saveMessage, setSaveMessage] = useState('');
   // Bookmark the active section so returning from discovery restores request history.
@@ -487,7 +454,7 @@ export default function EventDetail() {
     };
 
     // Opening a notification about this event while it is open re-reads it.
-  }, [id, token, notificationOpened, venueRecoveryVersion]);
+  }, [id, token, notificationOpened, venueRecoveryVersion, reloadKey]);
 
 
 
@@ -531,7 +498,8 @@ export default function EventDetail() {
 
     if (!value) return 'Not specified';
 
-    return value.charAt(0).toUpperCase() + value.slice(1);
+    // Share the readable lifecycle labels used by the organiser's live status view.
+    return requestStatusLabel(value);
 
   };
 
@@ -561,35 +529,15 @@ export default function EventDetail() {
 
     try {
 
-      const apiField = activeEditField === 'accessibilityText' ? 'accessibilityRequirements' : activeEditField;
-
-      let value = editValues[activeEditField];
-
-      if (activeEditField === 'accessibilityText') value = value.split('\n').map((item) => item.trim()).filter(Boolean);
-
-      if (['expectedAttendance', 'registrationCapacity'].includes(activeEditField)) value = value === '' ? null : Number(value);
-
-      const payload = activeEditField === 'attachments' ? { attachments: fileChanges } : { [apiField]: value };
+      // Drafts only: the converted value goes to the draft edit endpoint (a submitted request uses an amendment request).
+      const payload = activeEditField === 'attachments' ? { attachments: fileChanges } : Object.fromEntries([toApiChange(activeEditField, editValues[activeEditField])]);
 
       const data = await api.put(`/events/${id}/non-critical`, payload, token);
 
-      if (!data.changeRequest) {
-
-        const saved = { ...event, ...data.event };
-
-        setEvent(saved);
-
-        setEditValues(toEditValues(saved));
-
-      } else {
-
-        // A change request leaves the confirmed value in effect, so the editor returns to it.
-
-        resetEditValue(activeEditField);
-
-      }
-
-      setUpdateSuccess(data.message || 'Non-critical event information saved.');
+      const saved = { ...event, ...data.event };
+      setEvent(saved);
+      setEditValues(toEditValues(saved));
+      setUpdateSuccess(data.message || 'Event information saved.');
 
       setFileChanges({});
 
@@ -608,6 +556,21 @@ export default function EventDetail() {
   }
 
 
+
+  // Adds a newly recorded clarification to the history; the outstanding flag follows the pending ones (AC1).
+  function addClarification(recorded) {
+    setEvent((current) => {
+      const requests = [recorded, ...(current.clarification_requests || [])];
+      return { ...current, clarification_requests: requests, clarification_outstanding: requests.some((item) => item.status === 'pending') };
+    });
+  }
+  // Replaces a clarification after it is resolved, keeping the rest of the history in place (AC2).
+  function replaceClarification(updated) {
+    setEvent((current) => {
+      const requests = current.clarification_requests.map((item) => (item.id === updated.id ? { ...item, ...updated } : item));
+      return { ...current, clarification_requests: requests, clarification_outstanding: requests.some((item) => item.status === 'pending') };
+    });
+  }
 
   async function sendClarificationRequest(submitEvent) {
 
@@ -656,6 +619,8 @@ export default function EventDetail() {
         clarification_requests: current.clarification_requests.map((item) => item.id === request.id ? data.clarificationRequest : item) }));
 
       setClarificationResponses((current) => ({ ...current, [request.id]: '' })); setSaveMessage(data.message);
+      // A committed response invalidates pre-write status reads, including the outstanding-action flag.
+      setStatusRefreshKey(value => value + 1);
 
     } catch (err) { setError(err.message || 'Unable to save clarification response.'); }
 
@@ -665,15 +630,12 @@ export default function EventDetail() {
 
 
 
-  const criticalFields = new Set(['name', 'purpose', 'eventType', 'proposedDate', 'proposedStartTime', 'proposedEndTime',
-
-    'expectedAttendance', 'roomLayoutPreference', 'registrationRequired', 'registrationCapacity']);
-
-  const editingAllowed = () => user.role === 'event_organiser';
+  // Only the organiser's own draft is edited directly; once submitted, changes go through an amendment request (AC1).
+  const editingAllowed = () => user.role === 'event_organiser' && Boolean(event.is_draft) && event.status === 'draft';
 
 
 
-  // Restores one editor to the event's stored value (used on Cancel and after a change request).
+  // Restores one editor to the event's stored value (used on Cancel).
 
   function resetEditValue(field) {
 
@@ -683,11 +645,9 @@ export default function EventDetail() {
 
 
 
-  // Pencil button for one field; its label becomes "Request change to ..." once a venue is confirmed.
-
-  function renderEditButton(field, label, requestMode) {
-
-    const text = requestMode ? `Request change to ${label}` : `Edit ${label}`;
+  // Pencil button that opens the editor for one draft field.
+  function renderEditButton(field, label) {
+    const text = `Edit ${label}`;
 
     return (
 
@@ -709,11 +669,7 @@ export default function EventDetail() {
 
   function renderEditableField(field, label, value, critical = false, displayValue = value) {
 
-    const canEdit = editingAllowed(field);
-
-    const requestMode = Boolean(event.venue_confirmed && criticalFields.has(field));
-
-    if (!canEdit) return fieldValue(displayValue);
+    if (!editingAllowed()) return fieldValue(displayValue);
 
     if (activeEditField !== field) {
 
@@ -723,7 +679,7 @@ export default function EventDetail() {
 
           <span>{fieldValue(displayValue)}</span>
 
-          {renderEditButton(field, label, requestMode)}
+          {renderEditButton(field, label)}
 
         </span>
 
@@ -731,59 +687,16 @@ export default function EventDetail() {
 
     }
 
-    const controlType = field === 'proposedDate' ? 'date' : ['proposedStartTime', 'proposedEndTime'].includes(field) ? 'time'
-
-      : ['expectedAttendance', 'registrationCapacity'].includes(field) ? 'number' : 'text';
-
-    const multiline = ['description', 'programmeDetails', 'accessibilityText', 'equipmentNotes', 'specialArrangements'].includes(field);
-
     const setValue = (next) => setEditValues((current) => ({ ...current, [field]: next }));
 
     return (
 
       <form className="ed-editor" onSubmit={(submitEvent) => { submitEvent.preventDefault(); setUpdateError(''); setConfirmUpdate(true); }}>
 
-        {field === 'registrationRequired'
-
-          ? (
-
-            <label className="ed-check">
-
-              <span>Registration required?</span>
-
-              <input className="registration-required-checkbox" type="checkbox" aria-label={`Edit ${label}`} checked={Boolean(editValues[field])} disabled={saving}
-
-                onChange={(changeEvent) => setValue(changeEvent.target.checked)} />
-
-            </label>
-
-          )
-
-          : multiline
-
-            ? (
-
-              <textarea className="ed-input" aria-label={`Edit ${label}`} value={editValues[field]} disabled={saving} rows={3}
-
-                onChange={(changeEvent) => setValue(changeEvent.target.value)} />
-
-            )
-
-            : (
-
-              <input className="ed-input" aria-label={`Edit ${label}`} type={controlType} min={controlType === 'number' ? 0 : undefined}
-
-                value={editValues[field]} disabled={saving}
-
-                onChange={(changeEvent) => setValue(changeEvent.target.value)} />
-
-            )}
-
+        <EventFieldInput field={field} label={label} ariaLabel={`Edit ${label}`} value={editValues[field]} disabled={saving} onChange={setValue} />
         <div className="ed-editor-actions">
 
-          <button type="submit" disabled={saving} className="button-primary">{saving ? 'Saving…'
-
-            : event.venue_confirmed && criticalFields.has(field) ? 'Submit change request' : 'Save changes'}</button>
+          <button type="submit" disabled={saving} className="button-primary">{saving ? 'Saving…' : 'Save changes'}</button>
 
           <button type="button" disabled={saving} className="button-secondary" onClick={() => {
 
@@ -874,6 +787,7 @@ export default function EventDetail() {
       {backLink}
 
       {user.role === 'event_organiser' && <OrganiserRegistrationAction eventId={event.id} token={token} />}
+      {user.role === 'event_coordinator_lead' && <LeadRegistrations eventId={event.id} token={token}/>}
       {coordinatorWorkspace && <CoordinatorRegistrations eventId={event.id} token={token} />}
 
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
@@ -882,15 +796,9 @@ export default function EventDetail() {
 
       {event.clarification_outstanding && <p className="ed-notice ed-notice--warn" role="status">Clarification outstanding — planning is waiting for the Event Organiser.</p>}
 
-      {user.role === 'event_organiser' && <p className="mb-4 text-sm text-slate-600">
-
-        {event.venue_confirmed
-
-          ? 'A venue is confirmed. Use the pencil icon to edit non-critical information or to submit a critical change request. The confirmed details stay in effect until review.'
-
-          : 'No venue is confirmed. Use the pencil icon to edit any event field.'}
-
-      </p>}
+      {user.role === 'event_organiser' && (editingAllowed()
+        ? <p className="mb-4 text-sm text-slate-600">This is a draft. Use the pencil icon to edit any event field before you submit it.</p>
+        : <AmendmentRequestPanel event={event} token={token} />)}
 
       <header className="ed-header">
 
@@ -906,7 +814,7 @@ export default function EventDetail() {
 
           <h1 className="ed-title">{fieldValue(event.name)}</h1>
 
-          {user.role === 'event_organiser' && activeEditField !== 'name' && renderEditButton('name', 'Event name', Boolean(event.venue_confirmed))}
+          {editingAllowed() && activeEditField !== 'name' && renderEditButton('name', 'Event name')}
 
         </div>
 
@@ -928,7 +836,7 @@ export default function EventDetail() {
 
       <div className="ed-card ed-attach">
 
-        <EventAttachments value={{ ...(event.attachments || {}), ...fileChanges }} onBusy={delta => setReadingFiles(current => current + delta)} onChange={user.role === 'event_organiser' ? (field, file) => { setFileChanges(current => ({ ...current, [field]: file })); setActiveEditField('attachments'); } : undefined} />
+        <EventAttachments value={{ ...(event.attachments || {}), ...fileChanges }} onBusy={delta => setReadingFiles(current => current + delta)} onChange={editingAllowed() ? (field, file) => { setFileChanges(current => ({ ...current, [field]: file })); setActiveEditField('attachments'); } : undefined} />
 
         {activeEditField === 'attachments' && <button className="button-primary ed-attach-save" disabled={readingFiles > 0 || saving} onClick={() => { setUpdateError(''); setConfirmUpdate(true); }}>Save attachments</button>}
 
@@ -948,9 +856,10 @@ export default function EventDetail() {
 
       )}
 
+      {user.role === 'event_organiser' && <EventRequestStatus key={statusRefreshKey} eventId={event.id} onSnapshot={updateRequestStatus} />}
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
       <CancelEventAction event={event} user={user} token={token}
-        onCancelled={(cancelledEvent) => setEvent((current) => ({ ...current, ...cancelledEvent }))}
+        onCancelled={(cancelledEvent) => { setEvent((current) => ({ ...current, ...cancelledEvent })); setStatusRefreshKey(value => value + 1); }}
         onMessage={setSaveMessage} />
 
 
@@ -1014,7 +923,7 @@ export default function EventDetail() {
 
 
         {user.role === 'event_organiser' && <OrganiserVenueDetails eventId={event.id} token={token} />}
-        {!coordinatorWorkspace && <>        <EquipmentRequirementsSection event={event} canEdit={user.role === 'event_organiser'} token={token}
+        {!coordinatorWorkspace && <>        <EquipmentRequirementsSection event={event} canEdit={editingAllowed()} token={token}
 
           onSaved={(fields) => setEvent((current) => ({ ...current, ...fields }))} onMessage={setSaveMessage}>
 
@@ -1051,6 +960,8 @@ export default function EventDetail() {
             </Field>
 
             <Field label="Registration Capacity">{renderEditableField('registrationCapacity', 'Registration capacity', event.registration_capacity, true)}</Field>
+            <Field label="Registration Deadline">{renderEditableField('registrationDeadline', 'Registration deadline', event.registration_deadline, true, deadlineText(event.registration_deadline))}</Field>
+            <Field label="Withdrawal Deadline">{renderEditableField('withdrawalDeadline', 'Withdrawal deadline', event.withdrawal_deadline, true, deadlineText(event.withdrawal_deadline))}</Field>
 
             <Field label="Organiser">{fieldValue(event.organiser_name)}</Field>
 
@@ -1113,7 +1024,8 @@ export default function EventDetail() {
 
                   <p>{request.message}</p>
 
-                  <div><span className={`ed-badge ${request.status === 'pending' ? 'ed-badge--warn' : 'ed-badge--ok'}`}>{request.status === 'pending' ? 'Awaiting organiser response' : 'Organiser responded'}</span></div>
+                  <div><span className={`ed-badge ${CLARIFICATION_STATUS[request.status][1]}`}>{CLARIFICATION_STATUS[request.status][0]}</span>
+                    {request.source === 'offline' && <span className="ed-badge">Offline</span>}</div>
 
                   {request.organiser_response && (
 
@@ -1121,6 +1033,8 @@ export default function EventDetail() {
 
                   )}
 
+                  <ClarificationResolution request={request} eventId={event.id} token={token} canResolve={user.role === 'event_coordinator'}
+                    onResolved={(updated, message) => { replaceClarification(updated); setSaveMessage(message); }} />
                   {user.role === 'event_organiser' && request.status === 'pending' && (
 
                     <form className="ed-editor" style={{ maxWidth: 'none' }} onSubmit={(submitEvent) => respondToClarification(submitEvent, request)}>
@@ -1176,8 +1090,15 @@ export default function EventDetail() {
           </form>
 
         )}
+        {user.role === 'event_coordinator' && (
+          <OfflineClarificationForm eventId={event.id} token={token} onRecorded={(recorded, message) => { addClarification(recorded); setSaveMessage(message); }} />
+        )}
 
       </section>
+      {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && (
+        <CoordinatorAmendments event={event} token={token} canApply={user.role === 'event_coordinator'}
+          onApplied={(message) => { setSaveMessage(message); setReloadKey((key) => key + 1); }} />
+      )}
 
 
 

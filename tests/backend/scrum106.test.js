@@ -2,7 +2,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { affectedByClosure, closureInput } = require('../../backend/src/services/venueDisruptions');
-const { evaluateDecision, evaluateSafetyReview } = require('../../backend/src/services/eventDecisionPolicy');
+const { evaluateSafetyReview } = require('../../backend/src/services/eventDecisionPolicy');
+const { evaluateTransition } = require('../../backend/src/services/eventLifecyclePolicy');
 const start = Date.parse('2031-10-20T02:00:00Z');
 const booking = { id: 5, start_datetime: new Date(start).toISOString(), end_datetime: new Date(start+3600000).toISOString(), setup_minutes: 30, turnaround_minutes: 30 };
 // AC1: occupied interval is 09:30–11:30 Singapore; adjacency must remain bookable.
@@ -26,14 +27,14 @@ test('SCRUM-106 AC1 - validates reason and positive timezone-qualified closure i
 });
 const context = { status:'planning', is_draft:false, pending_clarifications:0, equipment_items:[], safety_changes_open:[], now:start,
  bookings:[{status:'approved',disrupted:true}], latest_safety_check:{outcome:'approved'} };
-test('SCRUM-106 AC4 AC5 - a disrupted booking cannot justify confirmation even with an old passed safety check', () => {
-  assert.equal(evaluateDecision('approved',context).code,'VENUE_DISRUPTED');
+test('SCRUM-106 AC4 AC5 - an unresolved disruption blocks final confirmation even with an old passed safety check', () => {
+  assert.equal(evaluateTransition('confirmed',context).code,'VENUE_DISRUPTED');
 });
-test('SCRUM-106 AC5 - a replacement still needs a fresh safety review', () => {
+test('SCRUM-106 AC5 - a replacement needs a fresh safety pass before final confirmation', () => {
   const replaced = {...context,bookings:[{status:'approved'}],latest_safety_check:null};
-  assert.equal(evaluateDecision('approved',replaced).code,'SAFETY_NOT_COMPLETED');
+  assert.equal(evaluateTransition('confirmed',replaced).code,'SAFETY_NOT_COMPLETED');
   assert.equal(evaluateSafetyReview(replaced),null);
-  assert.equal(evaluateDecision('approved',{...replaced,latest_safety_check:{outcome:'approved'}}),null);
+  assert.equal(evaluateTransition('confirmed',{...replaced,latest_safety_check:{outcome:'approved'}}),null);
 });
 
 const {mock,afterEach}=require('node:test');
@@ -76,8 +77,8 @@ test('SCRUM-106 AC1 AC2 AC4 - closure identifies the buffered booking and notifi
  assert.deepEqual(reopen.values,[[3]]);assert.match(reopen.sql,/THEN 'planning'/);assert.doesNotMatch(reopen.sql,/THEN 'cancelled'/);
  assert.ok(db.calls.findIndex(c=>c.sql.includes('WITH inserted'))<db.calls.findIndex(c=>c.sql==='COMMIT'));
 });
-test('SCRUM-106 AC2 - pending bookings are identified but do not cause a confirmed-event disruption or notification',async()=>{
- const db=database({status:'pending'});
+for (const status of ['pending','tentative']) test(`SCRUM-106 AC1 AC2 - ${status} bookings are identified without a confirmed-event disruption or notification`,async()=>{
+ const db=database({status});
  const result=await service.recordClosure(7,{startDatetime:'2031-10-20T01:45:00Z',endDatetime:'2031-10-20T02:00:00Z',reason:'Repairs'},1);
  assert.equal(result.affectedBookings.length,1);assert.equal(db.notes.length,0);assert.equal(db.calls.some(c=>c.sql.startsWith('UPDATE events')),false);
 });

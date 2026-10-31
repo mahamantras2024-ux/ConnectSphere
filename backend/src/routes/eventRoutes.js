@@ -17,9 +17,13 @@ const asyncHandler = require('../utils/asyncHandler');
 const organiserVenues = require('../controllers/organiserVenueController');
 
 router.use(requireAuth);
+router.get('/planning-calendar',requireRole('event_coordinator'),asyncHandler(require('../controllers/planningCalendarController').getPlanningCalendar));
+router.get('/:id/lead-registrations',requireRole('event_coordinator_lead'),asyncHandler(require('../controllers/leadRegistrationController').getRegistrations));
+router.get('/:id/request-status', requireRole('event_organiser'), require('../controllers/organiserRequestStatusController').getRequestStatus);
 router.get('/:id/organiser-venue-bookings', requireRole('event_organiser'), asyncHandler(organiserVenues.listArrangements));
 router.get('/technical-support-staff', requireRole('event_coordinator'), technicalSupportAssignmentController.listStaff);
 router.get('/on-site-support', requireRole('technical_support'), technicalSupportAssignmentController.listAssigned);
+router.get('/on-site-support/:id', requireRole('technical_support'), technicalSupportAssignmentController.getAssigned);
 router.put('/:id/technical-support-assignment', requireRole('event_coordinator'), technicalSupportAssignmentController.assign);
 const lead = require('../controllers/coordinatorLeadController');
 router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
@@ -32,6 +36,16 @@ router.post('/:id/submit',requireRole('event_organiser'),drafts.submit);
 router.post('/', requireRole('event_organiser'), eventController.createEvent);
 router.put('/:id/non-critical', requireRole('event_organiser'), eventController.updateEventInformation);
 router.put('/:id/equipment', requireRole('event_organiser'), eventController.updateEquipmentRequirements);
+// After submission the organiser changes nothing directly: amendments go to the assigned coordinator for review.
+const amendments = require('../controllers/amendmentRequestController');
+router.post('/:id/amendment-requests', requireRole('event_organiser'), amendments.create);
+// The amendment history is for the event's authorised users; findAccessibleById limits each role to its own events.
+router.get('/:id/amendment-requests', requireRole('event_organiser', 'event_coordinator', 'event_coordinator_lead'), amendments.list);
+// The assigned coordinator applies amendments agreed with the organiser and records offline clarifications.
+router.post('/:id/agreed-amendments', requireRole('event_coordinator'), amendments.applyAgreed);
+const clarifications = require('../controllers/clarificationController');
+router.post('/:id/clarifications/offline', requireRole('event_coordinator'), clarifications.recordOffline);
+router.post('/:id/clarifications/:clarificationId/resolve', requireRole('event_coordinator'), clarifications.resolve);
 router.get('/change-requests', requireRole('event_coordinator'), eventController.listChangeRequests);
 router.post('/change-requests/:id/decision', requireRole('event_coordinator'), eventController.decideChangeRequest);
 router.get('/:id/venue-bookings', requireRole('event_coordinator'), venueBookingDecisions.listEventVenueBookings);

@@ -6,9 +6,11 @@ function contextSql(scope, lock) {
   return `
     SELECT e.id, e.name, e.organiser_id, e.coordinator_id, e.status, e.is_draft, e.equipment_items,
       e.technical_support_required, e.video_conferencing_required, e.equipment_notes, e.equipment_confirmed_at,
-      e.decision_reason, e.decided_at, decider.full_name AS decided_by_name, e.safety_changes_open,
+      e.decision_reason, e.decided_at, decider.full_name AS decided_by_name, e.safety_changes_open, e.safety_recheck_required_at,
+      e.proposed_date::text AS proposed_date, e.proposed_end_time::text AS proposed_end_time,
       (SELECT count(*)::int FROM event_clarification_requests cr WHERE cr.event_id = e.id AND cr.status = 'pending') AS pending_clarifications,
-      COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at,
+          'recheck_required_at', vb.recheck_required_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
       (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'safety_officer_name', officer.full_name,
           'change_areas', s.change_areas)
@@ -84,8 +86,9 @@ async function safetyCandidates(db) {
     SELECT e.id, e.name, e.status, e.is_draft, e.proposed_date::text AS proposed_date, e.proposed_start_time, e.proposed_end_time,
       e.expected_attendance, e.room_layout_preference, e.accessibility_requirements, e.equipment_items,
       e.technical_support_required, e.video_conferencing_required, e.equipment_notes, e.equipment_confirmed_at,
-      e.technical_specifications, e.safety_changes_open,
-      COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
+      e.technical_specifications, e.safety_changes_open, e.safety_recheck_required_at,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at,
+          'recheck_required_at', vb.recheck_required_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('name', v.name, 'capacity', v.capacity, 'supported_layouts', v.supported_layouts,
           'accessibility_features', v.accessibility_features, 'operating_hours', v.operating_hours, 'setup_minutes', v.setup_minutes,
@@ -95,7 +98,7 @@ async function safetyCandidates(db) {
       (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'change_areas', s.change_areas)
         FROM event_safety_checks s WHERE s.event_id = e.id AND (e.venue_revised_at IS NULL OR s.checked_at >= e.venue_revised_at) ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
     FROM events e
-    WHERE e.is_draft = false AND e.status IN ('submitted', 'under_review', 'planning')
+    WHERE e.is_draft = false AND e.status IN ('submitted', 'under_review', 'approved', 'planning')
       AND EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id = e.id AND vb.status = 'approved')
     ORDER BY e.proposed_date NULLS LAST, e.id`);
   return result.rows;

@@ -30,10 +30,11 @@ async function recordClosure(venueId, body, staffId) {
     if (!venue) throw Object.assign(new Error('Venue not found.'),{status:404});
     const closure = (await client.query(`INSERT INTO venue_unavailability (venue_id,reason,start_datetime,end_datetime,created_by)
       VALUES ($1,$2,$3,$4,$5) RETURNING *`,[venueId,input.reason,new Date(input.start).toISOString(),new Date(input.end).toISOString(),staffId])).rows[0];
+    // Include finite tentative holds introduced on main when identifying overlaps.
     // Lock events in a stable order; booking approvals serialize on the venue lock above.
     const bookings = (await client.query(`SELECT b.*,e.name AS event_name,e.coordinator_id,v.name AS venue_name,v.setup_minutes,v.turnaround_minutes
       FROM venue_bookings b JOIN events e ON e.id=b.event_id JOIN venues v ON v.id=b.venue_id
-      WHERE b.venue_id=$1 AND b.status IN ('pending','approved','confirmed') ORDER BY e.id,b.id FOR UPDATE OF e,b`,[venueId])).rows;
+      WHERE b.venue_id=$1 AND b.status IN ('pending','tentative','approved','confirmed') ORDER BY e.id,b.id FOR UPDATE OF e,b`,[venueId])).rows;
     const affected = affectedByClosure(bookings,input.start,input.end);
     const confirmed = affected.filter(b=>['approved','confirmed'].includes(b.status));
     for (const booking of confirmed) {

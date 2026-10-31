@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import PageIntro from '../../components/PageIntro';
 import NotificationsPanel from '../../components/NotificationsPanel';
+import LeadRegistrations from '../events/LeadRegistrations';
 
 /** Reviews active requests and changes one coordinator using the assignment seen by the lead. */
 export default function CoordinatorLeadDashboard() {
@@ -50,6 +51,7 @@ export default function CoordinatorLeadDashboard() {
           <div><dt>Expected attendance</dt><dd>{event.expected_attendance ?? 'Not specified'}</dd></div>
           <div><dt>Coordinator</dt><dd>{event.coordinator_name || 'Unassigned'}</dd></div></dl>
         <Link className="button-link button-secondary" state={{ returnTo: location.pathname }} to={`/events/${event.id}`}>View details</Link>
+        <LeadRegistrations eventId={event.id} token={token}/>
         <form className="grid gap-2 mt-4" onSubmit={submitEvent => {
           submitEvent.preventDefault(); assign(event, new FormData(submitEvent.currentTarget).get('coordinator'));
         }}>

@@ -122,7 +122,7 @@ test('AC1 - lists requests awaiting reservation and confirmed allocation audit d
   const auditQuery = queries.find(query => query.sql.includes('SELECT reservation.id'));
   assert.match(auditQuery.sql, /reservation\.status='reserved'/i);
   assert.match(auditQuery.sql, /reservation\.released_at/i);
-  assert.equal(auditQuery.values, undefined);
+  assert.deepEqual(auditQuery.values, [supportStaff.id]);
   assert.match(auditQuery.sql, /AS reserved_by_name/i);
   assert.match(auditQuery.sql, /inventory\.specification/i);
   assert.match(auditQuery.sql, /reserved_item\.quantity/i);
@@ -506,5 +506,6 @@ test('AC3 - retains released reservation audit details in the Technical Support 
   assert.match(reservationQuery, /reservation\.released_by/i);
   assert.match(reservationQuery, /reservation\.released_at/i);
   assert.match(reservationQuery, /released_by_name/i);
-  assert.doesNotMatch(reservationQuery, /reservation\.reserved_by\s*=\s*\$1/i);
+  // AC6 keeps released history visible to involved staff rather than every support account.
+  assert.match(reservationQuery, /responsibility_reservation\.reserved_by=\$1/);
 });

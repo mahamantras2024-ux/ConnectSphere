@@ -19,7 +19,7 @@ export default function OrganiserVenueDetails({ eventId, token }) {
         if (!Array.isArray(data.bookings)) throw new Error('Venue arrangements are unavailable.');
         // AC1 requires every active arrangement, even when multiple venues have been confirmed.
         // Preserve the API's schedule order while excluding historical rejections and cancellations.
-        const arrangements = data.bookings.filter(booking => booking.status === 'approved' || booking.status === 'pending');
+        const arrangements = data.bookings.filter(booking => ['approved','pending','tentative'].includes(booking.status));
         if (active) setResult(arrangements);
       })
       .catch(failure => { if (active) setError(failure.message); });
@@ -43,7 +43,7 @@ export default function OrganiserVenueDetails({ eventId, token }) {
               <div className="ed-field"><dt>Capacity</dt><dd>{booking.capacity}</dd></div>
               <div className="ed-field"><dt>Date</dt><dd>{startDate === endDate ? startDate : `${startDate} – ${endDate}`}</dd></div>
               <div className="ed-field"><dt>Time</dt><dd>{start.toLocaleTimeString('en-SG', timeOptions)} – {end.toLocaleTimeString('en-SG', timeOptions)} (SGT)</dd></div>
-              <div className="ed-field"><dt>Booking status</dt><dd>{booking.status === 'pending' ? 'Pending Confirmation' : 'Confirmed'}</dd></div>
+              <div className="ed-field"><dt>Booking status</dt><dd>{booking.status === 'approved' ? 'Confirmed' : 'Pending Confirmation'}</dd></div>
             </dl>
           </li>;
         })}</ol>}

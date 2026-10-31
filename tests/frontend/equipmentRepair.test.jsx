@@ -120,8 +120,8 @@ beforeEach(() => {
     // The integrated dashboard also loads unrelated panels; keep those external responses empty and successful.
     if (endpoint === '/notifications') return { notifications: [] };
     if (endpoint === '/events/on-site-support') return { events: [] };
+    if (endpoint === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if (endpoint === '/events/equipment-requests') return { requests: [] };
-    if (endpoint === '/events/on-site-support') return { events: [] };
     if (endpoint === '/events/equipment-inventory') return { inventory: [unavailableEquipment, availableEquipment] };
     if (endpoint === '/events/equipment-reservations') {
       if (reservationLoadError) throw reservationLoadError;
