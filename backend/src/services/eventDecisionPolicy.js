@@ -19,7 +19,7 @@ const DECIDABLE_STATUSES = ['submitted', 'under_review', 'planning'];
  * arrangements). Reopened stages must be completed first. A rejected check is terminal only when no revision stages
  * were requested; a rejected check with reopened stages is eligible for reassessment after those stages are complete.
  */
-const SAFETY_REVIEW_REQUIREMENTS = ['safetyChangesResolved', 'venueConfirmed', 'technicalConfirmed', 'safetyCheckDue'];
+const SAFETY_REVIEW_REQUIREMENTS = ['safetyChangesResolved', 'safetyResubmitted', 'venueConfirmed', 'technicalConfirmed', 'safetyCheckDue'];
 
 /**
  * Planning stages a Safety Officer can send an event back to (AC3), each with the requirement that shows its changes
@@ -94,6 +94,8 @@ const REQUIREMENTS = {
   },
 
   safetyPassed: (context) => {
+    // SCRUM-111: amendments cannot bypass the coordinator's explicit resubmission after a rejection.
+    if(context.safety_resubmission_required)return {met:false,code:'SAFETY_RESUBMISSION_REQUIRED',message:'Submit the corrected arrangements for safety re-review before confirmation.'};
     const outcome = currentSafetyCheck(context)?.outcome;
     if (outcome === 'approved') return { met: true, code: 'SAFETY_APPROVED', message: 'Operational safety check passed.' };
     if (outcome === 'rejected') return { met: false, code: 'SAFETY_FAILED', message: 'The event failed the operational safety check.' };
@@ -109,6 +111,9 @@ const REQUIREMENTS = {
  * readiness checklist is unchanged; approval stays blocked anyway because the latest check is "changes requested".
  */
 const SAFETY_REVIEW_RULES = {
+  safetyResubmitted: context => context.safety_resubmission_required
+    ? {met:false,code:'SAFETY_RESUBMISSION_REQUIRED',message:'The coordinator must submit corrected arrangements for safety re-review.'}
+    : {met:true,code:'SAFETY_RESUBMITTED',message:'No coordinator resubmission is outstanding.'},
   safetyChangesResolved: (context) => (context.safety_changes_open?.length
     ? { met: false, code: 'SAFETY_CHANGES_OUTSTANDING', message: 'Changes requested by the Safety Officer have not been completed yet.' }
     : { met: true, code: 'SAFETY_CHANGES_COMPLETE', message: 'No requested safety changes are outstanding.' }),
@@ -169,7 +174,13 @@ function evaluateSafetyReview(context) {
   return null;
 }
 
-module.exports = {
+/* Corrected arrangements reuse all existing readiness gates while the old rejected review is superseded. */
+function evaluateSafetyResubmission(context){
+ if(!context.safety_resubmission_required)return {code:'SAFETY_RESUBMISSION_NOT_REQUIRED',message:'No safety resubmission is required.'};
+ return evaluateSafetyReview({...context,safety_resubmission_required:false,latest_safety_check:null});
+}
+
+module.exports = { evaluateSafetyResubmission,
   DECISION_REQUIREMENTS, DECIDABLE_STATUSES, SAFETY_REVIEW_REQUIREMENTS, SAFETY_CHANGE_AREAS, REQUIREMENTS,
   isLiveBooking, needsTechnicalArrangements, readiness, evaluateDecision, evaluateSafetyReview, resolutionBlocker,
 };

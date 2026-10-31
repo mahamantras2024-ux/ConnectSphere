@@ -31,6 +31,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       await client.query(`CREATE TABLE venues (id SERIAL PRIMARY KEY, name VARCHAR(255), location VARCHAR(255), capacity INTEGER, supported_layouts TEXT[],
         accessibility_features TEXT[], facilities TEXT[], operating_hours VARCHAR(255), availability_status VARCHAR(50), pricing VARCHAR(255), mrt VARCHAR(255), image TEXT)`);
       for (const file of migrations) await client.query(sqlFile(file));
+      // Registration settings have their own runner; event detail/decision reads use those current columns.
+      await client.query(sqlFile('migrations/021-registration-settings.sql'));
       const people = [['olivia', 'event_organiser'], ['chris', 'event_coordinator'], ['cara', 'event_coordinator'], ['sam', 'safety_officer'], ['vera', 'venue_staff'], ['tina', 'technical_support']];
       for (const [name, role] of people) {
         await client.query('INSERT INTO users (email, full_name, password_hash, role, roles) VALUES ($1, $2, $3, $4::text, ARRAY[$4::text])', [`${name}@example.test`, name, 'unused', role]);
@@ -150,7 +152,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.equal((await as('chris', 'POST', '/events/2/decision', { decision: 'rejected', reason: ' No suitable venue is available. ' })).status, 200);
       assert.deepEqual((await client.query('SELECT status, decision_reason FROM events WHERE id = 2')).rows[0],
         { status: 'rejected', decision_reason: 'No suitable venue is available.' });
-      const [, , rejectedNote] = await notes('olivia');
+      // Lifecycle notices may also be present; identify the rejection by its business type rather than list position.
+      const rejectedNote = (await notes('olivia')).find(note => note.type === 'event_rejected');
       assert.deepEqual([rejectedNote.type, rejectedNote.message],
         ['event_rejected', 'Your event request Talk was not approved by the Event Coordinator.\nReason: No suitable venue is available.']);
 
@@ -171,7 +174,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       await client.query(sqlFile('migrations/006-event-decisions.sql'));
       await client.query(sqlFile('migrations/010-venue-safety-facts.sql'));
       await client.query(sqlFile('migrations/011-safety-change-stages.sql'));
-      assert.equal((await client.query('SELECT status FROM events WHERE id = 1')).rows[0].status, 'approved');
+      // The event reached final confirmation above; idempotent migrations preserve that lifecycle state.
+      assert.equal((await client.query('SELECT status FROM events WHERE id = 1')).rows[0].status, 'confirmed');
     } finally {
       mock.restoreAll();
       if (server?.listening) await new Promise((resolve) => server.close(resolve));

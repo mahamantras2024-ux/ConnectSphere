@@ -92,6 +92,8 @@ async function recordSafetyCheck(eventId, safetyOfficerId, outcome, notes, chang
     }
     const safetyCheck = await eventDecisionModel.insertSafetyCheck(client, eventId, safetyOfficerId, outcome, notes, changeAreas);
     if (changeAreas.length) await eventDecisionModel.reopenStages(client, eventId, changeAreas);
+    // SCRUM-111: every rejection needs explicit coordinator recovery, even when no change areas were named.
+    if(outcome==='rejected')await eventDecisionModel.returnSafetyToPlanning(client,eventId);
     const label = { approved: 'passed', rejected: 'failed', changes_requested: 'needs changes' }[outcome];
     const stages = changeAreas.map((area) => STAGE_LABELS[area]).join(', ');
     const stageLine = stages ? `\nChanges needed to: ${stages}.` : '';

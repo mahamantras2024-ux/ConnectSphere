@@ -67,6 +67,8 @@ function mockTransaction(context) {
         context.safety_changes_open = context.safety_changes_open.filter((area) => area !== values[1]);
         return { rows: [{ safety_changes_open: context.safety_changes_open }] };
       }
+      // SCRUM-111 returns a rejected event to Planning while preserving separately selected revision areas.
+      if (sql.includes("status='planning',safety_resubmission_required=true")) return { rows: [] };
       if (sql.includes('UPDATE events SET safety_changes_open = $2')) return { rows: [] };
       if (/FROM users\s+WHERE role=\$1/.test(sql)) return { rows: [{ id: 50 }] };
       if (sql.includes('INSERT INTO notifications')) {
@@ -163,12 +165,15 @@ test('OFC AC3 - requesting venue changes on an unassigned event reopens the venu
 
 // Test case: Approve and reject reopen nothing and do not involve the organiser (AC2).
 for (const [outcome, notes] of [['approved', undefined], ['rejected', 'Fire exit blocked']]) {
-  test(`OFC AC2 - a ${outcome} check reopens no planning stage and notifies only the coordinator`, async () => {
+  test(`OFC AC2 / SCRUM-111 AC1 - a ${outcome} check names no revision areas and notifies only the coordinator`, async () => {
     mockPool(safetyOfficer);
     const tx = mockTransaction(readyContext);
     mock.method(emailService, 'sendNotificationEmail', async () => {});
-    assert.equal((await recordCheck({ outcome, notes })).status, 201);
+    const result=await recordCheck({ outcome, notes });
+    assert.equal(result.status,201);
+    if(outcome==='rejected')assert.match(result.body.message,/returned to planning/);
     assert.equal(tx.find('UPDATE events SET safety_changes_open').length, 0);
+    assert.equal(tx.find("status='planning',safety_resubmission_required=true").length,outcome==='rejected'?1:0);
     assert.deepEqual(tx.find('INSERT INTO event_safety_checks')[0].values[4], []);
     assert.deepEqual(tx.find('INSERT INTO notifications')[0].values[0], [30]);
   });
@@ -340,4 +345,12 @@ test('OFC AC4/AC5 - completing revisions after a rejected check notifies Safety 
   assert.deepEqual(safetyInsert.values[3], ['safety_check_ready']);
   assert.equal(safetyInsert.values[4][0], 'Ready for safety re-review: Workshop');
   assert.equal(JSON.parse(safetyInsert.values[6][0]).requirement, 'reassessment');
+});
+
+// SCRUM-111 AC4: a revised venue can make the old check non-current while its rejected reasons remain in history.
+test('SCRUM-111 AC4 - revised arrangements do not break the review panel while earlier safety reasons remain historical',async()=>{
+ mockPool(coordinator,sql=>({rows:sql.includes('AS pending_clarifications')?[{...sentBack,latest_safety_check:null,safety_resubmission_required:true}]:[{id:101}]}));
+ const result=await request('/api/events/101/decision');
+ assert.equal(result.status,200);assert.equal(result.body.safetyResubmissionRequired,true);
+ assert.equal(result.body.safetyChanges.notes,null);
 });

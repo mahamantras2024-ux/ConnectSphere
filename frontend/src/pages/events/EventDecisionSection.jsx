@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import SafetyRereviewPanel from './SafetyRereviewPanel';
 import SafetyChangesPanel from './SafetyChangesPanel';
 
 // Checklist labels for the server's readiness requirements (eventDecisionPolicy REQUIREMENTS).
@@ -114,6 +115,10 @@ export default function EventDecisionSection({ event, onDecided }) {
       {/* Operational Feasibility Check AC3/AC4: stages the Safety Officer reopened, shown while any is still open. */}
       {review?.safetyChanges && <SafetyChangesPanel eventId={event.id} changes={review.safetyChanges} coordinator={coordinator} token={token}
         onChanged={() => setReloadKey((key) => key + 1)} />}
+      {/* The current API advertises the recovery state; older responses remain usable during an upgrade. */}
+      {assignedCoordinator && typeof review?.safetyResubmissionRequired==='boolean' && <SafetyRereviewPanel
+        eventId={event.id} token={token} refreshKey={`${reloadKey}:${review.safetyCheck?.checked_at}`}
+        onSubmitted={()=>setReloadKey(key=>key+1)} />}
       {/* Plain text (not an alert) so a decision-panel outage never masks the event page's own errors. */}
       {loadError ? <p className="error-message">{loadError}</p> : !review ? <p role="status" className="loading-state">Loading review decision...</p> : outcome ? (
         <dl className="grid gap-3 md:grid-cols-2">

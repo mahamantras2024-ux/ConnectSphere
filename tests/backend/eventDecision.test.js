@@ -379,12 +379,12 @@ test('AR AC2 - a failed safety check is recorded with its notes for the coordina
 
 // Test case: An event without a coordinator still gets its check; there is nobody to notify.
 // (A change request also tells the organiser, so a failed check is the case with no recipient at all.)
-test('AR AC1 - a check on an unassigned event is recorded without a notification', async () => {
+test('AR AC1 / SCRUM-111 AC1 - a rejection on an unassigned event returns to Planning without a notification', async () => {
   mockAuth(safetyOfficer);
   const tx = mockTransaction({ context: { ...readyContext, coordinator_id: null, latest_safety_check: null } });
   const result = await recordCheck({ outcome: 'rejected', notes: 'Fire exit blocked' });
   assert.equal(result.status, 201);
-  assert.equal(result.body.message, 'Safety check recorded.');
+  assert.equal(result.body.message, 'Safety check recorded. The event has returned to planning for the requested changes.');
   assert.equal(tx.find('INSERT INTO notifications').length, 0);
 });
 

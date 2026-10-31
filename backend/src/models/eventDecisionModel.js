@@ -6,7 +6,7 @@ function contextSql(scope, lock) {
   return `
     SELECT e.id, e.name, e.organiser_id, e.coordinator_id, e.status, e.is_draft, e.equipment_items,
       e.technical_support_required, e.video_conferencing_required, e.equipment_notes, e.equipment_confirmed_at,
-      e.decision_reason, e.decided_at, decider.full_name AS decided_by_name, e.safety_changes_open, e.safety_recheck_required_at,
+      e.decision_reason, e.decided_at, decider.full_name AS decided_by_name, e.safety_changes_open, e.safety_recheck_required_at, e.safety_resubmission_required,
       e.proposed_date::text AS proposed_date, e.proposed_end_time::text AS proposed_end_time,
       (SELECT count(*)::int FROM event_clarification_requests cr WHERE cr.event_id = e.id AND cr.status = 'pending') AS pending_clarifications,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at,
@@ -86,7 +86,7 @@ async function safetyCandidates(db) {
     SELECT e.id, e.name, e.status, e.is_draft, e.proposed_date::text AS proposed_date, e.proposed_start_time, e.proposed_end_time,
       e.expected_attendance, e.room_layout_preference, e.accessibility_requirements, e.equipment_items,
       e.technical_support_required, e.video_conferencing_required, e.equipment_notes, e.equipment_confirmed_at,
-      e.technical_specifications, e.safety_changes_open, e.safety_recheck_required_at,
+      e.technical_specifications, e.safety_changes_open, e.safety_recheck_required_at, e.safety_resubmission_required,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at,
           'recheck_required_at', vb.recheck_required_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
@@ -104,4 +104,28 @@ async function safetyCandidates(db) {
   return result.rows;
 }
 
-module.exports = { loadDecisionContext, recordDecision, insertSafetyCheck, reopenStages, resolveStage, safetyCandidates };
+/** A rejected safety review reopens Planning without replacing the original coordinator approval audit. */
+async function returnSafetyToPlanning(db,eventId){
+ await db.query("UPDATE events SET status='planning',safety_resubmission_required=true,updated_at=now() WHERE id=$1",[eventId]);
+}
+/** Appends one submission for the latest rejected review and invalidates its old safety result at save time. */
+async function recordSafetyResubmission(db,eventId,coordinatorId){
+ const row=(await db.query(`INSERT INTO event_safety_resubmissions(safety_check_id,coordinator_id)
+  SELECT latest.id,$2 FROM (SELECT id,outcome FROM event_safety_checks WHERE event_id=$1 ORDER BY checked_at DESC,id DESC LIMIT 1) latest
+  WHERE latest.outcome='rejected' RETURNING *`,[eventId,coordinatorId])).rows[0];
+ // Read the saved timestamp inside PostgreSQL so a JavaScript Date round trip cannot lose microsecond precision.
+ if(row)await db.query(`UPDATE events e SET safety_resubmission_required=false,safety_recheck_required_at=r.submitted_at,updated_at=now()
+  FROM event_safety_resubmissions r WHERE e.id=$1 AND r.id=$2`,[eventId,row.id]);
+ return row;
+}
+/** Combines immutable review outcomes and coordinator submissions into a chronological audit trail. */
+async function safetyReviewHistory(db,eventId){
+ return(await db.query(`SELECT 'review' AS kind,s.id,s.outcome,s.notes,s.checked_at AS recorded_at,u.full_name AS actor
+  FROM event_safety_checks s JOIN users u ON u.id=s.safety_officer_id WHERE s.event_id=$1
+  UNION ALL
+  SELECT 'resubmission',r.id,NULL,NULL,r.submitted_at,u.full_name FROM event_safety_resubmissions r
+  JOIN event_safety_checks s ON s.id=r.safety_check_id JOIN users u ON u.id=r.coordinator_id WHERE s.event_id=$1
+  ORDER BY recorded_at,kind,id`,[eventId])).rows;
+}
+
+module.exports = { returnSafetyToPlanning,recordSafetyResubmission,safetyReviewHistory, loadDecisionContext, recordDecision, insertSafetyCheck, reopenStages, resolveStage, safetyCandidates };
