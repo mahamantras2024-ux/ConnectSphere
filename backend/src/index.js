@@ -29,6 +29,9 @@ app.get('/health', (req, res) => // Returns the API health response without quer
       // Handles this operation using the surrounding screen or request state.
       res.json({ status: 'ok' }));
 
+// SCRUM-106 routes share the existing authentication and JSON error boundary.
+app.use('/api', require('./routes/venueDisruptionRoutes'));
+
 // Feature Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);

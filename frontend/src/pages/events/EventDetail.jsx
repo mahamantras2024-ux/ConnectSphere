@@ -22,6 +22,7 @@ import EventRequestStatus from './EventRequestStatus';
 import { requestStatusLabel } from './requestStatusLabel';
 import EquipmentStatusSection from './EquipmentStatusSection';
 import VenueBookingDecisions from './VenueBookingDecisions';
+import VenueDisruptions from './VenueDisruptions';
 import OrganiserVenueDetails from './OrganiserVenueDetails';
 
 import CoordinatorRegistrations from './CoordinatorRegistrations';
@@ -315,6 +316,7 @@ export default function EventDetail() {
 
   const location = useLocation();
   const notificationOpened = useNotificationOpened();
+  const [venueRecoveryVersion, setVenueRecoveryVersion] = useState(0);
 
   const [event, setEvent] = useState(null);
   // Bumped after the coordinator applies an agreed amendment, so the page shows the changed event.
@@ -452,7 +454,7 @@ export default function EventDetail() {
     };
 
     // Opening a notification about this event while it is open re-reads it.
-  }, [id, token, notificationOpened, reloadKey]);
+  }, [id, token, notificationOpened, venueRecoveryVersion, reloadKey]);
 
 
 
@@ -978,7 +980,8 @@ export default function EventDetail() {
         <section role="tabpanel" id="workspace-panel-venues" aria-labelledby="workspace-tab-venues" hidden={workspaceTab !== 'venues'}>
           <div className="workspace-action-card"><div><h2>Venue arrangements</h2><p>Review your requests here. Search and request spaces in Find venues.</p></div>
             <Link className="button-link" to={`/coordinator/venues?eventId=${event.id}`}>Find a venue</Link></div>
-          <VenueBookingDecisions eventId={event.id} />
+          <VenueDisruptions eventId={event.id} token={token} refreshKey={notificationOpened} onResolved={() => setVenueRecoveryVersion(version => version + 1)} />
+          <VenueBookingDecisions eventId={event.id} refreshKey={venueRecoveryVersion} />
         </section>
         <section role="tabpanel" id="workspace-panel-equipment" aria-labelledby="workspace-tab-equipment" hidden={workspaceTab !== 'equipment'}>
           <EquipmentStatusSection eventId={event.id} token={token} />

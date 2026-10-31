@@ -10,12 +10,12 @@ function contextSql(scope, lock) {
       e.proposed_date::text AS proposed_date, e.proposed_end_time::text AS proposed_end_time,
       (SELECT count(*)::int FROM event_clarification_requests cr WHERE cr.event_id = e.id AND cr.status = 'pending') AS pending_clarifications,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at,
-          'recheck_required_at', vb.recheck_required_at) ORDER BY vb.id)
+          'recheck_required_at', vb.recheck_required_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
       (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'safety_officer_name', officer.full_name,
           'change_areas', s.change_areas)
         FROM event_safety_checks s JOIN users officer ON officer.id = s.safety_officer_id
-        WHERE s.event_id = e.id ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
+        WHERE s.event_id = e.id AND (e.venue_revised_at IS NULL OR s.checked_at >= e.venue_revised_at) ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
     FROM events e
     LEFT JOIN users decider ON decider.id = e.decided_by
     WHERE e.id = $1${scope}${lock ? ' FOR UPDATE OF e' : ''}`;
@@ -36,7 +36,7 @@ async function loadDecisionContext(db, eventId, { coordinatorId, lock = false } 
 /** Stores the coordinator's decision on the event itself so the outcome stays with the record (AC4/AC5). */
 async function recordDecision(db, eventId, decision, reason, coordinatorId) {
   const result = await db.query(`
-    UPDATE events SET status = $2, decision_reason = $3, decided_by = $4, decided_at = now(), updated_at = now()
+    UPDATE events SET status = $2, decision_reason = $3, decided_by = $4, decided_at = clock_timestamp(), updated_at = now()
     WHERE id = $1 RETURNING id, name, status, organiser_id, decision_reason, decided_at`, [eventId, decision, reason, coordinatorId]);
   return result.rows[0];
 }
@@ -44,10 +44,11 @@ async function recordDecision(db, eventId, decision, reason, coordinatorId) {
 /**
  * Appends a Safety Officer review; the newest row becomes the event's current safety outcome.
  * `changeAreas` names the planning stages a change request reopens (empty for approve/reject).
+ * Use save time after row-lock waits: a transaction-start timestamp could predate the venue revision it reviews.
  */
 async function insertSafetyCheck(db, eventId, safetyOfficerId, outcome, notes, changeAreas = []) {
   const result = await db.query(`
-    INSERT INTO event_safety_checks (event_id, safety_officer_id, outcome, notes, change_areas) VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO event_safety_checks (event_id, safety_officer_id, outcome, notes, change_areas, checked_at) VALUES ($1, $2, $3, $4, $5, clock_timestamp())
     RETURNING id, event_id, outcome, notes, change_areas, checked_at`, [eventId, safetyOfficerId, outcome, notes, changeAreas]);
   return result.rows[0];
 }
@@ -87,7 +88,7 @@ async function safetyCandidates(db) {
       e.technical_support_required, e.video_conferencing_required, e.equipment_notes, e.equipment_confirmed_at,
       e.technical_specifications, e.safety_changes_open, e.safety_recheck_required_at,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('status', vb.status, 'hold_expires_at', vb.hold_expires_at,
-          'recheck_required_at', vb.recheck_required_at) ORDER BY vb.id)
+          'recheck_required_at', vb.recheck_required_at, 'disrupted', EXISTS (SELECT 1 FROM venue_booking_disruptions d WHERE d.booking_id=vb.id AND d.resolved_at IS NULL)) ORDER BY vb.id)
         FROM venue_bookings vb WHERE vb.event_id = e.id), '[]'::jsonb) AS bookings,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('name', v.name, 'capacity', v.capacity, 'supported_layouts', v.supported_layouts,
           'accessibility_features', v.accessibility_features, 'operating_hours', v.operating_hours, 'setup_minutes', v.setup_minutes,
@@ -95,7 +96,7 @@ async function safetyCandidates(db) {
           'emergency_documents', v.emergency_documents) ORDER BY vb.id)
         FROM venue_bookings vb JOIN venues v ON v.id = vb.venue_id WHERE vb.event_id = e.id AND vb.status = 'approved'), '[]'::jsonb) AS venues,
       (SELECT jsonb_build_object('outcome', s.outcome, 'notes', s.notes, 'checked_at', s.checked_at, 'change_areas', s.change_areas)
-        FROM event_safety_checks s WHERE s.event_id = e.id ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
+        FROM event_safety_checks s WHERE s.event_id = e.id AND (e.venue_revised_at IS NULL OR s.checked_at >= e.venue_revised_at) ORDER BY s.checked_at DESC, s.id DESC LIMIT 1) AS latest_safety_check
     FROM events e
     WHERE e.is_draft = false AND e.status IN ('submitted', 'under_review', 'approved', 'planning')
       AND EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id = e.id AND vb.status = 'approved')

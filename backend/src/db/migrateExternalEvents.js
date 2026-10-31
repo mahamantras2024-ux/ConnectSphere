@@ -81,6 +81,7 @@ async function migrate() {
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/016-attendee-withdrawal.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/017-venue-staff-event-status.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/018-venue-reminder-frequency.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, 'migrations/019-venue-disruptions.sql'), 'utf8'));
     // Parent notification system: Coordinator Lead and Safety Officer notification types (after every other type change).
     await client.query(fs.readFileSync(path.join(__dirname, 'migrations/017-parent-notifications.sql'), 'utf8'));
     // Post-submission amendments: the organiser's explanation on each amendment (change) request.
