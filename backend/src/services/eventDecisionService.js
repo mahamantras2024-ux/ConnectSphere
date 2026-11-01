@@ -97,6 +97,8 @@ async function recordSafetyCheck(eventId, safetyOfficerId, outcome, notes, chang
     if (changeAreas.length) await eventDecisionModel.reopenStages(client, eventId, changeAreas);
     // Technical rework invalidates the old allocations; release them with the safety decision, never in a later save.
     if (changeAreas.includes('technical')) await eventDecisionModel.releaseEquipmentForSafetyRework(client, eventId, safetyOfficerId);
+    // SCRUM-111: every rejection needs explicit coordinator recovery, even when no change areas were named.
+    if(outcome==='rejected')await eventDecisionModel.returnSafetyToPlanning(client,eventId);
     const label = { approved: 'passed', rejected: 'failed', changes_requested: 'needs changes' }[outcome];
     const stages = changeAreas.map((area) => STAGE_LABELS[area]).join(', ');
     const stageLine = stages ? `\nChanges needed to: ${stages}.` : '';
