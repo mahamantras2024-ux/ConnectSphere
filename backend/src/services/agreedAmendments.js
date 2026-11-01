@@ -147,6 +147,7 @@ function recheckLines(rechecks) {
 }
 
 /**
+ * Caps notification titles at the database limit while preserving complete names and change details in messages.
  * Builds the notifications for an applied amendment. The organiser hears what changed (and why, for one the coordinator
  * applied); staff hear what changed and what they must check again; attendees hear only the changes they can see, without
  * internal planning details.
@@ -161,9 +162,9 @@ function amendmentNotifications({ eventId, changeRequestId, eventName, source, r
   const checkText = checks.length ? `\nChecks to complete again:\n${checks.join('\n')}` : '';
   const agreed = source === 'coordinator_agreed';
   const organiser = agreed
-    ? { type: 'change_request_approved', title: `Agreed amendment applied: ${eventName}`,
+    ? { type: 'change_request_approved', title: (`Agreed amendment applied: ${eventName}`).slice(0, 255),
       message: `The Event Coordinator applied the amendment agreed with you to ${eventName}.\n${lines}\nWhat was agreed: ${explanation}${checkText}` }
-    : { type: 'change_request_approved', title: `Change request approved: ${eventName}`,
+    : { type: 'change_request_approved', title: (`Change request approved: ${eventName}`).slice(0, 255),
       message: `Your requested changes to ${eventName} were approved and applied.\n${lines}${reason ? `\nNote: ${reason}` : ''}${checkText}` };
   const warnings = arrangements.filter((item) => !rechecks.venueBookings.some((flagged) => flagged.bookingId === item.bookingId))
     .map((item) => `${item.venueName}: ${item.reasons.join(' ')}`);
@@ -174,10 +175,10 @@ function amendmentNotifications({ eventId, changeRequestId, eventName, source, r
   const attendees = recipients.attendees.filter((userId) => userId !== recipients.organiser[0] && !staff.includes(userId));
   return [
     { ...base, userId: recipients.organiser[0], ...organiser, details: { changes, reason, explanation, rechecks } },
-    ...staff.map((userId) => ({ ...base, userId, type: 'event_details_changed', title: `Event details changed: ${eventName}`,
+    ...staff.map((userId) => ({ ...base, userId, type: 'event_details_changed', title: (`Event details changed: ${eventName}`).slice(0, 255),
       message: staffMessage, details: { changes, arrangements, rechecks } })),
     // Attendees are not linked to the internal amendment record.
-    ...attendees.map((userId) => ({ ...base, changeRequestId: null, userId, type: 'event_details_changed', title: `Event updated: ${eventName}`,
+    ...attendees.map((userId) => ({ ...base, changeRequestId: null, userId, type: 'event_details_changed', title: (`Event updated: ${eventName}`).slice(0, 255),
       message: `${eventName} has been updated.\n${changeLines(attendeeChanges).join('\n')}\nPlease check the event details in ConnectSphere.`,
       details: { changes: attendeeChanges } })),
   ];

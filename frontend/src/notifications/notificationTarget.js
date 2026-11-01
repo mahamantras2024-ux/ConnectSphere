@@ -32,11 +32,13 @@ export const SAFETY_EVENT_ANCHOR = (id) => `safety-event-${id}`;
  * - A Safety Officer notification opens the safety dashboard, anchored to the specific event when one is named, so the
  *   relevant event and its current review requirement are shown (AC3).
  * - Otherwise the related event's page for that role, or the role's dashboard when it has no event page or no event.
- * @param {{ type: string, event_id: number|null }} notification stored notification.
+ * @param {{ type: string, event_id: number|null, details?: { kind?: string }|null }} notification stored notification.
  * @param {string} role the signed-in user's active role.
  * @returns {string} an in-app path.
  */
 export function notificationTarget(notification, role) {
+  // The outgoing coordinator's notice must not open event details after responsibility has transferred.
+  if (notification.details?.kind === 'event_reassigned_away') return getDashboardRoute(role);
   // Organisation colleagues have status-only access; this target never opens another organiser’s private detail page.
   if (notification.type === 'event_request_status_changed' && role === 'event_organiser' && notification.event_id != null) return `/organizer/events/${notification.event_id}/status`;
   if (notification.type === 'event_awaiting_assignment') return '/coordinator-lead/dashboard';

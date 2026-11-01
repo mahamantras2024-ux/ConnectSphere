@@ -1,5 +1,7 @@
 // File: Displays the Technical Support dashboard and its authenticated pending equipment-review queue.
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
 import NotificationsPanel from '../../components/NotificationsPanel';
@@ -377,7 +379,22 @@ export default function TechSupportDashboard() {
   const [issueError, setIssueError] = useState('');
   const [requestError, setRequestError] = useState('');
   const [toast, setToast] = useState(null);
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSection = searchParams.get('section');
+  const activeTab = ['inventory', 'review', 'reservations'].includes(selectedSection) ? selectedSection : 'dashboard';
+  /** Keep section selection in the URL so Dashboard, refresh and browser history restore the correct content. */
+  function setActiveTab(section) {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', section);
+    setSearchParams(next);
+  }
+  const [navigationTarget, setNavigationTarget] = useState(null);
+
+  // The dashboard owns tab state; mount its controls beside Dashboard after the shared header commits.
+  // Embedded workspaces without the shared navbar retain local controls.
+  useLayoutEffect(() => {
+    setNavigationTarget(document.getElementById('technical-support-equipment-navigation'));
+  }, []);
 
   const showSuccess = message => setToast({ type: 'success', message });
 
@@ -497,23 +514,66 @@ export default function TechSupportDashboard() {
   }
 
   const tabs = [
-    { id: 'inventory', label: 'Equipment info' },
-    { id: 'review', label: 'Equipment request review' },
-    { id: 'reservations', label: 'Equipment reservation' },
+    { id: 'inventory', label: 'Inventory', title: 'Equipment inventory' },
+    { id: 'review', label: 'Requests', title: 'Equipment request review' },
+    { id: 'reservations', label: 'Reservations', title: 'Equipment reservation' },
   ];
+
+  // Keep one tablist so moving it into the header preserves panel IDs and keyboard behavior.
+  const equipmentNavigation = (
+    <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
+      {tabs.map(tab => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          id={`support-tab-${tab.id}`}
+          aria-selected={activeTab === tab.id}
+          aria-controls={`support-panel-${tab.id}`}
+          tabIndex={activeTab === tab.id || (activeTab === 'dashboard' && tab.id === 'inventory') ? 0 : -1}
+          className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
+          onClick={() => setActiveTab(tab.id)}
+          onKeyDown={event => {
+            const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
+            const nextIndex = event.key === 'ArrowRight'
+              ? (currentIndex + 1) % tabs.length
+              : event.key === 'ArrowLeft'
+                ? (currentIndex - 1 + tabs.length) % tabs.length
+                : event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? tabs.length - 1
+                    : -1;
+            if (nextIndex >= 0) {
+              event.preventDefault();
+              const nextTab = tabs[nextIndex];
+              setActiveTab(nextTab.id);
+              document.getElementById(`support-tab-${nextTab.id}`)?.focus();
+            }
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="page">
       <style>{dashboardStyles}</style>
-      <PageIntro
-        title="Technical Support Dashboard"
-        eyebrow="Internal workspace"
-        description="Review equipment requests, reserve equipment, and release allocations when events change."
-      />
-      <NotificationsPanel />
-      <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
-      {/* Opt-in periodic reminders for pending technical support and equipment requests (AC4). */}
-      <ReminderPreference />
+      {/* Equipment views have one title; only the overview needs the broader workspace introduction. */}
+      {activeTab === 'dashboard' ? (
+        <PageIntro title="Technical Support Dashboard" eyebrow="Internal workspace" description="Your assigned events and latest updates." />
+      ) : (
+        <header className="page-intro support-section-intro"><h1>{tabs.find(tab => tab.id === activeTab).title}</h1></header>
+      )}
+      {activeTab === 'dashboard' && (
+        <div className="support-overview">
+          <NotificationsPanel />
+          <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
+          <ReminderPreference />
+        </div>
+      )}
       {toast && (
         <div
           role="status"
@@ -525,46 +585,7 @@ export default function TechSupportDashboard() {
         </div>
       )}
       <div className="support-management-workspace">
-        <div className="onsite-support-heading support-workspace-heading">
-          <div>
-            <h2>Equipment management</h2>
-          </div>
-        </div>
-        <div className="support-dashboard-tabs" role="tablist" aria-label="Technical Support dashboard sections">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`support-tab-${tab.id}`}
-              aria-selected={activeTab === tab.id}
-              aria-controls={`support-panel-${tab.id}`}
-              tabIndex={activeTab === tab.id ? 0 : -1}
-              className={activeTab === tab.id ? 'support-dashboard-tab is-active' : 'support-dashboard-tab'}
-              onClick={() => setActiveTab(tab.id)}
-              onKeyDown={event => {
-                const currentIndex = tabs.findIndex(currentTab => currentTab.id === tab.id);
-                const nextIndex = event.key === 'ArrowRight'
-                  ? (currentIndex + 1) % tabs.length
-                  : event.key === 'ArrowLeft'
-                    ? (currentIndex - 1 + tabs.length) % tabs.length
-                    : event.key === 'Home'
-                      ? 0
-                      : event.key === 'End'
-                        ? tabs.length - 1
-                        : -1;
-                if (nextIndex >= 0) {
-                  event.preventDefault();
-                  const nextTab = tabs[nextIndex];
-                  setActiveTab(nextTab.id);
-                  document.getElementById(`support-tab-${nextTab.id}`)?.focus();
-                }
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {navigationTarget ? createPortal(equipmentNavigation, navigationTarget) : equipmentNavigation}
         {activeTab === 'inventory' && (
         <div role="tabpanel" id="support-panel-inventory" aria-labelledby="support-tab-inventory">
           <EquipmentInventorySection
@@ -580,7 +601,7 @@ export default function TechSupportDashboard() {
           <section className="onsite-support-section equipment-review-section" aria-labelledby="pending-equipment-heading">
             <div className="onsite-support-heading">
               <div>
-                <h2 id="pending-equipment-heading">Pending equipment requests</h2>
+                <h2 id="pending-equipment-heading">Pending requests</h2>
                 <p className="onsite-support-description">Review equipment requirements and record what can be fulfilled.</p>
               </div>
               <div className="equipment-review-actions">

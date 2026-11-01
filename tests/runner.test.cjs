@@ -94,3 +94,15 @@ test('PostgreSQL acceptance harness - loads configured database settings before 
  const poolImport=acceptance.indexOf("require('../../backend/src/config/db')");
  assert.ok(environmentLoad>=0&&poolImport>environmentLoad);
 });
+
+// Both branches add live suites; dropping either side would silently skip its database regressions.
+test('Organiser outcomes AC1-AC6 / SCRUM-85 AC1 / SCRUM-106 AC5 - integration retains both branches database suites',()=>{
+  // Arrange and Act: capture the actual integration command without starting child suites.
+  const [backend]=commands(['integration']);
+  // Assert: each independently added suite must remain selected after the merge.
+  for(const file of ['scrum85Postgres.test.js','scrum106Postgres.test.js',
+    'safetyEquipmentReleasePostgres.test.js','safetyNotificationRecoveryPostgres.test.js',
+    'organiserOutcomesPostgres.test.js','amendmentNotificationBoundariesPostgres.test.js']) {
+    assert.ok(backend.args.some(arg=>arg.endsWith(file)),`${file} must run in integration mode`);
+  }
+});

@@ -34,6 +34,7 @@ app.use('/api', require('./routes/venueDisruptionRoutes'));
 
 // Feature Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/events', require('./routes/safetyRereviewRoutes'));
 app.use('/api/events', eventRoutes);
 app.use('/api/events', require('./routes/eventDecisionRoutes'));
 app.use('/api/events', require('./routes/venueSuitabilityRoutes'));

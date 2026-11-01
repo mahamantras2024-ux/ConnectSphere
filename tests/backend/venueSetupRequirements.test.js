@@ -23,6 +23,8 @@ async function request(path, body, method = 'PUT', authenticated = true) {
 
 /** Returns raw persisted rows and captures writes without implementing any conflict or impact rule. */
 async function databaseQuery(sql, values = []) {
+  // This buffer-rule fixture has no assigned Venue Staff; authentication must not invent notification recipients.
+  if (/JOIN venue_staff_assignments/.test(sql)) return { rows: [] };
   if (/FROM users\b/.test(sql)) return { rows: [{ id: 1, role: fixture.role, auth_version: 0 }] };
   if (/FROM venues\b/.test(sql)) return { rows: fixture.venue ? [structuredClone(fixture.venue)] : [] };
   if (/FROM events\b/.test(sql)) return { rows: [{ id: 3, coordinator_id: 1 }] };

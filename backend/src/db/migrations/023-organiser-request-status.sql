@@ -13,7 +13,10 @@ BEGIN
       'event_request_status_changed', 'pending_venue_request_reminder', 'event_awaiting_assignment', 'safety_check_ready',
       -- The shared constraint must retain other open PRs' notification types before their first notification is stored.
       'tech_support_assignment_created', 'tech_support_assignment_updated', 'tech_support_assignment_cancelled',
-      'pending_tech_support_request_reminder'
+      'pending_tech_support_request_reminder',
+      -- Retain outcome, assignment and reply types even on fresh databases with no notification history.
+      'event_confirmed', 'event_clarification_requested', 'event_coordinator_assigned',
+      'clarification_replied', 'venue_booking_requested'
     ]::text[])
   ) supported;
   ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;

@@ -6,7 +6,7 @@ import AmendmentRequestForm from './AmendmentRequestForm';
 import AmendmentRequestList from './AmendmentRequestList';
 
 // Event statuses that no longer take amendments (mirrors the server rule).
-const CLOSED = ['cancelled', 'completed', 'rejected'];
+const CLOSED = ['cancelled', 'completed'];
 
 /**
  * @param {{ event: object, token: string }} props the organiser's submitted event and session token.

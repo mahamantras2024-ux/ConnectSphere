@@ -6,6 +6,9 @@ const eventDecisionModel = require('../models/eventDecisionModel');
 const { decideEvent, recordSafetyCheck, resolveSafetyChange } = require('../services/eventDecisionService');
 const { readiness, evaluateDecision, evaluateSafetyReview, resolutionBlocker, SAFETY_CHANGE_AREAS } = require('../services/eventDecisionPolicy');
 
+const { storeSafetyReadyNotifications } = require('../services/safetyReadyNotifications');
+const notificationService = require('../services/notificationService');
+
 const MAX_TEXT = 4000;
 const SAFETY_OUTCOMES = ['approved', 'rejected', 'changes_requested'];
 // Event ids are PostgreSQL INTEGER keys.
@@ -26,7 +29,7 @@ function changeAreasError(outcome, changeAreas) {
   const revisable = ['rejected', 'changes_requested'].includes(outcome);
   if (!revisable) return changeAreas == null ? null : 'Planning stages can only be chosen when requesting changes.';
   // A rejected check may be revised only when the Safety Officer identifies the arrangements to revisit; a rejection
-  // without areas remains terminal. Changes requested still require at least one reopened stage.
+  // without named areas still returns to Planning for explicit resubmission (SCRUM-111). Changes requested require a stage.
   if (outcome === 'changes_requested' && (!Array.isArray(changeAreas) || !changeAreas.length)) return 'Choose which planning stages need changes.';
   if (changeAreas == null) return null;
   if (!Array.isArray(changeAreas) || changeAreas.some((area) => !Object.hasOwn(SAFETY_CHANGE_AREAS, area))
@@ -47,7 +50,8 @@ function safetyChangesView(context, coordinatorView) {
     open: context.safety_changes_open.map((area) => (coordinatorView
       ? { area, blocked: resolutionBlocker(area, now) } : { area })),
     // Stages are only opened by a change-request check, which always carries notes, so the latest check exists here.
-    notes: context.latest_safety_check.notes,
+    // A corrected venue may invalidate the latest check; the complete rejection reasons remain in review history.
+    notes: context.latest_safety_check?.notes ?? null,
   };
 }
 
@@ -77,6 +81,7 @@ const getDecision = asyncHandler(async (req, res) => {
     allowed: { approved: !evaluateDecision('approved', now), rejected: !evaluateDecision('rejected', now) },
     blocked: { approved: evaluateDecision('approved', now), rejected: evaluateDecision('rejected', now) },
     safetyCheck: context.latest_safety_check,
+    safetyResubmissionRequired: Boolean(context.safety_resubmission_required),
     transitions: Object.keys(SOURCES).map((status) => ({ status, blocked: evaluateTransition(status, now) })),
   });
 });
@@ -106,8 +111,15 @@ const postDecision = asyncHandler(async (req, res) => {
 const getSafetyQueue = asyncHandler(async (req, res) => {
   const now = Date.now();
   const candidates = await eventDecisionModel.safetyCandidates(db);
-  const events = candidates.filter((event) => !evaluateSafetyReview({ ...event, now }))
-    .map(({ bookings, equipment_confirmed_at: confirmedAt, status, is_draft: isDraft, safety_changes_open: open, ...event }) => event);
+  const ready = candidates.filter((event) => !evaluateSafetyReview({ ...event, now }));
+  const stored = [];
+  // Recover missed readiness transitions for this officer; a repair outage must never hide the review queue.
+  for (const event of ready) {
+    try { stored.push(...await storeSafetyReadyNotifications(db, event, [req.user.id])); }
+    catch (error) { console.error(`Safety readiness notification recovery failed: ${error.message}`); }
+  }
+  await notificationService.emailNotifications(stored);
+  const events = ready.map(({ bookings, equipment_confirmed_at: confirmedAt, status, is_draft: isDraft, safety_changes_open: open, ...event }) => event);
   return res.json({ events });
 });
 
@@ -128,7 +140,8 @@ const postSafetyCheck = asyncHandler(async (req, res) => {
   try {
     const { safetyCheck, notifiedCoordinator } = await recordSafetyCheck(Number(id), req.user.id, outcome, cleanNotes, changeAreas ?? []);
     const recorded = notifiedCoordinator ? 'Safety check recorded. The Event Coordinator has been notified.' : 'Safety check recorded.';
-    const returnedForRevision = (outcome === 'changes_requested' || (outcome === 'rejected' && changeAreas?.length));
+    // SCRUM-111: every rejection returns to Planning, including one with no selected change areas.
+    const returnedForRevision = outcome !== 'approved';
     return res.status(201).json({
       safetyCheck,
       message: returnedForRevision ? `${recorded} The event has returned to planning for the requested changes.` : recorded,

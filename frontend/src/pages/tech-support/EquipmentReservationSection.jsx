@@ -600,8 +600,7 @@ export default function EquipmentReservationSection({
     <div className="er-root">
       <style>{STYLES}</style>
       <section className="er-section" aria-labelledby="equipment-reservation-heading">
-        <h2 className="er-section-title" id="equipment-reservation-heading">Equipment availability and reservation</h2>
-        <br></br>
+        <h2 className="er-section-title" id="equipment-reservation-heading">Reviewed requests</h2>
         {error && <p className="er-error" role="alert">{error}</p>}
         {requests.length === 0 ? (
           <div className="er-empty">
@@ -690,7 +689,7 @@ export default function EquipmentReservationSection({
       </section>
 
       <section className="er-section" aria-labelledby="confirmed-reservations-heading">
-        <h2 className="er-section-title" id="confirmed-reservations-heading">Equipment Reservations</h2>
+        <h2 className="er-section-title" id="confirmed-reservations-heading">Confirmed reservations</h2>
         {releaseError && <p className="er-error" role="alert">{releaseError}</p>}
         {error
           ? <p className="er-section-hint" role="status">Unable to verify upcoming equipment reservations.</p>
