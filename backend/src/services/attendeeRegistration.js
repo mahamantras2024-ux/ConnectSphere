@@ -1,3 +1,4 @@
+const {notifyRegistrationStatus}=require('./attendeeRegistrationNotifications');
 const { pool } = require('../config/db');
 const { capacityFor, deadlineFor, registrationBlocker } = require('./attendeeRegistrationPolicy');
 const {withdrawalDeadline}=require('./attendeeWithdrawalPolicy');
@@ -70,6 +71,8 @@ async function register(eventId, attendeeId, joinWaitlist) {
       VALUES ($1,$2,$3,clock_timestamp()) ON CONFLICT (event_id, attendee_id) DO UPDATE
       SET status=EXCLUDED.status, registered_at=clock_timestamp(), withdrawn_at=NULL`, [eventId, attendeeId, status]);
     const updated = await registrationFacts(client, eventId, attendeeId);
+    // A status change and its notice commit together; retries above never create another notice.
+    await notifyRegistrationStatus(client,event,attendeeId,updated.registration);
     await client.query('COMMIT');
     return { status: 201, ...present(event, updated, Date.now()),
       message: status === 'registered' ? 'Registration confirmed. Your spot is secured.' : 'You have joined the waitlist. We will notify you when a spot opens.' };

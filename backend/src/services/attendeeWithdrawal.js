@@ -1,3 +1,4 @@
+const {notifyRegistrationStatus}=require('./attendeeRegistrationNotifications');
 const { pool } = require('../config/db');
 const { loadEvent, registrationFacts } = require('./attendeeRegistration');
 const { capacityFor } = require('./attendeeRegistrationPolicy');
@@ -45,6 +46,8 @@ async function withdraw(eventId, attendeeId) {
       const updated = await registrationFacts(client, eventId, attendeeId);
       await promoteNext(client, event, updated.occupied);
     }
+    // Notify the withdrawing attendee as well as anyone promoted, inside the same event transaction.
+    await notifyRegistrationStatus(client,event,attendeeId,result.rows[0]);
     await client.query('COMMIT');
     return { status: 200, registration: result.rows[0], message: 'Your registration is now Withdrawn.' };
   } catch (error) {

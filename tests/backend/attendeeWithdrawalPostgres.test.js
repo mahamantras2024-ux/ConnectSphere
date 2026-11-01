@@ -86,7 +86,8 @@ test('Withdraw AC1/AC2/AC3 - PostgreSQL preserves capacity, FIFO order, notifica
       await t.test('Withdraw AC1/AC2 - duplicate first-time withdrawals free only one place', async () => {
         // Duplicate first-time withdrawals must free only one place and store one promotion notification.
         await reset(); await Promise.all([withdraw(44, 8), withdraw(44, 8)]);
-        assert.equal((await isolated.query('SELECT count(*)::int AS n FROM notifications')).rows[0].n, 1);
+        // SCRUM-87: one promotion notice plus the withdrawing attendee's status notice.
+        assert.equal((await isolated.query('SELECT count(*)::int AS n FROM notifications')).rows[0].n, 2);
         assert.equal((await states()).find(row => row.attendee_id === 11).status, 'waitlisted');
 
       });
