@@ -83,7 +83,7 @@ test('SCRUM-85 AC4 - equipment reservation confirmation identifies event and rec
 const lead=require('../../backend/src/controllers/coordinatorLeadController');
 /** Executes Express's async wrapper while preserving real controller validation and transaction code. */
 function assign(body){return new Promise((resolve,reject)=>{const response={statusCode:200,status(value){this.statusCode=value;return this;},json(value){resolve({status:this.statusCode,body:value});}};lead.assign({params:{id:'3'},body,user:{id:1}},response,reject);});}
-for(const previous of [null,4,8])test(`SCRUM-85 AC1 - assignment from ${previous} sends ${previous===8?'no duplicate':'one event-identifying notice to the new coordinator'}`,async()=>{
+for(const previous of [null,4,8])test(`SCRUM-85 AC1 - assignment from ${previous} sends ${previous===8?'no duplicate':'one notice per affected coordinator'}`,async()=>{
  const notes=[],calls=[];
  mock.method(email,'sendNotificationEmail',async()=>true);
  mock.method(pool,'connect',async()=>({release(){},query:async(sql,values)=>{
@@ -93,7 +93,8 @@ for(const previous of [null,4,8])test(`SCRUM-85 AC1 - assignment from ${previous
  }}));
  assert.equal((await assign({coordinatorId:8,expectedCoordinatorId:previous})).status,200);
  assert.equal(notes.length,previous===8?0:1);
- if(previous!==8){assert.deepEqual(notes[0][0],[8]);assert.match(notes[0][5][0],/Gala/);assert.ok(calls.findIndex(sql=>sql.includes('WITH inserted'))<calls.indexOf('COMMIT'));}
+ if(previous!==8){// Outgoing notice AC1: the batch keeps the incoming notice and adds the previous coordinator only on reassignment.
+  assert.deepEqual(notes[0][0],previous===null?[8]:[8,previous]);assert.match(notes[0][5][0],/Gala/);assert.ok(calls.findIndex(sql=>sql.includes('WITH inserted'))<calls.indexOf('COMMIT'));}
 });
 test('SCRUM-85 AC1 - assignment notification failure rolls back responsibility change',async()=>{
  const calls=[];mock.method(pool,'connect',async()=>({release(){},query:async(sql)=>{

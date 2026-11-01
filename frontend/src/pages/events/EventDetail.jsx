@@ -18,6 +18,7 @@ import useNotificationOpened from '../../notifications/useNotificationOpened';
 import EquipmentRequirementsSection from './EquipmentRequirementsSection';
 
 import EventDecisionSection from './EventDecisionSection';
+import CoordinatorAssignmentHistory from './CoordinatorAssignmentHistory';
 import EventRequestStatus from './EventRequestStatus';
 import { requestStatusLabel } from './requestStatusLabel';
 import EquipmentStatusSection from './EquipmentStatusSection';
@@ -35,6 +36,7 @@ import { CLARIFICATION_LABELS } from './clarificationLabels';
 import OfflineClarificationForm from './OfflineClarificationForm';
 import ClarificationResolution from './ClarificationResolution';
 import CoordinatorAmendments from './CoordinatorAmendments';
+import EventReviewHistory from './EventReviewHistory';
 import EventFieldInput from './EventFieldInput';
 import AmendmentRequestPanel from './AmendmentRequestPanel';
 
@@ -859,6 +861,11 @@ export default function EventDetail() {
 
       {user.role === 'event_organiser' && <EventRequestStatus key={statusRefreshKey} eventId={event.id} onSnapshot={updateRequestStatus} />}
       <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
+      {!event.is_draft && event.status !== 'draft' && ['event_organiser','event_coordinator','event_coordinator_lead'].includes(user.role) &&
+        <CoordinatorAssignmentHistory eventId={event.id} updatedAt={event.updated_at} token={token} />}
+      {!event.is_draft && event.status !== 'draft' && ['event_organiser', 'event_coordinator', 'event_coordinator_lead'].includes(user.role) && <EventReviewHistory event={event} token={token}
+        coordinator={user.role === 'event_coordinator' && String(event.coordinator_id) === String(user.id)}
+        onReopened={(status) => setEvent(current => ({ ...current, status }))} />}
       <CancelEventAction event={event} user={user} token={token}
         onCancelled={(cancelledEvent) => { setEvent((current) => ({ ...current, ...cancelledEvent })); setStatusRefreshKey(value => value + 1); }}
         onMessage={setSaveMessage} />

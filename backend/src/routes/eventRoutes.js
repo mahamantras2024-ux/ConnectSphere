@@ -19,6 +19,8 @@ const organiserVenues = require('../controllers/organiserVenueController');
 router.use(requireAuth);
 router.get('/planning-calendar',requireRole('event_coordinator'),asyncHandler(require('../controllers/planningCalendarController').getPlanningCalendar));
 router.get('/:id/lead-registrations',requireRole('event_coordinator_lead'),asyncHandler(require('../controllers/leadRegistrationController').getRegistrations));
+router.get('/:id/review-history', requireRole('event_organiser', 'event_coordinator', 'event_coordinator_lead'), require('../controllers/eventReconsiderationController').getHistory);
+router.post('/:id/reconsider', requireRole('event_coordinator'), require('../controllers/eventReconsiderationController').reopen);
 const registrationSettings=require('../controllers/registrationSettingsController');
 router.put('/:id/registration-settings',requireRole('event_organiser'),asyncHandler(registrationSettings.save));
 router.put('/:id/registration-availability',requireRole('event_organiser'),asyncHandler(registrationSettings.setOpen));
@@ -30,6 +32,7 @@ router.get('/on-site-support/:id', requireRole('technical_support'), technicalSu
 router.put('/:id/technical-support-assignment', requireRole('event_coordinator'), technicalSupportAssignmentController.assign);
 const lead = require('../controllers/coordinatorLeadController');
 router.get('/assignments', requireRole('event_coordinator_lead'), lead.workspace);
+router.get('/:id/assignment-history', requireRole('event_organiser', 'event_coordinator', 'event_coordinator_lead'), lead.assignmentHistory);
 router.put('/:id/assignment', requireRole('event_coordinator_lead'), lead.assign);
 
 const drafts=require('../controllers/eventDraftController');

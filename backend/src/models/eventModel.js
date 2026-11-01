@@ -119,7 +119,8 @@ async function updateEditable(id, organiserId, data) {
 }
 
 // Event statuses that no longer take amendments: the request is finished or withdrawn.
-const AMENDMENT_CLOSED_STATUSES = ['cancelled', 'completed', 'rejected'];
+// Rejected requests may be corrected, but remain rejected until explicitly reconsidered.
+const AMENDMENT_CLOSED_STATUSES = ['cancelled', 'completed'];
 
 /**
  * Stores a pending amendment request with the organiser's explanation and, in the same statement, the assigned
@@ -1685,22 +1686,54 @@ async function resolveClarification(eventId, clarificationId, coordinatorId, { o
 // Saves a coordinator's clarification request only for an event assigned to them.
 async function createClarificationRequest(id, coordinatorId, informationNeeded, message) {
   const result = await pool.query(`
-    INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message)
-    SELECT e.id, e.coordinator_id, e.organiser_id, $3::jsonb, $4
-    FROM events e WHERE e.id=$1 AND e.coordinator_id=$2
-    RETURNING id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response, created_at, responded_at`,
-  [id, coordinatorId, JSON.stringify(informationNeeded), message]);
+    WITH request AS (
+      INSERT INTO event_clarification_requests (event_id, coordinator_id, organiser_id, information_needed, message)
+      SELECT e.id, e.coordinator_id, e.organiser_id, $3::jsonb, $4
+      FROM events e WHERE e.id=$1 AND e.coordinator_id=$2
+      RETURNING id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response, created_at, responded_at
+    ), notified AS (
+      INSERT INTO notifications (user_id,event_id,type,title,message,details)
+      SELECT request.organiser_id,request.event_id,'event_clarification_requested',
+        left('Clarification needed: ' || e.name,255),
+        'The Event Coordinator needs clarification for ' || e.name || E'.\\n' || request.message,
+        jsonb_build_object('clarificationId',request.id,'informationNeeded',request.information_needed)
+      FROM request JOIN events e ON e.id=request.event_id
+    )
+    SELECT * FROM request`, [id, coordinatorId, JSON.stringify(informationNeeded), message]);
   return result.rows[0] || null;
 }
 
-// Records an organiser's response or amendment and resolves that outstanding request.
+/**
+ * Reply AC1–AC4: saves an owned pending reply and notifies the current coordinator in one atomic statement.
+ * Locking the event serializes handovers; the request's historical coordinator never decides the recipient.
+ * Returns the saved clarification and email-delivery records, or null if no owned pending question matches.
+ */
 async function respondToClarification(eventId, clarificationId, organiserId, response) {
   const result = await pool.query(`
-    UPDATE event_clarification_requests SET status='responded', organiser_response=$4, responded_at=now()
-    WHERE event_id=$1 AND id=$2 AND organiser_id=$3 AND status='pending'
-    RETURNING id, event_id, coordinator_id, organiser_id, information_needed, message, status, organiser_response, created_at, responded_at`,
-  [eventId, clarificationId, organiserId, response]);
-  return result.rows[0] || null;
+    WITH target AS (
+      SELECT id,name,coordinator_id FROM events WHERE id=$1 AND organiser_id=$3 FOR UPDATE
+    ), replied AS (
+      UPDATE event_clarification_requests AS question
+      SET status='responded', organiser_response=$4, responded_at=now()
+      FROM target WHERE question.event_id=target.id AND question.id=$2
+        AND question.organiser_id=$3 AND question.status='pending'
+      RETURNING question.*
+    ), notified AS (
+      INSERT INTO notifications (user_id,event_id,type,title,message,details)
+      SELECT target.coordinator_id,replied.event_id,'clarification_replied',
+        left('Clarification reply received: ' || target.name,255),
+        'The Event Organiser replied to a clarification for ' || target.name || E'.\\n' || replied.organiser_response,
+        jsonb_build_object('clarificationId',replied.id,'informationNeeded',replied.information_needed)
+      FROM replied JOIN target ON target.id=replied.event_id WHERE target.coordinator_id IS NOT NULL
+      RETURNING user_id,title,message
+    )
+    SELECT replied.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('email',recipient.email,'title',notified.title,'message',notified.message))
+      FROM notified JOIN users recipient ON recipient.id=notified.user_id),'[]'::jsonb) AS delivery_records
+    FROM replied`, [eventId, clarificationId, organiserId, response]);
+  if (!result.rows[0]) return null;
+  // Delivery metadata stays server-side; SMTP runs only after this atomic database statement succeeds.
+  const { delivery_records: stored = [], ...clarificationRequest } = result.rows[0];
+  return { clarificationRequest, stored };
 }
 
 module.exports = {

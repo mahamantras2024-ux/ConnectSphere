@@ -96,7 +96,7 @@ function repairedEquipment(note) {
 
 // Exercises the dashboard's inventory tab, not a detached form-only rendering.
 async function openRepairForm() {
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
   const row = await screen.findByRole('row', { name: /REPAIR-DEMO-001 Repair Demo Laptop/ });
   fireEvent.change(within(row).getByRole('combobox', { name: 'Status for REPAIR-DEMO-001' }), {
     target: { value: 'Available' },
@@ -267,7 +267,7 @@ it('AC4 - shows the updated status and resolution note in equipment history', as
 // AC1 - Selecting Unavailable requires an auditable reason and marks the inventory row through the impact API.
 it('AC1 - marks equipment unavailable from the status dropdown and reports affected reservations', async () => {
   // Arrange
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
   const row = await screen.findByRole('row', { name: /REPAIR-DEMO-002 Repair Demo Microphone/ });
   fireEvent.change(within(row).getByRole('combobox', { name: 'Status for REPAIR-DEMO-002' }), {
     target: { value: 'Unavailable' },
@@ -286,7 +286,7 @@ it('AC1 - marks equipment unavailable from the status dropdown and reports affec
     'support-token',
   ));
   expect(await screen.findByText(/Choose replacement suggestions for 1 affected reservation/)).toBeTruthy();
-  expect(screen.getByRole('tab', { name: 'Equipment reservation' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByRole('tab', { name: 'Reservations' }).getAttribute('aria-selected')).toBe('true');
   expect(screen.queryByRole('row', { name: /REPAIR-DEMO-002 Repair Demo Microphone/ })).toBeNull();
 });
 
@@ -306,7 +306,7 @@ it('AC1 - reports when marking equipment unavailable affects no reservations', a
     },
     affectedIssues: [],
   }));
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
   const row = await screen.findByRole('row', { name: /REPAIR-DEMO-002 Repair Demo Microphone/ });
   fireEvent.change(within(row).getByRole('combobox', { name: 'Status for REPAIR-DEMO-002' }), {
     target: { value: 'Unavailable' },
@@ -318,15 +318,15 @@ it('AC1 - reports when marking equipment unavailable affects no reservations', a
   fireEvent.click(within(row).getByRole('button', { name: 'Mark Unavailable' }));
 
   expect(await screen.findByText('REPAIR-DEMO-002 marked unavailable. No upcoming reservations were affected.')).toBeTruthy();
-  expect(screen.getByRole('tab', { name: 'Equipment info' }).getAttribute('aria-selected')).toBe('true');
+  expect(screen.getByRole('tab', { name: 'Inventory' }).getAttribute('aria-selected')).toBe('true');
 });
 
 // AC2 - Technical Support chooses an eligible replacement and sends it to the Event Coordinator.
 it('AC2 - sends the selected replacement for an affected reservation', async () => {
   // Arrange
   affectedReservations = [affectedReservation({})];
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   const replacement = await screen.findByRole('combobox', {
     name: 'Replacement for REPAIR-DEMO-001 at Town Hall',
   });
@@ -347,8 +347,8 @@ it('AC2 - sends the selected replacement for an affected reservation', async () 
 // AC2 - An awaiting-staff issue with no candidate must remain open and explain the next step.
 it('AC2 - explains when an awaiting-staff reservation has no replacement candidates', async () => {
   affectedReservations = [affectedReservation({ alternatives: [] })];
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   expect(await screen.findByText('No replacements found for this event slot. The reservation remains flagged for staff follow-up.')).toBeTruthy();
   expect(screen.queryByRole('combobox', { name: /Replacement for REPAIR-DEMO-001/ })).toBeNull();
@@ -361,8 +361,8 @@ it('AC2 - tells Technical Support when no replacement is currently available', a
     suggestion_status: 'no_alternative',
     alternatives: [],
   })];
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   // Act: inspect the affected reservation without selecting or submitting replacement equipment.
 
@@ -374,8 +374,8 @@ it('AC2 - tells Technical Support when no replacement is currently available', a
 // AC2 - Staff cannot send an empty replacement choice to the coordinator.
 it('AC2 - requires a replacement selection before sending a suggestion', async () => {
   affectedReservations = [affectedReservation({})];
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   await screen.findByRole('combobox', { name: 'Replacement for REPAIR-DEMO-001 at Town Hall' });
 
   fireEvent.click(screen.getByRole('button', { name: 'Send suggestion to coordinator' }));
@@ -388,8 +388,8 @@ it('AC2 - requires a replacement selection before sending a suggestion', async (
 it('AC2 - keeps rejected suggestions actionable and reports a message-less send failure', async () => {
   affectedReservations = [affectedReservation({ suggestion_status: 'rejected' })];
   api.put.mockRejectedValueOnce({});
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
   const replacement = await screen.findByRole('combobox', {
     name: 'Replacement for REPAIR-DEMO-001 at Town Hall',
   });
@@ -406,8 +406,8 @@ it('AC2 - keeps rejected suggestions actionable and reports a message-less send 
 it('AC1 - shows unavailable reservation state instead of empty results when loading fails', async () => {
   // Arrange
   reservationLoadError = new Error('ConnectSphere is waiting for a database update.');
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('tab', { name: 'Equipment reservation' }));
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
 
   // Act: wait until the API failure has been rendered by the reservation workspace.
 
@@ -425,7 +425,7 @@ it('AC1 - shows unavailable reservation state instead of empty results when load
 // AC1 - An empty unavailability reason is rejected before sending a transition request.
 it('AC1 - requires a reason before marking equipment unavailable', async () => {
   // Arrange
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
   const row = await screen.findByRole('row', { name: /REPAIR-DEMO-002 Repair Demo Microphone/ });
   fireEvent.change(within(row).getByRole('combobox', { name: 'Status for REPAIR-DEMO-002' }), {
     target: { value: 'Unavailable' },
@@ -443,7 +443,7 @@ it('AC1 - requires a reason before marking equipment unavailable', async () => {
 it('AC1 - keeps equipment available and shows an error when marking it unavailable fails', async () => {
   // Arrange
   api.put.mockRejectedValueOnce(new Error('Status service is unavailable.'));
-  render(<MemoryRouter><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/?section=inventory']}><TechSupportDashboard /></MemoryRouter>);
   const row = await screen.findByRole('row', { name: /REPAIR-DEMO-002 Repair Demo Microphone/ });
   fireEvent.change(within(row).getByRole('combobox', { name: 'Status for REPAIR-DEMO-002' }), {
     target: { value: 'Unavailable' },

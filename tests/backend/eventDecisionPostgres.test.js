@@ -130,8 +130,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.equal(approved.status, 200);
       const stored = (await client.query('SELECT status, decided_by, decided_at IS NOT NULL AS decided, decision_reason FROM events WHERE id = 1')).rows[0];
       assert.deepEqual(stored, { status: 'approved', decided_by: id.chris, decided: true, decision_reason: null });
-      assert.deepEqual((await notes('olivia')).map((note) => note.type), ['safety_check_recorded', 'event_approved']);
-      assert.deepEqual(emails, [{ to: 'olivia@example.test', subject: 'Event approved: Workshop' }]);
+      assert.deepEqual((await notes('olivia')).map((note) => note.type), ['safety_check_recorded', 'event_clarification_requested', 'event_approved']);
+      assert.deepEqual(emails, [{ to: 'olivia@example.test', subject: 'Event initially approved: Workshop' }]);
       const organiserView = (await as('olivia', 'GET', '/events/1/decision')).body;
       assert.deepEqual([organiserView.status, organiserView.outcome.decision, organiserView.outcome.decidedBy, organiserView.outcome.reason],
         ['approved', 'approved', 'chris', null]);

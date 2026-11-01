@@ -315,8 +315,8 @@ it.each([
   user={...user,role,roles:[role]};open(path);
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   if (role === 'technical_support') {
-    fireEvent.click(screen.getByRole('tab',{name:'Equipment request review'}));
-    expect(screen.getByRole('heading',{name:'Pending equipment requests'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab',{name:'Requests'}));
+    expect(screen.getByRole('heading',{name:'Pending requests'})).toBeTruthy();
     expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
     expect(screen.queryByText('chris@example.test')).toBeNull();
   } else if (role === 'safety_officer') {
@@ -338,7 +338,7 @@ it.each([
 // Test case: The Technical Support queue loads even when optional profile fields are absent.
 it('Internal AC1 AC5 - Technical Support queue loads without optional profile fields',async()=>{
   user={id:8,role:'technical_support'};open('/tech-support/dashboard');
-  fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
+  fireEvent.click(await screen.findByRole('tab',{name:'Requests'}));
   expect(await screen.findByText('No pending equipment requests.')).toBeTruthy();
   expect(screen.queryByText('Not recorded')).toBeNull();
   expect(api.get).toHaveBeenCalledWith('/events/equipment-requests','staff-session');
@@ -346,8 +346,8 @@ it('Internal AC1 AC5 - Technical Support queue loads without optional profile fi
 // Test case: A single-role Technical Support account gets no role switcher and no venue-only controls.
 it('Internal AC1 AC5 - single-role Technical Support session has no switcher and no venue controls',async()=>{
   user.roles=['technical_support'];open('/tech-support/dashboard');
-  fireEvent.click(await screen.findByRole('tab',{name:'Equipment request review'}));
-  await screen.findByRole('heading',{name:'Pending equipment requests'});
+  fireEvent.click(await screen.findByRole('tab',{name:'Requests'}));
+  await screen.findByRole('heading',{name:'Pending requests'});
   expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Add venue'})).toBeNull();
   expect(screen.queryByLabelText('Active role')).toBeNull();

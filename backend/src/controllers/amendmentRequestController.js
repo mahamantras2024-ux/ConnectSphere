@@ -47,8 +47,9 @@ const create = asyncHandler(async (req, res) => {
   const described = describeChanges(current, data);
   if (!described.length) return res.status(400).json({ message: 'Change at least one detail before requesting an amendment.' });
   const proposed = Object.fromEntries(described.map(({ field }) => [field, data[field]]));
+  // Only the title is clipped; the full name, requested changes and explanation remain in the message.
   const notification = {
-    title: `New amendment request: ${current.name}`,
+    title: (`New amendment request: ${current.name}`).slice(0, 255),
     message: [`The Event Organiser requested amendments to ${current.name}.`, ...changeLines(described), `Explanation: ${reason}`].join('\n'),
     details: { changes: described, explanation: reason },
   };

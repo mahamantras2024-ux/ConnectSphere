@@ -186,10 +186,13 @@ test('Staff AC3/AC4 - the Safety Officer queue loads safety-ready events without
     latest_safety_check: null,
   };
   const notReady = { ...ready, id: 8, name: 'Unconfirmed tech', technical_support_required: true };
-  const queries = mockDatabase(() => ({ rows: [ready, notReady] }));
+  // Recovery delivery rows stay server-side; this test still checks that queue facts contain no client identity.
+  const queries = mockDatabase(sql => ({ rows: sql.includes('INSERT INTO notifications') ? [] : [ready, notReady] }));
   const result = await request('GET', '/api/safety/checks', { token: tokenFor(staff.safety_officer) });
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.events.map((event) => event.id), [7]);
-  assert.equal(queries.length, 1);
+  assert.equal(queries.length, 2);
+  assert.match(queries[1], /previous.user_id=note.user_id/);
+  assert.match(queries[1], /safety_check_ready/);
   assert.doesNotMatch(queries[0], /organiser|users|email|full_name|organisation/i);
 });

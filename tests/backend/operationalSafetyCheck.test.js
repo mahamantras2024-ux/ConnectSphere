@@ -69,6 +69,7 @@ function mockTransaction(context) {
       }
       // SCRUM-111 returns a rejected event to Planning while preserving separately selected revision areas.
       if (sql.includes("status='planning',safety_resubmission_required=true")) return { rows: [] };
+      if (sql.includes('UPDATE event_equipment_reservations')) return {rows:[]};
       if (sql.includes('UPDATE events SET safety_changes_open = $2')) return { rows: [] };
       if (/FROM users\s+WHERE role=\$1/.test(sql)) return { rows: [{ id: 50 }] };
       if (sql.includes('INSERT INTO notifications')) {
@@ -353,4 +354,19 @@ test('SCRUM-111 AC4 - revised arrangements do not break the review panel while e
  const result=await request('/api/events/101/decision');
  assert.equal(result.status,200);assert.equal(result.body.safetyResubmissionRequired,true);
  assert.equal(result.body.safetyChanges.notes,null);
+});
+// Safety stock AC1–AC3: only technical rework invalidates active equipment allocations.
+for(const [outcome,areas,releases] of [
+ ['rejected',['technical'],true],['changes_requested',['technical'],true],
+ ['rejected',['venue'],false],['approved',[],false],
+])test(`Safety stock AC1 AC2 - ${outcome} with ${areas.join('/')||'no reopened stages'} releases=${releases}`,async()=>{
+ mockPool(safetyOfficer);
+ const tx=mockTransaction({...readyContext,latest_safety_check:null});
+ mock.method(emailService,'sendNotificationEmail',async()=>{});
+ const body={outcome,...(outcome==='approved'?{}:{notes:'Rework the arrangement',changeAreas:areas})};
+ assert.equal((await recordCheck(body)).status,201);
+ const release=tx.find('UPDATE event_equipment_reservations');
+ assert.equal(release.length,releases?1:0);
+ if(releases){assert.deepEqual(release[0].values,[101,50]);assert.match(release[0].sql,/status='reserved'/);assert.match(release[0].sql,/released_by=\$2/);assert.match(release[0].sql,/released_at=now\(\)/);}
+ assert.deepEqual(tx.words(),['BEGIN','COMMIT']);
 });
