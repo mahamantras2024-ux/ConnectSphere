@@ -22,6 +22,19 @@ test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking
     await client.query(`CREATE SCHEMA ${schema}`);
     schemaCreated = true;
     await client.query(`SET search_path TO ${schema}`);
+    await client.query(`
+  CREATE TABLE notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    event_id INTEGER,
+    change_request_id INTEGER,
+    type VARCHAR(64) NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    details JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )
+`);
     await client.query(`CREATE TABLE users (
       id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL,
       full_name VARCHAR(255) NOT NULL, role VARCHAR(50), roles TEXT[] NOT NULL DEFAULT '{}',
@@ -91,7 +104,7 @@ test('AC1-AC3 and PR42-AC1 - releases reservations and permits audited rebooking
     // Redirect model queries to the connection whose search_path points only at this temporary schema.
     mock.method(pool, 'query', (sql, values) => client.query(sql, values));
     mock.method(pool, 'connect', async () => client);
-    mock.method(client, 'release', () => {});
+    mock.method(client, 'release', () => { });
 
     const staff = (await client.query(
       "SELECT id FROM users WHERE email='equipment-release-demo-support@connectsphere.invalid'",
