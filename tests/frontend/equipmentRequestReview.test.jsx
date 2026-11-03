@@ -401,3 +401,23 @@ it('AC1 - navigates equipment tabs with the keyboard and returns from an empty r
   fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
   expect(screen.getByRole('tab', { name: 'Requests' }).getAttribute('aria-selected')).toBe('true');
 });
+
+// Equipment visibility AC1/AC2: no assigned events and no on-site staffing must still allow shared request review.
+it('Equipment visibility AC1 AC2 - staff with no on-site assignments can view and review equipment-only requests', async () => {
+  const get = api.get.getMockImplementation();
+  api.get.mockImplementation(path => path === '/events/equipment-requests'
+    ? Promise.resolve({ requests: [{ ...eventRequest, technical_support_required: false, technical_support_details: null }] })
+    : get(path));
+
+  await openDashboard();
+  const card = await screen.findByRole('article', { name: 'Community Workshop' });
+  expect(within(card).queryByText('On-site AV technician')).toBeNull();
+  expect(within(card).getByText(/Wireless microphone — quantity: 2/)).toBeTruthy();
+  fireEvent.change(within(card).getByLabelText('Fulfillment decision'), { target: { value: 'fully_fulfillable' } });
+  fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
+    outcome: 'fully_fulfillable', requestVersion: 1,
+  }, 'support-token'));
+  expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
+});

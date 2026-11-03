@@ -1,5 +1,5 @@
 // Equipment visibility AC1–AC3: assign reviewers without claiming on-site support.
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
@@ -35,7 +35,8 @@ function openDashboard() {
 
 // AC1/AC2: submit the real form and observe the parent update; an on-site-only gate fails this test.
 it('Equipment visibility AC1 AC2 - a coordinator assigns a reviewer without requesting on-site staff', async () => {
-  openDashboard();
+  // Settle the initial list/staff responses and the form's selection sync before interacting.
+  await act(async () => { openDashboard(); });
   const heading = await screen.findByRole('heading', { name: 'Equipment request review' });
   const form = within(heading.closest('form'));
   expect(form.getByText(/On-site technical support has not been requested/)).toBeTruthy();

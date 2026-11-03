@@ -1,4 +1,4 @@
-// Equipment visibility AC1–AC3: exercise real assignment, queue and review routes in an isolated PostgreSQL schema.
+// Equipment visibility AC1–AC3: exercise shared queue and review routes independently of on-site staffing in an isolated PostgreSQL schema.
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -7,9 +7,9 @@ const { pool } = require('../../backend/src/config/db');
 const emailService = require('../../backend/src/services/emailService');
 const { applyLiveSchema } = require('./support/liveSchema');
 
-test('Equipment visibility AC1 AC2 AC3 - reviewers can be assigned without on-site support while unrelated staff stay excluded',
+test('Equipment visibility AC1 AC2 AC3 - all Technical Support staff can view and review requests without on-site assignment',
   { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
-    // Arrange: no staff responsibility exists until the assigned coordinator creates it.
+    // Arrange: neither support user has an on-site assignment, prior review or reservation.
     const schema = `equipment_visibility_${crypto.randomBytes(8).toString('hex')}`;
     const client = await pool.connect();
     let server;
@@ -41,7 +41,6 @@ test('Equipment visibility AC1 AC2 AC3 - reviewers can be assigned without on-si
         });
         return { status: response.status, body: await response.json() };
       }
-      await client.query("INSERT INTO users(email,full_name,role,roles) VALUES('other-coordinator@example.test','Other coordinator','event_coordinator','{event_coordinator}')");
       const cases = [
         ['equipment',{equipment_items:[{item:'Projector',quantity:1}]}],
         ['notes',{equipment_notes:'Provide a portable speaker'}],
@@ -55,38 +54,46 @@ test('Equipment visibility AC1 AC2 AC3 - reviewers can be assigned without on-si
           video_conferencing_required:false,technical_support_required:false,technical_support_details:null,...changes};
         const event=(await client.query(`INSERT INTO events(organiser_id,coordinator_id,name,proposed_date,proposed_start_time,proposed_end_time,
           expected_attendance,is_draft,status,equipment_items,equipment_notes,technical_specifications,video_conferencing_required,technical_support_required,technical_support_details)
-          VALUES(1,2,$1,CURRENT_DATE+10,'10:00','12:00',40,false,'submitted',$2::jsonb,$3,$4,$5,$6,$7) RETURNING *`,
+          VALUES(1,2,$1,CURRENT_DATE+10,'10:00','12:00',40,false,'planning',$2::jsonb,$3,$4,$5,$6,$7) RETURNING *`,
           [`Review ${kind}`,JSON.stringify(fields.equipment_items),fields.equipment_notes,fields.technical_specifications,
             fields.video_conferencing_required,fields.technical_support_required,fields.technical_support_details])).rows[0];
-        const assignment=`/${event.id}/technical-support-assignment`;
-        const listed=(await request(2,'')).body.events.find(row=>row.id===event.id);
-        assert.equal(listed.equipment_review_required,kind!=='on-site',`${kind} must expose the coordinator assignment control`);
-        assert.equal((await queue(3)).some(row=>row.id===event.id),false);
-        assert.equal((await request(5,assignment,'PUT',{staffIds:[3]})).status,403);
-        const assigned=await request(2,assignment,'PUT',{staffIds:[3]});
-        assert.equal(assigned.status,200,`${kind}: ${JSON.stringify(assigned.body)}`);
-        assert.deepEqual((await client.query('SELECT * FROM events WHERE id=$1',[event.id])).rows[0],event,'assigning a reviewer must not alter the request or enable on-site support');
-        const pending=(await queue(3)).find(row=>row.id===event.id);
-        assert.ok(pending,`${kind} must enter the responsible staff queue`);
-        assert.equal((await queue(4)).some(row=>row.id===event.id),false);
-        assert.equal((await request(4,`/${event.id}/equipment-reviews`,'POST',{outcome:'fully_fulfillable',requestVersion:pending.request_version})).status,409);
-        let reviewer=3;
-        if(kind==='notes') {
-          // Review-only responsibility also supports additions, updates and removals without implying on-site attendance.
-          assert.equal((await request(2,assignment,'PUT',{staffIds:[3,4]})).status,200);
-          assert.equal((await request(2,assignment,'PUT',{staffIds:[4]})).status,200);
-          assert.equal((await queue(3)).some(row=>row.id===event.id),false);
-          const titles=(await client.query('SELECT title FROM notifications WHERE event_id=$1 ORDER BY id',[event.id])).rows.map(row=>row.title);
-          assert.ok(titles.includes(`Equipment review assigned: Review notes`));
-          assert.ok(titles.includes(`Equipment review updated: Review notes`));
-          assert.ok(titles.includes(`Equipment review cancelled: Review notes`));
-          reviewer=4;
+        // AC1: both support users see the request before anyone establishes event responsibility.
+        for (const staffId of [3, 4]) {
+          const response = await request(staffId, '/equipment-requests');
+          assert.equal(response.status, 200);
+          assert.ok(response.body.requests.some(row => row.id === event.id), `${kind} must be shared with unassigned support staff`);
+          assert.equal((await request(staffId, '/on-site-support')).body.events.some(row => row.id === event.id), false);
         }
-        assert.equal((await request(reviewer,`/${event.id}/equipment-reviews`,'POST',{outcome:'fully_fulfillable',requestVersion:pending.request_version})).status,201);
-        assert.equal((await queue(reviewer)).some(row=>row.id===event.id),false,'reviewed versions leave the pending queue');
-        if(kind==='equipment') {
-          await client.query('UPDATE events SET equipment_requirements_version=equipment_requirements_version+1,equipment_confirmed_at=NULL WHERE id=$1',[event.id]);
-          assert.ok((await queue(3)).some(row=>row.id===event.id && row.request_version===2),'a later request version must not stay hidden by its earlier review');
+        // AC2: the shared queue does not grant organiser/coordinator roles equipment-review access.
+        for (const userId of [1, 2]) {
+          assert.equal((await request(userId, '/equipment-requests')).status, 403);
+          assert.equal((await request(userId, `/${event.id}/equipment-reviews`, 'POST', {
+            outcome: 'fully_fulfillable', requestVersion: 1,
+          })).status, 403);
+        }
+        assert.equal((await request(4, `/${event.id}/equipment-reviews`, 'POST', {
+          outcome: 'fully_fulfillable', requestVersion: 1,
+        })).status, 201, `${kind} must be reviewable without an on-site assignment`);
+        const saved = (await client.query('SELECT reviewed_by FROM event_equipment_reviews WHERE event_id=$1', [event.id])).rows;
+        assert.deepEqual(saved, [{ reviewed_by: 4 }], 'the authenticated reviewer is retained in the audit');
+        assert.equal((await request(3, `/${event.id}/equipment-reviews`, 'POST', {
+          outcome: 'fully_fulfillable', requestVersion: 1,
+        })).status, 409, 'a second reviewer cannot overwrite the reviewed version');
+        for (const staffId of [3, 4]) {
+          assert.equal((await queue(staffId)).some(row => row.id === event.id), false, 'reviewed versions leave the shared queue');
+        }
+        // Review is separate from on-site staffing: it must never add staff or change the organiser's choice.
+        assert.equal((await client.query('SELECT 1 FROM event_technical_support_assignments WHERE event_id=$1', [event.id])).rowCount, 0);
+        assert.equal((await client.query('SELECT technical_support_required FROM events WHERE id=$1', [event.id])).rows[0].technical_support_required,
+          fields.technical_support_required);
+        if (kind === 'equipment') {
+          await client.query('UPDATE events SET equipment_requirements_version=2,equipment_confirmed_at=NULL WHERE id=$1', [event.id]);
+          for (const staffId of [3, 4]) {
+            assert.ok((await queue(staffId)).some(row => row.id === event.id && row.request_version === 2), 'a new version reopens the shared queue');
+          }
+          assert.equal((await request(3, `/${event.id}/equipment-reviews`, 'POST', {
+            outcome: 'fully_fulfillable', requestVersion: 1,
+          })).status, 409, 'stale reviews cannot decide a newer version');
         }
       }
       // Empty/whitespace requirements must not create a spurious technical assignment.
@@ -94,13 +101,14 @@ test('Equipment visibility AC1 AC2 AC3 - reviewers can be assigned without on-si
         VALUES(1,2,'No technical request',CURRENT_DATE+10,'10:00','12:00',false,'submitted','   ',' ') RETURNING id`)).rows[0].id;
       assert.equal((await request(2,`/${empty}/technical-support-assignment`,'PUT',{staffIds:[3]})).status,404);
       assert.equal((await request(2,'')).body.events.find(row=>row.id===empty).equipment_review_required,false);
-      for (const status of ['draft','cancelled','completed','rejected','past']) {
+      assert.equal((await queue(4)).some(row => row.id === empty), false);
+      for (const status of ['draft','cancelled','completed','rejected','past','no-coordinator']) {
         const closed=(await client.query(`INSERT INTO events(organiser_id,coordinator_id,name,proposed_date,proposed_start_time,proposed_end_time,equipment_items,is_draft,status)
           VALUES(1,2,$1,CURRENT_DATE+$2::int,'10:00','12:00','[{"item":"Projector","quantity":1}]',$3,$4) RETURNING id`,
-          [status,status==='past'?-1:10,status==='draft',status==='past'?'submitted':status])).rows[0].id;
-        await client.query('INSERT INTO event_technical_support_assignments(event_id,staff_id) VALUES($1,3)',[closed]);
-        assert.equal((await queue(3)).some(row=>row.id===closed),false,`${status} requests must not enter the pending queue`);
-        if(status!=='past') assert.equal((await request(2,`/${closed}/technical-support-assignment`,'PUT',{staffIds:[3]})).status,404);
+          [status,status==='past'?-1:10,status==='draft',['past','no-coordinator'].includes(status)?'submitted':status])).rows[0].id;
+        if (status === 'no-coordinator') await client.query("UPDATE events SET coordinator_id=NULL,status='submitted' WHERE id=$1", [closed]);
+        assert.equal((await queue(4)).some(row=>row.id===closed),false,`${status} requests must not enter the pending queue`);
+        assert.equal((await request(4, `/${closed}/equipment-reviews`, 'POST', { outcome: 'fully_fulfillable', requestVersion: 1 })).status, 409);
       }
     } finally {
       mock.restoreAll();
