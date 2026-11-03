@@ -170,8 +170,7 @@ it('SCRUM-111 AC1 / batch 7 - separates safety history entries with borders and 
   expect(rows[0]).toHaveTextContent('Check wiring'); expect(rows[1]).not.toHaveTextContent('Check wiring');
 });
 
-it.each(['draft', 'submitted', 'under_review', 'approved', 'planning', 'confirmed', 'completed', 'rejected', 'cancelled'])
-('Registration AC1 / batch 8 - shows coordinator registration details only for eligible status %s', async status => {
+it.each(['draft', 'submitted', 'under_review', 'approved', 'planning', 'confirmed', 'completed', 'rejected', 'cancelled'])('Registration AC1 / batch 8 - shows coordinator registration details only for eligible status %s', async status => {
   event.status = status; open('/events/3');
   await screen.findByRole('heading', { name: 'Forum' });
   expect(Boolean(screen.queryByRole('tab', { name: 'Registration details' }))).toBe(['confirmed', 'completed'].includes(status));
@@ -259,8 +258,7 @@ it('VS AC1 AC3 / batch 3 - retries failed eligibility and rechecks when the sele
 
 // Time boundaries use explicit expected labels rather than duplicating the production formatter.
 it.each([['00:00:59', '12:00 am'], ['00:01:00', '12:01 am'], ['11:59:59', '11:59 am'],
-  ['12:00:00', '12:00 pm'], ['12:01:00', '12:01 pm'], ['23:59:59', '11:59 pm'], ['unknown', 'unknown']])
-('OC AC3 / batch 6 - formats amendment clock value %s as %s', (time, expected) => {
+  ['12:00:00', '12:00 pm'], ['12:01:00', '12:01 pm'], ['23:59:59', '11:59 pm'], ['unknown', 'unknown']])('OC AC3 / batch 6 - formats amendment clock value %s as %s', (time, expected) => {
   render(<AmendmentRequestList requests={[{ id: 1, status: 'approved', submitted_at: '2030-01-01T00:00:00Z',
     changes: [{ field: 'proposedStartTime', label: 'Start time', requested: time }] }]} />);
   expect(screen.getByText(expected, { selector: 'dd' })).toBeVisible();
@@ -337,8 +335,7 @@ it('Review AC2 AC3 / batch 12 - keeps cancellation next to lifecycle buttons and
   expect(screen.getByText('Cancelled', { selector: '.event-status' })).toBeVisible();
 });
 
-it.each(['Clarification requests', 'Record an offline clarification', 'Apply agreed amendment', 'Amendment history'])
-('Activity AC5 / batch 12 - gives collapsed %s the shared card dimensions', async name => {
+it.each(['Clarification requests', 'Record an offline clarification', 'Apply agreed amendment', 'Amendment history'])('Activity AC5 / batch 12 - gives collapsed %s the shared card dimensions', async name => {
   // Arrange / Act: each card has a focused style oracle, avoiding one long full-page layout test under coverage.
   addStyles(); await act(async () => { open('/events/3'); });
   const tab = screen.getByText('Activity', { selector: 'button' });

@@ -49,8 +49,7 @@ it('Booking AC2 - prefills AM/PM labels and selects hours then minutes for eithe
   }
 });
 
-it.each([['12:00 AM', '00:00'], ['12:00 PM', '12:00'], ['09:15 PM', '21:15']])
-('Booking AC2 - serializes keyboard time %s as Singapore time %s', async (display, canonical) => {
+it.each([['12:00 AM', '00:00'], ['12:00 PM', '12:00'], ['09:15 PM', '21:15']])('Booking AC2 - serializes keyboard time %s as Singapore time %s', async (display, canonical) => {
   // Arrange: noon and midnight must not gain or lose twelve hours.
   await booking(); api.post.mockResolvedValue({ request: { id: 1 } });
   // Act
@@ -62,8 +61,7 @@ it.each([['12:00 AM', '00:00'], ['12:00 PM', '12:00'], ['09:15 PM', '21:15']])
   expect(api.post).toHaveBeenCalledWith('/venues/7/requests', expect.objectContaining({ startDatetime: `2030-11-01T${canonical}:00+08:00`, endDatetime: '2030-11-01T23:30:00+08:00' }), 'session');
 });
 
-it.each(['00:15 AM', '13:15 PM', '09:60 AM', '09:15 XX', ''])
-('Booking AC2 - rejects malformed or blank keyboard time "%s" without posting', async value => {
+it.each(['00:15 AM', '13:15 PM', '09:60 AM', '09:15 XX', ''])('Booking AC2 - rejects malformed or blank keyboard time "%s" without posting', async value => {
   // Arrange / Act: submit the form directly to exercise validation independently of browser constraint UI.
   await booking(); fireEvent.change(screen.getByLabelText('End time'), { target: { value } });
   fireEvent.submit(screen.getByRole('button', { name: 'Request venue' }).closest('form'));

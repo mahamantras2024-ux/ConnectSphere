@@ -86,8 +86,7 @@ describe('SCRUM-90 event cancellation action', () => {
 });
 
 
-it.each(['draft', 'submitted', 'under_review', 'approved', 'planning', 'confirmed', 'completed', 'rejected', 'cancelled'])
-('SCRUM-90 AC4 / placement AC2 - preserves assigned-coordinator cancellation eligibility for %s', status => {
+it.each(['draft', 'submitted', 'under_review', 'approved', 'planning', 'confirmed', 'completed', 'rejected', 'cancelled'])('SCRUM-90 AC4 / placement AC2 - preserves assigned-coordinator cancellation eligibility for %s', status => {
   // Arrange / Act: moving the button must not extend the existing permission beyond Approved or Confirmed.
   render(<CancelEventAction event={{ id: 3, status, registration_required: true, coordinator_id: 12 }}
     user={{ id: 12, role: 'event_coordinator' }} token="session" onCancelled={vi.fn()} onMessage={vi.fn()} />);
