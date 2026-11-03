@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 
-/** Lets an Event Coordinator replace the complete on-site support team for one event. */
+/** Lets an Event Coordinator replace the complete equipment review or on-site support team for one event. */
 export default function TechnicalSupportAssignment({ event, token, staff, onSaved }) {
+  const reviewOnly = event.technical_support_required === false;
   const assignedIds = (event.technical_support_staff || []).map(member => String(member.id));
   const [selected, setSelected] = useState(assignedIds);
   const [saving, setSaving] = useState(false);
@@ -27,8 +28,8 @@ export default function TechnicalSupportAssignment({ event, token, staff, onSave
     <form className="support-assignment-form" onSubmit={submit}>
       <div className="support-assignment-header">
         <div>
-          <h4>Technical support</h4>
-          <p>Select the staff who will be on site for this event.</p>
+          <h4>{reviewOnly ? 'Equipment request review' : 'Technical support'}</h4>
+          <p>{reviewOnly ? 'Select the staff who will review this equipment request. On-site technical support has not been requested.' : 'Select the staff who will be on site for this event.'}</p>
         </div>
       </div>
       {staff.length === 0 ? <p className="support-assignment-empty">No Technical Support Staff are available.</p> : (

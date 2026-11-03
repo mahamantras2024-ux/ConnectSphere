@@ -144,3 +144,30 @@ test('AC2 - does not notify an updated assignment when the team is unchanged', a
   assert.equal(inserted, false);
   assert.ok(calls.some(call => call.sql === 'COMMIT'));
 });
+
+// Equipment visibility AC1/AC2: equipment review responsibility uses the same atomic roster without promising on-site attendance.
+test('Equipment visibility AC1 AC2 - assigns review-only staff and describes additions removals and retained reviewers accurately', async () => {
+  const service = require('../../backend/src/services/notificationService');
+  let notes;
+  const client = { release() {}, async query(sql) {
+    if (sql.includes('FROM events')) return { rows: [{ id: 7, name: 'Review workshop', coordinator_id: 41,
+      status: 'submitted', technical_support_required: false, equipment_review_required: true }] };
+    if (sql.includes('SELECT id FROM users')) return { rows: [{ id: 42 }, { id: 43 }] };
+    if (sql.includes('SELECT staff_id')) return { rows: [{ staff_id: 41 }, { staff_id: 42 }] };
+    return { rows: [] };
+  } };
+  mock.method(pool, 'connect', async () => client);
+  mock.method(service, 'insertNotifications', async (_db, built) => { notes = built; return []; });
+  mock.method(service, 'emailNotifications', async () => {});
+
+  const result = await invoke(controller.assign, { staffIds: [42, 43] });
+
+  assert.equal(result.status, 200);
+  assert.equal(notes.find(note => note.userId === 43).title, 'Equipment review assigned: Review workshop');
+  assert.match(notes.find(note => note.userId === 43).message, /assigned to review the equipment request/);
+  assert.equal(notes.find(note => note.userId === 41).title, 'Equipment review cancelled: Review workshop');
+  assert.match(notes.find(note => note.userId === 41).message, /no longer assigned to review the equipment request/);
+  assert.equal(notes.find(note => note.userId === 42).title, 'Equipment review updated: Review workshop');
+  assert.match(notes.find(note => note.userId === 42).message, /equipment review team.*has changed/);
+  assert.ok(notes.every(note => !note.message.includes('on-site')));
+});
