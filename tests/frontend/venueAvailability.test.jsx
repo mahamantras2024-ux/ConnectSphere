@@ -32,6 +32,8 @@ function coordinatorNetwork() {
     if (path === '/auth/me') return { user: { id: 1, role: 'event_coordinator', full_name: 'Coordinator' } };
     if (path === '/events') return { events: [] };
     if (path === '/venues') return [venue, { ...venue, id: 8, name: 'Hall B' }];
+    if (path === '/venues/7') return venue;
+    if (path === '/venues/8') return { ...venue, id: 8, name: 'Hall B' };
     if (path.startsWith('/venues/7/schedule?')) return [];
     if (path.startsWith('/venues/8/schedule?')) return [{ ...hold, status: 'approved', label: 'Hall B booking' }];
     throw new Error(`Unexpected API read: ${path}`);
@@ -51,19 +53,20 @@ it('AC1 - authenticated coordinator reaches venue availability through Find venu
 });
 
 it('AC1 - coordinator selects another venue and date without receiving staff edit controls', async () => {
-  // Arrange: render the catalogue through real authentication and the real profile drawer.
+  // Arrange: real routing is required now that coordinator schedules have their own protected page.
   coordinatorNetwork();
-  render(<AuthProvider><VenueList /></AuthProvider>);
+  render(<MemoryRouter initialEntries={['/coordinator/venues']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
   // Act
   fireEvent.click((await screen.findAllByRole('button', { name: /View details/ }))[0]);
-  fireEvent.click(screen.getByRole('button', { name: 'View schedule' }));
+  fireEvent.click(screen.getByRole('link', { name: 'View schedule' }));
   // Assert: schedule access is independent of permission to edit or deactivate venues.
   expect(await screen.findByRole('heading', { name: 'Hall A schedule' })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Edit venue' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Deactivate venue' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-  fireEvent.click(screen.getAllByRole('button', { name: /View details/ })[1]);
-  fireEvent.click(screen.getByRole('button', { name: 'View schedule' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to venues' }));
+  fireEvent.click((await screen.findAllByRole('button', { name: /View details/ }))[1]);
+  fireEvent.click(screen.getByRole('link', { name: 'View schedule' }));
+  await screen.findByRole('heading', { name: 'Hall B schedule' });
   fireEvent.change(screen.getByLabelText('Schedule date'), { target: { value: date } });
   expect(await screen.findByRole('gridcell', { name: /Confirmed booking: Hall B booking/ })).toBeVisible();
   expect(api.get).toHaveBeenCalledWith(`/venues/8/schedule?date=${date}`, 'coordinator-token');

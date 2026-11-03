@@ -40,6 +40,9 @@ export default function EquipmentStatusSection({ eventId, token }) {
   const [decisionIssue, setDecisionIssue] = useState(null);
   const [decisionError, setDecisionError] = useState('');
   const [decisionMessage, setDecisionMessage] = useState('');
+  // Current work is visible immediately; older reviews are an independent disclosure rather than part of that work.
+  const [latestOpen, setLatestOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     api.get(`/events/${eventId}/equipment-status`, token)
@@ -93,8 +96,12 @@ export default function EquipmentStatusSection({ eventId, token }) {
       </div>
       {/* Plain text (not an alert) so a status outage never masks the event page's own errors. */}
       {loadError ? <p className="error-message">{loadError}</p> : !view ? <p role="status" className="loading-state">Loading equipment request status...</p>
-        : view.status === 'not_requested' ? <p className="text-slate-600">The organiser has not requested any equipment or technical support.</p> : (
-          <div className="grid gap-3">
+        : (
+          <>
+          <details className="equipment-review-disclosure" open={latestOpen}>
+            <summary onClick={action => { action.preventDefault(); setLatestOpen(current => !current); }}>Latest equipment request review</summary>
+          <div className="grid gap-3" hidden={!latestOpen}>
+            {view.status === 'not_requested' ? <p className="text-slate-600">The organiser has not requested any equipment or technical support.</p> : <>
             <p className="text-sm text-slate-600">
               {view.review ? `Reviewed by ${view.review.reviewedBy || 'Technical Support'} on ${formatTime(view.review.reviewedAt)}.` : 'Waiting for Technical Support to review this request.'}
               {view.review?.reason ? ` Reason: ${view.review.reason}` : ''}
@@ -170,20 +177,31 @@ export default function EquipmentStatusSection({ eventId, token }) {
                 </li>
               ))}
             </ul>
+            </>}
+          </div>
+          </details>
             {view.history.length > 0 && (
-              <details>
-                <summary>Earlier reviews ({view.history.length})</summary>
-                <ul aria-label="Earlier reviews" className="text-sm">
+              <details className="equipment-review-disclosure" open={historyOpen}>
+                <summary onClick={action => { action.preventDefault(); setHistoryOpen(current => !current); }}>Earlier reviews ({view.history.length})</summary>
+                <ul aria-label="Earlier reviews" className="equipment-review-history" hidden={!historyOpen}>
                   {view.history.map((entry) => (
                     <li key={entry.version}>
-                      Request version {entry.version}: {STATUS_LABELS[entry.status]} ({formatTime(entry.reviewedAt)}{entry.reviewedBy ? `, ${entry.reviewedBy}` : ''})
-                      {entry.affectedCount ? `, ${entry.affectedCount} item(s) affected` : ''}{entry.reason ? ` - ${entry.reason}` : ''}
+                      <h3>Request version {entry.version}</h3>
+                      <span className={`status-badge ${STATUS_BADGES[entry.status]}`}>{STATUS_LABELS[entry.status]}</span>
+                      <dl className="review-facts">
+                        <div><dt>Reviewed by</dt><dd>{entry.reviewedBy || 'Technical Support'}</dd></div>
+                        <div><dt>Reviewed on</dt><dd>{formatTime(entry.reviewedAt)}</dd></div>
+                        <div><dt>Reason</dt><dd>{entry.reason || 'No reason recorded'}</dd></div>
+                        <div><dt>Affected items</dt><dd>{entry.affectedCount ?? 'Not recorded'}</dd></div>
+                      </dl>
+                      {/* Old versions did not retain complete item snapshots; never substitute today's item list. */}
+                      <p>Historical item details were not recorded.</p>
                     </li>
                   ))}
                 </ul>
               </details>
             )}
-          </div>
+          </>
         )}
     </section>
   );

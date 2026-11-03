@@ -4,6 +4,30 @@ import { useVenueAvailability } from './useVenueAvailability';
 import VenueTimeline from './VenueTimeline';
 import BookingImpactList from './BookingImpactList';
 import { api } from '../../api/client';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+
+/** Bookmarkable coordinator schedule, reusing the timeline without granting Venue Staff editing permissions. */
+export function VenueSchedulePage() {
+  const { id } = useParams();
+  const [params] = useSearchParams();
+  const { token } = useAuth();
+  const [venue, setVenue] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    setVenue(null); setError('');
+    api.get(`/venues/${id}`, token).then(record => { if (active) setVenue(record); })
+      .catch(failure => { if (active) setError(failure.message); });
+    return () => { active = false; };
+  }, [id, token]);
+  const eventId = params.get('eventId');
+  return <div className="page venue-schedule-page">
+    <Link className="button-link button-secondary" to={`/coordinator/venues${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`}>Back to venues</Link>
+    <h1>Venue schedule</h1>
+    {error ? <p role="alert">{error}</p> : venue ? <VenueSchedule key={id} venue={venue} token={token} /> : <p role="status">Loading venue…</p>}
+  </div>;
+}
 
 /** Shows one venue's local day and lets staff stage explicit periods before an atomic save. */
 export default function VenueSchedule({ venue, token, canEdit = false, initialDate = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10) }) {

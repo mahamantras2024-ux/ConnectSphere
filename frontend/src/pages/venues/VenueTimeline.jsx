@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { buildSchedule, isActiveHold, scheduleTime } from './schedule';
 
 const SNAP_MINUTES = 30;
@@ -29,6 +29,7 @@ function segmentLabel(segment, date, now) {
 
 /** Renders one venue row with day ticks, locked blockers and editable explicit schedule blocks. */
 export default function VenueTimeline({ venueName, periods, records, date, operatingHours, now, canEdit, setupMinutes, turnaroundMinutes, onChange }) {
+  const tooltipId = useId();
   const rowRef = useRef(null);
   const drag = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -117,9 +118,11 @@ export default function VenueTimeline({ venueName, periods, records, date, opera
       <div ref={rowRef} role="row" aria-label={`${venueName} timeline`} className="venue-timeline-row"
         onPointerDown={begin} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel}>
         {segments.map(segment => <span key={segment.start} role="gridcell"
-          className={`venue-timeline-segment ${segment.blocked ? 'blocked' : 'available'}`}
-          aria-label={segmentLabel(segment, date, now)} title={segmentLabel(segment, date, now)}
-          style={{ left: `${(segment.start - dayStart) / 864000}%`, width: `${(segment.end - segment.start) / 864000}%` }} />)}
+          className={`venue-timeline-segment ${segment.entries.some(entry => entry.kind === 'closed') ? 'outside-hours' : segment.blocked ? 'blocked' : 'available'}`} tabIndex={0}
+          aria-label={segmentLabel(segment, date, now)} aria-describedby={`${tooltipId}-${segment.start}`} title={segmentLabel(segment, date, now)}
+          style={{ left: `${(segment.start - dayStart) / 864000}%`, width: `${(segment.end - segment.start) / 864000}%` }}>
+          <span className="venue-timeline-tooltip" role="tooltip" id={`${tooltipId}-${segment.start}`}>{segmentLabel(segment, date, now)}</span>
+        </span>)}
         {hours && <>
           <span className="venue-timeline-closed" style={{ left: 0, width: `${opening / 14.4}%` }} title="Outside operating hours" />
           <span className="venue-timeline-closed" style={{ left: `${closing / 14.4}%`, width: `${(1440 - closing) / 14.4}%` }} title="Outside operating hours" />
@@ -132,9 +135,9 @@ export default function VenueTimeline({ venueName, periods, records, date, opera
           const beginAt = Math.max(0, (Date.parse(record.start_datetime) - dayStart) / 60000 - setup);
           const endAt = Math.min(1440, (Date.parse(record.end_datetime) - dayStart) / 60000 + turnaround);
           if (endAt <= beginAt) return null;
-          return <span key={`${record.kind}-${record.id}`} className="venue-timeline-locked"
+          return <span key={`${record.kind}-${record.id}`} className="venue-timeline-locked" aria-hidden="true"
             style={{ left: `${beginAt / 14.4}%`, width: `${(endAt - beginAt) / 14.4}%` }}
-            title={record.label}>{record.kind === 'booking' ? 'Booking' : 'Closed'}</span>;
+            title={record.label}>Unavailable</span>;
         })}
         {shown.map(period => {
           const start = toMinutes(period.start), end = toMinutes(period.end);
@@ -146,7 +149,9 @@ export default function VenueTimeline({ venueName, periods, records, date, opera
             onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(period.id); } }}
             style={{ left: `${start / 14.4}%`, width: `${(end - start) / 14.4}%` }}>
             {canEdit && <span data-edge="left" className="venue-timeline-handle" aria-hidden="true" />}
-            <span className="venue-timeline-block-label">{period.label || period.status}</span>
+            {/* Coordinators see the availability verdict; the recorded reason remains in the tooltip and accessible label. */}
+            <span className="venue-timeline-block-label">{!canEdit && period.status === 'unavailable' ? 'Unavailable' : title}</span>
+            <span className="venue-timeline-tooltip" role="tooltip">{title} {period.start}–{period.end}</span>
             {canEdit && <span data-edge="right" className="venue-timeline-handle" aria-hidden="true" />}
             {canEdit && period.id !== 'preview' && <button type="button" aria-label={`Delete ${title} period`}
               onClick={event => { event.stopPropagation(); setSelectedId(null); onChange(periods.filter(item => item.id !== period.id)); }}>×</button>}

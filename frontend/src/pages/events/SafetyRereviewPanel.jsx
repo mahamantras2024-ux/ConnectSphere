@@ -4,6 +4,8 @@ const OUTCOMES={approved:'Passed',rejected:'Rejected',changes_requested:'Changes
 /** SCRUM-111: current coordinator sees the complete review trail and explicitly submits corrected arrangements. */
 export default function SafetyRereviewPanel({eventId,token,refreshKey=0,onSubmitted}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[saving,setSaving]=useState(false),[version,setVersion]=useState(0);
+ // Disclosure choices belong to one event/session and survive background history reloads.
+ const [disclosures,setDisclosures]=useState({});
  const identity=`${eventId}:${token}`,currentIdentity=useRef(identity);currentIdentity.current=identity;
  useEffect(()=>{
   let active=true;setData(null);setError('');setSaving(false);
@@ -23,15 +25,22 @@ export default function SafetyRereviewPanel({eventId,token,refreshKey=0,onSubmit
   }catch(failure){if(currentIdentity.current===submittedIdentity)setError(failure.message||'Unable to submit for safety re-review.');}
   finally{if(currentIdentity.current===submittedIdentity)setSaving(false);}
  }
- return <section aria-label="Safety review and resubmission history">
+ return <section className="safety-review-history" aria-label="Safety review and resubmission history">
   <h3>Safety review history</h3>
   {error&&<p role="alert">{error}</p>}
   {!data&&!error&&<p role="status">Loading safety review history…</p>}
   {data&&<>
-   {data.history.length===0?<p>No safety reviews recorded yet.</p>:<ol aria-label="Safety review records">{data.history.map(entry=><li key={`${entry.kind}-${entry.id}`}>
-    <strong>{entry.kind==='review'?OUTCOMES[entry.outcome]:'Submitted for safety re-review'}</strong>
-    <p>{entry.actor} · <time dateTime={entry.recorded_at}>{new Date(entry.recorded_at).toLocaleString('en-SG',{timeZone:'Asia/Singapore'})}</time></p>
+   {/* Stable chronological ordering preserves tied API records while exposing time without expansion. */}
+   {data.history.length===0?<p>No safety reviews recorded yet.</p>:<ol className="safety-review-records" aria-label="Safety review records">{[...data.history].sort((first, second) => Date.parse(first.recorded_at) - Date.parse(second.recorded_at)).map(entry=><li key={`${entry.kind}-${entry.id}`}>
+    <details open={Boolean(disclosures[`${identity}:${entry.kind}-${entry.id}`])}>
+    <summary onClick={action => {
+     action.preventDefault();
+     const key = `${identity}:${entry.kind}-${entry.id}`;
+     setDisclosures(current => ({ ...current, [key]: !current[key] }));
+    }}><strong>{entry.kind==='review'?OUTCOMES[entry.outcome]:'Submitted for safety re-review'}</strong><time className="safety-review-stamp" dateTime={entry.recorded_at}>{new Date(entry.recorded_at).toLocaleString('en-SG',{timeZone:'Asia/Singapore',dateStyle:'medium',timeStyle:'short'})}</time></summary>
+    <p>Reviewed by {entry.actor}</p>
     {entry.notes&&<p>Reason: {entry.notes}</p>}
+    </details>
    </li>)}</ol>}
    {data.required&&<>
     <p>The rejected arrangements must be corrected and submitted for another safety review before confirmation.</p>

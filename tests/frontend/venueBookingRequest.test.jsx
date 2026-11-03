@@ -38,13 +38,13 @@ describe('Booking Conflict Detection', () => {
     expect(warning.textContent).toMatch(/Hall North is unavailable for the requested period/i);
     expect(venue.value).toBe('7');
     expect(date.value).toBe('2030-10-10');
-    expect(start.value).toBe('10:00');
-    expect(end.value).toBe('11:00');
+    expect(start.value).toBe('10:00 AM');
+    expect(end.value).toBe('11:00 AM');
 
     fireEvent.change(venue, { target: { value: '8' } });
     fireEvent.change(date, { target: { value: '2030-10-11' } });
-    fireEvent.change(start, { target: { value: '14:00' } });
-    fireEvent.change(end, { target: { value: '15:00' } });
+    fireEvent.change(start, { target: { value: '02:00 PM' } });
+    fireEvent.change(end, { target: { value: '03:00 PM' } });
     fireEvent.click(screen.getByRole('button', { name: 'Request venue' }));
 
     // Assert: the revised values, rather than stale conflicting values, reach the request endpoint.

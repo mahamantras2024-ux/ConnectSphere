@@ -24,15 +24,18 @@ export default function FindVenues() {
   useEffect(() => {
     // Clear the previous context before any route/session change can submit against a stale event.
     let active = true;
-    setLoading(true); setEvent(null); setError(''); setSubmitted(false);
+    setLoading(true); setEvents([]); setEvent(null); setError(''); setSubmitted(false);
     async function loadContext() {
       try {
-        const result = await api.get('/events', token);
+        // Once a venue is chosen, only its server-assessed assigned events may open the booking form.
+        const result = await api.get(venueId ? `/venues/${venueId}/eligible-events` : '/events', token);
         const assigned = result.events || [];
         if (!active) return;
         setEvents(assigned);
         if (eventId) {
-          if (!assigned.some(record => String(record.id) === eventId)) throw new Error('Choose an event assigned to you.');
+          if (!assigned.some(record => String(record.id) === eventId)) throw new Error(venueId
+            ? 'This venue does not meet the selected event’s requirements. Choose an eligible event or another venue.'
+            : 'Choose an event assigned to you.');
           const detail = await api.get(`/events/${eventId}`, token);
           if (active) setEvent(detail.event);
         }
@@ -41,7 +44,7 @@ export default function FindVenues() {
     }
     loadContext();
     return () => { active = false; };
-  }, [eventId, token, retry]);
+  }, [eventId, venueId, token, retry]);
 
   /** Keeps the URL bookmarkable and retains the chosen venue while selecting the booking's event. */
   function selectEvent(value) {
@@ -67,19 +70,22 @@ export default function FindVenues() {
     <PageIntro title="Find venues" eyebrow="Venue arrangements" description="Find a suitable space, review its details and send a booking request." />
     <section className="booking-context" aria-label="Event context">
       <label>Booking for event<select value={eventId} disabled={loading} onChange={change => selectEvent(change.target.value)}>
-        <option value="">Browse venues first</option>
+        <option value="">Select event</option>
         {events.map(record => <option key={record.id} value={record.id}>{record.name}</option>)}
       </select></label>
       {event && !submitted && <Link className="button-link button-secondary" to={`/events/${event.id}?tab=venues`}>View event requests</Link>}
       {loading && <p role="status">Loading assigned events…</p>}
       {error && <div role="alert"><p>{error}</p><button className="button-secondary" onClick={() => setRetry(value => value + 1)}>Retry events</button></div>}
       {chooseEvent && !event && <p role="status">Choose an assigned event to request this venue.</p>}
+      {!loading && venueId && events.length === 0 && !error && <p>No assigned events meet this venue’s requirements.</p>}
+      {!loading && venueId && !event && <button className="button-secondary" onClick={findAnother}>Back to venues</button>}
     </section>
     {!loading && (venueId && event ? <div className="booking-review">
       <div className="workspace-action-card"><div><h2>{submitted ? 'Venue request sent' : 'Review venue request'}</h2><p>{event.name}</p></div>
         {!submitted && <button className="button-secondary" onClick={findAnother}>Back to venues</button>}</div>
       {/* Replace the submitted form with explicit next steps so a saved request cannot be sent again accidentally. */}
-      {!submitted && <VenueBookingRequest key={`${event.id}:${venueId}`} event={event} token={token} initialVenueId={venueId} onSubmitted={() => setSubmitted(true)} />}
+      {!submitted && <VenueBookingRequest key={`${event.id}:${venueId}`} event={event} token={token} initialVenueId={venueId}
+        onVenueChange={value => { const next = new URLSearchParams(params); next.set('venueId', value); setParams(next); }} onSubmitted={() => setSubmitted(true)} />}
       {submitted && <div className="booking-next-actions" role="region" aria-label="Request submitted actions">
         <p role="status">Venue request submitted.</p>
         <p>Your request has been saved. Track its status from the event’s Venue requests tab.</p>

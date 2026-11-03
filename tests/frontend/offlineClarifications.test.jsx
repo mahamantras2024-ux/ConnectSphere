@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
 import App from '../../frontend/src/App';
+import AmendmentRequestForm from '../../frontend/src/pages/events/AmendmentRequestForm';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
 
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } }));
@@ -31,9 +32,11 @@ function open(path) {
 }
 /** Opens the coordinator's event page on its Activity tab. */
 async function openActivity() {
-  open('/events/101');
-  await screen.findByRole('heading', { name: 'Gala' });
+  // Drain the real auth/event effects; resolved boundary mocks do not need a repeated whole-page role search.
+  await act(async () => { open('/events/101'); });
   fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
+  // History workflows explicitly expand the new default-collapsed section.
+  fireEvent.click(screen.getByText('Amendment history', { selector: 'h2' }));
 }
 const clarificationItems = () => within(screen.getByRole('region', { name: 'Clarification requests' })).getAllByRole('listitem');
 
@@ -61,7 +64,7 @@ it('OC AC1 - the coordinator records an offline clarification with its answer, o
     coordinator_comments: body.comments, created_at: '2030-01-01T02:00:00.000Z', responded_at: '2030-01-01T02:00:00.000Z' } }));
   await openActivity();
   // Act
-  fireEvent.click(screen.getByRole('button', { name: 'Record an offline clarification' }));
+  fireEvent.click(screen.getByRole('heading', { name: 'Record an offline clarification' }));
   const form = screen.getByRole('form', { name: 'Record an offline clarification' });
   fireEvent.click(within(form).getByLabelText('Offline clarification about Expected attendance'));
   fireEvent.change(within(form).getByLabelText('Clarification question'), { target: { value: 'How many guests now?' } });
@@ -87,7 +90,7 @@ it('OC AC1 - the offline form explains what is missing and needs an answer unles
     information_needed: ['name'], message: 'Rename?', outcome: 'Keep the name.', created_at: '2030-01-01T02:00:00.000Z', resolved_at: '2030-01-01T02:00:00.000Z',
     resolved_by_name: 'Chris' } });
   await openActivity();
-  fireEvent.click(screen.getByRole('button', { name: 'Record an offline clarification' }));
+  fireEvent.click(screen.getByRole('heading', { name: 'Record an offline clarification' }));
   const form = screen.getByRole('form', { name: 'Record an offline clarification' });
   const submit = () => fireEvent.click(within(form).getByRole('button', { name: 'Record offline clarification' }));
   // A topic ticked and then unticked leaves nothing selected.
@@ -117,7 +120,7 @@ it('OC AC1 - recording offline keeps an earlier pending clarification outstandin
   api.post.mockResolvedValue({ message: 'Offline clarification recorded.', clarificationRequest: { id: 601, source: 'offline', status: 'responded',
     information_needed: ['name'], message: 'Rename?', organiser_response: 'No.', created_at: '2030-01-01T02:00:00.000Z', responded_at: '2030-01-01T02:00:00.000Z' } });
   await openActivity();
-  fireEvent.click(screen.getByRole('button', { name: 'Record an offline clarification' }));
+  fireEvent.click(screen.getByRole('heading', { name: 'Record an offline clarification' }));
   const form = screen.getByRole('form', { name: 'Record an offline clarification' });
   fireEvent.click(within(form).getByLabelText('Offline clarification about Event name'));
   fireEvent.change(within(form).getByLabelText('Clarification question'), { target: { value: 'Rename?' } });
@@ -130,7 +133,7 @@ it('OC AC1 - recording offline keeps an earlier pending clarification outstandin
 it('OC AC1 - a refused record shows the reason, and only the coordinator can record', async () => {
   api.post.mockRejectedValueOnce(new Error('Assigned event not found.')).mockRejectedValueOnce({});
   await openActivity();
-  fireEvent.click(screen.getByRole('button', { name: 'Record an offline clarification' }));
+  fireEvent.click(screen.getByRole('heading', { name: 'Record an offline clarification' }));
   const form = screen.getByRole('form', { name: 'Record an offline clarification' });
   fireEvent.click(within(form).getByLabelText('Offline clarification about Purpose'));
   fireEvent.change(within(form).getByLabelText('Clarification question'), { target: { value: 'Why?' } });
@@ -145,7 +148,7 @@ it('OC AC1 - a refused record shows the reason, and only the coordinator can rec
   user = lead;
   open('/events/101');
   await screen.findByRole('heading', { name: 'Gala' });
-  expect(screen.queryByRole('button', { name: 'Record an offline clarification' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Record an offline clarification' })).toBeNull();
 });
 
 // ---------- AC2: mark resolved, keeping the history ----------
@@ -246,6 +249,7 @@ it.each([['coordinator', coordinator], ['Coordinator Lead', lead]])('OC AC3 - th
   // The coordinator's workspace keeps the history on its Activity tab; the Lead's page has no tabs.
   if (viewer === coordinator) fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
   const list = await screen.findByRole('region', { name: 'Amendment history' });
+  fireEvent.click(within(list).getByRole('heading', { name: 'Amendment history' }));
   const [applied, decided, quiet] = await within(list).findAllByRole('listitem');
   expect(within(applied).getByText('Agreed with the organiser and applied by the Event Coordinator')).toBeTruthy();
   expect(within(applied).getByText('60 → 90')).toBeTruthy();
@@ -262,7 +266,7 @@ it.each([['coordinator', coordinator], ['Coordinator Lead', lead]])('OC AC3 - th
   expect(within(quiet).queryByText('Checks reopened:')).toBeNull();
   expect(within(quiet).queryByText(/Agreed in clarification/)).toBeNull();
   // Only the assigned coordinator can apply an agreed amendment.
-  expect(Boolean(screen.queryByRole('button', { name: 'Apply agreed amendment' }))).toBe(viewer === coordinator);
+  expect(Boolean(screen.queryByRole('heading', { name: 'Apply agreed amendment' }))).toBe(viewer === coordinator);
 });
 // Test case: Empty, failed and incomplete history reads are explained rather than shown as nothing.
 it('OC AC3 - the amendment history explains an empty, failed or incomplete read', async () => {
@@ -297,19 +301,18 @@ it('OC AC3 AC4 - the coordinator applies an agreed amendment linked to a clarifi
     return { message: 'Agreed amendment applied. The organiser and affected staff have been notified.' };
   });
   await openActivity();
-  fireEvent.click(screen.getByRole('button', { name: 'Apply agreed amendment' }));
+  fireEvent.click(screen.getByText('Apply agreed amendment', { selector: 'h2' }));
   const form = screen.getByRole('form', { name: 'Apply an agreed amendment' });
   expect(within(form).getByText(/They apply straight away/)).toBeTruthy();
   fireEvent.change(within(form).getByLabelText('Expected attendance'), { target: { value: '90' } });
   fireEvent.change(within(form).getByLabelText('Agreed in clarification (optional)'), { target: { value: '601' } });
-  fireEvent.click(within(form).getByRole('button', { name: 'Apply agreed amendment' }));
-  expect(within(form).getByRole('alert').textContent).toBe('Describe what was agreed with the organiser.');
   fireEvent.change(within(form).getByLabelText('What was agreed (required)'), { target: { value: 'Agreed by phone.' } });
   fireEvent.click(within(form).getByRole('button', { name: 'Apply agreed amendment' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/101/agreed-amendments',
     { changes: { expectedAttendance: 90 }, explanation: 'Agreed by phone.', clarificationId: 601 }, 'session'));
-  fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+  fireEvent.click(await within(dialog).findByRole('button', { name: 'Continue' }));
   // The page reloads the changed event and its history.
   await waitFor(() => expect(api.get.mock.calls.filter(([path]) => path === '/events/101').length).toBe(2));
   expect(await screen.findByText('Agreed amendment applied. The organiser and affected staff have been notified.')).toBeTruthy();
@@ -319,21 +322,35 @@ it('OC AC3 AC4 - the coordinator applies an agreed amendment linked to a clarifi
 it('OC AC3 - an agreed amendment without a clarification sends none, and a refusal is shown', async () => {
   api.post.mockRejectedValueOnce(new Error('Change at least one detail before applying an amendment.')).mockRejectedValueOnce({});
   await openActivity();
-  fireEvent.click(screen.getByRole('button', { name: 'Apply agreed amendment' }));
+  fireEvent.click(screen.getByText('Apply agreed amendment', { selector: 'h2' }));
   const form = screen.getByRole('form', { name: 'Apply an agreed amendment' });
-  fireEvent.click(within(form).getByRole('button', { name: 'Apply agreed amendment' }));
-  expect(within(form).getByRole('alert').textContent).toBe('Change at least one detail before applying an amendment.');
   fireEvent.change(within(form).getByLabelText('Purpose'), { target: { value: 'Charity' } });
   fireEvent.change(within(form).getByLabelText('What was agreed (required)'), { target: { value: 'New purpose.' } });
   fireEvent.click(within(form).getByRole('button', { name: 'Apply agreed amendment' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-  expect(await within(screen.getByRole('dialog')).findByText('Change at least one detail before applying an amendment.')).toBeTruthy();
+  const dialog = screen.getByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+  expect(await within(dialog).findByText('Change at least one detail before applying an amendment.')).toBeTruthy();
   expect(api.post.mock.calls[0][1].clarificationId).toBeNull();
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm' }));
-  expect(await within(screen.getByRole('dialog')).findByText('Unable to apply the amendment.')).toBeTruthy();
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+  expect(await within(dialog).findByText('Unable to apply the amendment.')).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
   fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }));
-  expect(screen.getByRole('button', { name: 'Apply agreed amendment' })).toBeTruthy();
+  expect(screen.getByText('Apply agreed amendment', { selector: 'h2' })).toBeTruthy();
+});
+
+// Client guards have focused real-form tests; the full-route tests above retain submission, retry and reload oracles.
+it.each([
+  [false, 'Change at least one detail before applying an amendment.'],
+  [true, 'Describe what was agreed with the organiser.'],
+])('OC AC3 - validates an agreed amendment before any API call when changed=%s', (changed, expected) => {
+  // Arrange: both cases use the actual coordinator form and its real validation order.
+  render(<AmendmentRequestForm event={baseEvent} token="session" mode="coordinator" onCancel={vi.fn()} onSubmitted={vi.fn()} />);
+  if (changed) fireEvent.change(screen.getByLabelText('Expected attendance'), { target: { value: '90' } });
+  // Act
+  fireEvent.click(screen.getByRole('button', { name: 'Apply agreed amendment' }));
+  // Assert: missing changes and missing agreement text have different oracles; neither reaches the transport.
+  expect(screen.getByRole('alert').textContent).toBe(expected);
+  expect(api.post).not.toHaveBeenCalled();
 });
 
 // ---------- AC5: Venue Staff re-confirm a flagged booking ----------
@@ -472,10 +489,10 @@ it('OC AC1 AC3 - an event read without a clarification list still records offlin
   api.post.mockResolvedValue({ message: 'Offline clarification recorded.', clarificationRequest: { id: 603, source: 'offline', status: 'responded',
     information_needed: ['name'], message: 'Rename?', organiser_response: 'No.', created_at: '2030-01-01T02:00:00.000Z', responded_at: '2030-01-01T02:00:00.000Z' } });
   await openActivity();
-  fireEvent.click(screen.getByRole('button', { name: 'Apply agreed amendment' }));
+  fireEvent.click(screen.getByRole('heading', { name: 'Apply agreed amendment' }));
   const select = within(screen.getByRole('form', { name: 'Apply an agreed amendment' })).getByLabelText('Agreed in clarification (optional)');
   expect([...select.options].map((option) => option.value)).toEqual(['']);
-  fireEvent.click(screen.getByRole('button', { name: 'Record an offline clarification' }));
+  fireEvent.click(screen.getByRole('heading', { name: 'Record an offline clarification' }));
   const form = screen.getByRole('form', { name: 'Record an offline clarification' });
   fireEvent.click(within(form).getByLabelText('Offline clarification about Event name'));
   fireEvent.change(within(form).getByLabelText('Clarification question'), { target: { value: 'Rename?' } });

@@ -69,7 +69,8 @@ it('AR AC1/AC4/AC5 - the coordinator approves a ready event and sees the stored 
   expect(within(checklist).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
     'ClarificationsCompleteNo clarification is outstanding.', 'Venue arrangementsCompleteVenue booking confirmed.',
     'Technical arrangementsCompleteNo equipment or technical support was requested.', 'Operational safety checkCompleteOperational safety check passed.']);
-  expect(within(panel).getByText('Safety Officer (Sam): Passed')).toBeTruthy();
+  // The readiness row and recorded history replace the redundant officer summary.
+  expect(within(panel).queryByText('Safety Officer (Sam): Passed')).toBeNull();
   // Act
   fireEvent.click(within(panel).getByRole('button', { name: 'Approve event' }));
   // Assert: one decision in flight locks both buttons.
@@ -94,7 +95,7 @@ it('AR AC2 - after a failed safety check approval is unavailable with the reason
   open('/events/101');
   const panel = await decisionPanel();
   expect(await within(panel).findByText('Approval unavailable: The event failed the operational safety check.')).toBeTruthy();
-  expect(within(panel).getByText('Safety Officer (Sam): Failed — Fire exit blocked')).toBeTruthy();
+  expect(within(panel).queryByText('Safety Officer (Sam): Failed — Fire exit blocked')).toBeNull();
   const safetyRow = within(panel).getByText('Operational safety check').closest('li');
   expect(within(safetyRow).getByText('Outstanding')).toBeTruthy();
   expect(within(panel).getByRole('button', { name: 'Approve event' }).disabled).toBe(true);
