@@ -2,6 +2,10 @@
 import {render,screen,fireEvent,waitFor,cleanup,act} from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import {it,expect,vi,afterEach} from 'vitest';
+// Load the real app during test collection so cold module loading cannot consume the notification test's timeout.
+import App from '../../frontend/src/App';
+import {AuthProvider} from '../../frontend/src/context/AuthContext';
+import {MemoryRouter} from 'react-router-dom';
 import CoordinatorReminderPreferences from '../../frontend/src/pages/coordinator/CoordinatorReminderPreferences';
 import VenueHoldState from '../../frontend/src/pages/events/VenueHoldState';
 import {api} from '../../frontend/src/api/client';
@@ -37,20 +41,26 @@ it('SCRUM-85 AC9 - failed loading is visible rather than claiming reminders are 
 for(const status of ['pending','tentative'])it(`SCRUM-85 AC7 AC8 - ${status} open event switches from held to expired exactly at the saved expiry`,async()=>{
  vi.useFakeTimers();const now=new Date('2031-10-20T02:00:00Z');vi.setSystemTime(now);
  render(<VenueHoldState booking={{status,hold_expires_at:new Date(now.getTime()+1000).toISOString()}}/>);
- expect(screen.getByText(/Hold state: Held/)).toBeInTheDocument();
- await act(async()=>vi.advanceTimersByTime(999));expect(screen.getByText(/Hold state: Held/)).toBeInTheDocument();
- await act(async()=>vi.advanceTimersByTime(1));expect(screen.getByText(/Hold state: Expired/)).toBeInTheDocument();
- await act(async()=>vi.advanceTimersByTime(1));expect(screen.getByText(/Hold state: Expired/)).toBeInTheDocument();
+ expect(screen.getByText('Hold state:').closest('p')).toHaveTextContent(/Hold state: Held/);
+ await act(async()=>vi.advanceTimersByTime(999));expect(screen.getByText('Hold state:').closest('p')).toHaveTextContent(/Hold state: Held/);
+ await act(async()=>vi.advanceTimersByTime(1));expect(screen.getByText('Hold state:').closest('p')).toHaveTextContent(/Hold state: Expired/);
+ await act(async()=>vi.advanceTimersByTime(1));expect(screen.getByText('Hold state:').closest('p')).toHaveTextContent(/Hold state: Expired/);
 });
-it('SCRUM-85 AC8 - decided and legacy pending bookings show their current saved state',()=>{
- const view=render(<VenueHoldState booking={{status:'approved'}}/>);expect(screen.getByText(/Hold state: approved/)).toBeInTheDocument();
- view.rerender(<VenueHoldState booking={{status:'pending'}}/>);expect(screen.getByText(/No active hold/)).toBeInTheDocument();
+// AC8: present saved decisions consistently; formatting must not expose raw lowercase database values.
+it.each([['approved','Approved'],['rejected','Rejected'],['confirmed','Confirmed'],['cancelled','Cancelled'],['expired','Expired']])('SCRUM-85 AC8 - bolds the hold label and capitalizes saved %s state', (status, label)=>{
+ // Arrange / Act: render a saved decision without a live hold deadline.
+ render(<VenueHoldState booking={{status}}/>);
+ // Assert: semantic emphasis and exact visible text catch missing emphasis or raw database text.
+ expect(screen.getByText('Hold state:', {selector:'strong'}).closest('p')).toHaveTextContent(`Hold state: ${label}`);
+});
+it('SCRUM-85 AC8 - legacy pending bookings show no active hold',()=>{
+ // Arrange / Act: old pending requests may not have a saved expiry.
+ render(<VenueHoldState booking={{status:'pending'}}/>);
+ // Assert: a missing deadline must not manufacture a held or expired state.
+ expect(screen.getByText('Hold state:').closest('p')).toHaveTextContent('Hold state: No active hold');
 });
 it('SCRUM-85 AC2 AC3 - coordinator sees a committed decision before the ten-second limit without refreshing',async()=>{
  // Arrange: keep the real app/provider/polling; substitute only server responses and the clock.
- const {default:App}=await import('../../frontend/src/App');
- const {AuthProvider}=await import('../../frontend/src/context/AuthContext');
- const {MemoryRouter}=await import('react-router-dom');
  vi.useFakeTimers({toFake:['Date','setInterval','clearInterval']});vi.setSystemTime(new Date('2031-10-20T02:00:00Z'));
  localStorage.setItem('cs_token','session');let notifications=[];
  api.get.mockImplementation(async path=>{
@@ -92,5 +102,5 @@ it('SCRUM-85 AC9 - missing preference data defaults to disabled instead of optin
 for(const status of ['pending','tentative'])for(const offset of [-1,0,1])it(`SCRUM-85 AC8 - opening a ${status} hold ${offset}ms from expiry displays its current state`,()=>{
  vi.useFakeTimers();const now=new Date('2031-10-20T02:00:00Z');vi.setSystemTime(now);
  render(<VenueHoldState booking={{status,hold_expires_at:new Date(now.getTime()+offset).toISOString()}}/>);
- expect(screen.getByText(offset<=0?/Hold state: Expired/:/Hold state: Held/)).toBeInTheDocument();
+ expect(screen.getByText('Hold state:').closest('p')).toHaveTextContent(offset<=0?/Hold state: Expired/:/Hold state: Held/);
 });

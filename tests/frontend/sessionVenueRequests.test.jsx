@@ -30,6 +30,9 @@ it('Session venues AC2 AC3 AC4 - changing a session preserves its identity and s
   fireEvent.click(screen.getByRole('button',{name:'Change session request'}));
   expect(await screen.findByLabelText('Venue')).toBeDisabled();
   expect(screen.getByLabelText('Session / track (optional)')).toHaveValue('Track A');
+  // The shared clock must present the saved Singapore session times without shifting either endpoint.
+  expect(screen.getByLabelText('Start time')).toHaveValue('10:00 AM');
+  expect(screen.getByLabelText('End time')).toHaveValue('11:00 AM');
   fireEvent.change(screen.getByLabelText('Expected attendance / capacity'),{target:{value:'30'}});
   // Act / Assert: only request 20 is revised; successful persistence closes the edit form.
   fireEvent.click(screen.getByRole('button',{name:'Request venue'}));

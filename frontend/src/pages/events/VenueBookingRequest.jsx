@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import ClockTimeField, { parseClockTime, formatClockTime } from '../../components/ClockTimeField';
 import { api } from '../../api/client';
 
 /** Lets the assigned coordinator request one venue period and revise the choices after an availability conflict. */
-export default function VenueBookingRequest({ event, token, onSubmitted, initialVenueId, editingBooking }) {
+export default function VenueBookingRequest({ event, token, onSubmitted, initialVenueId, editingBooking, onVenueChange }) {
+  const requirementsNoteId = useId();
   const [venues, setVenues] = useState([]);
   const [venueId, setVenueId] = useState('');
   const [date, setDate] = useState(event.proposed_date || '');
-  const [startTime, setStartTime] = useState(String(event.proposed_start_time || '').slice(0, 5));
-  const [endTime, setEndTime] = useState(String(event.proposed_end_time || '').slice(0, 5));
+  const [startTime, setStartTime] = useState(formatClockTime(String(event.proposed_start_time || '').slice(0, 5)));
+  const [endTime, setEndTime] = useState(formatClockTime(String(event.proposed_end_time || '').slice(0, 5)));
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -40,13 +42,19 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
   /** Submits the current controlled values so a retry uses the coordinator's latest venue and period. */
   async function submit(eventAction) {
     eventAction.preventDefault();
+    // Keyboard drafts must be complete before converting display labels into Singapore API timestamps.
+    const start = parseClockTime(startTime), end = parseClockTime(endTime);
+    if (start === null || end === null) {
+      setFeedback({ kind: 'error', message: 'Enter both times as hh:mm AM or PM.' });
+      return;
+    }
     setBusy(true);
     setFeedback(null);
     try {
       const body = {
         eventId: event.id,
-        startDatetime: `${date}T${startTime}:00+08:00`,
-        endDatetime: `${date}T${endTime}:00+08:00`,
+        startDatetime: `${date}T${start}:00+08:00`,
+        endDatetime: `${date}T${end}:00+08:00`,
         capacity: capacity === '' ? null : Number(capacity),
         layout: layout.trim(),
         accessibility: splitRequirements(accessibility),
@@ -86,7 +94,7 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
       <label>Session / track (optional)<input value={sessionName} onChange={update(setSessionName)} maxLength={120} disabled={Boolean(editingBooking)} placeholder="e.g. Breakout session A"/></label>
       <p className="ed-muted">Name each session to keep its timing, attendance and venue arrangements independent.</p>
       <label>Venue
-        <select required value={venueId} onChange={update(setVenueId)} disabled={Boolean(editingBooking)}>
+        <select required value={venueId} onChange={change => { update(setVenueId)(change); onVenueChange?.(change.target.value); }} disabled={Boolean(editingBooking)}>
           {!venueId && <option value="">Choose an active venue</option>}
           {venues.map(venue => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
         </select>
@@ -94,19 +102,16 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
       <label>Date
         <input required type="date" value={date} onChange={update(setDate)} />
       </label>
-      <label>Start time
-        <input required type="time" value={startTime} onChange={update(setStartTime)} />
-      </label>
-      <label>End time
-        <input required type="time" value={endTime} onChange={update(setEndTime)} />
-      </label>
+      <ClockTimeField label="Start time" required value={startTime} onChange={value => { setStartTime(value); setFeedback(null); }} />
+      <ClockTimeField label="End time" required value={endTime} onChange={value => { setEndTime(value); setFeedback(null); }} />
       <label>Expected attendance / capacity
         <input type="number" required={Boolean(sessionName.trim())} min="1" max="2147483647" step="1" value={capacity} onChange={update(setCapacity)} />
       </label>
       <label>Room layout<input value={layout} maxLength={200} onChange={update(setLayout)} /></label>
-      <label>Accessibility requirements<input value={accessibility} maxLength={2000} onChange={update(setAccessibility)} /></label>
-      <label>Required facilities<input value={facilities} maxLength={2000} onChange={update(setFacilities)} /></label>
-      <p className="ed-muted">Separate multiple accessibility requirements or facilities with commas.</p>
+      {/* These stars reference entry guidance, not mandatory fields; preserve the existing accessible field names. */}
+      <label><span>Accessibility requirements<span aria-hidden="true"> *</span></span><input aria-label="Accessibility requirements" aria-describedby={requirementsNoteId} value={accessibility} maxLength={2000} onChange={update(setAccessibility)} /></label>
+      <label><span>Required facilities<span aria-hidden="true"> *</span></span><input aria-label="Required facilities" aria-describedby={requirementsNoteId} value={facilities} maxLength={2000} onChange={update(setFacilities)} /></label>
+      <p className="ed-muted" id={requirementsNoteId}><span aria-hidden="true">* </span>Separate multiple accessibility requirements or facilities with commas.</p>
       {!sessionName.trim() && <label><input type="checkbox" checked={cancelOtherPending} onChange={change => setCancelOtherPending(change.target.checked)} />
         Automatically cancel my other pending venue requests for this event if this arrangement changes or is cancelled.
       </label>}

@@ -3,9 +3,9 @@ import Modal from '../../components/Modal';
 import useRegistrationResource from '../registrations/useRegistrationResource';
 
 /** Loads private attendance planning details; calculated overflow remains distinct from stored registration statuses. */
-function RegistrationDrawer({ eventId, token, onClose }) {
+export function RegistrationDetails({ eventId, token }) {
   const { data, loading, error } = useRegistrationResource(`/events/${eventId}/coordinator-registrations`, token);
-  return <Modal drawer title="Registration details" onClose={onClose}><div className="registration-detail">
+  return <div className="registration-detail">
     {loading && <p role="status">Loading registrations...</p>}
     {error && <p role="alert">{error}</p>}
     {data && <>
@@ -36,14 +36,16 @@ function RegistrationDrawer({ eventId, token, onClose }) {
           </>}
       </section>
     </>}
-  </div></Modal>;
+  </div>;
 }
 
 /** Keeps the event page compact; closing unmounts private data and restores trigger focus. */
-export default function CoordinatorRegistrations({ eventId, token }) {
+export default function CoordinatorRegistrations({ eventId, token, inline = false }) {
   const [open, setOpen] = useState(false);
+  // The workspace tab shares the same report without creating a second modal navigation layer.
+  if (inline) return <RegistrationDetails eventId={eventId} token={token} />;
   return <>
     <button className="button-secondary" onClick={() => setOpen(true)}>Registration details</button>
-    {open && <RegistrationDrawer eventId={eventId} token={token} onClose={() => setOpen(false)} />}
+    {open && <Modal drawer title="Registration details" onClose={() => setOpen(false)}><RegistrationDetails eventId={eventId} token={token} /></Modal>}
   </>;
 }

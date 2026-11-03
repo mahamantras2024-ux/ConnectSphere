@@ -8,12 +8,13 @@ import BookingImpactList from './BookingImpactList';
 import VenueSchedule from './VenueSchedule';
 import VenueClosureForm from './VenueClosureForm';
 import {formatHourlyRate} from './hourlyRate';
+import { Link } from 'react-router-dom';
 // Formats list fields or displays an explicit missing-value label.
 function list(value) { return Array.isArray(value) && value.length ? value.join(', ') : typeof value === 'string' && value.trim() ? value : 'Not specified'; }
 // Distinguishes an explicitly recorded zero-minute duration from missing legacy timing information.
 function minutes(value) { return value == null ? 'Not specified' : `${value} minutes`; }
 // Renders venue details and map, with schedule loading only after an explicit request.
-export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canManage=false, canViewSchedule=canManage, token }) {
+export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canManage=false, canViewSchedule=canManage, token, scheduleHref }) {
   // Keep the schedule unmounted until the visitor explicitly asks for it; that also defers its API request.
   const [showSchedule, setShowSchedule] = useState(false);
   const [removing,setRemoving]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[blocked,setBlocked]=useState([]);
@@ -43,7 +44,9 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
     {canManage && <footer className="venue-record-actions"><button onClick={()=>onEdit?.(venue)} disabled={busy}>Edit venue</button><button className="button-danger" onClick={()=>setRemoving(true)} disabled={busy}>Deactivate venue</button></footer>}
     {removing && <section className="booking-warning"><h3>Remove this venue from the catalogue?</h3><p>Deactivating hides it from searches and preserves historical bookings. Upcoming bookings must be resolved first.</p>{error && <p role="alert" className="error-message">{error}</p>}<BookingImpactList bookings={blocked}/><div className="venue-record-actions"><button className="button-danger" disabled={busy} onClick={deactivate}>{busy?'Checking bookings…':'Confirm deactivation'}</button><button className="button-secondary" disabled={busy} onClick={()=>{setRemoving(false);setError('');setBlocked([]);}}>Keep venue</button></div></section>}
     {/* Viewing a schedule never grants venue editing or removal permissions. */}
-    {canViewSchedule && <button className="schedule-action" type="button" onClick={() => setShowSchedule(true)}>View schedule</button>}
+    {canViewSchedule && (scheduleHref
+      ? <Link className="button-link schedule-action" to={scheduleHref}>View schedule</Link>
+      : <button className="schedule-action" type="button" onClick={() => setShowSchedule(true)}>View schedule</button>)}
     {canManage && <VenueClosureForm venueId={venue.id} token={token} />}
     {canViewSchedule && showSchedule && <VenueSchedule venue={venue} token={token} canEdit={canManage} />}
   </div></Modal>;

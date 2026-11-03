@@ -25,7 +25,7 @@ it('Planning calendar AC1 AC3 - Coordinator navigation opens a separate planning
   expect(screen.getAllByRole('main')).toHaveLength(1);
   expect(screen.getByRole('link',{name:'Find venues'})).toBeVisible();
   expect(screen.getByRole('link',{name:'Planning calendar'})).toHaveAttribute('aria-current','page');
-  expect(screen.getByRole('link',{name:'Assigned Events'})).not.toHaveAttribute('aria-current');
+  expect(screen.getByRole('link',{name:'Dashboard'})).not.toHaveAttribute('aria-current');
   expect(await screen.findByText('No assigned events scheduled this month.')).toBeVisible();
 });
 it('Planning calendar AC2 - a different role cannot open the calendar by URL',async()=>{

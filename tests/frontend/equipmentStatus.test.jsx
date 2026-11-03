@@ -87,9 +87,11 @@ it('ES AC1/AC3 - the coordinator sees a partially available request, which items
     ['On-site technical support', 'Affected', 'decision-unmet'],
   ]);
   expect(within(section).getByRole('note').textContent).toBe('Arrange alternatives or inform the organiser: Microphone × 4, On-site technical support cannot be fully provided.');
-  // Earlier versions remain visible.
-  expect(within(within(section).getByRole('list', { name: 'Earlier reviews' })).getByRole('listitem').textContent)
-    .toBe('Request version 1: Confirmed (1 Jan 2030, 11:00 am, Taylor)');
+  // Earlier versions require an explicit disclosure and show structured saved facts, never today's equipment items.
+  fireEvent.click(within(section).getByText('Earlier reviews (1)', { selector: 'summary' }));
+  const earlier = within(within(section).getByRole('list', { name: 'Earlier reviews' })).getByRole('listitem');
+  for (const text of ['Request version 1', 'Confirmed', 'Taylor', '1 Jan 2030, 11:00 am', 'No reason recorded', '0']) expect(within(earlier).getByText(text)).toBeTruthy();
+  expect(within(earlier).getByText('Historical item details were not recorded.')).toBeTruthy();
 });
 
 // AC1 - Legacy partial reviews explain that older responses did not track affected items individually.
@@ -252,8 +254,9 @@ it('ES AC3 - an earlier partial review shows how many items were affected and wh
   status = { ...partialView, history: [{ version: 1, status: 'partially_available', outcome: 'partially_fulfillable', reason: 'Short of cables', reviewedAt: '2030-01-01T03:00:00.000Z', reviewedBy: null, affectedCount: 2 }] };
   open('/events/101');
   const section = await panel();
-  expect(within(await within(section).findByRole('list', { name: 'Earlier reviews' })).getByRole('listitem').textContent)
-    .toBe('Request version 1: Partially available (1 Jan 2030, 11:00 am), 2 item(s) affected - Short of cables');
+  fireEvent.click(await within(section).findByText('Earlier reviews (1)', { selector: 'summary' }));
+  const earlier = within(within(section).getByRole('list', { name: 'Earlier reviews' })).getByRole('listitem');
+  for (const text of ['Partially available', '1 Jan 2030, 11:00 am', 'Technical Support', '2', 'Short of cables']) expect(within(earlier).getByText(text)).toBeTruthy();
 });
 
 // Test case: A partial review from before affected items were tracked says so, instead of listing items as available.

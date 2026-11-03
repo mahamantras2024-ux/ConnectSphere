@@ -46,6 +46,8 @@ beforeEach(() => {
     if (path === '/events') return { events: [event] };
     if (path === '/events/101') return { event };
     if (path === '/events/101/amendment-requests') return { amendmentRequests: [] };
+    // The booking page now asks the server which assigned events fit the selected venue.
+    if (path.endsWith('/eligible-events')) return { events: [event] };
     if (path === '/venues') return [{ id: 7, name: 'Hall North' }];
     throw new Error('Event not found.');
   });
@@ -364,7 +366,7 @@ it('Coordinator AC1 / Workspace AC1 - existing coordinator event-detail route st
 
   user.role = 'event_coordinator'; open('/events/101');
   expect(await screen.findByRole('heading', { name: event.name })).toBeTruthy();
-  expect(screen.getByRole('link', { name: 'Back to Assigned Events' }).getAttribute('href')).toBe('/coordinator/dashboard');
+  expect(screen.getByRole('link', { name: 'Back to Dashboard' }).getAttribute('href')).toBe('/coordinator/dashboard');
 });
 // Test case: Fills event requirements and checks submitted payload and navigation to the saved record.
 it('Workflow AC2 AC4 - event request form confirms all fields and navigates after success', async () => {

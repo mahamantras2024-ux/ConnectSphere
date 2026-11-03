@@ -2,6 +2,17 @@ const { createVenueRequest, decideVenueRequest, recheckVenueBooking } = require(
 const { pool } = require('../config/db');
 const { updateHoldExpiry, confirmVenueHold } = require('../services/venueHolds');
 const { changeSessionRequest } = require('../services/sessionVenueRequests');
+const { eventRequirements, unmetRequirements } = require('../services/venueEligibility');
+const { validId, reject } = require('../services/venueBookingStore');
+
+/** Only assigned events are considered; a stale/deactivated venue never opens an eligible booking form. */
+async function eligibleEvents(req, res) {
+  if (!validId(req.params.id)) throw reject(400, 'Choose a valid venue.');
+  const venue = (await pool.query('SELECT * FROM venues WHERE id=$1 AND is_active=true', [Number(req.params.id)])).rows[0];
+  if (!venue) throw reject(404, 'Venue not found or no longer active.');
+  const assigned = (await pool.query('SELECT * FROM events WHERE coordinator_id=$1 ORDER BY id DESC', [req.user.id])).rows;
+  res.json({ events: assigned.filter(event => unmetRequirements(eventRequirements(event), venue).length === 0) });
+}
 
 /**
  * Returns pending requests with their submitted requirements (older unspecified fields fall back to the event record),
@@ -64,4 +75,4 @@ async function confirmHold(req,res) {
 async function changeSession(req,res){
   res.json({request:await changeSessionRequest(req.params.id,req.params.requestId,req.body,req.user.id)});
 }
-module.exports = { createRequest, decideRequest, listPendingRequests, changeExpiry, confirmHold, changeSession, recheckRequest };
+module.exports = { createRequest, decideRequest, listPendingRequests, changeExpiry, confirmHold, changeSession, recheckRequest, eligibleEvents };

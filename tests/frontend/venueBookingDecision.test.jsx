@@ -30,6 +30,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('View Venue Booking Decision', () => {
+  // AC2 / approved UI: derive Singapore clock labels explicitly, without calling the formatter under test for expectations.
+  it.each([
+    ['nonzero seconds', '2026-11-02T04:01:37Z', '2026-11-02T05:39:59Z', '02/11/2026, 12:01 pm – 02/11/2026, 1:39 pm'],
+    ['just before noon to noon', '2026-11-02T03:59:59Z', '2026-11-02T04:00:00Z', '02/11/2026, 11:59 am – 02/11/2026, 12:00 pm'],
+    ['noon to just after noon', '2026-11-02T04:00:00Z', '2026-11-02T04:01:00Z', '02/11/2026, 12:00 pm – 02/11/2026, 12:01 pm'],
+    ['just before midnight to the next date', '2026-11-02T15:59:59Z', '2026-11-02T16:00:00Z', '02/11/2026, 11:59 pm – 03/11/2026, 12:00 am'],
+    ['midnight to just after midnight', '2026-11-02T16:00:00Z', '2026-11-02T16:01:00Z', '03/11/2026, 12:00 am – 03/11/2026, 12:01 am'],
+  ])('SCRUM-61 AC2 / UI - shows booking period without seconds for %s', async (_scenario, start, end, expected) => {
+    // Arrange: only the API is mocked; UTC timestamps require the real Singapore conversion and AM/PM formatting.
+    api.get.mockImplementation(async path => path === '/auth/me'
+      ? { user: { id: 12, role: 'event_coordinator' } }
+      : { bookings: [{ ...bookings[2], start_datetime: start, end_datetime: end }] });
+    // Act: render the actual coordinator booking card.
+    openDecisionHistory();
+    const approved = await screen.findByRole('listitem', { name: /Hall North.*Approved/i });
+    // Assert: exact endpoints catch seconds, rounding up, wrong timezone, wrong date and noon/midnight meridiem errors.
+    expect(within(approved).getByText('Period:').closest('p').textContent.replace(/\s+/g, ' ')).toBe(`Period: ${expected}`);
+  });
+
   it('SCRUM-61 AC2 AC4 AC6 - displays saved requirements, periods and both cancellation preferences', async () => {
     // Arrange: historical rows receive migration defaults; newly submitted rows retain explicit requirements.
     api.get.mockImplementation(async path => path === '/auth/me'
@@ -59,6 +78,8 @@ describe('View Venue Booking Decision', () => {
     const latest = await screen.findByRole('listitem', { name: /Studio East.*Pending/i });
     expect(within(latest).getByText('Pending')).toBeTruthy();
     const history = screen.getByRole('list', { name: 'Venue booking requests' });
+    // Legacy records without a period must not gain an invented date or an empty Period row.
+    expect(within(history).queryByText('Period:')).toBeNull();
     expect(within(history).getAllByRole('listitem').map(item => item.textContent)).toEqual([
       expect.stringContaining('Pending'), expect.stringContaining('Rejected'), expect.stringContaining('Approved'),
     ]);
@@ -66,26 +87,39 @@ describe('View Venue Booking Decision', () => {
     expect(screen.getByText('Hall North')).toBeTruthy();
   });
 
-  it('AC3 - displays staff rejection information and omits an empty reason', async () => {
-    // Arrange / Act: render a rejected request alongside decisions with no note.
+  it('SCRUM-61 AC3 - places the staff rejection reason in a distinct callout before booking details', async () => {
+    // Arrange: a rejected booking has requirements so placement is checked against real detail content.
+    api.get.mockImplementation(async path => path === '/auth/me'
+      ? { user: { id: 12, role: 'event_coordinator' } }
+      : { bookings: bookings.map(booking => booking.status === 'rejected'
+        ? { ...booking, requirements: { capacity: 40, layout: 'Theatre', accessibility: [], requiredFacilities: [] } }
+        : booking) });
+    // Act: render a rejected request alongside decisions with no note.
     openDecisionHistory();
-    // Assert: only the rejected record displays a reason, so unrelated decisions cannot inherit the note.
+    // Assert: a named region and heading distinguish the reason from ordinary booking details.
     const rejected = await screen.findByRole('listitem', { name: /Rejected/i });
-    expect(within(rejected).getByText('Capacity is too small.')).toBeTruthy();
+    const reason = within(rejected).getByRole('region', { name: 'Venue Staff reason' });
+    expect(within(reason).getByRole('heading', { name: 'Venue Staff reason' })).toBeTruthy();
+    expect(within(reason).getByText('Capacity is too small.')).toBeTruthy();
+    // DOCUMENT_POSITION_FOLLOWING (4) proves visual reading order without asserting a DOM index.
+    expect(within(rejected).getByText('Status:').closest('p').compareDocumentPosition(reason) & 4).toBe(4);
+    expect(reason.compareDocumentPosition(within(rejected).getByText('Capacity')) & 4).toBe(4);
     const approved = screen.getByRole('listitem', { name: /Approved/i });
     expect(within(approved).queryByText('Capacity is too small.')).toBeNull();
+    expect(within(approved).queryByRole('region', { name: 'Venue Staff reason' })).toBeNull();
   });
 
-  it('AC3 - does not render a reason when Venue Staff left the rejected booking note empty', async () => {
+  it.each([null, '', '   '])('SCRUM-61 AC3 - omits the reason callout for an empty staff note %j', async note => {
     // Arrange: a rejection is still useful to the coordinator when staff did not add a note.
     api.get.mockImplementation(async path => path === '/auth/me'
       ? { user: { id: 12, role: 'event_coordinator' } }
-      : { bookings: [{ ...bookings[1], decision_notes: null }] });
+      : { bookings: [{ ...bookings[1], decision_notes: note }] });
     // Act
     openDecisionHistory();
     // Assert: an empty note does not create a confusing blank reason field.
     const rejected = await screen.findByRole('listitem', { name: /Rejected/i });
-    expect(within(rejected).queryByText(/Venue Staff reason:/)).toBeNull();
+    expect(within(rejected).queryByRole('region', { name: 'Venue Staff reason' })).toBeNull();
+    expect(within(rejected).queryByRole('heading', { name: 'Venue Staff reason' })).toBeNull();
   });
 
   it('AC1 - explains when the selected event has no venue booking requests', async () => {

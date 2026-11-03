@@ -1,22 +1,34 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 
-/** Lets an Event Coordinator replace the complete on-site support team for one event. */
+/** Restores the persisted team as read-only; Change assignment unlocks edits, and successful saves lock them again. */
 export default function TechnicalSupportAssignment({ event, token, staff, onSaved }) {
   const assignedIds = (event.technical_support_staff || []).map(member => String(member.id));
   const [selected, setSelected] = useState(assignedIds);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
-  useEffect(() => setSelected(assignedIds), [event.technical_support_staff]);
+  // A draft belongs to the coordinator until a successful save; polling must not replace it.
+  // The ref records editing immediately, before a background-response effect can run.
+  const editing = useRef(false);
+  // A loaded team is already saved, even when this page visit has not submitted anything.
+  const [saved, setSaved] = useState(assignedIds.length > 0);
+  useEffect(() => {
+    if (editing.current) return;
+    // Idle forms follow persisted data; active drafts and pending/failed saves keep their selection.
+    setSelected(assignedIds);
+    setSaved(assignedIds.length > 0);
+  }, [event.technical_support_staff]);
 
+  /** Persists the complete selected team; failures keep the form available for a retry. */
   async function submit(eventValue) {
     eventValue.preventDefault();
-    setSaving(true); setError('');
+    editing.current = true;
+    setSaving(true); setSaved(false); setError('');
     try {
       await api.put(`/events/${event.id}/technical-support-assignment`,
         { staffIds: selected.map(Number) }, token);
       onSaved(selected.map(id => staff.find(member => String(member.id) === id)));
+      editing.current = false;
       setSaved(true);
     } catch (saveError) {
       setError(saveError.message);
@@ -32,13 +44,15 @@ export default function TechnicalSupportAssignment({ event, token, staff, onSave
         </div>
       </div>
       {staff.length === 0 ? <p className="support-assignment-empty">No Technical Support Staff are available.</p> : (
-        <fieldset className="support-assignment-fieldset" disabled={saving}>
+        // Saved teams require an explicit edit action; pending saves also lock the whole roster to preserve the submitted draft.
+        <fieldset className="support-assignment-fieldset" disabled={saving || saved}>
           <legend className="sr-only">Technical Support Staff</legend>
           <div className="support-assignment-options">
             {staff.map(member => (
               <label key={member.id} className="support-assignment-option">
                 <input type="checkbox" checked={selected.includes(String(member.id))}
                   onChange={change => {
+                    editing.current = true;
                     setSaved(false);
                     setSelected(current => change.target.checked
                       ? [...current, String(member.id)] : current.filter(id => id !== String(member.id)));
@@ -56,7 +70,7 @@ export default function TechnicalSupportAssignment({ event, token, staff, onSave
           {saving ? 'Saving…' : saved ? 'Assignment saved' : 'Assign staff'}
         </button>
         {saved && <button type="button" className="button-secondary support-assignment-change"
-          onClick={() => { setSaved(false); setError(''); }}>
+          onClick={() => { editing.current = true; setSaved(false); setError(''); }}>
           Change assignment
         </button>}
       </div>}
