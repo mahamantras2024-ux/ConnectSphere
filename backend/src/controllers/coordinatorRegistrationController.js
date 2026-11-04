@@ -25,7 +25,9 @@ async function getRegistrations(req, res) {
   const venueCapacity = Number.isInteger(recordedCapacity) && recordedCapacity >= 0 ? recordedCapacity : null;
   // The query orders registrations by time then ID. Overflow is a subset of Registered, not a second waitlist.
   const overflow = venueCapacity === null ? [] : registered.slice(venueCapacity);
-  return res.json({ event: events.rows[0], registered, waitlist,
+  return res.json({ event: events.rows[0], registered, waitlist, attendees: result.rows,
+    // Withdrawn and waitlisted records do not occupy a confirmed place; overflow stays in its own report.
+    remaining_spots: venueCapacity === null ? null : Math.max(0, venueCapacity - registered.length),
     headcount: registered.length, waitlist_count: waitlist.length, withdrawal_count: withdrawalCount,
     venue_capacity: venueCapacity, overflow_count: venueCapacity === null ? null : overflow.length, overflow });
 }

@@ -18,7 +18,7 @@ it('Session venues AC1 AC2 AC4 - named session submission records its own timing
   render(<VenueBookingRequest event={event} token="token"/>);
   fireEvent.click(await screen.findByRole('checkbox'));
   fireEvent.change(screen.getByLabelText('Session / track (optional)'),{target:{value:'Track A'}});
-  fireEvent.change(screen.getByLabelText('Expected attendance / capacity'),{target:{value:'15'}});
+  fireEvent.change(await screen.findByLabelText('Expected attendance / capacity'),{target:{value:'15'}});
   // Act / Assert: the snapshot identifies this session, and the unsafe cross-session checkbox is withdrawn.
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Request venue'}));

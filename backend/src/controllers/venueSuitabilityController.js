@@ -2,6 +2,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const model = require('../models/venueSuitabilityModel');
 const { requirementsOf, rankVenues } = require('../services/venueSuitability');
+const { eventRequirements, unmetRequirements } = require('../services/venueEligibility');
 
 // Event ids are PostgreSQL INTEGER keys.
 const validId = (id) => /^[1-9]\d*$/.test(id) && Number(id) <= 2147483647;
@@ -16,4 +17,14 @@ const getSuitability = asyncHandler(async (req, res) => {
   return res.json({ requirements, venues: rankVenues(requirements, await model.listActiveVenues()) });
 });
 
-module.exports = { getSuitability };
+/** Returns only active venues satisfying the assigned event, using the booking write guard's rules. */
+const getEligibleVenues = asyncHandler(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ message: 'Choose a valid event.' });
+  const event = await model.findCoordinatedEvent(Number(req.params.id), req.user.id);
+  if (!event) return res.status(404).json({ message: 'Event not found.' });
+  const requirements = eventRequirements(event);
+  const venues = await model.listActiveVenues();
+  return res.json({ venues: venues.filter(venue => unmetRequirements(requirements, venue).length === 0) });
+});
+
+module.exports = { getSuitability, getEligibleVenues };

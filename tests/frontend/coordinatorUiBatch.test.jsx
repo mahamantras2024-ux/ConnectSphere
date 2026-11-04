@@ -32,6 +32,7 @@ beforeEach(() => {
     if (path === '/events') return { events: [event, { ...event, id: 4, name: 'Too large', expected_attendance: 101 }] };
     if (path === '/events/3') return { event };
     if (path.endsWith('/eligible-events')) return { events: eligible };
+    if (path.endsWith('/eligible-venues')) return { venues: [venue] };
     if (path === '/venues/8') return venue;
     if (path.includes('/schedule?')) return [];
     if (path.startsWith('/venues')) return [venue];
@@ -238,7 +239,7 @@ it('VS AC1 AC3 / batch 3 - retries failed eligibility and rechecks when the sele
   let smallUnavailable = true;
   api.get.mockImplementation(path => {
     if (path === '/venues/8/eligible-events' && unavailable) return Promise.reject(new Error('Eligibility offline'));
-    if (path === '/venues') return Promise.resolve([venue, { ...venue, id: 9, name: 'Small room' }]);
+    if (path === '/events/3/eligible-venues') return Promise.resolve({ venues: [venue, { ...venue, id: 9, name: 'Small room' }] });
     if (path === '/venues/9/eligible-events') return smallUnavailable ? Promise.reject(new Error('New venue eligibility offline')) : Promise.resolve({ events: [] });
     return original(path);
   });
@@ -367,14 +368,14 @@ it.each(['confirmed', 'completed'])('Registration AC6 / batch 12 - exposes the f
   event.status = status;
   const original = api.get.getMockImplementation();
   api.get.mockImplementation(path => path.endsWith('/coordinator-registrations') ? Promise.resolve({ event: { name: 'Attendance' }, headcount: 0,
-    waitlist_count: 0, withdrawal_count: 0, registered: [], waitlist: [], venue_capacity: null }) : original(path));
+    waitlist_count: 0, withdrawal_count: 0, registered: [], waitlist: [], attendees: [], venue_capacity: null, remaining_spots: null, overflow_count: null, overflow: [] }) : original(path));
   open('/events/3'); await screen.findByRole('heading', { name: 'Forum' });
   expect(screen.getAllByRole('tab').at(-1)).toHaveTextContent('Registration details');
   expect(api.get).not.toHaveBeenCalledWith('/events/3/coordinator-registrations', 'session');
   // Act: End must reach the new fifth tab, while Home and wrapping Left still work.
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Overview' }), { key: 'End' });
   const tab = screen.getByRole('tab', { name: 'Registration details' }); expect(tab).toHaveFocus();
-  expect(await screen.findByLabelText('Registration summary')).toHaveTextContent('0 registered');
+  expect(await screen.findByLabelText('Registration summary')).toHaveTextContent('Confirmed headcount0Waitlist0Withdrawals0');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   fireEvent.keyDown(tab, { key: 'Home' }); expect(screen.getByRole('tab', { name: 'Overview' })).toHaveFocus();
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Overview' }), { key: 'ArrowLeft' }); expect(tab).toHaveFocus();

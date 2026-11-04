@@ -2,6 +2,11 @@
 // Test scope: Only pool.query is replaced; each test answers the event and venue reads.
 const { test, before, after, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+// The event migration is the schema oracle; a permissive row stub previously hid an invalid SQL projection.
+const eventSchema = fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/001-external-events.sql'), 'utf8');
+const eventColumns = new Set(eventSchema.match(/CREATE TABLE IF NOT EXISTS events \(([\s\S]*?)\n\);/)[1].split('\n').map(line => line.trim().split(/\s+/)[0]));
 const jwt = require('../../backend/node_modules/jsonwebtoken');
 process.env.JWT_SECRET = 'venue-suitability-test-secret';
 process.env.NODE_ENV = 'test';
@@ -30,7 +35,14 @@ function mockDb({ user = coordinator, found = event, venues = [hall, room, loft]
   mock.method(pool, 'query', async (sql, values) => {
     if (sql.includes('FROM users WHERE')) return { rows: [user] };
     queries.push({ sql, values });
-    if (sql.includes('FROM events WHERE id = $1 AND coordinator_id = $2')) return { rows: found ? [found] : [] };
+    if (sql.includes('FROM events WHERE id = $1 AND coordinator_id = $2')) {
+      // PostgreSQL rejects unknown selected columns before returning rows, even when a fixture supplies that property.
+      const columns = sql.match(/SELECT ([\s\S]*?)FROM events/)[1].split(',').map(column => column.trim());
+      for (const column of columns) {
+        if (!eventColumns.has(column)) throw Object.assign(new Error(`column "${column}" does not exist`), { code: '42703' });
+      }
+      return { rows: found ? [found] : [] };
+    }
     if (sql.includes('FROM venues WHERE is_active = true')) return { rows: venues };
     throw new Error(`Unexpected query: ${sql}`);
   });
@@ -43,6 +55,47 @@ before(async () => {
 });
 afterEach(() => mock.restoreAll());
 after(async () => { if (server?.listening) await new Promise((resolve) => server.close(resolve)); await pool.end(); });
+
+for (const endpoint of ['venue-suitability', 'eligible-venues']) {
+  test(`VS AC1 / Booking AC1 - ${endpoint} selects only persisted event columns`, async () => {
+    // Arrange: no fabricated required_facilities field exists on the migrated event row.
+    const db = mockDb();
+    // Act: real routing, authorization and suitability rules reach the schema-aware SQL boundary.
+    const result = await request(`/api/events/101/${endpoint}`);
+    // Assert: an undefined column produces 503, so a permissive mock cannot make this regression pass.
+    assert.equal(result.status, 200);
+    assert.equal(db.find('FROM events').length, 1);
+    assert.ok(result.body.venues.some(venue => venue.id === hall.id));
+  });
+}
+
+// Booking AC1: the ordinary request selector must use the same authoritative rules as submission.
+for (const capacity of [99, 100, 101]) {
+  test(`Booking AC1 - filters eligible venues at capacity ${capacity} against 100 attendees`, async () => {
+    // Arrange: only capacity varies; layout and accessibility satisfy the saved requirements.
+    mockDb({ venues: [{ ...hall, capacity }] });
+    // Act / Assert: exactly enough places is eligible, one place short is not.
+    const result = await request('/api/events/101/eligible-venues');
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.venues.map(venue => venue.id), capacity < 100 ? [] : [1]);
+  });
+}
+for (const [field, value] of [['supported_layouts', ['Classroom']], ['accessibility_features', ['Lift']], ['capacity', null]]) {
+  test(`Booking AC1 - omits venues with unmet ${field}`, async () => {
+    // Arrange: each case violates one requirement while an independently eligible venue remains available.
+    mockDb({ found: event, venues: [hall, { ...hall, id: 9, [field]: value }] });
+    // Act / Assert: an option is never included merely because another requirement passes.
+    const result = await request('/api/events/101/eligible-venues');
+    assert.deepEqual(result.body.venues.map(venue => venue.id), [1]);
+  });
+}
+test('Booking AC1 - eligible venue lookup is assignment scoped and rejects invalid event IDs', async () => {
+  // Arrange / Act / Assert: authorization happens before private venue eligibility is read.
+  const db = mockDb({ found: null });
+  assert.equal((await request('/api/events/101/eligible-venues')).status, 404);
+  assert.equal(db.find('FROM venues').length, 0);
+  assert.equal((await request('/api/events/0/eligible-venues')).status, 400);
+});
 
 // Test case: The coordinator sees the organiser's requirements and every active venue checked against them.
 test('VS AC1/AC4/AC5 - the assigned coordinator sees each active venue checked against the organiser\'s venue requirements', async () => {
@@ -87,6 +140,7 @@ for (const role of ['event_organiser', 'event_coordinator_lead', 'venue_staff', 
     const user = { id: 70, email: `${role}@example.com`, role, auth_version: 0 };
     const db = mockDb({ user });
     assert.equal((await request('/api/events/101/venue-suitability', user)).status, 403);
+    assert.equal((await request('/api/events/101/eligible-venues', user)).status, 403);
     assert.equal(db.queries.length, 0);
   });
 }
