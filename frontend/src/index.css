@@ -797,10 +797,10 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 /* A wrapped mobile header leaves less space for the dropdown; dialogs retain their higher overlay layer. */
 .navbar-sticky .notification-dropdown { max-height: min(70dvh, calc(100dvh - var(--app-header-height, 0px) - 16px)); }
 
-/* Keep the event count beside its refresh action, with refresh last at the right edge on every screen size. */
-.onsite-support-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; flex-shrink: 0; max-width: 100%; }
+/* Stretch the compact refresh action to the badge height while keeping it last at the right edge. */
+.onsite-support-actions { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: flex-end; gap: 12px; margin-left: auto; flex-shrink: 0; max-width: 100%; }
 
 /* Event and event-request totals share a blue treatment; lifecycle status colours retain their meaning. */
 .badge.event-count-badge { background: #e7effa; color: #244a73; border: 1px solid #d4e2f3; }
-.onsite-support-actions .onsite-support-refresh { width: 36px; height: 36px; flex: 0 0 36px; padding: 8px; border-radius: 10px; }
+.onsite-support-actions .onsite-support-refresh { width: 30px; height: auto; flex: 0 0 30px; padding: 5px; border-radius: 10px; }
 .onsite-support-refresh svg { display: block; flex-shrink: 0; }
