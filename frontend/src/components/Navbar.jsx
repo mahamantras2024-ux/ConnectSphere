@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoute, roleLabels } from '../auth/dashboardRoutes';
 import NotificationBell from './NotificationBell';
+import useStickyHeader from '../hooks/useStickyHeader';
 // Renders role navigation, account identity, and session controls.
 export default function Navbar() {
   const { user, logout, switchRole } = useAuth();
+  const header = useStickyHeader(user?.role);
   const navigate = useNavigate();
   const location = useLocation();
   // Equipment sections share the dashboard route, but only one header control should appear active.
@@ -25,7 +27,7 @@ export default function Navbar() {
   }
   // Ends the current session and returns to the appropriate login page.
   function handleLogout() { logout(); navigate(external ? '/external/login' : '/login'); }
-  return <><a className="skip-link" href="#main-content">Skip to content</a><nav className="navbar" aria-label="Main navigation">
+  return <><a className="skip-link" href="#main-content">Skip to content</a><nav ref={header} className={`navbar${user ? ' navbar-sticky' : ''}`} aria-label="Main navigation">
     <Link className="brand" to={user ? getDashboardRoute(user.role) : '/external/login'}><span className="brand-mark" aria-hidden="true">C<span>·</span></span><span>ConnectSphere<small>Events, thoughtfully connected.</small></span></Link>
     <div className="nav-links">{user ? <>
       <NavLink to={getDashboardRoute(user.role)} aria-current={equipmentSelected ? false : 'page'}

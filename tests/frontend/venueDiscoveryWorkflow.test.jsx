@@ -202,16 +202,20 @@ it.each([{}, { proposed_date: '2030-10-10' }, { proposed_date: '2030-10-10', pro
 
 it('Workspace AC1 / SCRUM-61 AC1 - full-page navigation reveals the page header after leaving a long list', async () => {
   // jsdom has no layout engine; replace only the browser scroll boundary while retaining real route transitions.
-  const previous = Element.prototype.scrollIntoView;
+  const root = document.documentElement;
+  const previous = Object.getOwnPropertyDescriptor(root, 'scrollTo');
   const scroll = vi.fn();
-  Element.prototype.scrollIntoView = scroll;
+  Object.defineProperty(root, 'scrollTo', { configurable: true, value: scroll });
   try {
     open();
     fireEvent.click(await screen.findByRole('link', { name: /View details/ }));
     await screen.findByRole('heading', { name: event.name });
-    expect(scroll).toHaveBeenLastCalledWith({ block: 'start' });
+    expect(scroll).toHaveBeenLastCalledWith({ top: 0, left: 0 });
     expect(scroll).toHaveBeenCalledTimes(2);
-  } finally { Element.prototype.scrollIntoView = previous; }
+  } finally {
+    if (previous) Object.defineProperty(root, 'scrollTo', previous);
+    else delete root.scrollTo;
+  }
 });
 
 it('SCRUM-39 AC4 AC5 AC6 / SCRUM-61 AC2 - catalogue spelling differences still show editable event requirements as selected', async () => {

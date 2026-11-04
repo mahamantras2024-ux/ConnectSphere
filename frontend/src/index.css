@@ -791,3 +791,10 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .notification-settings select:disabled { background: #f1f2e9; color: var(--muted); cursor: not-allowed; opacity: .75; }
 .notification-settings .coordinator-reminder-frequency { display: grid; gap: 6px; }
 @media (max-width: 640px) { .notification-settings { padding: 20px; } }
+
+/* Signed-in navigation stays in flow; measured clearance also protects notification targets and skip links. */
+/* The small gutter absorbs native fractional scroll rounding and applies only while the header is sticky. */
+html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px) + 8px); }
+.navbar-sticky { position: sticky; top: 0; z-index: 40; }
+/* A wrapped mobile header leaves less space for the dropdown; dialogs retain their higher overlay layer. */
+.navbar-sticky .notification-dropdown { max-height: min(70dvh, calc(100dvh - var(--app-header-height, 0px) - 16px)); }
