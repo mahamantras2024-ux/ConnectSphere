@@ -236,11 +236,11 @@ const queuedEvent = { id: 101, name: 'Community Workshop', proposed_date: '2030-
 const sparseEvent = { id: 102, name: 'Sparse Talk', proposed_date: null, proposed_start_time: '09:00:00', proposed_end_time: null, expected_attendance: null,
   room_layout_preference: null, accessibility_requirements: [], equipment_items: [], technical_support_required: false, video_conferencing_required: false,
   equipment_notes: null, venues: [{ name: 'Room B', capacity: 20 }], latest_safety_check: null };
-// Opens the Safety Officer dashboard with the given queue response.
-async function openSafety(queue) {
+// Opens the real dashboard or one protected review page with an externally supplied queue snapshot.
+async function openSafety(queue, eventId = null) {
   user = { id: 50, email: 'sam@example.com', full_name: 'Sam', role: 'safety_officer', roles: ['safety_officer'] };
   routes['/safety/checks'] = queue;
-  open('/safety/dashboard');
+  open(eventId === null ? '/safety/dashboard' : `/safety/events/${eventId}/check`);
   return screen.findByRole('region', { name: 'Operational safety checks' });
 }
 const card = (panel, name) => within(panel).getByText(name, { selector: 'strong' }).closest('li');
@@ -248,13 +248,22 @@ const facts = (item) => Object.fromEntries([...item.querySelectorAll('dt')].map(
 
 // Test case: The queue shows the facts the Safety Officer reviews, including explicit "not specified" values.
 it('AR AC1 - the Safety Officer sees each ready event with the facts the safety check considers', async () => {
-  const panel = await openSafety({ events: [queuedEvent, sparseEvent] });
+  let panel = await openSafety({ events: [queuedEvent, sparseEvent] });
   await within(panel).findByText('Community Workshop', { selector: 'strong' });
   expect(within(panel).getByText('2 ready')).toBeTruthy();
+  // Safety UI AC2: full facts belong to each event's dedicated page, reached through its compact card.
+  fireEvent.click(within(card(panel, 'Community Workshop')).getByRole('link', { name: 'Conduct safety check for Community Workshop' }));
+  panel = await screen.findByRole('region', { name: 'Operational safety checks' });
+  await within(panel).findByRole('group', { name: 'Outcome for Community Workshop' });
   // The six Week 7 facts; the Operational Feasibility Check facts are covered in operationalSafetyCheck.test.jsx.
   expect(facts(card(panel, 'Community Workshop'))).toMatchObject({ 'Date and time': '2030-10-15, 10:00–12:00', 'Expected attendance': '80', Venue: 'Hall A (capacity 100)',
     Layout: 'Theatre', Accessibility: 'Ramp, Hearing loop', Equipment: 'Projector × 1; On-site technical support; Video-conferencing / hybrid; Spare batteries' });
   expect(within(card(panel, 'Community Workshop')).getByText('Last check: Changes requested')).toBeTruthy();
+  fireEvent.click(screen.getByRole('link', { name: 'Back to safety checks' }));
+  panel = await screen.findByRole('region', { name: 'Operational safety checks' });
+  fireEvent.click(await within(panel).findByRole('link', { name: 'Conduct safety check for Sparse Talk' }));
+  panel = await screen.findByRole('region', { name: 'Operational safety checks' });
+  await within(panel).findByRole('group', { name: 'Outcome for Sparse Talk' });
   expect(facts(card(panel, 'Sparse Talk'))).toMatchObject({ 'Date and time': 'Not specified, 09:00–?', 'Expected attendance': 'Not specified', Venue: 'Room B (capacity 20)',
     Layout: 'Not specified', Accessibility: 'None recorded', Equipment: 'None requested' });
   expect(within(card(panel, 'Sparse Talk')).getByText('Not yet checked')).toBeTruthy();
@@ -262,14 +271,14 @@ it('AR AC1 - the Safety Officer sees each ready event with the facts the safety 
 
 // Test case: An event with no time at all omits the time part instead of inventing one.
 it('AR AC1 - an event without a start time shows only its date', async () => {
-  const panel = await openSafety({ events: [{ ...sparseEvent, proposed_date: '2030-11-01', proposed_start_time: null }] });
+  const panel = await openSafety({ events: [{ ...sparseEvent, proposed_date: '2030-11-01', proposed_start_time: null }] }, 102);
   await within(panel).findByText('Sparse Talk', { selector: 'strong' });
   expect(facts(card(panel, 'Sparse Talk'))['Date and time']).toBe('2030-11-01');
 });
 
 // Test case: Missing outcome or missing notes on a failed check are explained in the form and nothing is sent.
 it('AR AC2 - the safety form requires an outcome, and notes unless approving', async () => {
-  const panel = await openSafety({ events: [queuedEvent] });
+  const panel = await openSafety({ events: [queuedEvent] }, 101);
   const item = await within(panel).findByText('Community Workshop', { selector: 'strong' }).then((strong) => strong.closest('li'));
   fireEvent.click(within(item).getByRole('button', { name: 'Record safety check' }));
   expect(within(panel).getByRole('alert').textContent).toBe('Choose an outcome for the safety check.');
@@ -284,7 +293,7 @@ it('AR AC2 - the safety form requires an outcome, and notes unless approving', a
 it('AR AC2 - the Safety Officer records a failed check with notes', async () => {
   let finish;
   api.post.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-  const panel = await openSafety({ events: [queuedEvent] });
+  const panel = await openSafety({ events: [queuedEvent] }, 101);
   const item = (await within(panel).findByText('Community Workshop', { selector: 'strong' })).closest('li');
   fireEvent.click(within(item).getByLabelText('Request changes'));
   fireEvent.click(within(item).getByLabelText('Reject'));
@@ -293,19 +302,21 @@ it('AR AC2 - the Safety Officer records a failed check with notes', async () => 
   expect(api.post).toHaveBeenCalledWith('/events/101/safety-checks', { outcome: 'rejected', notes: 'Fire exit blocked' }, 'session-token');
   expect(within(item).getByRole('button', { name: 'Recording…' }).disabled).toBe(true);
   expect(within(item).getByLabelText('Reject').matches(':disabled')).toBe(true);
+  routes['/safety/checks'] = { events: [] };
   await act(async () => finish({ message: 'Safety check recorded. The Event Coordinator has been notified.' }));
   expect(within(panel).getByRole('status').textContent).toBe('Safety check recorded. The Event Coordinator has been notified.');
-  expect(within(item).getByLabelText('Reject').checked).toBe(false);
-  expect(within(item).getByLabelText('Notes (required unless approving)').value).toBe('');
+  expect(await within(panel).findByText(/This event is no longer awaiting a safety check/)).toBeTruthy();
+  expect(within(panel).queryByRole('button', { name: 'Record safety check' })).toBeNull();
   expect(api.get.mock.calls.filter(([path]) => path === '/safety/checks')).toHaveLength(2);
 });
 
 // Test case: Approving needs no notes; the outcome is sent with empty notes.
 it('AR AC1 - the Safety Officer approves without notes', async () => {
   api.post.mockResolvedValue({ message: 'Safety check recorded.' });
-  const panel = await openSafety({ events: [queuedEvent] });
+  const panel = await openSafety({ events: [queuedEvent] }, 101);
   const item = (await within(panel).findByText('Community Workshop', { selector: 'strong' })).closest('li');
   fireEvent.click(within(item).getByLabelText('Approve'));
+  routes['/safety/checks'] = { events: [] };
   fireEvent.click(within(item).getByRole('button', { name: 'Record safety check' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/101/safety-checks', { outcome: 'approved', notes: '' }, 'session-token'));
   expect(await within(panel).findByRole('status')).toBeTruthy();
@@ -314,7 +325,7 @@ it('AR AC1 - the Safety Officer approves without notes', async () => {
 // Test case: The server refuses the check (e.g. arrangements changed); the reason is shown.
 it('AR AC1 - a refused safety check shows the server reason', async () => {
   api.post.mockRejectedValue(new Error('No venue booking has been confirmed by Venue Staff.'));
-  const panel = await openSafety({ events: [queuedEvent] });
+  const panel = await openSafety({ events: [queuedEvent] }, 101);
   const item = (await within(panel).findByText('Community Workshop', { selector: 'strong' })).closest('li');
   fireEvent.click(within(item).getByLabelText('Approve'));
   fireEvent.click(within(item).getByRole('button', { name: 'Record safety check' }));

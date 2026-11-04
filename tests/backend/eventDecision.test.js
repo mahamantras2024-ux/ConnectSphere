@@ -414,6 +414,7 @@ for (const [label, body, id, status] of [
   ['a rejection without notes', { outcome: 'rejected' }, 101, 400], ['a change request with blank notes', { outcome: 'changes_requested', notes: '   ', changeAreas: ['venue'] }, 101, 400],
   ['4001-character notes', { outcome: 'approved', notes: 'x'.repeat(4001) }, 101, 400], ['numeric notes', { outcome: 'approved', notes: 5 }, 101, 400],
   ['an unknown outcome', { outcome: 'passed' }, 101, 400], ['event id 0', { outcome: 'approved' }, '0', 400],
+  ['3999-character notes on a rejection', { outcome: 'rejected', notes: 'x'.repeat(3999) }, 101, 201],
   ['4000-character notes on a rejection', { outcome: 'rejected', notes: 'x'.repeat(4000) }, 101, 201],
 ]) {
   // Test case: Sends one boundary or malformed safety check.

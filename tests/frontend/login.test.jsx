@@ -242,7 +242,10 @@ describe('Safety Officer role-based access', () => {
     expect(await screen.findByRole('heading', { name: 'Safety Officer Dashboard' })).toBeTruthy();
     expect(await screen.findByRole('heading', { name: 'Operational safety checks' })).toBeTruthy();
     expect(screen.getByText('Annual Gala')).toBeTruthy();
-    expect(screen.getByLabelText('Provisioned workspaces').textContent).toBe('Safety Officer');
+    // Safety UI AC1 AC2: the operational dashboard replaces profile metadata with a deliberate review action.
+    expect(screen.queryByLabelText('Provisioned workspaces')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Account details' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Conduct safety check for Annual Gala' }).getAttribute('href')).toBe('/safety/events/7/check');
     for (const heading of ['Venues', 'Unassigned requests', 'Assigned active events', 'Pending equipment requests']) {
       expect(screen.queryByRole('heading', { name: heading })).toBeNull();
     }
