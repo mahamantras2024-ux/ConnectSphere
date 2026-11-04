@@ -360,7 +360,7 @@ it('AC5 - moves between support tabs with arrow, Home, and End keys', async () =
 it('AC5 - returns from the empty reservation state to equipment review', async () => {
   await openDashboard();
   fireEvent.click(screen.getByRole('tab', { name: 'Reservations' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Go to equipment request review' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Go to requests' }));
   expect(screen.getByRole('tab', { name: 'Requests', selected: true })).toBeTruthy();
 });
 
@@ -398,7 +398,7 @@ it('AC1 - navigates equipment tabs with the keyboard and returns from an empty r
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Inventory' }), { key: 'Escape' });
   expect(screen.getByRole('tab', { name: 'Inventory' }).getAttribute('aria-selected')).toBe('true');
   fireEvent.click(screen.getByRole('tab', { name: 'Reservations' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Go to requests' }));
   expect(screen.getByRole('tab', { name: 'Requests' }).getAttribute('aria-selected')).toBe('true');
 });
 

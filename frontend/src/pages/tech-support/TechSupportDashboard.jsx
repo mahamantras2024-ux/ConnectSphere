@@ -97,8 +97,7 @@ const dashboardStyles = `
 .support-review-form select,
 .support-review-form textarea { width: 100%; padding: .65rem .75rem; border-radius: 8px; font-size: .875rem; font-family: inherit; box-sizing: border-box; }
 .support-review-form textarea { min-height: 96px; line-height: 1.5; resize: vertical; }
-.support-form-actions { display: flex; }
-.support-form-actions button { width: 100%; min-height: 44px; padding: .65rem 1rem; border-radius: 8px; }
+.support-form-actions { display: flex; justify-content: center; }
 
 /* Pop-up notification */
 .support-toast {
@@ -142,10 +141,6 @@ const dashboardStyles = `
 }
 @media (prefers-reduced-motion: reduce) {
   .support-toast { animation: none; }
-}
-
-@media (max-width: 600px) {
-  .support-form-actions button { width: 100%; }
 }
 
 .support-affected-items { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; }
