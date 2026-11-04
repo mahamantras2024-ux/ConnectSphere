@@ -38,7 +38,7 @@ export default function VenueEventStatusPanel() {
           : <div className="record-grid">{events.map(event => <article className="record-card" key={event.bookingId}>
             <span className="status-badge">{statusLabels[event.status] || 'Pending'}</span>
             <h3>{event.name}</h3><p>{event.venueName}</p>
-            <p>Event status: <strong>{eventStatusLabels[event.eventStatus] || 'Planning'}</strong></p>
+            <p>Event status: <strong className={`status-badge status-${(eventStatusLabels[event.eventStatus] || 'Planning').toLowerCase()}`}>{eventStatusLabels[event.eventStatus] || 'Planning'}</strong></p>
             {event.eventStatus === 'cancelled'
               ? <p className="detail-note">This event will no longer proceed. Handle the associated venue reservation according to the cancellation rules.</p>
               : <dl className="detail-facts"><div><dt>Expected attendance</dt><dd>{event.expectedAttendance ?? 'Not specified'}</dd></div>

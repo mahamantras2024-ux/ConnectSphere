@@ -809,7 +809,7 @@ export default function EventDetail() {
 
           <span className="ed-chip">Event Detail</span>
 
-          <span className={`ed-badge ${statusTone(event.status)}`}>{formatStatus(event.status)}</span>
+          <span className={`ed-badge status-${event.status} ${statusTone(event.status)}`}>{formatStatus(event.status)}</span>
 
         </div>
 

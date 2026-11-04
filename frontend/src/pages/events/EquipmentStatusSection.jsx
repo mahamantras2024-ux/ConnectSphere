@@ -7,7 +7,7 @@ const STATUS_LABELS = {
   partially_available: 'Partially available', unavailable: 'Unavailable',
 };
 // Reuses the existing status badge colours: grey not requested/pending, green confirmed, amber partial, red unavailable.
-const STATUS_BADGES = { not_requested: 'status-draft', pending: 'status-draft', confirmed: 'status-approved', partially_available: 'status-under_review', unavailable: 'status-rejected' };
+const STATUS_BADGES = { not_requested: 'status-draft', pending: 'status-draft', confirmed: 'status-confirmed', partially_available: 'status-under_review', unavailable: 'status-rejected' };
 const ITEM_LABELS = { pending: 'Awaiting review', available: 'Available', affected: 'Affected', unavailable: 'Unavailable', not_recorded: 'Not recorded' };
 // Item statuses that need the coordinator's attention (highlighted like other unmet arrangements).
 const NEEDS_ATTENTION = ['affected', 'unavailable', 'not_recorded'];

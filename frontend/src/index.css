@@ -739,9 +739,6 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .amendment-changes dd { margin: 0; white-space: pre-wrap; }
 .change-explanation { margin: 8px 0; white-space: pre-wrap; }
 
-/* Staff preparation stages use the established warning and neutral tones; cancellation keeps its shared red badge. */
-.onsite-event-card .status-planning { background: var(--cream); color: #685019; }
-.onsite-event-card .status-completed { background: #EFEFE3; color: #616351; }
 
 /* Handover history stays readable and scrolls within the event card on narrow screens. */
 .coordinator-history { min-width: 0; }
@@ -804,3 +801,16 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 .badge.event-count-badge { background: #e7effa; color: #244a73; border: 1px solid #d4e2f3; }
 .onsite-support-actions .onsite-support-refresh { width: 30px; height: auto; flex: 0 0 30px; padding: 5px; border-radius: 10px; }
 .onsite-support-refresh svg { display: block; flex-shrink: 0; }
+
+/* One lifecycle palette for event cards, detail headers and schedule entries across every workspace. */
+:root {
+  --event-planning-bg: #FFF3CD;
+  --event-planning-text: #805B10;
+  --event-confirmed-bg: #E4F2E7;
+  --event-confirmed-text: #245C35;
+  --event-completed-bg: #E9EDF2;
+  --event-completed-text: #475569;
+}
+.status-badge.status-planning, .ed-badge.status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.status-badge.status-confirmed, .ed-badge.status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.status-badge.status-completed, .ed-badge.status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }

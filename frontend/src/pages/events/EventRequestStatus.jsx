@@ -22,7 +22,7 @@ export default function EventRequestStatus({ eventId, onSnapshot }) {
     {error && <p>{error} Status updates are temporarily unavailable.</p>}
     {event && <>
       {!eventId && <h3>{event.name}</h3>}
-      <p>Current status: <strong>{requestStatusLabel(event.status)}</strong></p>
+      <p>Current status: <strong className={`status-badge status-${event.status}`}>{requestStatusLabel(event.status)}</strong></p>
       {event.clarification_outstanding && <p>Action required: clarification outstanding.
         {event.can_manage ? ' Please respond to the Coordinator’s clarification request.' : ' The submitting organiser must respond.'}
       </p>}
