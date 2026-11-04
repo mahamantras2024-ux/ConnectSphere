@@ -73,8 +73,11 @@ const dashboardStyles = `
 .support-qty { font-variant-numeric: tabular-nums; font-weight: 600; }
 .support-text { margin: 0; line-height: 1.5; }
 
-.support-flags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+/* Pair each support label with its value on a separate row, with a shared value column. */
+.support-flags { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: .6rem .75rem; }
+.support-flags > span:not(.support-flag) { color: var(--ink); font-size: .85rem; font-weight: 500; }
 .support-flag {
+  justify-self: start;
   padding: 0.15rem 0.6rem;
   border-radius: 999px;
   background: #e6efff;
