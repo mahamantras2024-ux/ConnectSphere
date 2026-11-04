@@ -418,8 +418,6 @@ h2, h3 { font-weight: 700; }
 
 /* Shared workspace polish keeps the team's event layouts within the warm brand palette. */
 body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 60%), #fbfbef; }
-/* The transparent Technical Support calendar shares a neutral page surface instead of picking up the yellow wash. */
-body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .navbar { gap: 28px; box-shadow: 0 2px 18px #30391c05; }
 .nav-links { column-gap: 22px; row-gap: 12px; }
 .nav-links > a { padding: 10px 12px; border-radius: 8px; }
