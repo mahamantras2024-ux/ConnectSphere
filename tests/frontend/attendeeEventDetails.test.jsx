@@ -141,7 +141,7 @@ describe('SCRUM-35 Attendee View Event Details', () => {
     fireEvent.click(back);
     // Assert: the link goes to the attendee homepage even when there is no browser history.
     expect(await screen.findByRole('heading', { level: 1, name: 'Attendee Dashboard' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Published events' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Published events \(/ })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('UI AC4 - the dashboard labels personal registrations above their event cards', async () => {
@@ -150,7 +150,7 @@ describe('SCRUM-35 Attendee View Event Details', () => {
     // Act
     open();
     const cardTitle = await screen.findByRole('heading', { name: 'My booked workshop' });
-    const heading = screen.getByRole('heading', { level: 2, name: 'My registrations' });
+    const heading = screen.getByRole('heading', { level: 2, name: /^My registrations \(/ });
     // Assert: the section heading precedes the personal card, not the published events list alone.
     expect(heading.compareDocumentPosition(cardTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -170,7 +170,7 @@ describe('SCRUM-35 Attendee View Event Details', () => {
     open('/attendee/events/44');
     expect(await screen.findByText('A day of art workshops and performances.')).toBeTruthy();
     fireEvent.click(screen.getByRole('link', { name: 'Back to events' }));
-    await screen.findByRole('heading', { name: 'Published events' });
+    await screen.findByRole('button', { name: /^Published events \(/ });
     currentEvent = { ...publishedEvent, description: 'Updated programme and performance schedule.', location: '20 River Road' };
     fireEvent.click(screen.getByRole('link', { name: 'View event details' }));
     // Assert: the second page visit requests fresh details and reflects the changed description/location.
