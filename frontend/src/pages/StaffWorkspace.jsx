@@ -3,7 +3,7 @@ import PageIntro from '../components/PageIntro';
 import { roleLabels } from '../auth/dashboardRoutes';
 import { useAuth } from '../context/AuthContext';
 // Shows actual account details without requesting private events or presenting unfinished task queues.
-// `children` adds role-specific panels (e.g. Technical Support notifications) below the account details.
+// `children` adds role-specific panels (e.g. Safety Officer checks) below the account details.
 export default function StaffWorkspace({ role, children }) {
   const { user } = useAuth();
   const workspaces = (user.roles || [user.role]).map(assignedRole => roleLabels[assignedRole]).join(', ');

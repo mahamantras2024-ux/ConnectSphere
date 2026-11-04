@@ -10,22 +10,18 @@ import { OPENED_KEY } from '../notifications/useNotificationOpened';
  * A preview: the title, a one-line summary (AC2) and when the update happened, relative with the exact time (AC3).
  * Pressing it opens the related page straight away and marks it read in the background (AC4), so a slow, stalled or
  * failed mark-read never delays or blocks the page.
- * @param {{ notification: object, onOpen?: () => void, details?: boolean, children?: import('react').ReactNode }} props
- *   `onOpen` lets a dropdown close itself; `details` adds the full message under an expandable "Details" when the preview
- *   shortens it (dashboard panels); `children` are extra controls shown beside the preview (e.g. Mark as read).
+ * @param {{ notification: object, onOpen: () => void }} props notification data and the dropdown close callback.
  */
-export default function NotificationItem({ notification, onOpen, details = false, children }) {
+export default function NotificationItem({ notification, onOpen }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { markRead } = useNotifications();
   const unread = !notification.read_at;
   const summary = previewText(notification.message);
   const ago = relativeTime(notification.created_at);
-  // The full message is offered only when the preview leaves something out (extra lines or a shortened sentence).
-  const hasMore = details && summary !== notification.message.trim();
 
   function open() {
-    onOpen?.();
+    onOpen();
     // Marking read runs in the background: a slow, stalled or failed request must never keep the organiser off the page
     // the notification is about (AC4). The shared list updates when the request completes.
     if (unread) markRead(notification).catch(() => {});
@@ -45,13 +41,6 @@ export default function NotificationItem({ notification, onOpen, details = false
           {ago && <><span>{ago}</span>{' · '}</>}<time dateTime={notification.created_at}>{exactTime(notification.created_at)}</time>
         </span>
       </button>
-      {hasMore && (
-        <details className="notification-details">
-          <summary>Details</summary>
-          <p className="whitespace-pre-wrap">{notification.message}</p>
-        </details>
-      )}
-      {children}
     </li>
   );
 }

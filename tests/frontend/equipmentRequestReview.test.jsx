@@ -58,7 +58,7 @@ it('Workspace AC1 AC2 - Dashboard and equipment sections show only their own con
   render(<MemoryRouter initialEntries={['/tech-support/dashboard']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
   const dashboard = await screen.findByRole('link', { name: 'Dashboard' });
   await screen.findByRole('heading', { name: 'Assigned events' });
-  expect(screen.getByRole('heading', { name: 'Notifications' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
   expect(screen.queryByRole('tabpanel')).toBeNull();
   expect(dashboard.getAttribute('aria-current')).toBe('page');
   // Each selection must remove overview content and every other panel, rather than merely scroll to it.

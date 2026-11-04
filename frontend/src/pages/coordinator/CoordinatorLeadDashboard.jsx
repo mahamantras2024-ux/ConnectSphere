@@ -4,7 +4,6 @@ import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import PageIntro from '../../components/PageIntro';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import LeadRegistrations from '../events/LeadRegistrations';
 
 /** Reviews active requests and changes one coordinator using the assignment seen by the lead. */
@@ -67,7 +66,7 @@ export default function CoordinatorLeadDashboard() {
       </article>)}</div>;
   }
   // Parent notification system: the Lead hears about new requests to assign here and from the navbar bell.
-  return <div className="page"><PageIntro title="Coordinator Lead Dashboard" eyebrow="Internal workspace" description="Review incoming requests and oversee coordinator assignments." /><NotificationsPanel />
+  return <div className="page"><PageIntro title="Coordinator Lead Dashboard" eyebrow="Internal workspace" description="Review incoming requests and oversee coordinator assignments." />
     <button className="button-secondary" disabled={busy} onClick={() => setVersion(value => value + 1)}>Refresh assignments</button>
     {error && <p role="alert" className="error-message">{error}</p>}{message && <p role="status">{message}</p>}
     {!data ? !error && <p role="status">Loading event requests…</p> : <>

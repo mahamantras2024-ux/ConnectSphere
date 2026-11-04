@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import VenueList from '../venues/VenueList';
 import AddVenueModal from '../venues/AddVenueModal';
 import PageIntro from '../../components/PageIntro';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import VenueBookingInbox from './VenueBookingInbox';
 import VenueEventStatusPanel from './VenueEventStatusPanel';
 import VenueReminderPreferences from './VenueReminderPreferences';
@@ -20,7 +19,7 @@ export default function VenueDashboard() {
 
       // Handles this control action and updates the screen state.
       setAdding(true)}>Add venue <span aria-hidden="true">+</span></button>} />
-      <NotificationsPanel />
+
       <VenueEventStatusPanel />
       <VenueBookingInbox />
       <VenueReminderPreferences />

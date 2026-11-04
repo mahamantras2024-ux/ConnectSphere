@@ -207,23 +207,22 @@ it.each([
   expect(screen.getByRole('heading', { name: 'Community Workshop' })).toBeTruthy();
 });
 
-// Test case: The organiser is notified of the outcome on their dashboard and can mark it read (AC6).
-it('AR AC6 - the organiser receives the decision as a dashboard notification and can mark it read', async () => {
+// AC6: organiser outcomes remain accessible and mark read through the bell after removing dashboard feeds.
+it('AR AC6 - the organiser receives the decision in the bell and marks it read on opening', async () => {
   user = { id: 12, email: 'olivia@example.com', full_name: 'Olivia', role: 'event_organiser' };
-  routes['/notifications'] = { unreadCount: 1, notifications: [{ id: 4, title: 'Event request not approved: Community Workshop',
-    message: 'Your event request Community Workshop was not approved by the Event Coordinator.\nReason: Venue unavailable', created_at: '2030-01-02T03:04:05.000Z', read_at: null }] };
+  routes['/notifications'] = { unreadCount: 1, notifications: [{ id: 4, event_id: 101,
+    title: 'Event request not approved: Community Workshop', message: 'Your event request was not approved.',
+    created_at: '2030-01-02T03:04:05.000Z', read_at: null }] };
   api.post.mockResolvedValue({ notification: { id: 4, read_at: '2030-01-02T04:00:00.000Z' } });
   open('/organizer/dashboard');
-  const panel = await screen.findByRole('region', { name: 'Notifications' });
-  const item = (await within(panel).findByText('Event request not approved: Community Workshop')).closest('li');
-  expect(within(item).getByText(/Reason: Venue unavailable/)).toBeTruthy();
-  expect(within(panel).getByText('1 unread')).toBeTruthy();
-  fireEvent.click(within(item).getByRole('button', { name: 'Mark Event request not approved: Community Workshop as read' }));
-  expect(within(item).getByRole('button', { name: /^Mark .* as read$/ }).disabled).toBe(true);
-  expect(await within(panel).findByText('0 unread')).toBeTruthy();
+  fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+  const dropdown = screen.getByRole('region', { name: 'Recent notifications' });
+
+  fireEvent.click(await within(dropdown).findByRole('button', { name: 'Event request not approved: Community Workshop (new)' }));
+
+  expect(await screen.findByRole('button', { name: 'Notifications' })).toBeTruthy();
   expect(api.post).toHaveBeenCalledWith('/notifications/4/read', {}, 'session-token');
-  // The preview still opens its page; the Mark as read control is gone once read.
-  expect(within(item).queryByRole('button', { name: /^Mark / })).toBeNull();
+  expect(await screen.findByRole('heading', { name: 'Community Workshop' })).toBeTruthy();
 });
 
 // ---------- Safety Officer queue (Week 7 change 6) ----------
@@ -383,9 +382,10 @@ it.each([
   routes['/notifications'] = {unreadCount:1,notifications:[{id:19,event_id:101,type,title,message,created_at:'2030-01-02T03:04:05Z',read_at:null}]};
   api.post.mockResolvedValue({notification:{id:19,read_at:'2030-01-02T04:00:00Z'}});
   open('/organizer/dashboard');
-  const panel = await screen.findByRole('region',{name:'Notifications'});
+  fireEvent.click(await screen.findByRole('button', { name: /^Notifications/ }));
+  const panel = screen.getByRole('region',{name:'Recent notifications'});
   const item = (await within(panel).findByText(title)).closest('li');
-  expect(within(item).getByText(message.includes('\n') ? /Reason: Venue unavailable/ : message)).toBeTruthy();
+  expect(within(item).getByText(message.split('\n')[0])).toBeTruthy();
   fireEvent.click(within(item).getByRole('button',{name:`${title} (new)`}));
   expect(await screen.findByRole('heading',{name:'Latest workshop information'})).toBeTruthy();
   const decision = await decisionPanel();
@@ -401,6 +401,7 @@ it('Organiser outcomes AC6 - a notification link never reveals an event outside 
   api.get.mockImplementation(path => path==='/events/101' ? Promise.reject(new Error('Event not found.')) : original(path));
   api.post.mockResolvedValue({notification:{id:19,read_at:'2030-01-02T04:00:00Z'}});
   open('/organizer/dashboard');
+  fireEvent.click(await screen.findByRole('button', { name: /^Notifications/ }));
   fireEvent.click(await screen.findByRole('button',{name:'Historical outcome (new)'}));
   expect(await screen.findByText('Event not found.')).toBeTruthy();
   expect(screen.queryByRole('heading',{name:'Community Workshop'})).toBeNull();

@@ -436,7 +436,6 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .equipment-header-navigation .support-dashboard-tab:hover,
 .equipment-header-navigation .support-dashboard-tab.is-active { background: #eff1dc; color: var(--ink); box-shadow: none; }
 .support-overview { display: grid; gap: 24px; }
-.support-overview > .notifications-panel,
 .support-overview > .onsite-support-section { margin: 0; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: #fffffa; }
 .support-overview .onsite-support-heading { margin-bottom: 18px; }
 .support-overview .empty-state { padding: 24px; }
@@ -556,13 +555,11 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .change-table thead th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b6b5a; }
 /* Raised specificity: the generic `.change-request-card > div` row layout would otherwise squeeze the warning onto one line. */
 .change-request-card > .arrangement-warning { display: grid; gap: 6px; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
-/* In-app notifications shown on each role dashboard. */
-.notifications-panel { display: grid; gap: 12px; margin-bottom: 28px; }
+/* Notification previews in the shared navbar bell. */
 .notification-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .notification-item { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; background: white; }
 .notification-unread { border-color: #c9d79a; background: #fbfdf3; }
 .notification-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.notification-item .button-secondary { justify-self: start; }
 .notification-open { display: grid; justify-content: stretch; justify-items: stretch; gap: 4px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .notification-open:hover strong, .notification-open:focus-visible strong { text-decoration: underline; }
 /* The preview is a plain row, not a pill: undo the global button hover background. */
@@ -570,8 +567,6 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .notification-open:focus-visible { outline: 3px solid #46511e; outline-offset: 3px; border-radius: 6px; }
 .notification-summary { color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notification-time { font-size: 0.8rem; color: #64748b; }
-.notification-details summary { cursor: pointer; font-size: 0.85rem; color: #475569; }
-.notification-details p { margin: 6px 0 0; }
 /* Parent notification system: the bell in the navbar and its dropdown of recent previews. */
 .notification-bell { position: relative; }
 .notification-bell-button { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: 999px; background: transparent; color: inherit; border: 1px solid transparent; }

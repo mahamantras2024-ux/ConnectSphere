@@ -52,8 +52,9 @@ describe('SCRUM-90 Attendee Views Status of Events Available to Them', () => {
   it('AC4 AC5 - shows a cancellation alert and opens the latest cancelled event details from My Registrations', async () => {
     // Arrange: the attendee has an active registration and an unread cancellation notice.
     await open();
-    const notification = await screen.findByRole('region', { name: 'Notifications' });
-    // Assert notification copy is visible in the attendee dashboard.
+    fireEvent.click(await screen.findByRole('button', { name: /^Notifications/ }));
+    const notification = screen.getByRole('region', { name: 'Recent notifications' });
+    // The cancellation notice remains available through the bell.
     expect(await within(notification).findByText('Event cancelled: River Festival')).toBeTruthy();
     // Act: open the registration, then its current event details.
     const registrationCard = screen.getByText('River Festival').closest('article');

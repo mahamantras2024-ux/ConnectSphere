@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
 import EquipmentInventorySection from './EquipmentInventorySection';
@@ -569,7 +568,7 @@ export default function TechSupportDashboard() {
       )}
       {activeTab === 'dashboard' && (
         <div className="support-overview">
-          <NotificationsPanel />
+
           <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
           <ReminderPreference />
         </div>
