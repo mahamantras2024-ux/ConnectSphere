@@ -34,6 +34,8 @@ it('Status AC1 - each registration displays its event name, date and correct sta
     { ...record, id: 4, event_name: 'Cancelled event', proposed_date: '2031-06-15', status: 'registered', event_status: 'cancelled' },
   ];
   open(); await screen.findByRole('heading', { name: 'Registered event' });
+  // Archived registrations are deliberately hidden until the attendee opens their Withdrawn section.
+  fireEvent.click(screen.getByRole('button', { name: /^Withdrawn \(/ }));
   // Assert: each label belongs to the correct card, rather than merely existing elsewhere on the page.
   for (const [name, status, date] of [['Registered event', 'Registered', '2031-06-12'], ['Waitlisted event', 'Waitlisted', '2031-06-13'],
     ['Withdrawn event', 'Withdrawn', '2031-06-14'], ['Cancelled event', 'Cancelled by organiser', '2031-06-15']]) {

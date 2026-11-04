@@ -1,0 +1,17 @@
+/* Scoped disclosure controls follow the coordinator dashboard's cream panels and olive text. */
+.attendee-section { margin-block:20px; }
+.attendee-section-heading { margin:0; }
+.attendee-section-heading > button { width:100%; justify-content:flex-start; gap:12px; border:1px solid #dfe1cb; border-radius:14px; background:#fffffa; color:#30391c; padding:20px; font-size:22px; font-weight:700; text-align:left; }
+.attendee-section-heading > button:hover { background:#f3f5eb; }
+.attendee-section-heading > button:focus-visible { outline:3px solid #f56b2a; outline-offset:3px; }
+.attendee-section-body { padding-top:20px; }
+.attendee-section-body[hidden] { display:none; }
+.attendee-section-body > .attendee-section:first-child { margin-top:0; }
+.attendee-section-body > .attendee-section:last-child { margin-bottom:0; }
+
+/* Nested registration groups are quieter and inset beneath their parent, including their cards. */
+.attendee-section--nested { margin-left:16px; border-left:2px solid #dfe1cb; padding-left:16px; }
+.attendee-section--nested > .attendee-section-heading > button { font-size:18px; padding:12px 16px; border-radius:9px; background:#f3f5eb; }
+/* Registration status wins over the shared grid's position-based colours, including after live withdrawal. */
+.attendee-section .record-card.registration-card-withdrawn { border-top-color:#24476a; }
+.attendee-section .registration-status-withdrawn { background:#e7eef7; color:#24476a; }
