@@ -27,6 +27,8 @@ export default function VenueReminderPreferences() {
   }, [token]);
 
   async function savePreference(nextEnabled, nextFrequencyDays, previousFrequencyDays = frequencyDays) {
+    // Ignore a second activation until the current preference write has settled.
+    if (saving) return;
     setSaving(true); setError(''); setMessage('');
     try {
       const data = await api.put('/venues/notification-preferences', {
@@ -43,11 +45,13 @@ export default function VenueReminderPreferences() {
 
   function frequencyLabel(days) { return days === 7 ? 'Weekly' : days === 3 ? 'Every 3 days' : 'Daily'; }
   function changePreference(event) { savePreference(event.target.checked, frequencyDays); }
+  // Disabled reminders have no cadence to reschedule; guard synthetic events as well as the disabled control.
   function changeFrequency(event) {
+    if (!enabled) return;
     const nextFrequencyDays = Number(event.target.value);
     const previousFrequencyDays = frequencyDays;
     setFrequencyDays(nextFrequencyDays);
-    if (enabled) savePreference(true, nextFrequencyDays, previousFrequencyDays);
+    savePreference(true, nextFrequencyDays, previousFrequencyDays);
   }
 
   return <section className="venue-reminder-preferences" aria-labelledby="venue-reminder-title">
@@ -60,7 +64,7 @@ export default function VenueReminderPreferences() {
         </label>
         <div className="venue-reminder-frequency">
           <label htmlFor="venue-reminder-frequency">frequency</label>
-          <select id="venue-reminder-frequency" value={frequencyDays} disabled={saving} onChange={changeFrequency}>
+          <select id="venue-reminder-frequency" value={frequencyDays} disabled={saving || !enabled} onChange={changeFrequency}>
             <option value="1">Daily</option>
             <option value="3">Every 3 days</option>
             <option value="7">Weekly</option>

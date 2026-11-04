@@ -329,7 +329,7 @@ it.each([
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   // Parent notification system: every signed-in page reads the user's own notifications once (shared by bell and panel).
   const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/notifications','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/tech-support/reminder-preference','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations','/events/equipment-reservation-issues']
+    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations','/events/equipment-reservation-issues']
     : role === 'safety_officer' ? ['/auth/me','/notifications','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);

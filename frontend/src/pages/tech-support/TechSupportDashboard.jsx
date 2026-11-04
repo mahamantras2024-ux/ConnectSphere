@@ -9,7 +9,6 @@ import { useAuth } from '../../context/AuthContext';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
 import OnSiteSupportSection from './OnSiteSupportSection';
-import ReminderPreference from './ReminderPreference';
 import { requestedItems } from './requestedItems';
 
 // Styles for the equipment request review cards only; tabs and other sections keep their existing styling.
@@ -570,7 +569,6 @@ export default function TechSupportDashboard() {
         <div className="support-overview">
 
           <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
-          <ReminderPreference />
         </div>
       )}
       {toast && (

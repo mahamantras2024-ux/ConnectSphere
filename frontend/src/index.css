@@ -774,3 +774,18 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .review-history-changes dt { color: #586351; font-size: 12px; font-weight: 600; }
 .review-history-changes dd { margin: 2px 0 0; }
 .review-history-empty { color: #899088; }
+/* Reminder preferences are secondary settings, reached consistently through each role's notification bell. */
+.notification-dropdown-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.notification-dropdown-header h2 { margin: 0; font-size: 16px; }
+.notification-bell .notification-settings-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--ink); }
+.notification-settings { padding: 24px 30px 30px; }
+.notification-settings .venue-reminder-preferences h2 { font-size: 18px; }
+.notification-settings .venue-reminder-preferences > p { color: var(--muted); font-size: 14px; }
+.notification-settings .venue-reminder-toggle { align-items: flex-start; line-height: 1.6; }
+.notification-settings .venue-reminder-checkbox { margin-top: 2px; }
+.notification-settings .venue-reminder-frequency { display: grid; gap: 6px; max-width: none; }
+.notification-settings .venue-reminder-frequency select { width: 100%; }
+.notification-settings .venue-reminder-frequency label { text-transform: capitalize; }
+.notification-settings select:disabled { background: #f1f2e9; color: var(--muted); cursor: not-allowed; opacity: .75; }
+.notification-settings .coordinator-reminder-frequency { display: grid; gap: 6px; }
+@media (max-width: 640px) { .notification-settings { padding: 20px; } }
