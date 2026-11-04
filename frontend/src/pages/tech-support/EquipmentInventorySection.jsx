@@ -26,16 +26,12 @@ const CALENDAR_STYLES = `
 }
 .equipment-calendar-section .section-heading { justify-content: center; margin: 0 0 .5rem; text-align: center; }
 .equipment-calendar-section .section-heading h2 { margin: 0; font-size: 1.5rem; }
-.equipment-calendar-selected-name { text-align: center; margin: 0 0 1rem; color: var(--muted); font-size: .875rem; }
+.equipment-calendar-selected-name { text-align: center; margin: 0 0 1rem; color: var(--ink); font-size: 1rem; font-weight: 650; }
+.equipment-calendar-equipment-label { display: block; margin-bottom: .25rem; color: var(--muted); font-size: .75rem; font-weight: 500; }
 .equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 0 0 1rem; }
 .equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1.25rem; font-weight: 650; }
 .equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; }
 .equipment-calendar-navigation button:focus-visible { outline: 2px solid #536d37; outline-offset: 2px; }
-.equipment-calendar-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem 1.25rem; margin: 0 0 1rem; padding: 0; list-style: none; font-size: .8125rem; color: var(--cal-text-muted); }
-.equipment-calendar-legend li { display: inline-flex; align-items: center; gap: .4rem; }
-.equipment-calendar-legend li::before { content: ''; width: .75rem; height: .75rem; border-radius: 50%; background: var(--swatch); border: 1px solid var(--swatch); }
-.equipment-calendar-legend .is-available { --swatch: var(--cal-available); }
-.equipment-calendar-legend .is-unavailable { --swatch: var(--cal-unavailable); }
 .equipment-calendar-assets, .equipment-calendar-asset { min-width: 0; }
 .equipment-calendar-scroll { overflow-x: auto; border: 1px solid var(--cal-border); border-radius: 14px; margin-top: 1rem; background: #fff; }
 .equipment-availability-calendar { width: 100%; min-width: 770px; table-layout: fixed; border-collapse: collapse; }
@@ -550,7 +546,7 @@ export default function EquipmentInventorySection({
               <div className="section-heading">
                 <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>Availability calendar</h2>
               </div>
-              <h3 className="equipment-calendar-selected-name">{calendarEquipment.asset_code} — {calendarEquipment.name}</h3>
+              <h3 className="equipment-calendar-selected-name"><span className="equipment-calendar-equipment-label">Equipment</span>{calendarEquipment.asset_code} — {calendarEquipment.name}</h3>
               <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                 <button
                   type="button"
@@ -576,10 +572,6 @@ export default function EquipmentInventorySection({
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
                 </button>
               </div>
-              <ul className="equipment-calendar-legend" aria-label="Legend">
-                <li className="is-available">Available</li>
-                <li className="is-unavailable">Reserved or blocked</li>
-              </ul>
               <div className="equipment-calendar-assets">
                 {[calendarEquipment].map(item => (
                   <section className="equipment-calendar-asset" key={item.id}>
