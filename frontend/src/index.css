@@ -777,7 +777,9 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 /* Reminder preferences are secondary settings, reached consistently through each role's notification bell. */
 .notification-dropdown-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .notification-dropdown-header h2 { margin: 0; font-size: 16px; }
-.notification-bell .notification-settings-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--ink); }
+.notification-bell .notification-settings-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 7px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--ink); }
+/* Keep the standard outline centred at its designed size instead of flex-shrinking it. */
+.notification-settings-button svg { display: block; flex-shrink: 0; }
 .notification-settings { padding: 24px 30px 30px; }
 .notification-settings .venue-reminder-preferences h2 { font-size: 18px; }
 .notification-settings .venue-reminder-preferences > p { color: var(--muted); font-size: 14px; }
