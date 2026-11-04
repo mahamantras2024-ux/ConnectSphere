@@ -83,7 +83,6 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
       {/* Keep closure recording above the destructive catalogue action. */}
       {canManage && <VenueClosureForm venueId={venue.id} token={token} />}
       {canManage && <section className="venue-detail-section" aria-label="Venue management">
-        <h3>Deactivate venue</h3>
         <footer className="venue-record-actions">
           <button className="button-danger" onClick={()=>setRemoving(true)} disabled={busy}>Deactivate venue</button>
         </footer>
