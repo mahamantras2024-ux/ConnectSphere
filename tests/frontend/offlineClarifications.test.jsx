@@ -366,7 +366,7 @@ it.each([['Re-confirm booking', 'confirmed', 'approved', 'Re-confirmed'], ['Reje
     const base = api.get.getMockImplementation();
     api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [flaggedBooking] } : base(path)));
     api.put.mockResolvedValue({ request: { ...flaggedBooking, status, decision_by: 41, updated_at: '2030-01-03T03:00:00.000Z' } });
-    open('/venue/dashboard');
+    open('/venue/dashboard?section=requests');
     const inbox = await screen.findByRole('region', { name: 'Pending venue booking requests' });
     expect(await within(inbox).findByText('Re-check required')).toBeTruthy();
     fireEvent.click(within(inbox).getByRole('button', { name: 'Review Gala at Hall A' }));
@@ -385,7 +385,7 @@ it('OC AC5 - a flagged booking shows the amended requirements and what was origi
   const base = api.get.getMockImplementation();
   api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [amended, { ...amended, id: 10, event_name: 'Fair',
     original_requirements: { accessibility: ['Lift'] } }] } : base(path)));
-  open('/venue/dashboard');
+  open('/venue/dashboard?section=requests');
   fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   const facts = (term) => screen.getByText(term).nextSibling.textContent;
   expect([facts('Expected attendance'), facts('Room layout'), facts('Accessibility')]).toEqual(['150', 'Banquet', 'Ramp']);
@@ -403,7 +403,7 @@ it('OC AC5 - an unflagged pending request still uses the normal approval with a 
   api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [pending] } : base(path)));
   api.put.mockResolvedValue({ request: { ...pending, status: 'tentative', hold_expires_at: '2099-01-02T04:00:00.000Z', decision_by: 41,
     updated_at: '2030-01-03T03:00:00.000Z' } });
-  open('/venue/dashboard');
+  open('/venue/dashboard?section=requests');
   fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   expect(screen.queryByText(/Re-check required/)).toBeNull();
   // Main's tentative-hold workflow: approval needs an expiry and goes through the normal decision, not the re-check.
@@ -418,7 +418,7 @@ it('OC AC5 - a flagged booking is re-checked without a hold expiry', async () =>
   user = venueStaff;
   const base = api.get.getMockImplementation();
   api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [flaggedBooking] } : base(path)));
-  open('/venue/dashboard');
+  open('/venue/dashboard?section=requests');
   fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   expect(screen.queryByLabelText('Hold expiry (Singapore time)')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Approve request' })).toBeNull();

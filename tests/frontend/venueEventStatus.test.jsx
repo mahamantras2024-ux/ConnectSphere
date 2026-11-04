@@ -194,6 +194,18 @@ it('Venue latest status AC4 - leaves every pending booking reviewable while dedu
   expect(within(pending).getByText('Session: Evening')).toBeVisible();
 });
 
+it('Venue tabs AC1 - shows an honest empty overview when an older response omits the event list', async () => {
+  // Arrange: the overview must remain usable when a successful legacy response has no events property.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } } : {});
+
+  // Act: render the real panel rather than supplying a pre-normalized empty array.
+  renderWithSession(<VenueEventStatusPanel />);
+
+  // Assert: removing the defensive empty-list fallback would crash instead of displaying this message.
+  expect(await screen.findByText('No events are currently linked to your assigned venues.')).toBeVisible();
+  expect(screen.queryByRole('article')).not.toBeInTheDocument();
+});
+
 it('AC7 - lets Venue Staff enable daily pending-request reminders with an explicit persisted preference', async () => {
   // Arrange: the preference begins disabled and the save endpoint confirms the enabled value.
   api.put.mockResolvedValue({ preference: { dailyPendingReminders: true, reminderFrequencyDays: 3 } });

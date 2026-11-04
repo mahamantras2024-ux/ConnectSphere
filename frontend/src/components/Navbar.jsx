@@ -12,6 +12,10 @@ export default function Navbar() {
   // Equipment sections share the dashboard route, but only one header control should appear active.
   const equipmentSelected = user?.role === 'technical_support' &&
     ['inventory', 'review', 'reservations'].includes(new URLSearchParams(location.search).get('section'));
+  // Venue sections share the dashboard path; query-aware selection prevents multiple active header links.
+  const venueSection = new URLSearchParams(location.search).get('section');
+  const venueSelected = user?.role === 'venue_staff' && ['venues', 'requests'].includes(venueSection);
+  const sectionSelected = equipmentSelected || venueSelected;
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const external = ['event_organiser', 'attendee'].includes(user?.role);
@@ -28,8 +32,14 @@ export default function Navbar() {
   return <><a className="skip-link" href="#main-content">Skip to content</a><nav className="navbar" aria-label="Main navigation">
     <Link className="brand" to={user ? getDashboardRoute(user.role) : '/external/login'}><span className="brand-mark" aria-hidden="true">C<span>·</span></span><span>ConnectSphere<small>Events, thoughtfully connected.</small></span></Link>
     <div className="nav-links">{user ? <>
-      <NavLink to={getDashboardRoute(user.role)} aria-current={equipmentSelected ? false : 'page'}
-        className={({ isActive }) => isActive && !equipmentSelected ? 'active' : undefined}>{workspaceLabel}</NavLink>
+      <NavLink to={getDashboardRoute(user.role)} aria-current={sectionSelected ? false : 'page'}
+        className={({ isActive }) => isActive && !sectionSelected ? 'active' : undefined}>{workspaceLabel}</NavLink>
+      {user.role === 'venue_staff' && <>
+        <NavLink to="/venue/dashboard?section=venues" aria-current={venueSection === 'venues' ? 'page' : false}
+          className={({ isActive }) => isActive && venueSection === 'venues' ? 'active' : undefined}>Venues</NavLink>
+        <NavLink to="/venue/dashboard?section=requests" aria-current={venueSection === 'requests' ? 'page' : false}
+          className={({ isActive }) => isActive && venueSection === 'requests' ? 'active' : undefined}>Requests</NavLink>
+      </>}
       {/* Technical Support owns the controls; this slot keeps them beside Dashboard in the shared header. */}
       {user.role === 'technical_support' && <div id="technical-support-equipment-navigation" className="equipment-header-navigation" />}
       {/* Venue discovery has its own workspace; it does not belong inside Assigned Events. */}

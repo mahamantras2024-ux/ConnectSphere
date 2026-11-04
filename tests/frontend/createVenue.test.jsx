@@ -23,7 +23,7 @@ vi.mock('../../frontend/src/pages/venues/LocationPicker', () => ({default:({valu
 let mockVenuesList = [];
 
 // Renders the application at a selected in-memory route with optional stored test-session credentials.
-function open(path = '/venue/dashboard', signedIn = true) {
+function open(path = '/venue/dashboard?section=venues', signedIn = true) {
   if (signedIn) {
     localStorage.setItem('cs_token', 'provisioned-token');
   }
@@ -94,9 +94,9 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
 
   // RETURN BRANCH 3: Validation Failure Exit
   // Test case: Supplies only a venue name and checks missing required-field errors prevent creation.
-  it('1. Blocks submission when required fields are missing', async () => {
+  it('Venue tabs AC4 / Create venue AC1 - blocks submission when required fields are missing', async () => {
 
-    open('/venue/dashboard', true);
+    open('/venue/dashboard?section=venues', true);
 
     fireEvent.click(await screen.findByRole('button', { name: /add venue/i }));
     fireEvent.change(screen.getByPlaceholderText('Venue Name *'), { target: { value: 'Incomplete Venue' } });
@@ -113,7 +113,7 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {
       // Supplies controlled vi.spyOn(window, 'alert') behavior for this regression case, including its expected result or failure.
       });
-    open('/venue/dashboard', true);
+    open('/venue/dashboard?section=venues', true);
 
     fireEvent.click(await screen.findByRole('button', { name: /add venue/i }));
 
@@ -130,7 +130,7 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
   // Test case: Fills valid venue data and checks creation and catalogue refresh.
   it('Create venue AC1 AC2 - 3. Creates a new venue and updates the catalogue when all inputs are valid', async () => {
 
-    open('/venue/dashboard', true);
+    open('/venue/dashboard?section=venues', true);
 
     fireEvent.click(await screen.findByRole('button', { name: /add venue/i }));
 
@@ -171,7 +171,7 @@ describe('AddVenueModal - Full Return-Path Coverage Suite', () => {
       });
     api.post.mockRejectedValueOnce(new Error('Internal Server Error'));
 
-    open('/venue/dashboard', true);
+    open('/venue/dashboard?section=venues', true);
 
     fireEvent.click(await screen.findByRole('button', { name: /add venue/i }));
 
