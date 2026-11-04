@@ -24,15 +24,15 @@ const CALENDAR_STYLES = `
   border-top: 1px solid var(--border);
   color: var(--cal-text);
 }
-/* Keep the header compact: typography identifies the equipment, and only navigation needs a control outline. */
+/* Keep the header unboxed; typography and spacing distinguish the equipment from month navigation. */
 .equipment-calendar-header { display: flex; flex-direction: column; align-items: center; gap: .65rem; padding: .25rem 0 .5rem; }
 .equipment-calendar-section .section-heading { justify-content: center; margin: 0; text-align: center; }
 .equipment-calendar-section .section-heading h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.02em; }
 .equipment-calendar-selected-name { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .5rem; max-width: 100%; margin: 0; text-align: center; color: var(--ink); font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }
 .equipment-calendar-equipment-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
-.equipment-calendar-asset-label { display: inline-flex; align-items: center; gap: .45rem; max-width: 100%; padding: .35rem .65rem; border: 1px solid #dfe5d4; border-radius: 8px; background: #fff; }
-.equipment-calendar-asset-code { flex-shrink: 0; padding: .2rem .4rem; border-radius: 5px; background: #e7effa; color: #244a73; font-size: .75rem; font-weight: 600; white-space: nowrap; }
-.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: .65rem; max-width: 100%; margin: .35rem 0 0; padding: .25rem; border: 1px solid #dfe5d4; border-radius: 10px; background: #fff; }
+.equipment-calendar-asset-label { display: inline-flex; align-items: center; gap: .45rem; max-width: 100%; padding: 0; }
+.equipment-calendar-asset-code { flex-shrink: 0; color: var(--ink); font-size: inherit; font-weight: inherit; white-space: nowrap; }
+.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: .65rem; max-width: 100%; margin: .35rem 0 0; padding: 0; }
 .equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; }
 .equipment-calendar-navigation button:hover:not(:disabled) { background: #f0f3e8; box-shadow: none; }
