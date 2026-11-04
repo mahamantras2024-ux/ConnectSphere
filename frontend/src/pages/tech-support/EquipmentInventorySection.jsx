@@ -24,18 +24,16 @@ const CALENDAR_STYLES = `
   border-top: 1px solid var(--border);
   color: var(--cal-text);
 }
-/* A single header panel groups the selected asset and month without adding noise to the day grid. */
-.equipment-calendar-header { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 1.5rem; border: 1px solid #dfe5d4; border-radius: 18px; background: linear-gradient(135deg, #eef2e3, #fafbf5); }
+/* Keep the header compact: typography identifies the equipment, and only navigation needs a control outline. */
+.equipment-calendar-header { display: flex; flex-direction: column; align-items: center; gap: .65rem; padding: .25rem 0 .5rem; }
 .equipment-calendar-section .section-heading { justify-content: center; margin: 0; text-align: center; }
-.equipment-calendar-section .section-heading h2 { display: flex; align-items: center; justify-content: center; gap: .65rem; margin: 0; font-size: 1.5rem; letter-spacing: -.03em; }
-.equipment-calendar-title-icon { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: 12px; background: #e0e8cc; color: #536d37; }
-.equipment-calendar-selected-name { display: flex; align-items: center; gap: .75rem; max-width: 100%; margin: 0; padding: .75rem 1.1rem; border: 1px solid #e1e6d8; border-radius: 12px; background: #fff; box-shadow: 0 3px 10px #30391c06; text-align: center; color: var(--ink); font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
-.equipment-calendar-selected-name > svg { flex-shrink: 0; color: #71834e; }
-.equipment-calendar-equipment-label { display: block; margin-bottom: .2rem; color: var(--muted); font-size: .7rem; font-weight: 500; letter-spacing: .05em; }
-.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: .65rem; max-width: 100%; margin: 0; padding: .35rem; border: 1px solid #dfe5d4; border-radius: 14px; background: #fff; box-shadow: 0 3px 10px #30391c06; }
-.equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1.125rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; padding: 0; border: 0; border-radius: 9px; background: #f0f3e8; }
-.equipment-calendar-navigation button:hover:not(:disabled) { background: #e1e8d1; box-shadow: none; }
+.equipment-calendar-section .section-heading h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.02em; }
+.equipment-calendar-selected-name { max-width: 100%; margin: 0; text-align: center; color: var(--ink); font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
+.equipment-calendar-equipment-label { display: inline-block; margin-right: .5rem; padding-right: .5rem; border-right: 1px solid #d8decc; color: var(--muted); font-size: .8rem; font-weight: 400; }
+.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: .65rem; max-width: 100%; margin: .35rem 0 0; padding: .25rem; border: 1px solid #dfe5d4; border-radius: 10px; background: #fff; }
+.equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; }
+.equipment-calendar-navigation button:hover:not(:disabled) { background: #f0f3e8; box-shadow: none; }
 .equipment-calendar-navigation button:focus-visible { outline: 2px solid #536d37; outline-offset: 2px; }
 .equipment-calendar-assets, .equipment-calendar-asset { min-width: 0; }
 .equipment-calendar-scroll { overflow-x: auto; border: 1px solid var(--cal-border); border-radius: 14px; margin-top: 1rem; background: #fff; }
@@ -59,9 +57,7 @@ const CALENDAR_STYLES = `
 .equipment-calendar-status { display: block; font-size: .8rem; font-weight: 400; line-height: 1.4; }
 .equipment-calendar-blocked-reason { display: block; margin-top: .4rem; color: #8B2E2E; font-size: .7rem; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
-  .equipment-calendar-header { padding: 1.25rem .75rem; }
   .equipment-calendar-section .section-heading h2 { font-size: 1.25rem; }
-  .equipment-calendar-title-icon { width: 36px; height: 36px; }
   .equipment-calendar-navigation { gap: .35rem; }
   .equipment-calendar-navigation > span { min-width: 0; padding: 0 .5rem; font-size: 1rem; }
 }
@@ -555,13 +551,11 @@ export default function EquipmentInventorySection({
               <div className="equipment-calendar-header">
                 <div className="section-heading">
                   <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>
-                    <span className="equipment-calendar-title-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18" /></svg></span>
                     Availability calendar
                   </h2>
                 </div>
                 <h3 className="equipment-calendar-selected-name">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z" /><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5" /></svg>
-                  <span><span className="equipment-calendar-equipment-label">Equipment</span>{calendarEquipment.asset_code} — {calendarEquipment.name}</span>
+                  <span><span className="equipment-calendar-equipment-label">Equipment</span>{' '}{calendarEquipment.asset_code} — {calendarEquipment.name}</span>
                 </h3>
                 <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                   <button
