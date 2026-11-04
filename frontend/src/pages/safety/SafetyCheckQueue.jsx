@@ -103,7 +103,7 @@ export default function SafetyCheckQueue() {
   return (
     <section className="card safety-queue" aria-labelledby="safety-queue-title">
       <div className="section-heading"><h2 id="safety-queue-title">Operational safety checks</h2>
-        {events && <span className="badge">{events.length} ready</span>}</div>
+        {events && <span className="badge event-count-badge">{events.length} ready</span>}</div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {targetMissing && (

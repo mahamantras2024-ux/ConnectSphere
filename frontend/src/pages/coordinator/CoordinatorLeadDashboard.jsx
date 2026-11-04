@@ -71,7 +71,7 @@ export default function CoordinatorLeadDashboard() {
     {error && <p role="alert" className="error-message">{error}</p>}{message && <p role="status">{message}</p>}
     {!data ? !error && <p role="status">Loading event requests…</p> : <>
       {data.coordinators.length === 0 && <p role="status">No Event Coordinators are provisioned. Contact your administrator.</p>}
-      <div className="section-heading"><h2>Unassigned requests</h2><span className="badge">{data.events.filter(event => event.coordinator_id === null).length} requests</span></div>
+      <div className="section-heading"><h2>Unassigned requests</h2><span className="badge event-count-badge">{data.events.filter(event => event.coordinator_id === null).length} requests</span></div>
       {renderEvents(data.events.filter(event => event.coordinator_id === null), 'No unassigned requests.')}
       <div className="section-heading"><h2>Assigned active events</h2></div>
       {renderEvents(data.events.filter(event => event.coordinator_id !== null), 'No assigned active events.')}

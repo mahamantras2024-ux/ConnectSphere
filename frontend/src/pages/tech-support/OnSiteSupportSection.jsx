@@ -41,10 +41,10 @@ export default function OnSiteSupportSection({ token, onRelease }) {
         <p className="onsite-support-description">Events with your assigned support, equipment reviews or equipment reservations.</p>
       </div>
       <div className="onsite-support-actions">
-        <span className="badge onsite-support-count">{events.length} {events.length === 1 ? 'event' : 'events'}</span>
+        <span className="badge event-count-badge">{events.length} {events.length === 1 ? 'event' : 'events'}</span>
         <button type="button" className="button-secondary onsite-support-refresh" onClick={refresh} disabled={loading}
           aria-label="Refresh event statuses" title="Refresh event statuses" aria-busy={loading}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="23 4 23 10 17 10" />
             <polyline points="1 20 1 14 7 14" />

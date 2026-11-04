@@ -602,7 +602,7 @@ export default function TechSupportDashboard() {
                 <p className="onsite-support-description">Review equipment requirements and record what can be fulfilled.</p>
               </div>
               <div className="equipment-review-actions">
-                <span className="badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
+                <span className="badge event-count-badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
                 <button type="button" className="button-secondary" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
               </div>
             </div>
