@@ -16,10 +16,8 @@ const CALENDAR_STYLES = `
   --cal-border: #dfe5d4;
   --cal-text: var(--ink);
   --cal-text-muted: #586343;
-  --cal-available: #245C35;
-  --cal-available-bg: #E4F2E7;
-  --cal-unavailable: #8B2E2E;
-  --cal-unavailable-bg: #FBE5E5;
+  --cal-available: #22C55E;
+  --cal-unavailable: #EF4444;
   width: 100%;
   margin-top: 2rem;
   padding-top: 1.5rem;
@@ -35,9 +33,9 @@ const CALENDAR_STYLES = `
 .equipment-calendar-navigation button:focus-visible { outline: 2px solid #536d37; outline-offset: 2px; }
 .equipment-calendar-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem 1.25rem; margin: 0 0 1rem; padding: 0; list-style: none; font-size: .8125rem; color: var(--cal-text-muted); }
 .equipment-calendar-legend li { display: inline-flex; align-items: center; gap: .4rem; }
-.equipment-calendar-legend li::before { content: ''; width: .75rem; height: .75rem; border-radius: 50%; background: var(--swatch-bg); border: 1px solid var(--swatch); }
-.equipment-calendar-legend .is-available { --swatch: var(--cal-available); --swatch-bg: var(--cal-available-bg); }
-.equipment-calendar-legend .is-unavailable { --swatch: var(--cal-unavailable); --swatch-bg: var(--cal-unavailable-bg); }
+.equipment-calendar-legend li::before { content: ''; width: .75rem; height: .75rem; border-radius: 50%; background: var(--swatch); border: 1px solid var(--swatch); }
+.equipment-calendar-legend .is-available { --swatch: var(--cal-available); }
+.equipment-calendar-legend .is-unavailable { --swatch: var(--cal-unavailable); }
 .equipment-calendar-assets, .equipment-calendar-asset { min-width: 0; }
 .equipment-calendar-scroll { overflow-x: auto; border: 1px solid var(--cal-border); border-radius: 14px; margin-top: 1rem; background: #fff; }
 .equipment-availability-calendar { width: 100%; min-width: 770px; table-layout: fixed; border-collapse: collapse; }
@@ -55,10 +53,10 @@ const CALENDAR_STYLES = `
 .equipment-calendar-window, .equipment-calendar-day > .equipment-calendar-status { padding: 0; background: transparent; color: var(--cal-text-muted); overflow-wrap: anywhere; }
 .equipment-calendar-window { display: grid; gap: .25rem; min-width: 0; }
 /* Dots identify availability without filling each day with a coloured card. */
-.equipment-calendar-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: .4rem; border-radius: 50%; background: var(--cal-available); vertical-align: middle; }
+.equipment-calendar-status::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: .4rem; border-radius: 50%; background: var(--cal-available); vertical-align: middle; }
 .equipment-calendar-status.is-unavailable::before { background: var(--cal-unavailable); }
 .equipment-calendar-status { display: block; font-size: .8rem; font-weight: 400; line-height: 1.4; }
-.equipment-calendar-blocked-reason { display: block; margin-top: .4rem; color: var(--cal-unavailable); font-size: .7rem; overflow-wrap: anywhere; }
+.equipment-calendar-blocked-reason { display: block; margin-top: .4rem; color: #8B2E2E; font-size: .7rem; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .equipment-calendar-navigation { gap: .65rem; }
 }
