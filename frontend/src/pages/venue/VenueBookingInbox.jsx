@@ -75,7 +75,7 @@ export default function VenueBookingInbox() {
     {error && <p role="alert" className="error-message">{error}</p>}
     {loading ? <p role="status">Loading booking requests…</p> : data && (!requests.length ? <p>No pending venue booking requests.</p>
       : <div className="record-grid">{requests.map(request => <article className="record-card" key={request.id}>
-        <span className="status-badge">{request.recheck_required_at ? 'Re-check required' : request.status==='tentative'?'Tentative hold':'Pending'}</span><h3>{request.event_name}</h3><p>{request.venue_name}</p>
+        <span className="status-badge venue-booking-badge" data-booking-status={request.recheck_required_at ? 'recheck' : request.status==='tentative' ? 'tentative' : 'pending'}>{request.recheck_required_at ? 'Re-check required' : request.status==='tentative'?'Tentative hold':'Pending'}</span><h3>{request.event_name}</h3><p>{request.venue_name}</p>
         {request.requirements?.sessionName && <p className="eyebrow">Session: {request.requirements.sessionName}</p>}
         {request.status==='tentative' && <p>Expires {singaporeTime(request.hold_expires_at)} (SGT)</p>}
         <p>{singaporeTime(request.start_datetime)} – {singaporeTime(request.end_datetime)}</p>

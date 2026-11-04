@@ -544,6 +544,13 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .safety-review-requirement { margin: 0; padding: 8px 12px; border-radius: 8px; background: #eef6e6; color: #38521f; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
 
+/* Venue dashboard badges fit their labels; booking decisions keep distinct colours from the event's lifecycle. */
+.venue-event-status .status-badge, .booking-inbox .status-badge { align-self: flex-start; padding: 3px 8px; border-radius: 999px; font-size: 10px; line-height: 1.4; }
+.venue-booking-badge[data-booking-status="pending"] { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.venue-booking-badge[data-booking-status="approved"] { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.venue-booking-badge[data-booking-status="rejected"] { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+.venue-booking-badge[data-booking-status="recheck"] { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+
 /* SCRUM-43 keeps the queue distinct from the catalogue and gives the review drawer comfortable, readable spacing. */
 .booking-inbox { margin-block: 2rem; padding: 1.5rem; border: 1px solid var(--color-border, #d8dbc8); border-radius: 1rem; background: #fff; }
 .booking-inbox .section-heading { gap: 1rem; align-items: center; flex-wrap: wrap; }
