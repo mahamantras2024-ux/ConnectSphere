@@ -799,3 +799,8 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 
 /* Keep the event count beside its refresh action, with refresh last at the right edge on every screen size. */
 .onsite-support-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; flex-shrink: 0; max-width: 100%; }
+
+/* Distinguish the event total from status badges and keep refresh a compact, accessible icon action. */
+.onsite-support-actions .onsite-support-count { background: #e7effa; color: #244a73; border: 1px solid #d4e2f3; }
+.onsite-support-actions .onsite-support-refresh { width: 44px; height: 44px; flex: 0 0 44px; padding: 10px; border-radius: 10px; }
+.onsite-support-refresh svg { display: block; flex-shrink: 0; }
