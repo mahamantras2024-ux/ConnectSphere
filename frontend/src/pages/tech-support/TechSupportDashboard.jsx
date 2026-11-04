@@ -23,14 +23,15 @@ const dashboardStyles = `
 }
 .support-empty p { margin: 0.25rem 0; }
 
-/* Request card: few blocks, one text size, generous spacing */
+/* Consistent type and spacing make the request facts and review form read as one compact card. */
 .support-request {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 1rem;
   height: 100%;
   box-sizing: border-box;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 .support-request > h2 {
   margin: 0;
@@ -39,24 +40,25 @@ const dashboardStyles = `
 }
 .support-request h3 {
   margin: 0 0 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #5b6470;
+  font-size: .875rem;
+  font-weight: 650;
+  color: var(--ink);
 }
 
-/* Key facts: label on the left, value on the right, one line each */
-.support-facts { margin: 0; display: grid; gap: 0.35rem; }
+/* Keep fact labels aligned and let long venue addresses wrap beneath the venue name. */
+.support-facts { margin: 0; display: grid; gap: .5rem; }
 .support-facts > div {
   display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-columns: 3.25rem minmax(0, 1fr);
   gap: 0.75rem;
 }
-.support-facts dt { color: #5b6470; }
+.support-facts dt { color: var(--muted); font-size: .8125rem; }
 .support-facts dd { margin: 0; font-size: inherit; font-weight: 500; overflow-wrap: anywhere; }
+.support-facts dd > .support-muted { display: block; margin-top: .15rem; font-size: .8125rem; font-weight: 400; }
 
 /* Equipment */
 .support-request-section {
-  padding-top: 1.1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border, #e3e6eb);
   display: grid;
   gap: 0.75rem;
@@ -71,18 +73,15 @@ const dashboardStyles = `
 }
 .support-items li + li { border-top: 1px solid var(--border, #eceef2); }
 .support-qty { font-variant-numeric: tabular-nums; font-weight: 600; }
-.support-text { margin: 0; line-height: 1.5; }
+.support-request .support-text { margin: 0; color: var(--ink); font-size: inherit; line-height: 1.5; }
 
 /* Pair each support label with its value on a separate row, with a shared value column. */
-.support-flags { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: .6rem .75rem; }
+.support-flags { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .5rem .75rem; }
 .support-flags > span:not(.support-flag) { color: var(--ink); font-size: .85rem; font-weight: 500; }
 .support-flag {
   justify-self: start;
-  padding: 0.15rem 0.6rem;
-  border-radius: 999px;
-  background: #e6efff;
-  color: #17408a;
-  font-size: 0.8rem;
+  color: var(--muted);
+  font-size: .8125rem;
 }
 
 /* Review form pinned to the bottom so cards in a row line up */
@@ -90,15 +89,16 @@ const dashboardStyles = `
   display: grid;
   gap: 0.85rem;
   margin-top: auto;
-  padding-top: 1.1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border, #e3e6eb);
 }
 .support-review-form h3 { margin: 0; }
-.support-review-form label { display: grid; gap: 0.3rem; font-weight: 500; }
+.support-review-form label { display: grid; gap: .4rem; font-size: .8125rem; font-weight: 500; }
 .support-review-form select,
-.support-review-form textarea { width: 100%; font: inherit; box-sizing: border-box; }
-.support-review-form textarea { resize: vertical; }
-.support-form-actions { display: flex; justify-content: center; }
+.support-review-form textarea { width: 100%; padding: .65rem .75rem; border-radius: 8px; font-size: .875rem; font-family: inherit; box-sizing: border-box; }
+.support-review-form textarea { min-height: 96px; line-height: 1.5; resize: vertical; }
+.support-form-actions { display: flex; }
+.support-form-actions button { width: 100%; min-height: 44px; padding: .65rem 1rem; border-radius: 8px; }
 
 /* Pop-up notification */
 .support-toast {
@@ -254,8 +254,8 @@ function EquipmentRequestCard({ request, onReview }) {
           <dd>
             {request.venue_name || 'Not assigned'}
             {request.venue_location
-              ? <span className="support-muted"> · {request.venue_location}</span>
-              : <><span className="support-muted"> · </span><span>Not provided</span></>}
+              ? <span className="support-muted">{request.venue_location}</span>
+              : <span className="support-muted">Not provided</span>}
           </dd>
         </div>
       </dl>
