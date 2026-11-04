@@ -23,7 +23,7 @@ export default function VenueDashboard() {
   useLayoutEffect(() => { setAdding(false); }, [section]);
 
   return (
-    <div className="page">
+    <div className="page venue-dashboard">
       <PageIntro title="Venue Staff Dashboard" eyebrow="Spaces & possibilities"
         description={`Welcome, ${user.full_name}. Keep every space ready for its next event.`}
         action={section === 'venues' ? <button onClick={() => setAdding(true)}>Add venue <span aria-hidden="true">+</span></button> : undefined} />
