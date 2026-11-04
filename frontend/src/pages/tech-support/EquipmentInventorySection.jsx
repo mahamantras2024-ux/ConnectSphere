@@ -26,14 +26,14 @@ const CALENDAR_STYLES = `
   border-top: 1px solid var(--border);
   color: var(--cal-text);
 }
-.equipment-calendar-section .section-heading { margin: 0 0 .5rem; }
+.equipment-calendar-section .section-heading { justify-content: center; margin: 0 0 .5rem; text-align: center; }
 .equipment-calendar-section .section-heading h2 { margin: 0; font-size: 1.5rem; }
-.equipment-calendar-selected-name { margin: 0 0 1rem; color: var(--muted); font-size: .875rem; }
-.equipment-calendar-navigation { display: flex; align-items: center; gap: 1rem; margin: 0 0 1rem; }
+.equipment-calendar-selected-name { text-align: center; margin: 0 0 1rem; color: var(--muted); font-size: .875rem; }
+.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 0 0 1rem; }
 .equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1.25rem; font-weight: 650; }
 .equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; }
 .equipment-calendar-navigation button:focus-visible { outline: 2px solid #536d37; outline-offset: 2px; }
-.equipment-calendar-legend { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin: 0 0 1rem; padding: 0; list-style: none; font-size: .8125rem; color: var(--cal-text-muted); }
+.equipment-calendar-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem 1.25rem; margin: 0 0 1rem; padding: 0; list-style: none; font-size: .8125rem; color: var(--cal-text-muted); }
 .equipment-calendar-legend li { display: inline-flex; align-items: center; gap: .4rem; }
 .equipment-calendar-legend li::before { content: ''; width: .75rem; height: .75rem; border-radius: 50%; background: var(--swatch-bg); border: 1px solid var(--swatch); }
 .equipment-calendar-legend .is-available { --swatch: var(--cal-available); --swatch-bg: var(--cal-available-bg); }
@@ -52,10 +52,12 @@ const CALENDAR_STYLES = `
 .equipment-calendar-section .equipment-calendar-windows li { list-style: none; margin: 0; }
 .equipment-calendar-section .equipment-calendar-windows li::before,
 .equipment-calendar-section .equipment-calendar-windows li::after { content: none; display: none; }
-.equipment-calendar-window, .equipment-calendar-day > .equipment-calendar-status { padding: .6rem; border-left: 3px solid var(--cal-available); border-radius: 7px; background: var(--cal-available-bg); color: var(--cal-available); overflow-wrap: anywhere; }
+.equipment-calendar-window, .equipment-calendar-day > .equipment-calendar-status { padding: 0; background: transparent; color: var(--cal-text-muted); overflow-wrap: anywhere; }
 .equipment-calendar-window { display: grid; gap: .25rem; min-width: 0; }
-.equipment-calendar-window.is-unavailable, .equipment-calendar-day > .equipment-calendar-status.is-unavailable { border-left-color: var(--cal-unavailable); background: var(--cal-unavailable-bg); color: var(--cal-unavailable); }
-.equipment-calendar-status { display: block; font-size: .8rem; font-weight: 600; line-height: 1.4; }
+/* Dots identify availability without filling each day with a coloured card. */
+.equipment-calendar-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: .4rem; border-radius: 50%; background: var(--cal-available); vertical-align: middle; }
+.equipment-calendar-status.is-unavailable::before { background: var(--cal-unavailable); }
+.equipment-calendar-status { display: block; font-size: .8rem; font-weight: 400; line-height: 1.4; }
 .equipment-calendar-blocked-reason { display: block; margin-top: .4rem; color: var(--cal-unavailable); font-size: .7rem; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .equipment-calendar-navigation { gap: .65rem; }
