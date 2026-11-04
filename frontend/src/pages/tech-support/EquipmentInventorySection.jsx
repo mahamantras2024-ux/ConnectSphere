@@ -24,13 +24,18 @@ const CALENDAR_STYLES = `
   border-top: 1px solid var(--border);
   color: var(--cal-text);
 }
-.equipment-calendar-section .section-heading { justify-content: center; margin: 0 0 .5rem; text-align: center; }
-.equipment-calendar-section .section-heading h2 { margin: 0; font-size: 1.5rem; }
-.equipment-calendar-selected-name { text-align: center; margin: 0 0 1rem; color: var(--ink); font-size: 1rem; font-weight: 650; }
-.equipment-calendar-equipment-label { display: block; margin-bottom: .25rem; color: var(--muted); font-size: .75rem; font-weight: 500; }
-.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 0 0 1rem; }
-.equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1.25rem; font-weight: 650; }
-.equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; }
+/* A single header panel groups the selected asset and month without adding noise to the day grid. */
+.equipment-calendar-header { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 1.5rem; border: 1px solid #dfe5d4; border-radius: 18px; background: linear-gradient(135deg, #eef2e3, #fafbf5); }
+.equipment-calendar-section .section-heading { justify-content: center; margin: 0; text-align: center; }
+.equipment-calendar-section .section-heading h2 { display: flex; align-items: center; justify-content: center; gap: .65rem; margin: 0; font-size: 1.5rem; letter-spacing: -.03em; }
+.equipment-calendar-title-icon { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: 12px; background: #e0e8cc; color: #536d37; }
+.equipment-calendar-selected-name { display: flex; align-items: center; gap: .75rem; max-width: 100%; margin: 0; padding: .75rem 1.1rem; border: 1px solid #e1e6d8; border-radius: 12px; background: #fff; box-shadow: 0 3px 10px #30391c06; text-align: center; color: var(--ink); font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
+.equipment-calendar-selected-name > svg { flex-shrink: 0; color: #71834e; }
+.equipment-calendar-equipment-label { display: block; margin-bottom: .2rem; color: var(--muted); font-size: .7rem; font-weight: 500; letter-spacing: .05em; }
+.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: .65rem; max-width: 100%; margin: 0; padding: .35rem; border: 1px solid #dfe5d4; border-radius: 14px; background: #fff; box-shadow: 0 3px 10px #30391c06; }
+.equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1.125rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; padding: 0; border: 0; border-radius: 9px; background: #f0f3e8; }
+.equipment-calendar-navigation button:hover:not(:disabled) { background: #e1e8d1; box-shadow: none; }
 .equipment-calendar-navigation button:focus-visible { outline: 2px solid #536d37; outline-offset: 2px; }
 .equipment-calendar-assets, .equipment-calendar-asset { min-width: 0; }
 .equipment-calendar-scroll { overflow-x: auto; border: 1px solid var(--cal-border); border-radius: 14px; margin-top: 1rem; background: #fff; }
@@ -54,7 +59,11 @@ const CALENDAR_STYLES = `
 .equipment-calendar-status { display: block; font-size: .8rem; font-weight: 400; line-height: 1.4; }
 .equipment-calendar-blocked-reason { display: block; margin-top: .4rem; color: #8B2E2E; font-size: .7rem; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
-  .equipment-calendar-navigation { gap: .65rem; }
+  .equipment-calendar-header { padding: 1.25rem .75rem; }
+  .equipment-calendar-section .section-heading h2 { font-size: 1.25rem; }
+  .equipment-calendar-title-icon { width: 36px; height: 36px; }
+  .equipment-calendar-navigation { gap: .35rem; }
+  .equipment-calendar-navigation > span { min-width: 0; padding: 0 .5rem; font-size: 1rem; }
 }
 `;
 
@@ -543,34 +552,42 @@ export default function EquipmentInventorySection({
           {searchCalendarAssets.length > 0 && (
             <section className="equipment-calendar-section" aria-labelledby="equipment-calendar-heading">
               <style>{CALENDAR_STYLES}</style>
-              <div className="section-heading">
-                <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>Availability calendar</h2>
-              </div>
-              <h3 className="equipment-calendar-selected-name"><span className="equipment-calendar-equipment-label">Equipment</span>{calendarEquipment.asset_code} — {calendarEquipment.name}</h3>
-              <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
-                <button
-                  type="button"
-                  className="button-secondary"
-                  aria-label="Previous month"
-                  title="Previous month"
-                  onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() - 1, 1)))}
-                  disabled={!canMoveToPreviousMonth}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m14 6-6 6 6 6" /></svg>
-                </button>
-                <span aria-live="polite" aria-atomic="true">
-                  {getMonthLabel(displayedMonth.toISOString().slice(0, 10))}
-                </span>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  aria-label="Next month"
-                  title="Next month"
-                  onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1)))}
-                  disabled={!canMoveToNextMonth}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
-                </button>
+              <div className="equipment-calendar-header">
+                <div className="section-heading">
+                  <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>
+                    <span className="equipment-calendar-title-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18" /></svg></span>
+                    Availability calendar
+                  </h2>
+                </div>
+                <h3 className="equipment-calendar-selected-name">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z" /><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5" /></svg>
+                  <span><span className="equipment-calendar-equipment-label">Equipment</span>{calendarEquipment.asset_code} — {calendarEquipment.name}</span>
+                </h3>
+                <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    aria-label="Previous month"
+                    title="Previous month"
+                    onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() - 1, 1)))}
+                    disabled={!canMoveToPreviousMonth}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m14 6-6 6 6 6" /></svg>
+                  </button>
+                  <span aria-live="polite" aria-atomic="true">
+                    {getMonthLabel(displayedMonth.toISOString().slice(0, 10))}
+                  </span>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    aria-label="Next month"
+                    title="Next month"
+                    onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1)))}
+                    disabled={!canMoveToNextMonth}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
+                  </button>
+                </div>
               </div>
               <div className="equipment-calendar-assets">
                 {[calendarEquipment].map(item => (
