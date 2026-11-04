@@ -70,7 +70,7 @@ export default function VenueBookingInbox() {
   }
   return <section className="booking-inbox" aria-labelledby="booking-inbox-title">
     <div className="section-heading"><div><p className="eyebrow">Venue arrangements</p><h2 id="booking-inbox-title">Pending venue booking requests</h2></div>
-      <button className="button-secondary" onClick={refresh}>Refresh requests</button></div>
+      <button type="button" className="button-secondary dashboard-refresh-button" onClick={refresh} aria-label="Refresh requests" title="Refresh requests"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg></button></div>
     {message && <p role="status" className="booking-decision-success">{message}</p>}
     {error && <p role="alert" className="error-message">{error}</p>}
     {loading ? <p role="status">Loading booking requests…</p> : data && (!requests.length ? <p>No pending venue booking requests.</p>

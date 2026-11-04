@@ -67,7 +67,7 @@ export default function CoordinatorLeadDashboard() {
   }
   // Parent notification system: the Lead hears about new requests to assign here and from the navbar bell.
   return <div className="page"><PageIntro title="Coordinator Lead Dashboard" eyebrow="Internal workspace" description="Review incoming requests and oversee coordinator assignments." />
-    <button className="button-secondary" disabled={busy} onClick={() => setVersion(value => value + 1)}>Refresh assignments</button>
+    <button type="button" className="button-secondary dashboard-refresh-button" disabled={busy} onClick={() => setVersion(value => value + 1)} aria-label="Refresh assignments" title="Refresh assignments" aria-busy={busy}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg></button>
     {error && <p role="alert" className="error-message">{error}</p>}{message && <p role="status">{message}</p>}
     {!data ? !error && <p role="status">Loading event requests…</p> : <>
       {data.coordinators.length === 0 && <p role="status">No Event Coordinators are provisioned. Contact your administrator.</p>}

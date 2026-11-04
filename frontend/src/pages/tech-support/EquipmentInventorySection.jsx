@@ -28,8 +28,10 @@ const CALENDAR_STYLES = `
 .equipment-calendar-header { display: flex; flex-direction: column; align-items: center; gap: .65rem; padding: .25rem 0 .5rem; }
 .equipment-calendar-section .section-heading { justify-content: center; margin: 0; text-align: center; }
 .equipment-calendar-section .section-heading h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.02em; }
-.equipment-calendar-selected-name { max-width: 100%; margin: 0; text-align: center; color: var(--ink); font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
-.equipment-calendar-equipment-label { display: inline-block; margin-right: .5rem; padding-right: .5rem; border-right: 1px solid #d8decc; color: var(--muted); font-size: .8rem; font-weight: 400; }
+.equipment-calendar-selected-name { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .5rem; max-width: 100%; margin: 0; text-align: center; color: var(--ink); font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }
+.equipment-calendar-equipment-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
+.equipment-calendar-asset-label { display: inline-flex; align-items: center; gap: .45rem; max-width: 100%; padding: .35rem .65rem; border: 1px solid #dfe5d4; border-radius: 8px; background: #fff; }
+.equipment-calendar-asset-code { flex-shrink: 0; padding: .2rem .4rem; border-radius: 5px; background: #e7effa; color: #244a73; font-size: .75rem; font-weight: 600; white-space: nowrap; }
 .equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: .65rem; max-width: 100%; margin: .35rem 0 0; padding: .25rem; border: 1px solid #dfe5d4; border-radius: 10px; background: #fff; }
 .equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; }
@@ -555,7 +557,8 @@ export default function EquipmentInventorySection({
                   </h2>
                 </div>
                 <h3 className="equipment-calendar-selected-name">
-                  <span><span className="equipment-calendar-equipment-label">Equipment</span>{' '}{calendarEquipment.asset_code} — {calendarEquipment.name}</span>
+                  <span className="equipment-calendar-equipment-label">Equipment</span>{' '}
+                  <span className="equipment-calendar-asset-label"><span className="equipment-calendar-asset-code">{calendarEquipment.asset_code}</span>{' — '}{calendarEquipment.name}</span>
                 </h3>
                 <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
                   <button

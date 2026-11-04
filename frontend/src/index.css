@@ -57,6 +57,9 @@ p { line-height: 1.65; }
 .equipment-review-section .onsite-support-heading h2 { font-size: 20px; letter-spacing: -.5px; }
 .equipment-review-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .equipment-review-actions button { padding: 9px 14px; }
+/* Use one compact refresh affordance across dashboard sections while preserving each button's accessible label. */
+.button-secondary.dashboard-refresh-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; min-width: 30px; flex-shrink: 0; padding: 5px; border-radius: 10px; }
+.dashboard-refresh-button svg { display: block; flex-shrink: 0; }
 .equipment-review-section .record-grid { padding-top: 2px; }
 .onsite-event-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 24px; }
 .onsite-event-card { min-width: 0; padding: 24px; border: 1px solid var(--border); border-top: 4px solid var(--orange); border-radius: 12px; background: #FFFFFA; box-shadow: 0 4px 18px #30391c08; }
