@@ -732,14 +732,16 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .venue-dashboard .venue-card .venue-placeholder > span { display: grid; place-items: center; width: 54px; height: 54px; border: 1px solid #dfe5d4; border-radius: 12px; background: #ffffffb3; }
 .venue-dashboard .venue-card .venue-placeholder small { font-size: 12px; letter-spacing: 0; color: #78816c; }
 .venue-dashboard .venue-card .image-badge { top: 12px; left: 20px; padding: 5px 9px; border: 1px solid #e3e8da; background: #fff; font-size: 11px; }
-.venue-dashboard .venue-card .venue-card-body { padding: 20px; }
+.venue-card .venue-fact-label, .venue-card .venue-rate-label { display: none; }
+.venue-dashboard .venue-card .venue-card-body { padding: 20px; gap: 12px; }
 .venue-dashboard .venue-card .record-number { font-size: 10px; letter-spacing: .1em; color: #78816c; }
-.venue-dashboard .venue-card h3 { margin: 8px 0 10px; font-size: 20px; line-height: 1.35; letter-spacing: -.3px; }
-.venue-dashboard .venue-card .venue-location { margin: 0 0 14px; font-size: 14px; font-weight: 400; line-height: 1.5; color: var(--muted); }
-/* Keep short metadata values together, rather than spreading them across equal-width columns. */
-.venue-dashboard .venue-card .venue-facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-bottom: 18px; }
-.venue-dashboard .venue-card .venue-facts span { min-width: 0; font-size: 13px; font-weight: 400; line-height: 1.5; color: #5e6653; }
-.venue-dashboard .venue-card .venue-card-footer { padding-top: 16px; gap: 12px; }
+.venue-dashboard .venue-card h3 { margin: 0; font-size: 20px; line-height: 1.35; letter-spacing: -.3px; }
+.venue-dashboard .venue-card .venue-location { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.5; color: var(--muted); }
+/* Labelled fact columns give short values a clear alignment and consistent reading order. */
+.venue-dashboard .venue-card .venue-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.venue-dashboard .venue-card .venue-facts span { min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.5; color: var(--ink); }
+.venue-dashboard .venue-card .venue-fact-label, .venue-dashboard .venue-card .venue-rate-label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.4; }
+.venue-dashboard .venue-card .venue-card-footer { padding-top: 16px; gap: 12px; align-items: flex-end; }
 .venue-dashboard .venue-card .text-button { min-height: 40px; margin-left: auto; padding: 9px 13px; gap: 8px; border: 1px solid #dce2cf; border-radius: 8px; background: #f6f8ef; font-size: 12px; font-weight: 600; }
 .venue-dashboard .venue-card .text-button:hover { background: #edf2e2; border-color: #bdcba6; }
 
