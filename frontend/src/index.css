@@ -544,8 +544,8 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .safety-review-requirement { margin: 0; padding: 8px 12px; border-radius: 8px; background: #eef6e6; color: #38521f; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
 
-/* Venue dashboard badges fit their labels; booking decisions keep distinct colours from the event's lifecycle. */
-.venue-event-status .status-badge, .booking-inbox .status-badge { align-self: flex-start; padding: 3px 8px; border-radius: 999px; font-size: 10px; line-height: 1.4; }
+/* Venue card badges share the Technical Support sizing and sit at the right edge above each event title. */
+.venue-event-status .status-badge, .booking-inbox .status-badge { align-self: flex-end; }
 .venue-booking-badge[data-booking-status="pending"] { background: var(--event-planning-bg); color: var(--event-planning-text); }
 .venue-booking-badge[data-booking-status="approved"] { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
 .venue-booking-badge[data-booking-status="rejected"] { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
