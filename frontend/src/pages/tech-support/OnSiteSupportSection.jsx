@@ -40,8 +40,10 @@ export default function OnSiteSupportSection({ token, onRelease }) {
         <h2 id="on-site-support-title">Assigned events</h2>
         <p className="onsite-support-description">Events with your assigned support, equipment reviews or equipment reservations.</p>
       </div>
-      <button type="button" className="button-secondary" onClick={refresh} disabled={loading}>Refresh event statuses</button>
-      <span className="badge">{events.length} {events.length === 1 ? 'event' : 'events'}</span>
+      <div className="onsite-support-actions">
+        <span className="badge">{events.length} {events.length === 1 ? 'event' : 'events'}</span>
+        <button type="button" className="button-secondary" onClick={refresh} disabled={loading}>Refresh event statuses</button>
+      </div>
     </div>
     {releaseError && <p role="alert" className="error-message">{releaseError}</p>}
     {state === 'loading' && <p role="status">Loading support assignments...</p>}

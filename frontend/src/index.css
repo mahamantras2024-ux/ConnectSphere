@@ -796,3 +796,6 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 .navbar-sticky { position: sticky; top: 0; z-index: 40; }
 /* A wrapped mobile header leaves less space for the dropdown; dialogs retain their higher overlay layer. */
 .navbar-sticky .notification-dropdown { max-height: min(70dvh, calc(100dvh - var(--app-header-height, 0px) - 16px)); }
+
+/* Keep the event count beside its refresh action, with refresh last at the right edge on every screen size. */
+.onsite-support-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; flex-shrink: 0; max-width: 100%; }
