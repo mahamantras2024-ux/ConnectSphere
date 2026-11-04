@@ -48,6 +48,7 @@ beforeEach(() => {
     if (path === '/events/101/amendment-requests') return { amendmentRequests: [] };
     // The booking page now asks the server which assigned events fit the selected venue.
     if (path.endsWith('/eligible-events')) return { events: [event] };
+    if (path.endsWith('/eligible-venues')) return { venues: [{ id: 7, name: 'Hall North' }] };
     if (path === '/venues') return [{ id: 7, name: 'Hall North' }];
     throw new Error('Event not found.');
   });

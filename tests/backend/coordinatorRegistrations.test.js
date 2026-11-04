@@ -41,6 +41,9 @@ for (const [count, overflowIds] of [[99, []], [100, []], [101, [101]], [103, [10
     // Assert: the boundary oracle uses explicit attendee IDs, not the implementation's slicing calculation.
     assert.equal(result.body.headcount, count);
     assert.equal(result.body.venue_capacity, 100);
+    // Registration AC2: only Registered consumes places; overflow never produces negative remaining spots.
+    assert.equal(result.body.remaining_spots, count === 99 ? 1 : 0);
+    assert.deepEqual(result.body.attendees, rows);
     assert.equal(result.body.withdrawal_count, 2);
     assert.equal(result.body.waitlist_count, 1);
     assert.deepEqual(result.body.waitlist, waitlist);
@@ -78,6 +81,7 @@ for (const capacity of [null, undefined, -1, 1.5]) {
     // Act / Assert
     const { body } = await request();
     assert.equal(body.venue_capacity, null);
+    assert.equal(body.remaining_spots, null);
     assert.equal(body.overflow_count, null);
     assert.deepEqual(body.overflow, []);
     assert.equal(body.headcount, 1);
@@ -92,6 +96,7 @@ test('AC2 - zero confirmed places classifies all registered attendees as overflo
   // Act / Assert
   const { body } = await request();
   assert.equal(body.venue_capacity, 0);
+  assert.equal(body.remaining_spots, 0);
   assert.equal(body.overflow_count, 1);
   assert.deepEqual(body.overflow.map(row => row.id), [1]);
   assert.equal(body.waitlist_count, 0);
@@ -103,7 +108,7 @@ test('AC1 AC2 - empty event returns zero status counts and unknown capacity with
   const result = await request();
   // Assert
   assert.deepEqual(result.body, { event: { id: 101 }, registered: [], waitlist: [], headcount: 0, waitlist_count: 0,
-    withdrawal_count: 0, venue_capacity: null, overflow_count: null, overflow: [] });
+    withdrawal_count: 0, venue_capacity: null, overflow_count: null, overflow: [], attendees: [], remaining_spots: null });
 });
 test('AC3 - denied assignment never queries attendee data', async () => {
   // Arrange

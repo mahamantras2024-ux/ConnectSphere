@@ -113,7 +113,7 @@ describe('Booking Conflict Detection', () => {
     openRequest();
 
     // Assert: no request form is shown without a selectable venue.
-    expect(await screen.findByText('No active venues are available to request.')).toBeTruthy();
+    expect(await screen.findByText('No active venues meet this event’s requirements.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Request venue' })).toBeNull();
   });
 
@@ -149,6 +149,6 @@ describe('Booking Conflict Detection', () => {
     render(<VenueBookingRequest event={{ id: 3 }} token="coordinator-token" />);
 
     // Assert: absent optional data is treated as no choices, not rendered as invalid text or a broken form.
-    expect(await screen.findByText('No active venues are available to request.')).toBeTruthy();
+    expect(await screen.findByText('No active venues meet this event’s requirements.')).toBeTruthy();
   });
 });

@@ -18,6 +18,7 @@ beforeEach(() => {
     if (path === '/events') return { events: [event] };
     if (path === '/events/3') return { event };
     if (path.endsWith('/eligible-events')) return { events: [event] };
+    if (path.endsWith('/eligible-venues')) return { venues: [venue] };
     if (path.startsWith('/venues')) return [venue];
     return { bookings: [], notifications: [], unreadCount: 0, requests: [], items: [] };
   });

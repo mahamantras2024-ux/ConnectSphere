@@ -15,9 +15,14 @@ function open() {
   return trigger;
 }
 
-it('AC1 AC2 - displays withdrawals and separate calculated overflow alongside numbered stored-status lists', async () => {
+it('AC1 AC2 - displays attendee statuses and separate numbered waitlist and overflow lists', async () => {
   // Arrange: 103 registered exceed 100 places; the 3 stored waitlist entries and 2 withdrawals remain separate.
   api.get.mockResolvedValue({ event: { name: 'Workshop' }, headcount: 103, waitlist_count: 3, withdrawal_count: 2, venue_capacity: 100, overflow_count: 3,
+    remaining_spots: 0,
+    attendees: [...Array.from({ length: 103 }, (_, id) => ({ id, attendee_name: id === 0 ? 'Registered Ari' : `Registered attendee ${id}`, status: 'registered' })),
+      { id: 201, attendee_name: 'Waiting Bea', status: 'waitlisted' }, { id: 202, attendee_name: 'Waiting Chen', status: 'waitlisted' },
+      { id: 203, attendee_name: 'Waiting Devi', status: 'waitlisted' }, { id: 301, attendee_name: 'Withdrawn Ari', status: 'withdrawn' },
+      { id: 302, attendee_name: 'Withdrawn Bea', status: 'withdrawn' }],
     overflow: [{ id: 100, attendee_name: 'Registered attendee 100', status: 'registered' },
       { id: 101, attendee_name: 'Registered attendee 101', status: 'registered' },
       { id: 102, attendee_name: 'Registered attendee 102', status: 'registered' }],
@@ -29,15 +34,12 @@ it('AC1 AC2 - displays withdrawals and separate calculated overflow alongside nu
   open();
   await act(async () => {});
   // Assert: exact totals and source timestamp catch swapped counts and fabricated joining dates.
-  expect(await screen.findByLabelText('Registration summary')).toHaveProperty('textContent', '103 registered · 3 on waitlist · 2 withdrawn');
-  const registered = screen.getByRole('region', { name: 'Registered attendees' });
+  expect(await screen.findByLabelText('Registration summary')).toHaveProperty('textContent', 'Confirmed headcount103Waitlist3Withdrawals2');
+  const registered = screen.getByRole('table', { name: 'Attendees and registration statuses' });
   expect(within(registered).getByText('Registered Ari')).toBeTruthy();
-  expect(within(registered).getAllByRole('listitem')).toHaveLength(103);
-  // Each list starts at one; explicit decimal styling survives the application's CSS reset.
-  const registeredNames = within(registered).getByRole('list');
-  expect(registeredNames.tagName).toBe('OL');
-  expect(registeredNames.start).toBe(1);
-  expect(registeredNames.classList.contains('list-decimal')).toBe(true);
+  expect(within(registered).getAllByRole('row')).toHaveLength(109);
+  expect(within(registered).getAllByText('Registered', { selector: 'span' })).toHaveLength(103);
+  // FIFO and overflow retain explicit numbering while the combined attendee report uses status rows.
   const list = screen.getByRole('region', { name: 'Waitlist' });
   expect(within(list).getByText(/Waiting Bea/)).toBeTruthy();
   const waitlistedNames = within(list).getByRole('list');
@@ -62,15 +64,15 @@ it('AC1 AC2 - displays withdrawals and separate calculated overflow alongside nu
 
 it('AC1 AC2 - reports empty lists as zero and retains event context', async () => {
   // Arrange / Act
-  api.get.mockResolvedValue({ event: { name: 'Empty event' }, headcount: 0, waitlist_count: 0, withdrawal_count: 0, venue_capacity: 0, overflow_count: 0, overflow: [], registered: [], waitlist: [] });
+  api.get.mockResolvedValue({ event: { name: 'Empty event' }, headcount: 0, waitlist_count: 0, withdrawal_count: 0, venue_capacity: 0, remaining_spots: 0, overflow_count: 0, overflow: [], registered: [], waitlist: [], attendees: [] });
   open();
   // Assert
-  expect(await screen.findByText('No registered attendees.')).toBeTruthy();
+  expect(await screen.findByText('No registrations yet.')).toBeTruthy();
   expect(screen.getByText('No attendees on the waitlist.')).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Empty event' })).toBeTruthy();
   expect(screen.getByText('Confirmed venue capacity: 0')).toBeTruthy();
   expect(screen.getByText('No registered attendees exceed confirmed venue capacity.')).toBeTruthy();
-  expect(screen.getByLabelText('Registration summary').textContent).toBe('0 registered · 0 on waitlist · 0 withdrawn');
+  expect(screen.getByLabelText('Registration summary').textContent).toBe('Confirmed headcount0Waitlist0Withdrawals0');
 });
 
 it('AC1 AC3 - shows loading then access errors without invented counts', async () => {
@@ -105,13 +107,16 @@ for (const [count, overflowNames] of [[99, []], [100, []], [101, ['Attendee 100'
     // Arrange: just below, exactly at and just above capacity have explicitly agreed expected names.
     api.get.mockResolvedValue({ event: { name: 'Workshop' }, headcount: count, waitlist_count: 0,
       withdrawal_count: 0, venue_capacity: 100, overflow_count: overflowNames.length,
+      remaining_spots: count === 99 ? 1 : 0,
+      attendees: Array.from({ length: count }, (_, id) => ({ id, attendee_name: `Attendee ${id}`, status: 'registered' })),
       overflow: overflowNames.map(attendee_name => ({ id: 100, attendee_name })),
       registered: Array.from({ length: count }, (_, id) => ({ id, attendee_name: `Attendee ${id}` })), waitlist: [] });
     // Act
     open();
     // Assert: one extra person is a subset of Registered, never an inflated stored waitlist.
     const overflow = await screen.findByRole('region', { name: 'Exceeding capacity' });
-    expect(screen.getByLabelText('Registration summary').textContent).toBe(`${count} registered · 0 on waitlist · 0 withdrawn`);
+    expect(screen.getByLabelText('Registration summary').textContent).toBe(`Confirmed headcount${count}Waitlist0Withdrawals0`);
+    expect(screen.getByLabelText('Remaining spots').textContent).toBe(count === 99 ? '1' : '0');
     expect(within(overflow).getByText('Confirmed venue capacity: 100')).toBeTruthy();
     expect(within(overflow).queryAllByRole('listitem').map(row => row.textContent)).toEqual(overflowNames);
     if (count <= 100) expect(within(overflow).getByText('No registered attendees exceed confirmed venue capacity.')).toBeTruthy();
@@ -123,6 +128,7 @@ it('AC2 - existing registrations and stored waitlist remain visible without a co
   // Arrange: missing capacity must not be shown as zero or classify an existing attendee as overflow.
   api.get.mockResolvedValue({ event: { name: 'Unconfirmed venue' }, headcount: 1, waitlist_count: 1,
     withdrawal_count: 0, venue_capacity: null, overflow_count: null, overflow: [],
+    attendees: [{ id: 1, attendee_name: 'Registered Ari', status: 'registered' }, { id: 2, attendee_name: 'Waiting Bea', status: 'waitlisted' }], remaining_spots: null,
     registered: [{ id: 1, attendee_name: 'Registered Ari' }],
     waitlist: [{ id: 2, attendee_name: 'Waiting Bea', registered_at: '2031-01-01T09:00:00Z' }] });
   // Act
@@ -130,7 +136,7 @@ it('AC2 - existing registrations and stored waitlist remain visible without a co
   // Assert
   expect(await screen.findByText('No confirmed venue capacity is available. Overflow cannot be calculated.')).toBeTruthy();
   expect(screen.getByText('Registered Ari')).toBeTruthy();
-  expect(screen.getByText(/Waiting Bea/)).toBeTruthy();
+  expect(within(screen.getByRole('region', { name: 'Waitlist' })).getByText(/Waiting Bea/)).toBeTruthy();
   const overflow = screen.getByRole('region', { name: 'Exceeding capacity' });
   expect(within(overflow).queryByText('Confirmed venue capacity: 0')).toBeNull();
   expect(within(overflow).queryAllByRole('listitem')).toHaveLength(0);

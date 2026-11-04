@@ -15,7 +15,8 @@ for (const role of ['event_coordinator', 'event_organiser']) {
     const ownEndpoint = `/events/101/${coordinator ? 'coordinator-registrations' : 'registrations'}`;
     const otherEndpoint = `/events/101/${coordinator ? 'registrations' : 'coordinator-registrations'}`;
     const report = { event: { id: 101, name: 'Workshop' }, headcount: 0, waitlist_count: 1, withdrawal_count: 0,
-      venue_capacity: null, overflow_count: null, overflow: [], registered: [],
+      venue_capacity: null, remaining_spots: null, overflow_count: null, overflow: [], registered: [],
+      attendees: [{ id: 1, attendee_name: 'Waiting attendee', status: 'waitlisted' }],
       waitlist: [{ id: 1, attendee_name: 'Waiting attendee', registered_at: '2031-01-01T09:00:00Z' }] };
     localStorage.setItem('cs_token', 'session');
     api.get.mockImplementation(async path => {
@@ -39,7 +40,7 @@ for (const role of ['event_coordinator', 'event_organiser']) {
     const drawerButton = screen.queryByRole('button', { name: 'Registration details' });
     fireEvent.click(registrationTab || drawerButton || screen.getByRole('link', { name: 'View registration details' }));
     // Assert: report data and endpoint identity are observable through the real app route.
-    expect(await screen.findByText(/Waiting attendee/)).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Waitlist' })).toHaveTextContent('Waiting attendee');
     expect(api.get).toHaveBeenCalledWith(ownEndpoint, 'session');
     expect(api.get).not.toHaveBeenCalledWith(otherEndpoint, 'session');
     if (coordinator) {

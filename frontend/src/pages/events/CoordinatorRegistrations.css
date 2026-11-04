@@ -1,0 +1,16 @@
+/* Scope the report so other roles retain their existing drawer layouts. */
+.coordinator-participation { display:grid; gap:20px; padding:0; font-size:16px; }
+.coordinator-participation h3,.coordinator-participation p { margin:0; }
+.coordinator-participation > section { display:grid; gap:16px; padding:20px; border:1px solid #dfe3cf; border-radius:12px; }
+.coordinator-participation-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:0; }
+.coordinator-participation-metrics > div { background:#f3f5eb; border:1px solid #dfe3cf; border-radius:12px; padding:16px; }
+.coordinator-participation-metrics dt { color:#586343; font-size:16px; }
+.coordinator-participation-metrics dd { margin:8px 0 0; font-size:28px; font-weight:700; }
+.coordinator-capacity { display:flex; flex-wrap:wrap; gap:12px 24px; }
+.coordinator-attendee-table { overflow-x:auto; border:1px solid #dfe3cf; border-radius:12px; }
+.coordinator-attendee-table table { width:100%; border-collapse:collapse; text-align:left; }
+.coordinator-attendee-table th,.coordinator-attendee-table td { padding:14px 16px; border-bottom:1px solid #dfe3cf; }
+.coordinator-attendee-table th { background:#f3f5eb; }
+.coordinator-attendee-table tr:last-child td { border-bottom:0; }
+.coordinator-participation ol { margin:0; padding-left:24px; display:grid; gap:8px; }
+@media(max-width:600px) { .coordinator-participation-metrics { grid-template-columns:1fr; } }

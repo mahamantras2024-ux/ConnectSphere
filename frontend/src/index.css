@@ -702,7 +702,7 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .booking-context label { display:grid; gap:.5rem; flex:1; min-width:220px; font-weight:700; }
 .booking-context select { width:100%; background:#fff; color:#30391c; }
 /* Reserve space inside the event selector for an inset chevron. */
-.booking-context select { appearance:none; padding-right:48px; background-image:linear-gradient(45deg,transparent 50%,#30391c 50%),linear-gradient(135deg,#30391c 50%,transparent 50%); background-size:6px 6px; background-position:right 22px center,right 16px center; background-repeat:no-repeat; }
+.booking-context select, .booking-review select { appearance:none; padding-right:48px; background-image:linear-gradient(45deg,transparent 50%,#30391c 50%),linear-gradient(135deg,#30391c 50%,transparent 50%); background-size:6px 6px; background-position:right 22px center,right 16px center; background-repeat:no-repeat; }
 .booking-context > [role="alert"], .booking-context > [role="status"] { flex-basis:100%; }
 .booking-review { color-scheme:light; max-width:1100px; margin-inline:auto; }
 .booking-review .ed-card { padding:1.5rem; margin-bottom:1.5rem; background:#fff; color:#30391c; border:1px solid #dfe1cb; border-radius:16px; }
@@ -757,6 +757,7 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 @media (max-width:640px) { .booking-review form { grid-template-columns:1fr; } .booking-context { padding:1rem; } }
 
 .booking-review .ed-muted { color:#686a5e; }
+.booking-review-session { display:grid; gap:12px; margin-bottom:20px; }
 .booking-next-actions { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; }
 .booking-next-actions > p { flex-basis:100%; margin:0; }
 /* Event comparison lives alongside discovery: compact facts, consistent cards and one quiet expandable group. */

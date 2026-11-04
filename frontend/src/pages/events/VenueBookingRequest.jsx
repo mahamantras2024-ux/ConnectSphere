@@ -19,10 +19,14 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
   const [facilities, setFacilities] = useState((event.required_facilities || []).join(', '));
   const [cancelOtherPending, setCancelOtherPending] = useState(false);
   const [sessionName,setSessionName]=useState(editingBooking?.requirements.sessionName || '');
+  const [venueRetry, setVenueRetry] = useState(0);
+  const sessionRequest = Boolean(sessionName.trim());
 
   useEffect(() => {
     let current = true;
-    api.get('/venues', token).then(result => {
+    setLoading(true); setVenues([]); setVenueId(''); setFeedback(null);
+    // Named sessions keep their own requirements; ordinary bookings must satisfy the saved event as well.
+    api.get(sessionRequest ? '/venues' : `/events/${event.id}/eligible-venues`, token).then(result => {
       if (current) {
         const records = Array.isArray(result) ? result : result.venues || [];
         setVenues(records);
@@ -32,12 +36,12 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
         if (initialVenueId && !initial) setFeedback({ kind: 'error', message: 'This venue is no longer available. Choose another venue.' });
       }
     }).catch(error => {
-      if (current) setFeedback({ kind: 'error', message: error.message || 'Unable to load venues.' });
+      if (current) setFeedback({ kind: 'load-error', message: error.message || 'Unable to load venues.' });
     }).finally(() => {
       if (current) setLoading(false);
     });
     return () => { current = false; };
-  }, [token, initialVenueId]);
+  }, [token, initialVenueId, event.id, sessionRequest, venueRetry]);
 
   /** Submits the current controlled values so a retry uses the coordinator's latest venue and period. */
   async function submit(eventAction) {
@@ -89,10 +93,14 @@ export default function VenueBookingRequest({ event, token, onSubmitted, initial
 
   return <section className="ed-card" aria-labelledby="venue-booking-request-heading">
     <h2 className="ed-card-title" id="venue-booking-request-heading">Request a venue booking</h2>
-    {feedback && <p role={feedback.kind === 'success' ? 'status' : 'alert'} className={feedback.kind === 'conflict' ? 'ed-badge ed-badge--warn' : undefined}>{feedback.message}</p>}
-    {loading ? <p role="status">Loading venues…</p> : venues.length === 0 ? <p>No active venues are available to request.</p> : <form onSubmit={submit}>
+    {/* A smaller independent session can still be created when no venue fits the whole event. */}
+    <div className="booking-review-session">
       <label>Session / track (optional)<input value={sessionName} onChange={update(setSessionName)} maxLength={120} disabled={Boolean(editingBooking)} placeholder="e.g. Breakout session A"/></label>
       <p className="ed-muted">Name each session to keep its timing, attendance and venue arrangements independent.</p>
+    </div>
+    {feedback && <p role={feedback.kind === 'success' ? 'status' : 'alert'} className={feedback.kind === 'conflict' ? 'ed-badge ed-badge--warn' : undefined}>{feedback.message}</p>}
+    {feedback?.kind === 'load-error' && <button className="button-secondary" onClick={() => setVenueRetry(value => value + 1)}>Retry venues</button>}
+    {loading ? <p role="status">Loading venues…</p> : feedback?.kind === 'load-error' ? null : venues.length === 0 ? <p>{sessionRequest ? 'No active venues are available to request.' : 'No active venues meet this event’s requirements.'}</p> : <form onSubmit={submit}>
       <label>Venue
         <select required value={venueId} onChange={change => { update(setVenueId)(change); onVenueChange?.(change.target.value); }} disabled={Boolean(editingBooking)}>
           {!venueId && <option value="">Choose an active venue</option>}

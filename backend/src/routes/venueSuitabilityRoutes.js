@@ -7,5 +7,6 @@ const suitability = require('../controllers/venueSuitabilityController');
 const router = express.Router();
 // Only the assigned Event Coordinator; the controller scopes the read to their own events.
 router.get('/:id/venue-suitability', requireAuth, requireRole('event_coordinator'), suitability.getSuitability);
+router.get('/:id/eligible-venues', requireAuth, requireRole('event_coordinator'), suitability.getEligibleVenues);
 
 module.exports = router;

@@ -1,27 +1,42 @@
 import { useState } from 'react';
 import Modal from '../../components/Modal';
 import useRegistrationResource from '../registrations/useRegistrationResource';
+import './CoordinatorRegistrations.css';
+
+const statusLabels = { registered: 'Registered', waitlisted: 'Waitlisted', withdrawn: 'Withdrawn' };
 
 /** Loads private attendance planning details; calculated overflow remains distinct from stored registration statuses. */
 export function RegistrationDetails({ eventId, token }) {
   const { data, loading, error } = useRegistrationResource(`/events/${eventId}/coordinator-registrations`, token);
-  return <div className="registration-detail">
+  return <div className="registration-detail coordinator-participation">
     {loading && <p role="status">Loading registrations...</p>}
     {error && <p role="alert">{error}</p>}
     {data && <>
       <h3>{data.event.name}</h3>
-      <p aria-label="Registration summary">{data.headcount} registered · {data.waitlist_count} on waitlist · {data.withdrawal_count} withdrawn</p>
-      <section className="detail-facts" aria-label="Registered attendees"><h3>Registered attendees</h3>
-        {data.registered.length === 0 && <p>No registered attendees.</p>}
-        <ol start={1} className="list-decimal pl-6">{data.registered.map(attendee => <li key={attendee.id}>{attendee.attendee_name}</li>)}</ol>
+      <section aria-label="Participation summary">
+        <dl className="coordinator-participation-metrics" aria-label="Registration summary">
+          <div><dt>Confirmed headcount</dt><dd>{data.headcount}</dd></div>
+          <div><dt>Waitlist</dt><dd>{data.waitlist_count}</dd></div>
+          <div><dt>Withdrawals</dt><dd>{data.withdrawal_count}</dd></div>
+        </dl>
+        {data.venue_capacity === null ? <p>No confirmed venue capacity is available.</p> :
+          <p className="coordinator-capacity"><span><strong>Venue capacity:</strong> <span aria-label="Venue capacity">{data.venue_capacity}</span></span>
+            <span><strong>Remaining spots:</strong> <span aria-label="Remaining spots">{data.remaining_spots}</span></span></p>}
       </section>
-      <section className="detail-facts" aria-label="Waitlist"><h3>Waitlist</h3>
+      <section aria-label="Attendees and registration statuses"><h3>Attendees and registration statuses</h3>
+        {!data.attendees?.length ? <p>No registrations yet.</p> : <div className="coordinator-attendee-table"><table aria-label="Attendees and registration statuses">
+          <thead><tr><th scope="col">Attendee</th><th scope="col">Status</th></tr></thead>
+          <tbody>{data.attendees.map(attendee => <tr key={attendee.id}><td>{attendee.attendee_name}</td>
+            <td><span className="status-badge">{statusLabels[attendee.status]}</span></td></tr>)}</tbody>
+        </table></div>}
+      </section>
+      <section aria-label="Waitlist"><h3>Waitlist queue</h3>
         {data.waitlist.length === 0 && <p>No attendees on the waitlist.</p>}
         <ol start={1} className="list-decimal pl-6">{data.waitlist.map(attendee => <li key={attendee.id}>
           {attendee.attendee_name} — Joined (SGT) <time dateTime={attendee.registered_at}>{new Date(attendee.registered_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</time>
         </li>)}</ol>
       </section>
-      <section className="detail-facts" aria-label="Exceeding capacity"><h3>Exceeding capacity</h3>
+      <section aria-label="Exceeding capacity"><h3>Exceeding capacity</h3>
         {data.venue_capacity === null
           ? <p>No confirmed venue capacity is available. Overflow cannot be calculated.</p>
           : <>
