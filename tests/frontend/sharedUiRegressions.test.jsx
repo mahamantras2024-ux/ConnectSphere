@@ -327,7 +327,7 @@ it.each([
     expect(screen.getByRole('heading',{name:'Operational safety checks'})).toBeTruthy();
   } else {
     // AC1: the lead now has a genuine queue workspace rather than a profile-only placeholder.
-    expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
+    expect(await screen.findByRole('heading',{name:/Unassigned requests \(0\)/})).toBeTruthy();
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   // Parent notification system: every signed-in page reads the user's own notifications once (shared by bell and panel).

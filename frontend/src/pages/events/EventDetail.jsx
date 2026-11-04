@@ -809,7 +809,8 @@ export default function EventDetail() {
       {backLink}
 
       {user.role === 'event_organiser' && <OrganiserRegistrationAction eventId={event.id} token={token} />}
-      {user.role === 'event_coordinator_lead' && <LeadRegistrations eventId={event.id} token={token}/>}
+      {/* Lead attendee reports require a confirmed event with registration enabled. */}
+      {user.role === 'event_coordinator_lead' && event.status === 'confirmed' && event.registration_required === true && <LeadRegistrations eventId={event.id} token={token}/>}
       {/* Coordinator attendance reporting starts at final confirmation and remains accessible after completion. */}
 
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}

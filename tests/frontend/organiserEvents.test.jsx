@@ -622,7 +622,7 @@ it('Lead AC2 AC6 - reviews a request on the full page and returns to queue',asyn
   expect(await screen.findByRole('heading',{name:event.name})).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Edit Purpose'})).toBeNull();
   fireEvent.click(screen.getByRole('link',{name:'Back to Events'}));
-  expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
+  expect(await screen.findByRole('heading',{name:/Unassigned requests \(1\)/})).toBeTruthy();
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 

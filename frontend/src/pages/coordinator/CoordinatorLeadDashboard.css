@@ -1,0 +1,37 @@
+/* A smaller heading and inset border make lifecycle groups subordinate to the parent queue. */
+.lead-section { margin-top: 24px; }
+.lead-parent-toggle, .lead-stage-toggle { border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; font-weight: 700; padding: 12px 0; }
+.lead-parent-toggle { font-size: 22px; }
+.lead-stage-toggle { font-size: 18px; }
+.lead-assigned-stages { padding-left: 16px; border-left: 2px solid #e1e4d2; }
+.lead-stage-heading { grid-column: 1 / -1; margin: 0; }
+
+
+/* Scope every interactive state so global orange action-button rules cannot turn disclosures into pills. */
+.lead-section .lead-parent-toggle, .lead-section .lead-stage-toggle {
+  width:100%; justify-content:flex-start; gap:12px; padding:12px 16px;
+  border:0; border-radius:8px; background:transparent; color:#30391c; box-shadow:none;
+}
+.lead-section .lead-parent-toggle:hover, .lead-section .lead-stage-toggle:hover {
+  background:#f3f5eb; border:0; box-shadow:none;
+}
+.lead-section .lead-parent-toggle:focus-visible, .lead-section .lead-stage-toggle:focus-visible {
+  outline:3px solid #f56b2a; outline-offset:3px;
+}
+/* Subgrid shares each row's natural height, aligning facts/actions without clipping a longer description or title. */
+.lead-section .lead-event-grid { row-gap:16px; }
+.lead-section .lead-card { display:grid; grid-template-rows:subgrid; grid-row:span 5; row-gap:16px; align-content:start; }
+.lead-card-summary { display:flex; flex-direction:column; gap:12px; overflow:visible; max-height:none; }
+.lead-card .lead-card-summary h3, .lead-card .lead-card-summary p { margin:0; }
+.lead-card .detail-facts { margin:0; }
+.lead-card .record-action { margin-top:0; align-self:start; justify-self:start; }
+.lead-card form { margin:0; align-self:start; }
+/* A single column keeps shared card rows usable at the existing small-screen breakpoint. */
+@media (max-width:640px) {
+  .lead-section .lead-event-grid { grid-template-columns:minmax(0, 1fr); }
+  .lead-section .lead-assigned-stages { padding-left:8px; }
+  .lead-section .lead-card { padding:20px; }
+}
+
+/* Keep hiding after every display rule so a collapsed stage never leaves grid cards visible. */
+.lead-section [hidden] { display:none !important; }
