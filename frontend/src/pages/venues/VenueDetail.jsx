@@ -53,7 +53,13 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
     <div className="venue-profile">
       <div className="profile-banner">
         {venue.image ? <img src={venue.image} alt={venue.name} /> : <span className="profile-pattern" aria-hidden="true">▧</span>}
-        <div><h2>{venue.name}</h2></div>
+        <div className="venue-profile-heading"><h2>{venue.name}</h2>
+          {canManage && <button className="venue-edit-icon" type="button" aria-label="Edit venue" title="Edit venue" onClick={()=>onEdit?.(venue)} disabled={busy}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m16 3 5 5M4 16 17 3a2.1 2.1 0 0 1 3 3L7 19l-4 1z" />
+            </svg>
+          </button>}
+        </div>
       </div>
       {factGroups.map(({ key, title, values }) => <section className="venue-detail-section" data-group={key} aria-label={title} key={key}>
         <h3>{title}</h3>
@@ -66,10 +72,19 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
         </>}
       </section>)}
       <EmergencyDocuments value={venue.emergency_documents}/>
+      {/* Group availability controls without mounting the schedule until it is explicitly requested. */}
+      {(canViewSchedule || canManage) && <section className="venue-detail-section venue-availability-section" aria-label="Availability & bookings">
+        <h3>Availability & bookings</h3>
+        {canViewSchedule && (scheduleHref
+          ? <Link className="button-link schedule-action" to={scheduleHref}>View schedule</Link>
+          : <button className="schedule-action" type="button" onClick={() => setShowSchedule(true)}>View schedule</button>)}
+        {canViewSchedule && showSchedule && <VenueSchedule venue={venue} token={token} canEdit={canManage} />}
+      </section>}
+      {/* Keep closure recording above the destructive catalogue action. */}
+      {canManage && <VenueClosureForm venueId={venue.id} token={token} />}
       {canManage && <section className="venue-detail-section" aria-label="Venue management">
-        <h3>Venue management</h3>
+        <h3>Deactivate venue</h3>
         <footer className="venue-record-actions">
-          <button onClick={()=>onEdit?.(venue)} disabled={busy}>Edit venue</button>
           <button className="button-danger" onClick={()=>setRemoving(true)} disabled={busy}>Deactivate venue</button>
         </footer>
         {removing && <section className="booking-warning"><h3>Remove this venue from the catalogue?</h3>
@@ -81,15 +96,6 @@ export default function VenueDetail({ venue, onClose, onEdit, onRemoved, canMana
             <button className="button-secondary" disabled={busy} onClick={()=>{setRemoving(false);setError('');setBlocked([]);}}>Keep venue</button>
           </div>
         </section>}
-      </section>}
-      {/* Group availability controls without mounting the schedule until it is explicitly requested. */}
-      {(canViewSchedule || canManage) && <section className="venue-detail-section venue-availability-section" aria-label="Availability & bookings">
-        <h3>Availability & bookings</h3>
-        {canViewSchedule && (scheduleHref
-          ? <Link className="button-link schedule-action" to={scheduleHref}>View schedule</Link>
-          : <button className="schedule-action" type="button" onClick={() => setShowSchedule(true)}>View schedule</button>)}
-        {canManage && <VenueClosureForm venueId={venue.id} token={token} />}
-        {canViewSchedule && showSchedule && <VenueSchedule venue={venue} token={token} canEdit={canManage} />}
       </section>}
     </div>
   </Modal>;

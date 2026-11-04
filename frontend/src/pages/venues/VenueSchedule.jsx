@@ -90,13 +90,15 @@ export default function VenueSchedule({ venue, token, canEdit = false, initialDa
     } finally { setSaving(false); }
   }
 
-  return <section aria-label="Venue schedule">
+  return <section className="venue-schedule" aria-label="Venue schedule">
     <h3>{venue.name} schedule</h3>
+    <div className="venue-schedule-toolbar">
     <label>Schedule date <input type="date" value={date} onChange={event => {
       setDate(event.target.value); setPeriods([]); setDirty(false); setError(''); setAffected([]); setNotice('');
     }} /></label>
     <button className="schedule-action" type="button" onClick={refresh}>Refresh schedule</button>
-    <p>Times are in Singapore (UTC+08:00). Operating hours: {options.operatingHours || 'Not recorded'}. Unmarked time inside operating hours is available; bookings and unavailable periods still block it.</p>
+    </div>
+    <p className="venue-schedule-help">Times are in Singapore (UTC+08:00). Operating hours: {options.operatingHours || 'Not recorded'}. Unmarked time inside operating hours is available; bookings and unavailable periods still block it.</p>
     {!date ? <div><p>Choose a date to view the schedule.</p>{canEdit && <>
       {error && <p role="alert" className="error-message">{error}</p>}
       <button type="button" onClick={save}>Save schedule</button>

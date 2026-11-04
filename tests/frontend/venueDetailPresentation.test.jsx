@@ -1,6 +1,6 @@
 // Venue detail presentation AC1/AC2: retain complete facts and give read-only viewers appropriate document guidance.
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import VenueDetail from '../../frontend/src/pages/venues/VenueDetail';
 import EmergencyDocuments from '../../frontend/src/pages/venues/EmergencyDocuments';
@@ -63,4 +63,25 @@ it.each([false, true])('Venue details presentation AC2 - gives appropriate docum
     expect(screen.queryByText(/Save the venue to publish changes/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Upload emergency procedure')).not.toBeInTheDocument();
   }
+});
+
+// AC4: placement protects the edit shortcut and keeps the destructive action after closure recording.
+it('Venue details presentation AC4 - edits from the heading and places closure recording before bottom deactivation', () => {
+  // Arrange: use a real staff profile and observe the edit callback rather than mocking its controls.
+  const venue = { id: 42, name: 'Marina Hall' };
+  const onEdit = vi.fn();
+  render(<VenueDetail venue={venue} onClose={vi.fn()} onEdit={onEdit} canManage />);
+
+  // Act: the accessible icon must still open the editor for the selected venue.
+  const edit = screen.getByRole('button', { name: 'Edit venue' });
+  fireEvent.click(edit);
+
+  // Assert: an edit control left at the bottom or deactivation above closures violates the requested order.
+  expect(onEdit).toHaveBeenCalledWith(venue);
+  const summary = screen.getByRole('region', { name: 'At a glance' });
+  const closure = screen.getByRole('region', { name: 'Record venue closure' });
+  const deactivate = screen.getByRole('button', { name: 'Deactivate venue' });
+  expect(edit.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(closure.compareDocumentPosition(deactivate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(deactivate.closest('section')).toBe(deactivate.closest('.venue-profile').lastElementChild);
 });
