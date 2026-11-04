@@ -744,7 +744,7 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .venue-dashboard .venue-card .venue-facts > span:last-child { text-align: right; }
 .venue-dashboard .venue-card .venue-fact-label, .venue-dashboard .venue-card .venue-rate-label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.4; }
 .venue-dashboard .venue-card .venue-card-footer { padding-top: 16px; gap: 12px; align-items: flex-end; }
-.venue-dashboard .venue-card .venue-hourly-rate { font-size: 18px; }
+.venue-dashboard .venue-card .venue-hourly-rate { font-size: 14px; font-weight: 600; line-height: 1.5; }
 .venue-dashboard .venue-card .text-button { min-height: 40px; margin-left: auto; padding: 9px 13px; gap: 8px; border: 1px solid #dce2cf; border-radius: 8px; background: #f6f8ef; font-size: 12px; font-weight: 600; }
 .venue-dashboard .venue-card .text-button:hover { background: #edf2e2; border-color: #bdcba6; }
 
