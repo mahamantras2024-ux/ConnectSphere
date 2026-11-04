@@ -34,7 +34,7 @@ export default function NotificationItem({ notification, onOpen }) {
       <button type="button" className="notification-open" onClick={open} aria-label={`${notification.title}${unread ? ' (new)' : ''}`}>
         <span className="notification-header">
           <strong>{notification.title}</strong>
-          {unread && <span className="status-badge status-under_review">New</span>}
+          {unread && <span className="status-badge status-attention">New</span>}
         </span>
         <span className="notification-summary">{summary}</span>
         <span className="notification-time">

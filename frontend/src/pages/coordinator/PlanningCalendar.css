@@ -21,3 +21,7 @@
 .planning-event[data-status="planning"] { background: var(--event-planning-bg); color: var(--event-planning-text); border-left-color: var(--event-planning-text); }
 .planning-event[data-status="confirmed"] { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); border-left-color: var(--event-confirmed-text); }
 .planning-event[data-status="completed"] { background: var(--event-completed-bg); color: var(--event-completed-text); border-left-color: var(--event-completed-text); }
+
+.planning-event[data-status="submitted"] { background: var(--event-submitted-bg); color: var(--event-submitted-text); border-left-color: var(--event-submitted-text); }
+.planning-event[data-status="under_review"] { background: var(--event-under-review-bg); color: var(--event-under-review-text); border-left-color: var(--event-under-review-text); }
+.planning-event[data-status="rejected"] { background: var(--event-rejected-bg); color: var(--event-rejected-text); border-left-color: var(--event-rejected-text); }

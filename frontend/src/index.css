@@ -166,8 +166,7 @@ p { line-height: 1.65; }
 }
 .badge, .status-badge { display: inline-flex; align-items: center; border-radius: 20px; padding: 6px 10px; background: #edf2e8; color: #43694c; font-size: 11px; font-weight: 600; text-transform: capitalize; }
 .status-draft { background: #f0f1ed; color: #6a776c; }
-.status-submitted, .status-under_review { background: #f9efdb; color: #89601c; }
-.status-rejected, .status-cancelled { background: #faeae7; color: #98453b; }
+.status-cancelled { background: #faeae7; color: #98453b; }
 .record-grid, .venue-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 22px; }
 .record-card, .card { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 25px; }
 .record-card { min-width: 0; display: flex; flex-direction: column; }
@@ -305,8 +304,7 @@ h2, h3 { font-weight: 700; }
 .record-number { color: #656A52; }
 .badge, .status-badge { background: #E8EDC3; color: #424F19; }
 .status-draft { background: #EFEFE3; color: #616351; }
-.status-submitted, .status-under_review { background: var(--cream); color: #685019; }
-.status-rejected, .status-cancelled { background: #F9DDD5; color: var(--beet); }
+.status-cancelled { background: #F9DDD5; color: var(--beet); }
 .text-button, .text-button:hover { background: transparent; color: var(--teal); box-shadow: none; }
 .empty-state { background: #FFFFF6; border-color: #D5D9B9; border-radius: 12px; }
 .empty-symbol { background: var(--lemon); color: var(--teal); border-radius: 50%; }
@@ -804,13 +802,25 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 
 /* One lifecycle palette for event cards, detail headers and schedule entries across every workspace. */
 :root {
+  --event-submitted-bg: #E7EFFA;
+  --event-submitted-text: #244A73;
+  --event-under-review-bg: #F0E7FA;
+  --event-under-review-text: #65428A;
+  --event-rejected-bg: #FBE5E5;
+  --event-rejected-text: #8B2E2E;
   --event-planning-bg: #FFF3CD;
   --event-planning-text: #805B10;
   --event-confirmed-bg: #E4F2E7;
   --event-confirmed-text: #245C35;
-  --event-completed-bg: #E9EDF2;
-  --event-completed-text: #475569;
+  --event-completed-bg: #EEEEEE;
+  --event-completed-text: #555555;
 }
 .status-badge.status-planning, .ed-badge.status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
 .status-badge.status-confirmed, .ed-badge.status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
 .status-badge.status-completed, .ed-badge.status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+
+.status-badge.status-submitted, .ed-badge.status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.status-badge.status-under_review, .ed-badge.status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.status-badge.status-rejected, .ed-badge.status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+/* Attention indicators are separate from the event's review stage and retain their existing amber treatment. */
+.status-badge.status-attention { background: var(--cream); color: #685019; }
