@@ -6,6 +6,17 @@ import { useAuth } from '../../context/AuthContext';
 const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
 const eventStatusLabels = { planning: 'Planning', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
 
+/** Keeps the newest authorized booking for each event; the API orders by update time, then booking ID descending. */
+function latestBookingPerEvent(bookings) {
+  const seenEventIds = new Set();
+  return bookings.filter(booking => {
+    // Preserve the server's first row, including when an older booking was updated more recently than a higher ID.
+    if (seenEventIds.has(booking.eventId)) return false;
+    seenEventIds.add(booking.eventId);
+    return true;
+  });
+}
+
 /** Shows only server-authorized event details and reloads after a staff booking decision. */
 export default function VenueEventStatusPanel() {
   const { token } = useAuth();
@@ -24,7 +35,7 @@ export default function VenueEventStatusPanel() {
     let active = true;
     // The server applies venue assignment scope; the UI never receives unrelated events to filter locally.
     api.get('/venues/relevant-events', token)
-      .then(data => { if (active) setEvents(data.events || []); })
+      .then(data => { if (active) setEvents(latestBookingPerEvent(data.events || [])); })
       .catch(requestError => { if (active) setError(requestError.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

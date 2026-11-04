@@ -1,8 +1,9 @@
 // File: Tests the Venue Staff status panel and reminder preference through accessible UI controls.
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
+import VenueBookingInbox from '../../frontend/src/pages/venue/VenueBookingInbox';
 import VenueEventStatusPanel from '../../frontend/src/pages/venue/VenueEventStatusPanel';
 import VenueReminderPreferences from '../../frontend/src/pages/venue/VenueReminderPreferences';
 import { api } from '../../frontend/src/api/client';
@@ -126,6 +127,71 @@ it('AC1 AC2 - never displays Status unavailable for malformed booking data and d
 
   // Assert: a UI that presents stale data as authoritative or hides a malformed status fails these visible oracles.
   expect(await screen.findByRole('alert')).toHaveTextContent('Status service unavailable');
+});
+
+it('Venue latest status AC1 AC2 - keeps the newest booking per event without merging events with the same name', async () => {
+  // Arrange: the API orders by update time, not booking ID; duplicates are deliberately non-adjacent.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : { events: [
+      { ...events[0], bookingId: 2, name: 'Shared event name', venueName: 'Latest hall' },
+      { ...events[1], bookingId: 3, name: 'Shared event name' },
+      { ...events[0], bookingId: 99, status: 'rejected', venueName: 'Outdated hall' },
+      { ...events[1], bookingId: 100, status: 'rejected' },
+    ] });
+
+  // Act: render the actual panel with the newest-first API result.
+  renderWithSession(<VenueEventStatusPanel />);
+  await screen.findByText('Latest hall');
+
+  // Assert: last-wins, maximum-ID, adjacent-only, and name-based deduplication all fail these oracles.
+  expect(screen.getAllByRole('article')).toHaveLength(2);
+  expect(screen.getAllByRole('heading', { name: 'Shared event name' })).toHaveLength(2);
+  expect(screen.getByText('Pending')).toBeVisible();
+  expect(screen.getByText('Approved')).toBeVisible();
+  expect(screen.queryByText('Rejected')).not.toBeInTheDocument();
+  expect(screen.queryByText('Outdated hall')).not.toBeInTheDocument();
+});
+
+it('Venue latest status AC3 - replaces the displayed booking status after a newer decision is loaded', async () => {
+  // Arrange: an old rejection remains in history after approval, then a newer pending booking supersedes it.
+  let rows = [{ ...events[1], bookingId: 90 }, { ...events[1], bookingId: 100, status: 'rejected' }];
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } } : { events: rows });
+  renderWithSession(<VenueEventStatusPanel />);
+  await screen.findByText('Approved');
+
+  // Act: a persisted booking decision refreshes the panel's newest-first read.
+  rows = [{ ...events[1], bookingId: 2, status: 'pending', venueName: 'Replacement hall' }, ...rows];
+  window.dispatchEvent(new Event('venue-booking-decision'));
+  await screen.findByText('Replacement hall');
+
+  // Assert: retaining a stale first-read selection or rendering historical rows fails.
+  expect(screen.getAllByRole('article')).toHaveLength(1);
+  expect(screen.getByText('Pending')).toBeVisible();
+  expect(screen.queryByText('Approved')).not.toBeInTheDocument();
+  expect(screen.queryByText('Rejected')).not.toBeInTheDocument();
+});
+
+it('Venue latest status AC4 - leaves every pending booking reviewable while deduplicating only the event-status section', async () => {
+  // Arrange: the same event has two independent sessions that still require separate venue decisions.
+  const requests = ['Morning', 'Evening'].map((sessionName, index) => ({
+    id: 201 + index, event_id: 11, event_name: 'Pending workshop', venue_name: 'Hall A', status: 'pending',
+    start_datetime: events[0].startDatetime, end_datetime: events[0].endDatetime, requirements: { sessionName },
+  }));
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
+    : path === '/venues/relevant-events' ? { events: [events[0], { ...events[0], bookingId: 99 }] } : { requests });
+
+  // Act: mount both real sections together, preserving their independent API reads and actions.
+  renderWithSession(<><VenueEventStatusPanel /><VenueBookingInbox /></>);
+  const status = screen.getByRole('region', { name: 'Event status for your venue bookings' });
+  const pending = screen.getByRole('region', { name: 'Pending venue booking requests' });
+  await within(status).findByRole('article');
+  await within(pending).findAllByRole('button', { name: 'Review Pending workshop at Hall A' });
+
+  // Assert: a dashboard-wide filter must not hide a still-actionable session booking.
+  expect(within(status).getAllByRole('article')).toHaveLength(1);
+  expect(within(pending).getAllByRole('article')).toHaveLength(2);
+  expect(within(pending).getByText('Session: Morning')).toBeVisible();
+  expect(within(pending).getByText('Session: Evening')).toBeVisible();
 });
 
 it('AC7 - lets Venue Staff enable daily pending-request reminders with an explicit persisted preference', async () => {
