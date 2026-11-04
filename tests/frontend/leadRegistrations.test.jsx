@@ -48,7 +48,7 @@ it('Lead registrations AC5 - an access failure shows no attendee identities',asy
 });
 it('Lead registrations AC1 - an authorised Lead can open registration information from event details',async()=>{
   // Arrange: keep the real event page and router so the feature is reachable outside assignment cards too.
-  api.get.mockImplementation(async path=>path==='/events/7'?{event:{id:7,name:'Workshop',status:'submitted',is_draft:false,organiser_id:2}}:data);
+  api.get.mockImplementation(async path=>path==='/events/7'?{event:{id:7,name:'Workshop',status:'confirmed',registration_required:true,is_draft:false,organiser_id:2}}:data);
   render(<MemoryRouter initialEntries={['/events/7']}><Routes><Route path="/events/:id" element={<EventDetail/>}/></Routes></MemoryRouter>);
   // Act / Assert: the role-specific action opens the same read-only report for the selected event.
   fireEvent.click(await screen.findByRole('button',{name:'Registration information'}));
