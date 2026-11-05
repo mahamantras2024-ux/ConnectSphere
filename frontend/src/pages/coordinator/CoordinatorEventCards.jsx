@@ -10,6 +10,9 @@ export default function CoordinatorEventCards({ events, token, staff: supportSta
   /** Card identity remains constant even when a different status heading now precedes it. */
   function renderCard(event, hidden = false) {
     const displayStatus = event.status;
+    // Equipment reviews can need a team without on-site support; drafts and closed events cannot acquire new assignments.
+    const canAssignSupport = !event.is_draft && !['draft', 'cancelled', 'completed', 'rejected'].includes(event.status)
+      && (event.technical_support_required || event.equipment_review_required);
     return <article className="record-card" key={event.id} id={`assigned-event-${event.id}`} hidden={hidden}>
       <div className="record-top">
         <span className="record-number">EVENT / {String(event.id).padStart(3, '0')}</span>
@@ -21,9 +24,9 @@ export default function CoordinatorEventCards({ events, token, staff: supportSta
       <Link className="button-link button-secondary record-action" state={{ returnTo }} to={`/events/${event.id}`}>
         View details <span aria-hidden="true">↗</span>
       </Link>
-      {grouped && event.technical_support_required && !supportStaffError && <TechnicalSupportAssignment
+      {grouped && canAssignSupport && !supportStaffError && <TechnicalSupportAssignment
         event={event} token={token} staff={supportStaff} onSaved={members => onSaved(event.id, members)} />}
-      {grouped && event.technical_support_required && supportStaffError && <p role="alert" className="error-message">{supportStaffError}</p>}
+      {grouped && canAssignSupport && supportStaffError && <p role="alert" className="error-message">{supportStaffError}</p>}
     </article>;
   }
   if (!grouped) return <div className="record-grid">{events.map(event => renderCard(event))}</div>;

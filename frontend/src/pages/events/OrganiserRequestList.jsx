@@ -49,7 +49,7 @@ export default function OrganiserRequestList({ events, onChange, token }) {
 
   return <>
     {groups.map(([title, items]) => <section className="request-section" key={title} aria-label={title}>
-      <div className="section-heading"><h2>{title}</h2><span className="badge">{items.length} requests</span></div>
+      <div className="section-heading"><h2>{title}</h2><span className="badge event-count-badge">{items.length} requests</span></div>
       {items.length === 0 ? <p>No {title === 'Drafts' ? 'draft' : title.toLowerCase()} requests.</p> : <ul className="event-request-rows">
         {items.map(event => <li className="event-request-row" key={event.id}>
           <div>

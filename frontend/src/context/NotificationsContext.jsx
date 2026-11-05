@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from './AuthContext';
 import useLiveResource from '../hooks/useLiveResource';
 
-// null outside any provider, so a component used on its own can tell it needs its own list (NotificationsBoundary).
+// A standalone bell gets the empty fallback; the app shell supplies the signed-in notification list.
 const NotificationsContext = createContext(null);
 /** How long a notification read may stay unanswered before another one is started (see LiveNotifications). */
 export const NOTIFICATION_RETRY_MS = 3000;
@@ -13,7 +13,7 @@ const EMPTY = { notifications: [], unreadCount: 0, loading: false, error: '', ha
 
 /**
  * Reads the user's notifications every five seconds and on window focus (useLiveResource), so a change made elsewhere
- * reaches any open page within the ten-second AC1 limit. The bell and the dashboard panels share this one request.
+ * reaches any open page within the ten-second AC1 limit. Every signed-in page uses this one request for its navbar bell.
  */
 function LiveNotifications({ token, enabled, children }) {
   // A read that has not answered within three seconds is retried, so even when a poll stalls a change is shown within the
@@ -50,10 +50,4 @@ export function NotificationsProvider({ children }) {
 /** The shared notification list, unread count and markRead action (an empty list outside any provider). */
 export function useNotifications() {
   return useContext(NotificationsContext) || EMPTY;
-}
-
-/** Uses the app's shared list when present; otherwise (e.g. a panel rendered on its own) provides one for its children. */
-export function NotificationsBoundary({ children }) {
-  const shared = useContext(NotificationsContext);
-  return shared ? children : <NotificationsProvider>{children}</NotificationsProvider>;
 }

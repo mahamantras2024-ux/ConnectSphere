@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const { pool: databasePool } = require('../config/db');
 const { EVENT_FIELDS } = require('../services/eventFields');
 const { responsibilityScope } = require('../services/technicalEventStatus');
+const { EQUIPMENT_REVIEW_SCOPE, TECHNICAL_REQUEST_SCOPE } = require('./equipmentRequestScope');
 const { ORGANISATION_STATUS_SCOPE } = require('./organiserRequestStatusModel');
 
 // Lists own and same-organisation request statuses; can_manage preserves submitter-only mutation controls.
@@ -24,7 +25,8 @@ async function listForCoordinator(coordinatorId) {
   const result = await pool.query(`
     SELECT e.id, e.name, e.purpose, e.status, e.organiser_id, e.coordinator_id, e.created_at, e.updated_at,
       EXISTS (SELECT 1 FROM event_clarification_requests cr WHERE cr.event_id=e.id AND cr.status='pending') AS clarification_outstanding,
-      e.technical_support_required,
+      e.is_draft, e.technical_support_required,
+      ${EQUIPMENT_REVIEW_SCOPE} AS equipment_review_required,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', u.id, 'full_name', u.full_name) ORDER BY u.full_name)
         FROM event_technical_support_assignments a JOIN users u ON u.id=a.staff_id
         WHERE a.event_id=e.id), '[]'::jsonb) AS technical_support_staff
@@ -272,13 +274,7 @@ async function listPendingEquipmentRequests() {
     WHERE e.is_draft=false AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
-      AND (
-        jsonb_array_length(e.equipment_items) > 0
-        OR COALESCE(length(trim(e.equipment_notes)), 0) > 0
-        OR e.technical_support_required
-        OR e.video_conferencing_required
-        OR COALESCE(length(trim(e.technical_specifications)), 0) > 0
-      )
+      AND ${TECHNICAL_REQUEST_SCOPE}
       AND NOT EXISTS (
         SELECT 1 FROM event_equipment_reviews r
         WHERE r.event_id=e.id AND r.request_version=e.equipment_requirements_version
@@ -305,13 +301,7 @@ async function createEquipmentReview(eventId, data, reviewerId) {
         AND e.is_draft=false AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
-        AND (
-          jsonb_array_length(e.equipment_items) > 0
-          OR COALESCE(length(trim(e.equipment_notes)), 0) > 0
-          OR e.technical_support_required
-          OR e.video_conferencing_required
-          OR COALESCE(length(trim(e.technical_specifications)), 0) > 0
-        )
+        AND ${TECHNICAL_REQUEST_SCOPE}
         AND NOT EXISTS (
           SELECT 1 FROM event_equipment_reviews existing
           WHERE existing.event_id=e.id AND existing.request_version=e.equipment_requirements_version
@@ -866,10 +856,10 @@ async function createEquipmentReservation(eventId, selections, staffId, addition
 
 /**
  * Lists upcoming active equipment requests that have not been reviewed at their current version.
- * Requires an assigned Event Coordinator and an explicit responsibility for the authenticated staffId.
+ * Requires an assigned Event Coordinator; the route grants every Technical Support user access.
  * @returns {Promise<Array<object>>} event, venue, and organiser-submitted technical requirements.
  */
-async function listPendingEquipmentRequests(staffId) {
+async function listPendingEquipmentRequests() {
   const result = await pool.query(`
     SELECT e.id, e.name, e.proposed_date::text AS proposed_date, e.proposed_start_time,
       e.proposed_end_time, e.equipment_items, e.equipment_notes, e.technical_support_required,
@@ -885,23 +875,17 @@ async function listPendingEquipmentRequests(staffId) {
       ORDER BY CASE WHEN vb.status='approved' THEN 0 ELSE 1 END, vb.start_datetime DESC, vb.id DESC
       LIMIT 1
     ) venue ON true
-    -- AC6: a role alone does not grant responsibility for this event.
-    WHERE ${responsibilityScope()} AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
+    -- Equipment review is shared by Technical Support; on-site staffing is independent.
+    WHERE e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
       AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
       AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
-      AND (
-        jsonb_array_length(e.equipment_items) > 0
-        OR COALESCE(length(trim(e.equipment_notes)), 0) > 0
-        OR e.technical_support_required
-        OR e.video_conferencing_required
-        OR COALESCE(length(trim(e.technical_specifications)), 0) > 0
-      )
+      AND ${TECHNICAL_REQUEST_SCOPE}
       AND NOT EXISTS (
         SELECT 1 FROM event_equipment_reviews r
         WHERE r.event_id=e.id AND r.request_version=e.equipment_requirements_version
       )
     ORDER BY e.proposed_date, e.proposed_start_time, e.id
-  `, [staffId]);
+  `);
   return result.rows;
 }
 
@@ -920,18 +904,12 @@ async function createEquipmentReview(eventId, data, reviewerId, db = pool) {
     WITH target AS (
       SELECT e.id, e.equipment_requirements_version
       FROM events e
-      -- Check before inserting: a new review must not manufacture responsibility.
-      WHERE e.id=$1 AND ${responsibilityScope('e', '$4')} AND e.equipment_requirements_version=$5
+      -- Any authenticated Technical Support reviewer can decide an eligible pending version.
+      WHERE e.id=$1 AND e.equipment_requirements_version=$5
         AND e.is_draft=false AND e.coordinator_id IS NOT NULL AND e.proposed_date >= CURRENT_DATE
         AND (e.proposed_date > CURRENT_DATE OR e.proposed_end_time > LOCALTIME)
         AND e.status NOT IN ('draft', 'cancelled', 'completed', 'rejected')
-        AND (
-          jsonb_array_length(e.equipment_items) > 0
-          OR COALESCE(length(trim(e.equipment_notes)), 0) > 0
-          OR e.technical_support_required
-          OR e.video_conferencing_required
-          OR COALESCE(length(trim(e.technical_specifications)), 0) > 0
-        )
+        AND ${TECHNICAL_REQUEST_SCOPE}
         AND NOT EXISTS (
           SELECT 1 FROM event_equipment_reviews existing
           WHERE existing.event_id=e.id AND existing.request_version=e.equipment_requirements_version

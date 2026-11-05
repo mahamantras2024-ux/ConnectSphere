@@ -58,7 +58,7 @@ it('Workspace AC1 AC2 - Dashboard and equipment sections show only their own con
   render(<MemoryRouter initialEntries={['/tech-support/dashboard']}><AuthProvider><App /></AuthProvider></MemoryRouter>);
   const dashboard = await screen.findByRole('link', { name: 'Dashboard' });
   await screen.findByRole('heading', { name: 'Assigned events' });
-  expect(screen.getByRole('heading', { name: 'Notifications' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
   expect(screen.queryByRole('tabpanel')).toBeNull();
   expect(dashboard.getAttribute('aria-current')).toBe('page');
   // Each selection must remove overview content and every other panel, rather than merely scroll to it.
@@ -360,7 +360,7 @@ it('AC5 - moves between support tabs with arrow, Home, and End keys', async () =
 it('AC5 - returns from the empty reservation state to equipment review', async () => {
   await openDashboard();
   fireEvent.click(screen.getByRole('tab', { name: 'Reservations' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Go to equipment request review' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Go to requests' }));
   expect(screen.getByRole('tab', { name: 'Requests', selected: true })).toBeTruthy();
 });
 
@@ -398,6 +398,26 @@ it('AC1 - navigates equipment tabs with the keyboard and returns from an empty r
   fireEvent.keyDown(screen.getByRole('tab', { name: 'Inventory' }), { key: 'Escape' });
   expect(screen.getByRole('tab', { name: 'Inventory' }).getAttribute('aria-selected')).toBe('true');
   fireEvent.click(screen.getByRole('tab', { name: 'Reservations' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Go to requests' }));
   expect(screen.getByRole('tab', { name: 'Requests' }).getAttribute('aria-selected')).toBe('true');
+});
+
+// Equipment visibility AC1/AC2: no assigned events and no on-site staffing must still allow shared request review.
+it('Equipment visibility AC1 AC2 - staff with no on-site assignments can view and review equipment-only requests', async () => {
+  const get = api.get.getMockImplementation();
+  api.get.mockImplementation(path => path === '/events/equipment-requests'
+    ? Promise.resolve({ requests: [{ ...eventRequest, technical_support_required: false, technical_support_details: null }] })
+    : get(path));
+
+  await openDashboard();
+  const card = await screen.findByRole('article', { name: 'Community Workshop' });
+  expect(within(card).queryByText('On-site AV technician')).toBeNull();
+  expect(within(card).getByText(/Wireless microphone — quantity: 2/)).toBeTruthy();
+  fireEvent.change(within(card).getByLabelText('Fulfillment decision'), { target: { value: 'fully_fulfillable' } });
+  fireEvent.click(within(card).getByRole('button', { name: 'Save review' }));
+
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/events/501/equipment-reviews', {
+    outcome: 'fully_fulfillable', requestVersion: 1,
+  }, 'support-token'));
+  expect(await screen.findByText('Review saved for Community Workshop.')).toBeTruthy();
 });

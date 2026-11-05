@@ -10,288 +10,58 @@ const getMonthLabel = value => new Intl.DateTimeFormat('en-SG', {
 const CALENDAR_HORIZON_DAYS = 90;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// Calendar styles live with the component. Colours are tokens on .equipment-calendar-section so they can be
-// matched to the neutral Technical Support page; the dark values retain the remote calendar's colour-scheme support.
+// Keep the equipment grid visually aligned with the planning calendar while preserving stock and blocking semantics.
 const CALENDAR_STYLES = `
 .equipment-calendar-section {
-  --cal-border: #dfe5e0;
-  --cal-surface: #f6f8f6;
-  --cal-muted-surface: #edf1ee;
-  --cal-text: #30391c;
-  --cal-text-muted: #686a5e;
-  --cal-available: #1a7f4b;
-  --cal-available-bg: #e6f5ec;
-  --cal-unavailable: #c62828;
-  --cal-unavailable-bg: #fdeaea;
-  --cal-focus: #424f19;
-  margin-top: 2rem;
-  color: var(--cal-text);
-}
-@media (prefers-color-scheme: dark) {
-  .equipment-calendar-section {
-    --cal-border: #33364d;
-    --cal-surface: #181a2b;
-    --cal-muted-surface: #121422;
-    --cal-text: #e8e9f6;
-    --cal-text-muted: #9a9dbb;
-    --cal-available: #6fd3a0;
-    --cal-available-bg: #16352a;
-    --cal-unavailable: #ff8a80;
-    --cal-unavailable-bg: #3d1f1d;
-    --cal-focus: #9ea2ff;
-  }
-}
-.equipment-calendar-navigation {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  margin: 0 0 1rem;
-}
-.equipment-calendar-navigation > span {
-  min-width: 10rem;
-  text-align: center;
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-.equipment-calendar-navigation button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0;
-}
-.equipment-calendar-navigation button:focus-visible {
-  outline: 2px solid var(--cal-focus);
-  outline-offset: 2px;
-}
-.equipment-calendar-legend {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem 1.25rem;
-  margin: 0 0 1.25rem;
-  padding: 0;
-  list-style: none;
-  font-size: 0.8125rem;
-  color: var(--cal-text-muted);
-}
-.equipment-calendar-legend li {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.equipment-calendar-legend li::before {
-  content: "";
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 50%;
-  background: var(--swatch-bg);
-  border: 1px solid var(--swatch);
-}
-.equipment-calendar-legend .is-available   { --swatch: var(--cal-available);   --swatch-bg: var(--cal-available-bg); }
-.equipment-calendar-legend .is-unavailable { --swatch: var(--cal-unavailable); --swatch-bg: var(--cal-unavailable-bg); }
-.equipment-calendar-assets {
-  display: grid;
-  gap: 2rem;
-}
-.equipment-calendar-asset h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-}
-.equipment-calendar-scroll {
-  overflow-x: auto;
-  border: 1px solid var(--cal-border);
-  border-radius: 8px;
-  background: var(--cal-surface);
-}
-.equipment-availability-calendar {
+  --cal-border: #dfe5d4;
+  --cal-text: var(--ink);
+  --cal-text-muted: #586343;
+  --cal-available: #22C55E;
+  --cal-unavailable: #EF4444;
   width: 100%;
-  min-width: 40rem;
-  table-layout: fixed;
-  border-collapse: collapse;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--cal-text);
 }
-.equipment-availability-calendar thead th {
-  padding: 0.5rem 0.25rem;
-  background: var(--cal-muted-surface);
-  border-bottom: 1px solid var(--cal-border);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-align: center;
-  color: var(--cal-text-muted);
-}
-.equipment-calendar-day {
-  position: relative;
-  height: 5rem;
-  padding: 0.375rem 0.5rem 0.5rem;
-  vertical-align: top;
-  border: 1px solid var(--cal-border);
-  border-width: 0 1px 1px 0;
-  font-size: 0.75rem;
-  line-height: 1.3;
-  overflow: hidden;
-}
-.equipment-calendar-day:last-child { border-right: 0; }
-.equipment-availability-calendar tbody tr:last-child > .equipment-calendar-day { border-bottom: 0; }
-.equipment-calendar-day.is-outside-range { background: var(--cal-muted-surface); }
-.equipment-calendar-day.is-available     { background: var(--cal-surface); }
-.equipment-calendar-day.is-unavailable { background: var(--cal-surface); }
-.equipment-calendar-day.is-filtered-date {
-  outline: 2px solid var(--cal-focus);
-  outline-offset: -2px;
-}
-.equipment-calendar-day-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  height: 1.5rem;
-  margin-bottom: 0.25rem;
-  padding: 0 0.25rem;
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-.equipment-calendar-day > .equipment-calendar-status {
-  display: inline-flex;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.equipment-calendar-status.is-available   { color: var(--cal-available); }
-.equipment-calendar-status.is-unavailable { color: var(--cal-unavailable); }
-.equipment-calendar-blocked-reason {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-top: 0.125rem;
-  color: var(--cal-text-muted);
-}
-.equipment-calendar-windows {
-  display: grid;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.equipment-calendar-window {
-  display: grid;
-  gap: 0.0625rem;
-  min-width: 0;
-  padding: 0.25rem 0.375rem;
-  border: 0;
-  border-radius: 4px;
-  background: var(--window-bg);
-}
-.equipment-calendar-window.is-available   { --window-color: var(--cal-available);   --window-bg: transparent; }
-.equipment-calendar-window.is-unavailable { --window-color: var(--cal-unavailable); --window-bg: transparent; }
-.equipment-calendar-time {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-.equipment-calendar-window .equipment-calendar-status {
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.equipment-calendar-window small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--cal-text-muted);
-  font-size: 0.75rem;
-}
-@media (max-width: 640px) {
-  .equipment-availability-calendar { min-width: 0; }
-  .equipment-availability-calendar thead { display: none; }
-  .equipment-availability-calendar,
-  .equipment-availability-calendar tbody,
-  .equipment-availability-calendar tr,
-  .equipment-availability-calendar td { display: block; width: 100%; }
-  .equipment-calendar-day { height: auto; border-width: 0 0 1px; }
-  .equipment-calendar-day.is-outside-range { display: none; }
-  .equipment-calendar-day::before {
-    content: attr(data-weekday);
-    margin-right: 0.5rem;
-    color: var(--cal-text-muted);
-    font-weight: 600;
-  }
-}
-
-/* Overrides: scoped one level deeper so the app's global th/td/li/button rules cannot leak in. */
-.equipment-calendar-section .equipment-availability-calendar thead th {
-  color: var(--cal-text-muted);
-  text-align: center;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 500;
-}
-.equipment-calendar-section .equipment-availability-calendar td {
-  text-align: center;
-  vertical-align: top;
-}
-.equipment-calendar-section .equipment-calendar-day.is-outside-range {
-  background: transparent;
-  border-color: transparent;
-}
-.equipment-calendar-section .equipment-calendar-windows,
-.equipment-calendar-section .equipment-calendar-windows li {
-  list-style: none;
-  margin: 0;
-}
-.equipment-calendar-section .equipment-calendar-window small {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  white-space: normal;
-  overflow: hidden;
-}
+/* Keep the header unboxed; typography and spacing distinguish the equipment from month navigation. */
+.equipment-calendar-header { display: flex; flex-direction: column; align-items: center; gap: .65rem; padding: .25rem 0 .5rem; }
+.equipment-calendar-section .section-heading { justify-content: center; margin: 0; text-align: center; }
+.equipment-calendar-section .section-heading h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.02em; }
+.equipment-calendar-selected-name { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .5rem; max-width: 100%; margin: 0; text-align: center; color: var(--ink); font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }
+.equipment-calendar-equipment-label { color: var(--muted); font-size: .75rem; font-weight: 500; }
+.equipment-calendar-asset-label { display: inline-flex; align-items: center; gap: .45rem; max-width: 100%; padding: 0; }
+.equipment-calendar-asset-code { flex-shrink: 0; color: var(--ink); font-size: inherit; font-weight: inherit; white-space: nowrap; }
+.equipment-calendar-navigation { display: flex; justify-content: center; align-items: center; gap: .65rem; max-width: 100%; margin: .35rem 0 0; padding: 0; }
+.equipment-calendar-navigation > span { min-width: 10rem; text-align: center; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; }
+.equipment-calendar-navigation button:hover:not(:disabled) { background: #f0f3e8; box-shadow: none; }
+.equipment-calendar-navigation button:focus-visible { outline: 2px solid #536d37; outline-offset: 2px; }
+.equipment-calendar-assets, .equipment-calendar-asset { min-width: 0; }
+.equipment-calendar-scroll { overflow-x: auto; border: 1px solid var(--cal-border); border-radius: 14px; margin-top: 1rem; background: #fff; }
+.equipment-availability-calendar { width: 100%; min-width: 770px; table-layout: fixed; border-collapse: collapse; }
+/* Scope table and list rules to protect the calendar from the dashboard's inventory styles. */
+.equipment-calendar-section .equipment-availability-calendar th { padding: .8rem; background: #f3f5ec; color: #586343; text-align: left; font-size: .8rem; text-transform: none; letter-spacing: 0; }
+.equipment-calendar-section .equipment-availability-calendar td { height: 135px; vertical-align: top; text-align: left; padding: .6rem; border-top: 1px solid #e3e7dc; border-right: 1px solid #e3e7dc; }
+.equipment-calendar-section .equipment-availability-calendar td:last-child { border-right: 0; }
+.equipment-calendar-day.is-outside-range { background: #fafbf7; }
+.equipment-calendar-day.is-filtered-date { outline: 2px solid #536d37; outline-offset: -2px; }
+.equipment-calendar-day-number { display: block; font-size: .8rem; font-weight: 650; margin-bottom: .55rem; }
+.equipment-calendar-section .equipment-calendar-windows { display: grid; gap: .4rem; margin: 0; padding: 0 !important; list-style: none; }
+.equipment-calendar-section .equipment-calendar-windows li { list-style: none; margin: 0; }
 .equipment-calendar-section .equipment-calendar-windows li::before,
-.equipment-calendar-section .equipment-calendar-windows li::after {
-  content: none;
-  display: none;
-}
-.equipment-calendar-section .equipment-calendar-window {
-  position: static;
-  gap: 0.0625rem;
-  /* Match quiet-day status height; reservation wrappers must not add vertical inset. */
-  padding: 0 0.5rem;
-  border: 0;
-  justify-items: center;
-  text-align: center;
-}
-.equipment-calendar-section .equipment-calendar-window .equipment-calendar-status {
-  color: var(--cal-text-muted);
-  font-weight: 400;
-}
-.equipment-calendar-section .equipment-calendar-day-number {
-  display: flex;
-  justify-content: center;
-  width: fit-content;
-  margin-inline: auto;
-  font-size: 18px;
-  background: none;
-  color: var(--cal-text);
-  font-weight: 500;
-}
-/* Quiet days: a plain stock count in muted text, so only exceptions draw the eye. */
-.equipment-calendar-section .equipment-calendar-day > .equipment-calendar-status.is-available {
-  color: var(--cal-text-muted);
-  font-weight: 400;
-}
-.equipment-calendar-section .equipment-calendar-navigation button {
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 1px solid var(--cal-border);
-  border-radius: 8px;
-  background: var(--cal-surface);
-  box-shadow: none;
-  color: var(--cal-text);
-}
-.equipment-calendar-section .equipment-calendar-navigation button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.equipment-calendar-section .equipment-calendar-windows li::after { content: none; display: none; }
+.equipment-calendar-window, .equipment-calendar-day > .equipment-calendar-status { padding: 0; background: transparent; color: var(--cal-text-muted); overflow-wrap: anywhere; }
+.equipment-calendar-window { display: grid; gap: .25rem; min-width: 0; }
+/* Dots identify availability without filling each day with a coloured card. */
+.equipment-calendar-status::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: .4rem; border-radius: 50%; background: var(--cal-available); vertical-align: middle; }
+.equipment-calendar-status.is-unavailable::before { background: var(--cal-unavailable); }
+.equipment-calendar-status { display: block; font-size: .8rem; font-weight: 400; line-height: 1.4; }
+.equipment-calendar-blocked-reason { display: block; margin-top: .4rem; color: #8B2E2E; font-size: .7rem; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .equipment-calendar-section .section-heading h2 { font-size: 1.25rem; }
+  .equipment-calendar-navigation { gap: .35rem; }
+  .equipment-calendar-navigation > span { min-width: 0; padding: 0 .5rem; font-size: 1rem; }
 }
 `;
 
@@ -780,39 +550,42 @@ export default function EquipmentInventorySection({
           {searchCalendarAssets.length > 0 && (
             <section className="equipment-calendar-section" aria-labelledby="equipment-calendar-heading">
               <style>{CALENDAR_STYLES}</style>
-              <div className="section-heading">
-                <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>Availability calendar</h2>
+              <div className="equipment-calendar-header">
+                <div className="section-heading">
+                  <h2 id="equipment-calendar-heading" ref={calendarHeadingRef} tabIndex={-1}>
+                    Availability calendar
+                  </h2>
+                </div>
+                <h3 className="equipment-calendar-selected-name">
+                  <span className="equipment-calendar-equipment-label">Equipment</span>{' '}
+                  <span className="equipment-calendar-asset-label"><span className="equipment-calendar-asset-code">{calendarEquipment.asset_code}</span>{' — '}{calendarEquipment.name}</span>
+                </h3>
+                <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    aria-label="Previous month"
+                    title="Previous month"
+                    onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() - 1, 1)))}
+                    disabled={!canMoveToPreviousMonth}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m14 6-6 6 6 6" /></svg>
+                  </button>
+                  <span aria-live="polite" aria-atomic="true">
+                    {getMonthLabel(displayedMonth.toISOString().slice(0, 10))}
+                  </span>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    aria-label="Next month"
+                    title="Next month"
+                    onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1)))}
+                    disabled={!canMoveToNextMonth}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
+                  </button>
+                </div>
               </div>
-              <h3 className="equipment-calendar-selected-name">{calendarEquipment.asset_code} — {calendarEquipment.name}</h3>
-              <div className="equipment-calendar-navigation" aria-label="Calendar month navigation">
-                <button
-                  type="button"
-                  className="button-secondary"
-                  aria-label="Previous month"
-                  title="Previous month"
-                  onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() - 1, 1)))}
-                  disabled={!canMoveToPreviousMonth}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m14 6-6 6 6 6" /></svg>
-                </button>
-                <span aria-live="polite" aria-atomic="true">
-                  {getMonthLabel(displayedMonth.toISOString().slice(0, 10))}
-                </span>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  aria-label="Next month"
-                  title="Next month"
-                  onClick={() => setCalendarMonth(new Date(Date.UTC(displayedMonth.getUTCFullYear(), displayedMonth.getUTCMonth() + 1, 1)))}
-                  disabled={!canMoveToNextMonth}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m10 6 6 6-6 6" /></svg>
-                </button>
-              </div>
-              <ul className="equipment-calendar-legend" aria-label="Legend">
-                <li className="is-available">Available</li>
-                <li className="is-unavailable">Reserved or blocked</li>
-              </ul>
               <div className="equipment-calendar-assets">
                 {[calendarEquipment].map(item => (
                   <section className="equipment-calendar-asset" key={item.id}>
@@ -880,7 +653,7 @@ export default function EquipmentInventorySection({
                                                   key={`${window.startTime}-${window.endTime}-${index}`}
                                                   className={`equipment-calendar-window is-${state}`}
                                                 >
-                                                  {/* Scheduled and quiet days share the same dot-and-quantity presentation. */}
+                                                  {/* Scheduled and quiet days use the same availability card treatment. */}
                                                   <span className={`equipment-calendar-status is-${state}`}>{details}</span>
                                                 </li>
                                               );

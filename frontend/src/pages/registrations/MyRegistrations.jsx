@@ -39,7 +39,7 @@ export default function MyRegistrations({ dashboard = false }) {
         <div className="record-top"><span className="record-number">EVENT / {record.event_id}</span><span className={`status-badge registration-status-${record.status}`}>{registrationStatusLabel(record.status, record.event_status)}</span></div>
         <h2>{record.event_name || `Event #${record.event_id}`}</h2>
         <p>{record.proposed_date || 'Date not specified'}{record.proposed_start_time && ` · ${record.proposed_start_time.slice(0, 5)}`}</p>
-        <p><strong>Event status:</strong> {publicStatusLabels[record.event_status] || 'Status unavailable'}</p>
+        <p><strong>Event status:</strong> <span className={`status-badge status-${publicStatusLabels[record.event_status]?.toLowerCase() || 'unknown'}`}>{publicStatusLabels[record.event_status] || 'Status unavailable'}</span></p>
         <button className="button-secondary record-action" onClick={() => setSelectedId(record.id)}>View registration <span aria-hidden="true">↗</span></button>
       </article>)}</div>;
   }
@@ -60,7 +60,7 @@ export default function MyRegistrations({ dashboard = false }) {
     {!dashboard && <Link className="button-link button-secondary" to="/attendee/dashboard">Back to events</Link>}
     <PageIntro title={dashboard ? 'Attendee Dashboard' : 'My registrations'} eyebrow="Your event journey" description="Keep track of your existing registrations and their status." />
     {dashboard ? <AttendeeSection title="My registrations" count={registrations.length}>{content}</AttendeeSection> : content}
-    {selected && <Modal drawer title="Registration details" onClose={closeRegistration}><div className="registration-detail"><p className="eyebrow">Your registration / {selected.id}</p><h1>{selected.event_name || `Event #${selected.event_id}`}</h1><dl className="detail-facts"><div><dt>Registration status</dt><dd>{registrationStatusLabel(selected.status, selected.event_status)}</dd></div><div><dt>Event status</dt><dd>{publicStatusLabels[selected.event_status] || 'Status unavailable'}</dd></div><div><dt>Event date</dt><dd>{selected.proposed_date || 'Date not specified'}</dd></div><div><dt>Start time</dt><dd>{selected.proposed_start_time?.slice(0, 5) || 'Not specified'}</dd></div></dl>
+    {selected && <Modal drawer title="Registration details" onClose={closeRegistration}><div className="registration-detail"><p className="eyebrow">Your registration / {selected.id}</p><h1>{selected.event_name || `Event #${selected.event_id}`}</h1><dl className="detail-facts"><div><dt>Registration status</dt><dd>{registrationStatusLabel(selected.status, selected.event_status)}</dd></div><div><dt>Event status</dt><dd><span className={`status-badge status-${publicStatusLabels[selected.event_status]?.toLowerCase() || 'unknown'}`}>{publicStatusLabels[selected.event_status] || 'Status unavailable'}</span></dd></div><div><dt>Event date</dt><dd>{selected.proposed_date || 'Date not specified'}</dd></div><div><dt>Start time</dt><dd>{selected.proposed_start_time?.slice(0, 5) || 'Not specified'}</dd></div></dl>
       {selected.event_status && <Link className="button-link button-secondary" to={`/attendee/events/${selected.event_id}`}>View current event details</Link>}
       <WithdrawRegistrationAction registration={selected} onWithdrawn={handleWithdrawal} />
       <p className="detail-note">This is your personal registration summary.</p></div></Modal>}

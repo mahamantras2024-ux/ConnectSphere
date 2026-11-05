@@ -90,7 +90,7 @@ export default function ChangeRequestInbox() {
 
   return (
     <section ref={section} className="change-request-inbox" aria-labelledby="change-requests-title">
-      <div className="section-heading"><h2 id="change-requests-title">Amendment requests</h2>{!loading && <span className="badge">{requests.length} pending</span>}</div>
+      <div className="section-heading"><h2 id="change-requests-title">Amendment requests</h2>{!loading && <span className="badge event-count-badge">{requests.length} pending</span>}</div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {loading ? <p role="status" className="loading-state">Loading change requests...</p>

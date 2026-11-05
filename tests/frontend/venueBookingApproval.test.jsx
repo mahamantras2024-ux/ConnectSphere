@@ -5,7 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
 import VenueBookingInbox from '../../frontend/src/pages/venue/VenueBookingInbox';
-import NotificationsPanel from '../../frontend/src/components/NotificationsPanel';
+import NotificationBell from '../../frontend/src/components/NotificationBell';
+import { NotificationsProvider } from '../../frontend/src/context/NotificationsContext';
 import useLiveResource from '../../frontend/src/hooks/useLiveResource';
 import { api } from '../../frontend/src/api/client';
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), put: vi.fn(), post: vi.fn() } }));
@@ -20,6 +21,11 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 /** Real authentication and drawer behavior are retained; test data enters only through API responses. */
 function open() { return render(<AuthProvider><VenueBookingInbox /></AuthProvider>); }
+/** Exercise the real shared notification provider and bell after removing the dashboard feed. */
+async function openNotifications() {
+  render(<MemoryRouter><AuthProvider><NotificationsProvider><NotificationBell /></NotificationsProvider></AuthProvider></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: /^Notifications/ }));
+}
 it('SCRUM-43 AC1 AC2 AC7 - staff review requirements, approve and see persisted audit confirmation', async () => {
   open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   const drawer = screen.getByRole('dialog', { name: 'Review venue booking request' });
@@ -76,7 +82,7 @@ it('SCRUM-43 AC5 - coordinator sees a new decision at 5000ms, with boundaries be
   let notes = [];
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 4, role: 'event_coordinator' } }
     : { notifications: notes, unreadCount: notes.length });
-  render(<MemoryRouter><AuthProvider><NotificationsPanel /></AuthProvider></MemoryRouter>);
+  await openNotifications();
   await screen.findByText('No notifications yet.');
   notes = [{ id: 1, title: 'Venue booking rejected: Gala', message: 'Maintenance; try Hall B.', created_at: '2031-10-01T00:00:00Z', read_at: null }];
   await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
@@ -134,7 +140,7 @@ it.each([401, 403, 404])('SCRUM-43 AC1 AC5 - access loss HTTP %s removes private
 });
 it('SCRUM-43 AC5 - transient notification failure labels retained data and later refresh recovers', async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-  render(<MemoryRouter><AuthProvider><NotificationsPanel /></AuthProvider></MemoryRouter>);
+  await openNotifications();
   await screen.findByText('No notifications yet.');
   api.get.mockRejectedValueOnce(new Error('Network unavailable'));
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
@@ -156,15 +162,18 @@ it.each(['already read', 'access lost'])('SCRUM-43 AC5 - delayed mark-read respo
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 4, role: 'event_coordinator' } }
     : { notifications: [note, { ...note, id: 2, title: 'Earlier decision', read_at: '2031-10-01T00:00:00Z' }], unreadCount: 1 });
   let finish; api.post.mockReturnValue(new Promise(resolve => { finish = resolve; }));
-  render(<MemoryRouter><AuthProvider><NotificationsPanel /></AuthProvider></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('button', { name: 'Mark Venue approved as read' }));
+  await openNotifications();
+  fireEvent.click(await screen.findByRole('button', { name: 'Venue approved (new)' }));
   if (scenario === 'already read') api.get.mockResolvedValue({ notifications: [{ ...note, read_at: '2031-10-01T00:00:00Z' }], unreadCount: 0 });
   else api.get.mockRejectedValue(Object.assign(new Error('Access lost'), { status: 403 }));
   await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
   await act(async () => finish({ notification: { read_at: '2031-10-01T00:00:00Z' } }));
-  expect(screen.getByText('0 unread')).toBeVisible();
-  expect(screen.queryByText('-1 unread')).not.toBeInTheDocument();
-  if (scenario === 'access lost') expect(screen.queryByText('Venue approved')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Notifications' })).toBeVisible();
+  // Inspect the reopened list as well as the count: a closed dropdown alone cannot prove private data was cleared.
+  fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+  const dropdown = screen.getByRole('region', { name: 'Recent notifications' });
+  if (scenario === 'access lost') expect(within(dropdown).queryByText('Venue approved')).not.toBeInTheDocument();
+  else expect(within(dropdown).getByRole('button', { name: 'Venue approved' })).toBeVisible();
 });
 it('SCRUM-43 AC1 AC2 - access loss closes an open review and a delayed decision cannot restore the private queue', async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });

@@ -14,9 +14,6 @@ vi.mock('../../frontend/src/context/AuthContext', () => ({
 vi.mock('../../frontend/src/api/client', () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));
-vi.mock('../../frontend/src/components/NotificationsPanel', () => ({
-  default: () => null,
-}));
 
 const cancelledEventReservation = {
   id: 901,
