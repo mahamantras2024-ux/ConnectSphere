@@ -807,7 +807,7 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .venue-profile .venue-timeline-row { height: 64px; margin-top: 10px; }
 .venue-profile .venue-timeline-locked { top: 34px; }
 .venue-profile .venue-timeline-selection { align-items: stretch; }
-.venue-profile .venue-schedule-actions > button { display: block; margin-left: auto; min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+.venue-profile .venue-schedule-actions > button { display: block; margin-left: 0; min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
 /* Preserve the refresh action's accessible name while presenting a compact icon in either schedule view. */
 .schedule-action.schedule-refresh-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 40px; width: 40px; height: 40px; min-height: 40px; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); box-shadow: none; }
 .schedule-action.schedule-refresh-icon:hover { background: #f3f5ed; }
@@ -824,7 +824,7 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .venue-profile [aria-label="Record venue closure"] input, .venue-profile [aria-label="Record venue closure"] textarea { min-width: 0; padding: 10px; font-size: 13px; }
 .venue-profile [aria-label="Record venue closure"] label:nth-of-type(3) { grid-column: 1 / -1; }
 /* The submit action follows the full-width reason field instead of occupying the first date column. */
-.venue-profile [aria-label="Record venue closure"] button { grid-column: 1 / -1; justify-self: end; min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+.venue-profile [aria-label="Record venue closure"] button { grid-column: 1 / -1; justify-self: start; min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
 @media (max-width: 640px) {
   .venue-drawer .venue-profile { padding: 20px; }
   .venue-drawer:has(.venue-profile) > .modal-header { padding: 16px 20px; }
@@ -1017,3 +1017,12 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .venue-timeline-segment:hover .venue-timeline-tooltip, .venue-timeline-segment:focus .venue-timeline-tooltip { display:block; }
 
 .venue-timeline-block:hover .venue-timeline-tooltip, .venue-timeline-block:focus .venue-timeline-tooltip { display:block; }
+
+/* Detail navigation shares one presentation across role dashboards while each caller keeps its route or drawer handler. */
+.page .view-details-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; min-height: 40px; padding: 9px 14px; border: 1px solid #dce2cf; border-radius: 8px; background: #f6f8ef; color: var(--ink); font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; box-shadow: none; }
+.page .view-details-action:hover { background: #edf2e2; border-color: #bdcba6; }
+.page .view-details-action:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.page .view-details-action svg { flex-shrink: 0; width: 16px; height: 16px; }
+.venue-card-footer .view-details-action { margin-left: auto; }
+
+.request-row-actions .view-details-action { align-self: center; }

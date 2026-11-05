@@ -18,8 +18,8 @@ export default function CoordinatorEventCards({ events, token, staff: supportSta
       </div>
       <h3>{event.name || 'Untitled Event'}</h3>
       <p>{event.purpose || 'No purpose provided'}</p>
-      <Link className="button-link button-secondary record-action" state={{ returnTo }} to={`/events/${event.id}`}>
-        View details <span aria-hidden="true">↗</span>
+      <Link className="button-link button-secondary record-action view-details-action" state={{ returnTo }} to={`/events/${event.id}`}>
+        View details <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M7 17 17 7M7 7h10v10" /></svg>
       </Link>
       {grouped && event.technical_support_required && !supportStaffError && <TechnicalSupportAssignment
         event={event} token={token} staff={supportStaff} onSaved={members => onSaved(event.id, members)} />}

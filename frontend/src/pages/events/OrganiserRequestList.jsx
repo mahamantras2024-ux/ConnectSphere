@@ -61,7 +61,7 @@ export default function OrganiserRequestList({ events, onChange, token }) {
           </div>
           <div className="request-row-actions">
             <Link className="button-link button-secondary" to={`/organizer/events/${event.id}/status`}>View status</Link>
-            {event.can_manage !== false && <Link className="button-link button-secondary" state={{ returnTo: location.pathname }} to={`/organizer/events/${event.id}`}>View details</Link>}
+            {event.can_manage !== false && <Link className="button-link button-secondary view-details-action" state={{ returnTo: location.pathname }} to={`/organizer/events/${event.id}`}>View details <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M7 17 17 7M7 7h10v10" /></svg></Link>}
             {isDraft(event) && event.can_manage !== false && <>
               <button disabled={busy} className="button-secondary" onClick={() => review(event, 'submit')}>Submit draft</button>
               <button disabled={busy} className="button-secondary" onClick={() => review(event, 'delete')}>Delete draft</button>

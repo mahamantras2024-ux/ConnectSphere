@@ -32,7 +32,7 @@ export default function PublishedEventList() {
                 <span className="status-badge status-confirmed" style={{ alignSelf: 'flex-end' }}>Confirmed</span>
                 <h3>{event.name}</h3>
                 <p>{event.proposed_date || 'Date not specified'}</p>
-                <Link className="button-link button-secondary record-action" to={`/attendee/events/${event.id}`}>View event details</Link>
+                <Link className="button-link button-secondary record-action view-details-action" to={`/attendee/events/${event.id}`}>View event details <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M7 17 17 7M7 7h10v10" /></svg></Link>
               </article>
             ))}</div>}
     </AttendeeSection></div>

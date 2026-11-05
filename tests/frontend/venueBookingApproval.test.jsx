@@ -25,6 +25,7 @@ it('SCRUM-43 AC1 AC2 AC7 - staff review requirements, approve and see persisted 
   const drawer = screen.getByRole('dialog', { name: 'Review venue booking request' });
   for (const text of ['Hall A', 'Gala', '100', 'Seminar', 'Ramp']) expect(within(drawer).getByText(text)).toBeVisible();
   expect(drawer).toHaveTextContent(/20 Oct 2031/); expect(drawer).toHaveTextContent(/10:00/);
+  expect(screen.queryByLabelText('Reason or alternative arrangement (optional)')).not.toBeInTheDocument();
   // SCRUM-107 AC1: staff choose an explicit deadline before granting a tentative approval.
   fireEvent.change(screen.getByLabelText('Hold expiry (Singapore time)'),{target:{value:'2099-01-01T08:00'}});
   fireEvent.click(within(drawer).getByRole('button', { name: 'Approve request' }));
@@ -36,18 +37,28 @@ it('SCRUM-43 AC1 AC2 AC7 - staff review requirements, approve and see persisted 
 });
 it.each(['Maintenance; try Hall B at 2pm.', ''])('SCRUM-43 AC3 AC4 - rejection accepts optional reason or alternative %j', async reason => {
   open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
+  // Rejection notes belong only to an explicit rejection, and opening them must not persist a decision.
+  expect(screen.queryByLabelText('Reason or alternative arrangement (optional)')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  expect(api.put).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Reason or alternative arrangement (optional)')).not.toBeRequired();
   fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: reason } });
   api.put.mockResolvedValue({ request: { ...booking, status: 'rejected', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
   expect(await screen.findByRole('status')).toHaveTextContent('Rejected');
   expect(api.put).toHaveBeenCalledWith('/venues/7/requests/20/decision', { decision: 'rejected', reason }, 'staff-session');
 });
 it('SCRUM-43 AC1 AC2 AC3 - failed save preserves the review and notes for retry and prevents duplicate clicks', async () => {
   let fail; api.put.mockReturnValueOnce(new Promise((resolve, reject) => { fail = reject; }));
   open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
-  fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Try tomorrow' } });
   fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Try tomorrow' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
   expect(screen.getByRole('button', { name: 'Approve request' })).toBeDisabled();
+  const confirmation = screen.getByRole('button', { name: 'Confirm rejection' });
+  expect(confirmation).toBeDisabled();
+  fireEvent.click(confirmation);
+  expect(api.put).toHaveBeenCalledTimes(1);
   // Keep the submitting request in view until its outcome is known; closing cannot conceal a live write.
   fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
   expect(screen.getByRole('dialog')).toBeVisible();
@@ -178,4 +189,53 @@ it('SCRUM-43 AC1 AC2 - access loss closes an open review and a delayed decision 
   await act(async () => finish({ request: { ...booking, status: 'tentative', hold_expires_at:'2099-01-01T00:00:00Z', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } }));
   expect(screen.queryByRole('button', { name: 'Review Gala at Hall A' })).not.toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+// Rejection UI AC1/AC2: a note entered for a rejection must never become an approval note.
+it('Rejection UI AC1 AC2 - approval ignores entered rejection notes', async () => {
+  // Arrange: start a rejection and enter text before choosing the non-destructive approval action.
+  open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Rejection only' } });
+  fireEvent.change(screen.getByLabelText('Hold expiry (Singapore time)'), { target: { value: '2099-01-01T08:00' } });
+  // Act / Assert: approval keeps its existing deadline contract and cannot submit the rejection draft.
+  fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
+  await screen.findByText(/Tentative hold approved:/);
+  expect(api.put).toHaveBeenCalledWith('/venues/7/requests/20/decision', { decision: 'approved', reason: '', holdExpiresAt: '2099-01-01T00:00:00.000Z' }, 'staff-session');
+});
+
+it('Rejection UI AC1 AC3 - cancelling and switching requests clear optional rejection drafts', async () => {
+  // Arrange: two distinct requests exercise both cancellation within a review and a fresh drawer selection.
+  api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 9, role: 'venue_staff' } } : { requests: [booking, { ...booking, id: 21, event_name: 'Workshop' }] });
+  open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Old note' } });
+  // Act / Assert: cancellation removes the field and reopening starts empty without saving anything.
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel rejection' }));
+  expect(screen.queryByLabelText('Reason or alternative arrangement (optional)')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  expect(screen.getByLabelText('Reason or alternative arrangement (optional)')).toHaveValue('');
+  fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Gala only' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review Workshop at Hall A' }));
+  expect(screen.queryByLabelText('Reason or alternative arrangement (optional)')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  expect(screen.getByLabelText('Reason or alternative arrangement (optional)')).toHaveValue('');
+  expect(api.put).not.toHaveBeenCalled();
+});
+
+it('Rejection UI AC4 - a failed rejection retains notes for an explicit successful retry', async () => {
+  // Arrange: the server rejects the first write but accepts the same decision on retry.
+  api.put.mockRejectedValueOnce(new Error('Please retry')).mockResolvedValueOnce({ request: { ...booking, status: 'rejected', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } });
+  open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
+  fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Try Hall B' } });
+  // Act / Assert: the failed write cannot close the review or lose the text; retry sends it unchanged.
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Please retry');
+  expect(screen.getByLabelText('Reason or alternative arrangement (optional)')).toHaveValue('Try Hall B');
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Rejected');
+  expect(api.put).toHaveBeenCalledTimes(2);
+  expect(api.put).toHaveBeenLastCalledWith('/venues/7/requests/20/decision', { decision: 'rejected', reason: 'Try Hall B' }, 'staff-session');
 });

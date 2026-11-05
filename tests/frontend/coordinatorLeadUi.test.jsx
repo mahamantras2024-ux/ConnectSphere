@@ -44,7 +44,10 @@ it('Lead UI AC1 AC2 AC4 - larger parent sections contain smaller indented status
   }
   const card = screen.getByRole('heading', { name: 'Planning Forum' }).closest('article');
   const details = within(card).getByRole('link', { name: 'View details' });
-  expect(details).toHaveClass('record-action'); expect(details).toHaveAttribute('href', '/events/7'); expect(details.querySelector('[aria-hidden="true"]')).toHaveTextContent('↗');
+  // Shared details actions use the same decorative SVG without changing their accessible name or destination.
+  expect(details).toHaveClass('record-action', 'view-details-action');
+  expect(details).toHaveAttribute('href', '/events/7');
+  expect(details.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Registration information' })).not.toBeInTheDocument();
   expect(api.get.mock.calls.some(([path]) => path.endsWith('/lead-registrations'))).toBe(false);
 });
