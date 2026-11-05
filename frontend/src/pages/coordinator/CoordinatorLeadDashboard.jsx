@@ -58,7 +58,7 @@ export default function CoordinatorLeadDashboard() {
           <div><dt>Proposed date</dt><dd>{event.proposed_date || 'Not specified'}</dd></div>
           <div><dt>Expected attendance</dt><dd>{event.expected_attendance ?? 'Not specified'}</dd></div>
           <div><dt>Coordinator</dt><dd>{event.coordinator_name || 'Unassigned'}</dd></div></dl>
-        <Link className="button-link button-secondary record-action" state={{ returnTo: location.pathname + location.search }} to={`/events/${event.id}`}>View details <span aria-hidden="true">↗</span></Link>
+        <Link className="button-link button-secondary record-action view-details-action" state={{ returnTo: location.pathname + location.search }} to={`/events/${event.id}`}>View details <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M7 17 17 7M7 7h10v10" /></svg></Link>
         <form className="grid gap-2 mt-4" onSubmit={submitEvent => {
           submitEvent.preventDefault(); assign(event, new FormData(submitEvent.currentTarget).get('coordinator'));
         }}>

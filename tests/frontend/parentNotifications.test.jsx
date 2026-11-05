@@ -28,8 +28,8 @@ const roles = {
 const note = (changes = {}) => ({ id: 9, event_id: 101, type: 'event_details_changed', title: 'Venue booking approved: Gala',
   message: 'Gala: venue booking #4 at Hall A was approved.', created_at: '2030-01-02T03:55:00.000Z', read_at: null, ...changes });
 
-// Shows the current path so a test can see where a click led (AC4).
-function Where() { return <output aria-label="Current page">{useLocation().pathname}</output>; }
+// Expose the path and query so notification tests verify the selected workspace section (AC4).
+function Where() { const location = useLocation(); return <output aria-label="Current page">{location.pathname + location.search}</output>; }
 // Renders the application at a route with a stored session token.
 function open(path) {
   localStorage.setItem('cs_token', 'session');
@@ -103,6 +103,9 @@ describe('previews and targets', () => {
     ['event_coordinator', note({ type: 'change_request_submitted' }), '/coordinator/dashboard'],
     // Outgoing notice AC3: responsibility ended, so the notice must not link to the revoked event page.
     ['event_coordinator', note({ type: 'event_details_changed', details: { kind: 'event_reassigned_away' } }), '/coordinator/dashboard'],
+    // Venue tabs AC3: booking notices open Requests only for the Venue Staff recipient.
+    ['venue_staff', note({ type: 'venue_booking_requested' }), '/venue/dashboard?section=requests'],
+    ['event_coordinator', note({ type: 'venue_booking_requested' }), '/events/101'],
     ['venue_staff', note(), '/venue/dashboard'], ['technical_support', note(), '/tech-support/dashboard'],
     ['event_organiser', note({ event_id: null }), '/organizer/dashboard'],
   ])('NT AC4 - a %s opens the right page', (role, notification, path) => {
@@ -171,7 +174,7 @@ it('NT AC2/AC3 - the bell shows each notification as a title, a one-line summary
 
 // AC4: pressing a notification marks it read and opens the page where the update happened.
 it.each([
-  ['venue_staff', '/venue/dashboard', note({ type: 'venue_booking_requested', title: 'New venue booking request: Hall A' }), '/venue/dashboard'],
+  ['venue_staff', '/venue/dashboard', note({ type: 'venue_booking_requested', title: 'New venue booking request: Hall A' }), '/venue/dashboard?section=requests'],
   ['event_coordinator', '/coordinator/dashboard', note({ type: 'clarification_replied', title: 'Clarification reply received: Gala' }), '/events/101'],
   ['event_coordinator', '/coordinator/dashboard', note({ type: 'event_coordinator_assigned', title: 'Event assigned: Gala' }), '/events/101'],
   ['event_organiser', '/organizer/dashboard', note(), '/organizer/events/101'],

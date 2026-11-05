@@ -597,6 +597,10 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .booking-review label { display: grid; gap: .65rem; font-weight: 600; }
 .booking-review textarea { width: 100%; box-sizing: border-box; background: #fff; color: #343a26; border: 1px solid #b8bea7; border-radius: .75rem; padding: .85rem; }
 .booking-review-actions { display: flex; flex-wrap: wrap; gap: .75rem; padding-block: .75rem; }
+/* A destructive confirmation is visually distinct from returning to the booking review. */
+.booking-review-actions button { min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+.booking-review-actions .button-danger { background: var(--orange); border-color: var(--orange); color: #111; }
+.booking-review-actions .button-danger:hover { background: #da5720; border-color: #da5720; }
 .booking-decision-success { padding: 1rem; border-radius: .75rem; background: #edf0d6; color: #41491b; }
 /* Keep optional safety documents together with clear file and removal controls. */
 .emergency-documents { margin-block: 1rem 1.5rem; }
@@ -693,6 +697,114 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 /* Key venue facts remain readable beside the larger rate, without enlarging unrelated card notes. */
 .venue-card .venue-location, .venue-card .venue-facts, .venue-card .venue-facts span { font-size:16px; font-weight:500; line-height:1.5; color:#30391c; }
 .venue-card .venue-request-action { align-self:stretch; min-height:48px; width:calc(100% - 48px); margin:0 24px 24px; }
+
+/* Venue Staff catalogue cards use a quiet image fallback and a compact, consistent information hierarchy. */
+.venue-dashboard .venue-card { border: 1px solid #e0e5d8; border-radius: 14px; background: #fff; }
+.venue-dashboard .venue-card .venue-image { height: 180px; background: #f2f5ec; }
+.venue-dashboard .venue-card .venue-placeholder { gap: 10px; background: linear-gradient(135deg, #f5f7ef, #edf1e4); color: #7a8866; }
+.venue-dashboard .venue-card .venue-placeholder > span { display: grid; place-items: center; width: 54px; height: 54px; border: 1px solid #dfe5d4; border-radius: 12px; background: #ffffffb3; }
+.venue-dashboard .venue-card .venue-placeholder small { font-size: 12px; letter-spacing: 0; color: #78816c; }
+.venue-dashboard .venue-card .image-badge { top: 12px; left: 20px; padding: 5px 9px; border: 1px solid #e3e8da; background: #fff; font-size: 11px; }
+.venue-card .venue-fact-label, .venue-card .venue-rate-label { display: none; }
+.venue-dashboard .venue-card .venue-card-body { padding: 20px; gap: 12px; }
+.venue-dashboard .venue-card .record-number { font-size: 10px; letter-spacing: .1em; color: #78816c; }
+.venue-dashboard .venue-card h3 { margin: 0; font-size: 20px; line-height: 1.35; letter-spacing: -.3px; }
+.venue-dashboard .venue-card .venue-location { margin: 0; font-size: 14px; font-weight: 400; line-height: 1.5; color: var(--muted); }
+/* Labelled fact columns give short values a clear alignment and consistent reading order. */
+.venue-dashboard .venue-card .venue-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.venue-dashboard .venue-card .venue-facts span { min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.5; color: var(--ink); }
+/* The final fact is operating hours; keep its label and value flush with the content edge. */
+.venue-dashboard .venue-card .venue-facts > span:last-child { text-align: right; }
+.venue-dashboard .venue-card .venue-fact-label, .venue-dashboard .venue-card .venue-rate-label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.4; }
+.venue-dashboard .venue-card .venue-card-footer { padding-top: 16px; gap: 12px; align-items: flex-end; }
+.venue-dashboard .venue-card .venue-hourly-rate { font-size: 14px; font-weight: 600; line-height: 1.5; }
+.venue-dashboard .venue-card .text-button { min-height: 40px; margin-left: auto; padding: 9px 13px; gap: 8px; border: 1px solid #dce2cf; border-radius: 8px; background: #f6f8ef; font-size: 12px; font-weight: 600; }
+.venue-dashboard .venue-card .text-button:hover { background: #edf2e2; border-color: #bdcba6; }
+
+/* The venue profile uses quiet section dividers and one typography scale instead of nested cards and dense fact tiles. */
+.venue-drawer:has(.venue-profile) > .modal-header { padding: 16px 24px; background: #fff; }
+.venue-drawer:has(.venue-profile) > .modal-header .eyebrow { display: none; }
+.venue-drawer:has(.venue-profile) > .modal-header h2 { margin: 0; font-size: 20px; }
+.venue-drawer:has(.venue-profile) .drawer-navigation { padding: 12px 24px 0; }
+.venue-drawer:has(.venue-profile) .drawer-navigation button { padding: 6px 0; border: 0; background: transparent; font-size: 12px; box-shadow: none; }
+.venue-drawer .venue-profile { display: grid; gap: 24px; min-width: 0; padding: 24px; }
+.venue-drawer .venue-profile .profile-banner { margin: 0; padding: 0; border-radius: 12px; background: transparent; }
+.venue-drawer .venue-profile .profile-banner img { display: block; height: 180px; border-radius: 12px; }
+.venue-drawer .venue-profile .profile-pattern { display: none; }
+.venue-drawer .venue-profile .profile-banner > div { padding: 0; }
+.venue-drawer .venue-profile .profile-banner:has(> img) > div { padding-top: 16px; }
+.venue-drawer .venue-profile .profile-banner h2 { font-size: 24px; line-height: 1.3; letter-spacing: -.4px; }
+.venue-profile .venue-detail-section, .venue-profile .emergency-documents { min-width: 0; margin: 0; padding-top: 20px; border-top: 1px solid var(--border); }
+.venue-profile .venue-detail-section[data-group="summary"] { padding-top: 0; border-top: 0; }
+.venue-profile .venue-detail-section > h3, .venue-profile .emergency-documents > h3 { margin: 0 0 14px; font-size: 15px; font-weight: 650; }
+.venue-profile .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin: 0; }
+.venue-profile .detail-grid > div { padding: 0; border: 0; min-width: 0; }
+.venue-profile .detail-grid dt { margin: 0 0 4px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.venue-profile .detail-grid dd { font-size: 14px; line-height: 1.55; }
+.venue-profile [data-group="location"] .detail-grid, .venue-profile [data-group="facilities"] .detail-grid { grid-template-columns: 1fr; }
+.venue-profile [data-group="safety"] .detail-grid > div:nth-child(n+3) { grid-column: 1 / -1; }
+.venue-profile [data-group="safety"] dd { white-space: pre-wrap; }
+.venue-profile .field-help { margin: 12px 0 0; font-size: 12px; line-height: 1.6; }
+.venue-profile .venue-map { height: 220px; margin-top: 16px; border-radius: 10px; }
+.venue-profile .emergency-documents .form-grid { grid-template-columns: 1fr; gap: 0; }
+.venue-profile .emergency-document { padding: 14px 0 0; border: 0; border-radius: 0; background: transparent; }
+.venue-profile .emergency-document h4 { margin: 0 0 5px; font-size: 13px; font-weight: 600; }
+.venue-profile .emergency-document p { margin: 0; font-size: 13px; line-height: 1.5; }
+.venue-profile .emergency-document-actions { margin: 0; }
+.venue-profile .emergency-document-actions a { max-width: 100%; padding: 0; border: 0; background: transparent; font-size: 13px; overflow-wrap: anywhere; }
+.venue-profile .venue-record-actions { margin-top: 0; gap: 8px; }
+.venue-profile .venue-record-actions button, .venue-profile .schedule-action { min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+.venue-profile .schedule-action { display: inline-flex; margin: 0; }
+/* Align the schedule entry point with its heading and keep opened content on its own full-width row. */
+.venue-profile .venue-availability-section { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; }
+.venue-profile .venue-availability-section > h3 { align-self: center; margin: 0; }
+.venue-profile .venue-availability-section > .schedule-action { align-self: center; justify-self: end; border: 1px solid var(--border); background: #fff; color: var(--ink); box-shadow: none; }
+.venue-profile .venue-availability-section > .schedule-action:hover { background: #f3f5ed; }
+.venue-profile .venue-availability-section > .venue-schedule { grid-column: 1 / -1; }
+.venue-profile .booking-warning { margin-top: 16px; }
+/* Keep the edit shortcut beside the title; all schedule controls stay within the narrow drawer. */
+.venue-drawer .venue-profile .venue-profile-heading { display: flex; align-items: flex-start; gap: 16px; }
+.venue-profile-heading h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.venue-profile .venue-edit-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; min-height: 36px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--orange); color: #fff; border-color: var(--orange); box-shadow: none; }
+.venue-profile .venue-edit-icon:hover { background: #da5720; border-color: #da5720; }
+.venue-profile .venue-schedule { min-width: 0; margin-top: 0; }
+/* The drawer already identifies the venue and section; omit repeated titles and the spent open action. */
+.venue-profile .venue-schedule > h3, .venue-profile .venue-timeline-heading,
+.venue-profile .venue-availability-section:has(.venue-schedule) > .schedule-action { display: none; }
+.venue-profile .venue-schedule-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.venue-profile .venue-schedule-toolbar label { display: grid; flex: 1 1 160px; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); }
+.venue-profile .venue-schedule-toolbar input { width: 100%; min-width: 0; min-height: 40px; padding: 9px 12px; border-radius: 8px; font-size: 13px; }
+.venue-profile .venue-schedule-help { display: grid; gap: 4px; margin: 10px 0 14px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.venue-profile .venue-timeline-scroll { max-width: 100%; margin: 16px 0; }
+.venue-profile .venue-timeline { min-width: 540px; padding: 12px; }
+.venue-profile .venue-timeline-row { height: 64px; margin-top: 10px; }
+.venue-profile .venue-timeline-locked { top: 34px; }
+.venue-profile .venue-timeline-selection { align-items: stretch; }
+.venue-profile .venue-schedule-actions > button { display: block; margin-left: 0; min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+/* Preserve the refresh action's accessible name while presenting a compact icon in either schedule view. */
+.schedule-action.schedule-refresh-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 40px; width: 40px; height: 40px; min-height: 40px; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--ink); box-shadow: none; }
+.schedule-action.schedule-refresh-icon:hover { background: #f3f5ed; }
+.venue-profile [aria-label="Venue management"] .venue-record-actions { justify-content: center; }
+.venue-profile [aria-label="Venue management"] > .venue-record-actions .button-danger { background: #b42318; color: #fff; border: 1px solid #b42318; padding-inline: 24px; }
+.venue-profile [aria-label="Venue management"] > .venue-record-actions .button-danger:hover { background: #912018; border-color: #912018; }
+
+
+.venue-profile [aria-label="Record venue closure"] { margin: 0; padding: 20px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; }
+.venue-profile [aria-label="Record venue closure"] h2 { margin: 0 0 8px; font-size: 15px; }
+.venue-profile [aria-label="Record venue closure"] p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.venue-profile [aria-label="Record venue closure"] form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.venue-profile [aria-label="Record venue closure"] label { display: grid; gap: 6px; min-width: 0; font-size: 13px; }
+.venue-profile [aria-label="Record venue closure"] input, .venue-profile [aria-label="Record venue closure"] textarea { min-width: 0; padding: 10px; font-size: 13px; }
+.venue-profile [aria-label="Record venue closure"] label:nth-of-type(3) { grid-column: 1 / -1; }
+/* The submit action follows the full-width reason field instead of occupying the first date column. */
+.venue-profile [aria-label="Record venue closure"] button { grid-column: 1 / -1; justify-self: start; min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+@media (max-width: 640px) {
+  .venue-drawer .venue-profile { padding: 20px; }
+  .venue-drawer:has(.venue-profile) > .modal-header { padding: 16px 20px; }
+  .venue-drawer:has(.venue-profile) .drawer-navigation { padding-inline: 20px; }
+  .venue-profile .detail-grid { gap: 16px; }
+  .venue-profile [aria-label="Record venue closure"] form { grid-template-columns: 1fr; }
+}
 
 /* A keyboard-editable time field shares one value with the hour-to-minute clock workflow. */
 .clock-time-field { position:relative; display:grid; gap:8px; min-width:0; }
@@ -1038,3 +1150,12 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 @media(max-width:640px) {
   .registration-settings .registration-accepted-deadlines { grid-template-columns:minmax(0,1fr); }
 }
+
+/* Detail navigation shares one presentation across role dashboards while each caller keeps its route or drawer handler. */
+.page .view-details-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; min-height: 40px; padding: 9px 14px; border: 1px solid #dce2cf; border-radius: 8px; background: #f6f8ef; color: var(--ink); font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; box-shadow: none; }
+.page .view-details-action:hover { background: #edf2e2; border-color: #bdcba6; }
+.page .view-details-action:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.page .view-details-action svg { flex-shrink: 0; width: 16px; height: 16px; }
+.venue-card-footer .view-details-action { margin-left: auto; }
+
+.request-row-actions .view-details-action { align-self: center; }

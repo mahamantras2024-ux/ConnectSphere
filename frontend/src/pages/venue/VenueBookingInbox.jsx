@@ -22,6 +22,7 @@ export default function VenueBookingInbox() {
   const { data, loading, error, updateData, refresh } = useLiveResource('/venues/requests/pending', token);
   const [selectedId, setSelectedId] = useState(null);
   const [reason, setReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState('');
   const [message, setMessage] = useState('');
@@ -29,13 +30,15 @@ export default function VenueBookingInbox() {
   const requests = data?.requests || [];
   // Derive the drawer from authorized live rows so a removed request or lost permission cannot leave stale private details open.
   const selected = requests.find(request => request.id === selectedId);
-  useEffect(() => { setSelectedId(null); setReason(''); setFailure(''); setMessage(''); }, [token]);
+  useEffect(() => { setSelectedId(null); setReason(''); setRejecting(false); setFailure(''); setMessage(''); }, [token]);
   /** Fresh selection clears feedback from another request so staff cannot accidentally reuse a rejection reason. */
   function review(request) {
-    setSelectedId(request.id); setReason(''); setFailure(''); setMessage('');
+    setSelectedId(request.id); setReason(''); setRejecting(false); setFailure(''); setMessage('');
     // Date controls represent Singapore wall time; never inherit the computer's locale offset.
     setExpiry(request.status==='tentative' ? new Date(Date.parse(request.hold_expires_at)+8*3600000).toISOString().slice(0,16) : '');
   }
+  /** Opens a separate rejection step; the initial review cannot submit a rejection accidentally. */
+  function beginRejection() { setRejecting(true); setFailure(''); }
   /**
    * Only a successful server decision removes the queue item; errors keep the staff member's notes for retry. A booking an
    * applied amendment flagged (Record Offline Clarifications AC5) is already confirmed, so it is re-confirmed or rejected
@@ -53,8 +56,10 @@ export default function VenueBookingInbox() {
     setSaving(true); setFailure('');
     try {
       const path = flagged ? 'recheck' : updating ? 'expiry' : 'decision';
-      const body = flagged ? { decision: decision === 'approved' ? 'confirmed' : decision, reason }
-        : updating ? {holdExpiresAt} : { decision, reason, ...(holdExpiresAt?{holdExpiresAt}:{}) };
+      // A rejection draft must never leak into an approval or re-confirmation audit record.
+      const decisionReason = decision === 'rejected' ? reason : '';
+      const body = flagged ? { decision: decision === 'approved' ? 'confirmed' : decision, reason: decisionReason }
+        : updating ? {holdExpiresAt} : { decision, reason: decisionReason, ...(holdExpiresAt?{holdExpiresAt}:{}) };
       const result = await api.put(`/venues/${selected.venue_id}/requests/${selected.id}/${path}`, body, token);
       // Live holds remain in the staff queue so their deadlines can be managed without repeating approval.
       updateData(current => current && ({ ...current, requests: result.request.status==='tentative'
@@ -94,17 +99,22 @@ export default function VenueBookingInbox() {
         {/* Keep the submitted snapshot available when staff review an amendment's impact on this booking. */}
         {originalText(selected.original_requirements) && <p className="detail-note"><strong>Originally requested:</strong> {originalText(selected.original_requirements)}</p>}
         {!selected.recheck_required_at && <div className="field"><label htmlFor="venue-hold-expiry">Hold expiry (Singapore time)</label><input id="venue-hold-expiry" type="datetime-local" value={expiry} onChange={event=>setExpiry(event.target.value)} disabled={saving} aria-describedby="venue-hold-expiry-help"/><span id="venue-hold-expiry-help" className="field-help">Required for approval. The Coordinator must confirm before this deadline.</span></div>}
-        {selected.status!=='tentative' && <label>Reason or alternative arrangement (optional)<textarea value={reason} onChange={event => setReason(event.target.value)} disabled={saving} rows={4} /></label>}
+        {rejecting && <label>Reason or alternative arrangement (optional)<textarea value={reason} onChange={event => setReason(event.target.value)} disabled={saving} rows={4} /></label>}
         <p className="detail-note">{selected.recheck_required_at ? 'Re-confirming keeps the confirmed booking; rejecting ends it. The Coordinator is told either way.'
           : 'Approval creates a tentative hold and rechecks availability. The Coordinator receives the deadline.'}</p>
         {failure && <p role="alert" className="error-message">{failure}</p>}
-        <div className="booking-review-actions">{selected.recheck_required_at
+        {/* Each step has one clear decision: approval stays out of the rejection confirmation. */}
+        <div className="booking-review-actions" role="group" aria-label="Booking decision">{rejecting
+          ? <><button className="button-danger" disabled={saving} onClick={() => decide('rejected')}>Confirm rejection</button>
+            <button className="button-secondary" disabled={saving} onClick={() => { setRejecting(false); setReason(''); setFailure(''); }}>Back to review</button></>
+          : selected.recheck_required_at
           ? <><button className="button-primary" disabled={saving} onClick={() => decide('approved')}>Re-confirm booking</button>
-          <button className="button-secondary" disabled={saving} onClick={() => decide('rejected')}>Reject booking</button></>
+            <button className="button-secondary" disabled={saving} onClick={beginRejection}>Reject booking</button></>
           : selected.status==='tentative'
           ? <button className="button-primary" disabled={saving} onClick={()=>decide('expiry')}>Save expiry</button>
           : <><button className="button-primary" disabled={saving} onClick={() => decide('approved')}>Approve request</button>
-          <button className="button-secondary" disabled={saving} onClick={() => decide('rejected')}>Reject request</button></>}</div>
+            <button className="button-secondary" disabled={saving} onClick={beginRejection}>Reject request</button></>}
+        </div>
       </div></Modal>}
   </section>;
 }

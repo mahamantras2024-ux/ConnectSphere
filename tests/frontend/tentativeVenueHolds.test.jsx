@@ -115,6 +115,8 @@ it('SCRUM-107 AC2 - failed expiry update retains the typed deadline and leaves t
   // Arrange: expiry management uses the same error-preserving drawer as initial review.
   api.get.mockResolvedValue({requests:[hold]});api.put.mockRejectedValue(new Error('Hold has expired; request fresh approval.'));
   render(<VenueBookingInbox/>);fireEvent.click(await screen.findByRole('button',{name:'Review Workshop at Garden Hall'}));
+  // Editing an existing hold does not expose a rejection-only note field.
+  expect(screen.queryByLabelText('Reason or alternative arrangement (optional)')).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Hold expiry (Singapore time)'),{target:{value:'2030-10-09T20:00'}});
   // Act / Assert: a rejected extension cannot turn into a success notice or silently change the recorded deadline.
   fireEvent.click(screen.getByRole('button',{name:'Save expiry'}));

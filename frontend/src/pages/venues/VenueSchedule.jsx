@@ -90,13 +90,20 @@ export default function VenueSchedule({ venue, token, canEdit = false, initialDa
     } finally { setSaving(false); }
   }
 
-  return <section aria-label="Venue schedule">
+  return <section className="venue-schedule" aria-label="Venue schedule">
     <h3>{venue.name} schedule</h3>
-    <label>Schedule date <input type="date" value={date} onChange={event => {
-      setDate(event.target.value); setPeriods([]); setDirty(false); setError(''); setAffected([]); setNotice('');
-    }} /></label>
-    <button className="schedule-action" type="button" onClick={refresh}>Refresh schedule</button>
-    <p>Times are in Singapore (UTC+08:00). Operating hours: {options.operatingHours || 'Not recorded'}. Unmarked time inside operating hours is available; bookings and unavailable periods still block it.</p>
+    <div className="venue-schedule-toolbar">
+      <label>Schedule date <input type="date" value={date} onChange={event => {
+        setDate(event.target.value); setPeriods([]); setDirty(false); setError(''); setAffected([]); setNotice('');
+      }} /></label>
+      <button className="schedule-action schedule-refresh-icon" type="button" aria-label="Refresh schedule" title="Refresh schedule" onClick={refresh}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M20 7v5h-5M4 17v-5h5" />
+          <path d="M6.1 7a7 7 0 0 1 11.55-1.6L20 8M4 16l2.35 2.6A7 7 0 0 0 17.9 17" />
+        </svg>
+      </button>
+    </div>
+    <p className="venue-schedule-help"><span>Singapore time (UTC+08:00) · Operating hours: {options.operatingHours || 'Not recorded'}</span><span>Unmarked time within operating hours is available. Bookings and closures block availability.</span></p>
     {!date ? <div><p>Choose a date to view the schedule.</p>{canEdit && <>
       {error && <p role="alert" className="error-message">{error}</p>}
       <button type="button" onClick={save}>Save schedule</button>

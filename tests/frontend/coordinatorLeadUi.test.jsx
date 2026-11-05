@@ -43,9 +43,14 @@ it('Lead tabs AC1 AC2 - uses the same five lifecycle tabs while keeping unassign
     expect(screen.getByRole('heading',{name:'Waiting for assignment'})).toBeVisible();
   }
   fireEvent.click(tab('In progress'));
-  const card=screen.getByRole('heading',{name:'Planning Forum'}).closest('article');
-  expect(within(card).getByRole('link',{name:'View details'})).toHaveAttribute('href','/events/7');
-  expect(api.get.mock.calls.some(([path])=>path.endsWith('/lead-registrations'))).toBe(false);
+  const card = screen.getByRole('heading', { name: 'Planning Forum' }).closest('article');
+  const details = within(card).getByRole('link', { name: 'View details' });
+  // Shared details actions use the same decorative SVG without changing their accessible name or destination.
+  expect(details).toHaveClass('record-action', 'view-details-action');
+  expect(details).toHaveAttribute('href', '/events/7');
+  expect(details.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Registration information' })).not.toBeInTheDocument();
+  expect(api.get.mock.calls.some(([path]) => path.endsWith('/lead-registrations'))).toBe(false);
 });
 
 it('Lead tabs AC2 AC3 - parent disclosures retain the selected stage and coordinator draft', async () => {

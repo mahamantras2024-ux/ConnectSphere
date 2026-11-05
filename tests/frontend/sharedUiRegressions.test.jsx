@@ -104,9 +104,9 @@ it('a role-switch response arriving after logout cannot restore the session', as
   expect(screen.getByText('Signed out')).toBeTruthy(); expect(localStorage.getItem('cs_token')).toBeNull();
 });
 // Test case: Opens venue dialogs and presses Escape, checking closure and restored opener focus.
-it('venue dialogs close on Escape and restore focus to their opening control', async () => {
+it('Venue tabs AC4 - venue dialogs close on Escape and restore focus to their opening control', async () => {
   // Checks keyboard accessibility for the create-record workflow.
-  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard');
+  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard?section=venues');
   const button = await screen.findByRole('button', { name: 'Add venue' }); button.focus(); fireEvent.click(button);
   expect(screen.getByRole('dialog', { name: 'Add New Venue' })).toBeTruthy();
   fireEvent.keyDown(document, { key: 'Escape' });
@@ -115,9 +115,9 @@ it('venue dialogs close on Escape and restore focus to their opening control', a
       expect(screen.queryByRole('dialog')).toBeNull()); expect(document.activeElement).toBe(button);
 });
 // Test case: Submits invalid capacity/buffers and checks visible validation errors without API writes.
-it('venue creation rejects invalid capacity and time buffers without API writes', async () => {
+it('Venue tabs AC4 - venue creation rejects invalid capacity and time buffers without API writes', async () => {
   // Validates boundaries beyond the required-field happy path.
-  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard');
+  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard?section=venues');
   fireEvent.click(await screen.findByRole('button', { name: 'Add venue' }));
   fireEvent.change(screen.getByLabelText('Capacity *'), { target: { value: '-1' } });
   fireEvent.change(screen.getByLabelText('Setup time (minutes) *'), { target: { value: '-30' } });
