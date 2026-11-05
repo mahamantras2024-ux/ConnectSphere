@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoute, roleLabels } from '../auth/dashboardRoutes';
 import NotificationBell from './NotificationBell';
-// Renders role navigation, account identity, and session controls.
+/** Keeps role workspaces explicit; organiser request routes have their own tab beside the unchanged dashboard. */
 export default function Navbar() {
   const { user, logout, switchRole } = useAuth();
   const navigate = useNavigate();
@@ -30,6 +30,8 @@ export default function Navbar() {
     <div className="nav-links">{user ? <>
       <NavLink to={getDashboardRoute(user.role)} aria-current={equipmentSelected ? false : 'page'}
         className={({ isActive }) => isActive && !equipmentSelected ? 'active' : undefined}>{workspaceLabel}</NavLink>
+      {/* The route family also covers new requests, details and status pages through NavLink's prefix matching. */}
+      {user.role === 'event_organiser' && <NavLink to="/organizer/events">Requests</NavLink>}
       {/* Technical Support owns the controls; this slot keeps them beside Dashboard in the shared header. */}
       {user.role === 'technical_support' && <div id="technical-support-equipment-navigation" className="equipment-header-navigation" />}
       {/* Venue discovery has its own workspace; it does not belong inside Assigned Events. */}

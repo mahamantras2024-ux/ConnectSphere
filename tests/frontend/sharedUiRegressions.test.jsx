@@ -375,7 +375,7 @@ it.each([
   ['event_organiser','/organizer/dashboard','My Events','Event Organiser Dashboard'],
   ['event_coordinator','/coordinator/dashboard','Dashboard','Event Coordinator Dashboard'],
   ['attendee','/attendee/dashboard','My Registrations','Attendee Dashboard'],
-])('Planning calendar AC3 / UI navigation AC1 / login AC3 - %s has one active workspace tab that returns from other pages',async(role,path,label,title)=>{
+])('Organiser requests tab AC1 / Planning calendar AC3 / UI navigation AC1 / login AC3 - %s has one active workspace tab that returns from other pages',async(role,path,label,title)=>{
   // Arrange a real session and an empty, owner-scoped response from the API boundary.
   localStorage.setItem('cs_token','session');
   api.get.mockImplementation(async endpoint=>endpoint==='/auth/me'?{user:{id:8,full_name:'Test User',role}}:endpoint==='/registrations/mine'?{registrations:[]}:{events:[]});
@@ -390,8 +390,13 @@ it.each([
   // Assert: the real role screen opens and the tab identifies the current workspace.
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   expect(link.getAttribute('aria-current')).toBe('page');
-  // Discovery and planning are distinct Coordinator workspaces; neither may duplicate the active Assigned Events tab.
-  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 4 : 2);
+  // The brand plus each role's real workspaces remain distinct; the organiser now also has Requests.
+  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 4 : role === 'event_organiser' ? 3 : 2);
+  if(role==='event_organiser'){
+    const requests=nav.getByRole('link',{name:'Requests',exact:true});
+    expect(requests.getAttribute('href')).toBe('/organizer/events');
+    expect(requests.getAttribute('aria-current')).toBeNull();
+  }
   if(role==='event_coordinator'){
     const planning=nav.getByRole('link',{name:'Planning calendar'});
     expect(planning.getAttribute('href')).toBe('/coordinator/planning-calendar');
