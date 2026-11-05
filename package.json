@@ -7,6 +7,8 @@
     "package": "npm run build --prefix frontend && node scripts/package.cjs",
     "smoke": "node scripts/smoke.cjs",
     "e2e": "playwright test",
+    "test:workflows:integration": "node tests/run.cjs integration workflows",
+    "test:workflows:e2e": "node tests/e2e/run-workflows.cjs",
     "test": "node tests/run.cjs",
     "test:all": "node tests/run.cjs all",
     "test:backend": "node tests/run.cjs backend",

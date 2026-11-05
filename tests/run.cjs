@@ -75,6 +75,9 @@ if (storyIndex >= 0 && (!story || options.includes('coverage'))) {
 const coverage = options.includes('coverage');
 const integration = options.includes('integration');
 const liveDatabase = integration || options.includes('all');
+// The agreed workflow matrix reuses distinct SQL boundary/race suites instead of copying their assertions.
+const workflowFiles = new Set(['connectedWorkflowsPostgres.test.js', 'attendeeRegistrationPostgres.test.js',
+  'attendeeWithdrawalPostgres.test.js', 'venueAvailabilityPostgres.test.js', 'equipmentAvailabilityPostgres.test.js']);
 const backend = !options.includes('frontend');
 const frontend = !options.includes('backend') && (!integration || coverage);
 let failures = 0;
@@ -87,11 +90,12 @@ function run(label, args, directory, env = {}) {
 }
 if (backend) {
   const files = readdirSync(path.join(__dirname, 'backend')).filter(name => name.endsWith('.test.js')).sort()
+    .filter(name => !options.includes('workflows') || workflowFiles.has(name))
     .filter(name => !story || story.includes(name.replace('.test.js','')) || (liveDatabase && !storyPattern && name === 'databaseAcceptance.test.js'))
-    .filter(name => !integration || coverage || ['scrum111Postgres.test.js','scrum85Postgres.test.js','scrum106Postgres.test.js','coordinatorHandoverPostgres.test.js','databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js','equipmentStatusPostgres.test.js','equipmentReviewUpgradePostgres.test.js','techSupportAssignmentGatePostgres.test.js','equipmentAlternativeAvailabilityPostgres.test.js','equipmentAvailabilityPostgres.test.js','parentNotificationsPostgres.test.js','technicalEventStatusPostgres.test.js','technicalQueueAccessPostgres.test.js','amendmentRequestsPostgres.test.js','offlineClarificationsPostgres.test.js','eventReconsiderationPostgres.test.js','safetyEquipmentReleasePostgres.test.js','safetyNotificationRecoveryPostgres.test.js','organiserOutcomesPostgres.test.js','amendmentNotificationBoundariesPostgres.test.js','scrum87Postgres.test.js'].includes(name))
+    .filter(name => !integration || coverage || options.includes('workflows') || name === 'connectedWorkflowsPostgres.test.js' || ['scrum111Postgres.test.js','scrum85Postgres.test.js','scrum106Postgres.test.js','coordinatorHandoverPostgres.test.js','databaseAcceptance.test.js','venueManagementPostgres.test.js','coordinatorLeadPostgres.test.js','changeRequestReviewPostgres.test.js','eventDecisionPostgres.test.js','venueSuitabilityPostgres.test.js','equipmentStatusPostgres.test.js','equipmentReviewUpgradePostgres.test.js','techSupportAssignmentGatePostgres.test.js','equipmentAlternativeAvailabilityPostgres.test.js','equipmentAvailabilityPostgres.test.js','parentNotificationsPostgres.test.js','technicalEventStatusPostgres.test.js','technicalQueueAccessPostgres.test.js','amendmentRequestsPostgres.test.js','offlineClarificationsPostgres.test.js','eventReconsiderationPostgres.test.js','safetyEquipmentReleasePostgres.test.js','safetyNotificationRecoveryPostgres.test.js','organiserOutcomesPostgres.test.js','amendmentNotificationBoundariesPostgres.test.js','scrum87Postgres.test.js'].includes(name))
     .map(name => path.join(__dirname, 'backend', name));
   const args = ['--test', ...(storyPattern ? [`--test-name-pattern=${storyPattern}`] : []), ...files];
-  run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', RUN_LEAD_DB: liveDatabase ? '1' : '0', RUN_VENUE_BOOKING_DB: liveDatabase ? '1' : '0', NODE_ENV: 'test' });
+  run('Backend tests', coverage ? [path.join(root, 'backend/node_modules/c8/bin/c8.js'), ...(options.includes('sprint-one') ? ['--config',path.join(root,'backend/.c8rc.sprint-one.json')] : []), process.execPath, ...args] : args, 'backend', { RUN_DB_TESTS: liveDatabase ? '1' : '0', RUN_LEAD_DB: liveDatabase ? '1' : '0', RUN_VENUE_BOOKING_DB: liveDatabase ? '1' : '0', RUN_VENUE_AVAILABILITY_DB: liveDatabase ? '1' : '0', NODE_ENV: 'test' });
 }
 if (frontend) {
   const files = story ? readdirSync(path.join(__dirname,'frontend')).filter(name => story.includes(name.replace(/\.test\.(js|jsx)$/,''))).map(name => path.join(__dirname,'frontend',name)) : [];
