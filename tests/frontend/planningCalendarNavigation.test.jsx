@@ -33,7 +33,7 @@ it('Planning calendar AC2 - a different role cannot open the calendar by URL',as
   role='event_organiser';open('/coordinator/planning-calendar');
   // Assert: the protected component never requests or displays Coordinator schedules.
   // Wait for authenticated organiser navigation, not the guest navbar rendered before authentication resolves.
-  await screen.findByRole('link',{name:'My Events'});
+  await screen.findByRole('link',{name:'Dashboard'});
   await screen.findByRole('heading',{name:'Event Organiser Dashboard'});
   expect(screen.queryByRole('link',{name:'Planning calendar'})).not.toBeInTheDocument();
   expect(screen.queryByRole('heading',{name:'Planning calendar'})).not.toBeInTheDocument();

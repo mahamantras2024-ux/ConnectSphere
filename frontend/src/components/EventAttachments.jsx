@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MiB
 const ALLOWED_EXTENSIONS = /\.(png|jpe?g|doc|pdf)$/i;
@@ -44,8 +44,10 @@ export function readAttachment(file) {
   });
 }
 
+/** Keeps a question's file picker, download and removal control together; removal also clears the native selection. */
 function AttachmentRow({ field, label, attachment, reading, onSelect, onChange }) {
   const canEdit = Boolean(onChange);
+  const inputRef = useRef(null);
 
   return (
     <div className="attachment-row">
@@ -53,6 +55,7 @@ function AttachmentRow({ field, label, attachment, reading, onSelect, onChange }
         <label>
           {label} attachment
           <input
+            ref={inputRef}
             type="file"
             accept={ACCEPT_ATTRIBUTE}
             disabled={reading}
@@ -69,11 +72,19 @@ function AttachmentRow({ field, label, attachment, reading, onSelect, onChange }
           {canEdit && (
             <button
               type="button"
-              className="button-secondary"
+              className="attachment-delete button-secondary"
+              aria-label={`Remove ${label} attachment`}
+              title={`Remove ${label} attachment`}
               disabled={reading}
-              onClick={() => onChange(field, null)}
+              onClick={() => {
+                // File inputs are uncontrolled: clearing React state alone leaves the browser's chosen filename behind.
+                inputRef.current.value = '';
+                onChange(field, null);
+              }}
             >
-              Remove {label} attachment
+              <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+              </svg>
             </button>
           )}
         </>

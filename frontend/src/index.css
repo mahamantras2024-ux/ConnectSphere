@@ -494,13 +494,24 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 
 /* Row-based request groups keep the established palette and wrap actions on narrow screens. */
 .event-request-rows { list-style:none; padding:0; display:grid; gap:12px; }
-.event-request-row { display:flex; justify-content:space-between; align-items:center; gap:20px; border:1px solid var(--border); border-radius:12px; padding:22px; background:#FFFFFA; }
+/* Reserve the top-right cell for lifecycle status so long names and action buttons cannot overlap it. */
+.event-request-row { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"summary status" "actions actions"; align-items:start; gap:14px 20px; border:1px solid var(--border); border-radius:12px; padding:22px; background:#FFFFFA; }
+.event-request-summary { grid-area:summary; }
+.event-request-status { grid-area:status; justify-self:end; align-self:start; }
 .event-request-row h3 { margin:0 0 8px; }
-.request-row-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.request-row-actions { grid-area:actions; display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
 .confirmation-content { padding:24px; }
 .event-attachments { grid-column:1 / -1; padding:20px 0; }
-.attachment-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0; }
-@media(max-width:640px) { .event-request-row { flex-direction:column; align-items:stretch; } }
+/* A full-width picker has its own row; long filenames and delete icons cannot change its length. */
+.attachment-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; align-items:center; margin:16px 0; min-width:0; }
+.attachment-row:empty { display:none; }
+.attachment-row > label { grid-column:1 / -1; display:grid; gap:6px; width:100%; min-width:0; font-size:13px; }
+.attachment-row input[type="file"] { width:100%; min-width:0; max-width:none; height:42px; padding:0; overflow:hidden; font-size:13px; line-height:40px; }
+.attachment-row input[type="file"]::file-selector-button { height:40px; margin:0 12px 0 0; padding:0 14px; border:0; border-right:1px solid var(--border); background:#f4f5ef; color:var(--ink); font:inherit; font-weight:600; cursor:pointer; }
+.attachment-row > a { min-width:0; font-size:13px; }
+.attachment-row .attachment-delete { width:34px; height:34px; padding:0; border-radius:8px; color:#a13737; background:#fff; border-color:#ead3d3; }
+.attachment-row .attachment-delete:hover { background:#fff0f0; }
+@media(max-width:640px) { .event-request-row { grid-template-columns:minmax(0,1fr); grid-template-areas:"status" "summary" "actions"; } .request-row-actions { justify-content:flex-start; } }
 /* Long event answers and filenames must wrap instead of pushing actions beyond the viewport. */
 .event-request-row > div { min-width: 0; }
 .event-request-row h3, .event-request-row p, .attachment-row a { overflow-wrap: anywhere; }
@@ -521,7 +532,8 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 .equipment-empty { margin: 0; font-size: 13px; color: var(--muted); }
 .equipment-remove { padding: 8px 0; border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .equipment-remove:hover { background: none; color: var(--ink); }
-.equipment-add { justify-self: start; }
+.equipment-items .equipment-add { justify-self:start; min-height:38px; gap:8px; padding:8px 12px; border-radius:8px; background:#fff; font-size:13px; }
+.equipment-items .equipment-add:hover { background:#f4f5ef; }
 .event-request-form > .equipment-fields { grid-column: 1 / -1; }
 /* Inside the event detail card the section already has its heading: drop the divider and keep the legend for screen readers only. */
 .equipment-editor .equipment-fields { padding-top: 0; border-top: 0; }
@@ -762,6 +774,11 @@ body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 6
 /* Post-submission amendments: the organiser's amendment request form and their list of requests. */
 .amendment-panel { display: grid; gap: 14px; margin-bottom: 18px; }
 .amendment-panel > .button-primary { justify-self: start; }
+/* Keep the amendment action beside its heading, with the explanation and history underneath. */
+.amendment-panel-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px 20px; }
+.amendment-panel-header .ed-card-title { margin:0; }
+.amendment-panel-header > button { min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
+.amendment-panel > .amendment-request-action { justify-self:start; min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
 .amendment-form { display: grid; gap: 16px; }
 .amendment-group { display: grid; gap: 12px; margin: 0; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }
 .amendment-group legend { padding: 0 6px; font-weight: 700; }
@@ -898,6 +915,8 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 
 /* One lifecycle palette for event cards, detail headers and schedule entries across every workspace. */
 :root {
+  --event-draft-bg: #DDF4F3;
+  --event-draft-text: #116466;
   --event-submitted-bg: #E7EFFA;
   --event-submitted-text: #244A73;
   --event-under-review-bg: #F0E7FA;
@@ -920,3 +939,102 @@ html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px
 .status-badge.status-rejected, .ed-badge.status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
 /* Attention indicators are separate from the event's review stage and retain their existing amber treatment. */
 .status-badge.status-attention { background: var(--cream); color: #685019; }
+.event-request-row .status-badge.status-draft { background: var(--event-draft-bg); color: var(--event-draft-text); }
+.event-request-row .status-badge.status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.event-request-row .status-badge.status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.event-request-row .status-badge.status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.event-request-row .status-badge.status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.event-request-row .status-badge.status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+.event-request-row .status-badge.status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+
+/* Dashboard stages are one keyboard-navigable filter; inactive panels never leave duplicate event rows visible. */
+.organiser-stage-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.organiser-stage-tabs [role="tab"] { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 9px 13px; border: 1px solid var(--stage-bg); border-radius: 8px; background: var(--stage-bg); color: var(--stage-ink); font-size: 13px; font-weight: 600; box-shadow: none; }
+/* Reuse the event-status palette; the accent underline also identifies selection without relying on colour alone. */
+.organiser-stage-tabs [data-stage="draft"] { --stage-bg: var(--event-draft-bg); --stage-ink: var(--event-draft-text); --stage-accent: var(--event-draft-text); }
+.organiser-stage-tabs [data-stage="submitted"] { --stage-bg: var(--event-submitted-bg); --stage-ink: var(--event-submitted-text); --stage-accent: var(--event-submitted-text); }
+.organiser-stage-tabs [data-stage="progress"] { --stage-bg: var(--event-planning-bg); --stage-ink: var(--event-planning-text); --stage-accent: var(--event-planning-text); }
+.organiser-stage-tabs [data-stage="completed"] { --stage-bg: var(--event-completed-bg); --stage-ink: var(--event-completed-text); --stage-accent: var(--event-completed-text); }
+.organiser-stage-tabs [data-stage="rejected"] { --stage-bg: var(--event-rejected-bg); --stage-ink: var(--event-rejected-text); --stage-accent: var(--event-rejected-text); }
+.organiser-stage-tabs [role="tab"][aria-selected="true"] { border-color: var(--stage-accent); box-shadow: inset 0 -3px 0 var(--stage-accent); font-weight: 700; }
+.organiser-stage-tabs [role="tab"]:hover { background: var(--stage-bg); filter: brightness(.97); }
+.organiser-stage-tabs [role="tab"]:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.organiser-stage-tabs .badge { padding: 3px 7px; background: var(--event-submitted-bg); color: var(--event-submitted-text); font-size: 11px; }
+.request-section[hidden] { display: none; }
+
+/* Organiser details follow the requested review-first order; staff retain their own layout and controls. */
+.event-detail.ed-root.organiser-event-detail { --ed-surface: #fff; max-width: 1000px; padding: 0 0 32px; font-size: 14px; }
+.event-detail.organiser-event-detail .ed-back { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ed-muted); font-size: 13px; box-shadow: none; }
+.event-detail.organiser-event-detail .ed-back:hover { color: var(--ed-ink); text-decoration: underline; }
+.event-detail.organiser-event-detail .ed-header { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 14px; margin: 0 0 20px; }
+.event-detail.organiser-event-detail .ed-eyebrow { display: contents; }
+.event-detail.organiser-event-detail .ed-chip { display: none; }
+.event-detail.organiser-event-detail .ed-header .event-status { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; padding: 5px 10px; font-size: 12px; border-color: transparent; }
+.event-detail.organiser-event-detail .ed-title-row { grid-column: 1; grid-row: 1; min-width: 0; align-items: flex-start; }
+.event-detail.organiser-event-detail .ed-title { min-width: 0; font-size: clamp(24px,3vw,32px); line-height: 1.3; overflow-wrap: anywhere; }
+.event-detail.organiser-event-detail .ed-name-editor { grid-column: 1 / -1; }
+.event-detail.organiser-event-detail .organiser-detail-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.event-detail.organiser-event-detail .organiser-detail-toolbar > button { min-height: 38px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.event-detail.organiser-event-detail .organiser-draft-note { margin: 0 0 20px; font-size: 13px; line-height: 1.6; color: var(--ed-muted); }
+.event-detail.organiser-event-detail .ed-grid { gap: 0; margin-bottom: 20px; padding: 24px; background: #fff; border: 1px solid var(--ed-line); border-radius: 12px; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card { min-width: 0; margin: 0; padding: 20px 0; border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; background: transparent !important; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card:first-child { padding-top: 0; border-top: 0; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card:last-child { padding-bottom: 0; }
+.event-detail.organiser-event-detail .ed-card-title { margin-bottom: 16px; font-size: 16px; line-height: 1.4; }
+.event-detail.organiser-event-detail .ed-fields--tiles { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 24px; }
+.event-detail.organiser-event-detail .ed-fields--tiles .ed-field { min-width: 0; padding: 0; border: 0; }
+.event-detail.organiser-event-detail .ed-field dt { margin-bottom: 5px; color: var(--ed-muted); font-size: 12px; font-weight: 400; }
+.event-detail.organiser-event-detail .ed-field dd { font-size: 14px; line-height: 1.6; }
+.event-detail.organiser-event-detail .event-overview-facts .ed-fields--tiles { grid-template-columns: minmax(0,1fr); }
+.event-detail.organiser-event-detail .event-requirements-facts .ed-field:first-child { grid-column: 1 / -1; }
+.event-detail.organiser-event-detail .ed-editor { width: 100%; max-width: none; }
+.event-detail.organiser-event-detail .ed-icon-btn { width: 30px; height: 30px; background: #fff; border-color: #f5d1bd; color: #e85e20; }
+.event-detail.organiser-event-detail .ed-icon-btn:hover { background: #fff2e9; }
+.event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
+.event-detail.organiser-event-detail .organiser-management-section { margin-bottom: 20px; padding: 20px 24px; border: 1px solid var(--ed-line); border-radius: 12px; background: #fff; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel { margin-bottom:0; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel-header .ed-card-title { margin:0; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > p { margin:0; font-size:13px; line-height:1.6; color:var(--ed-muted); }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > .ed-card { margin: 16px 0 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; }
+.event-detail.organiser-event-detail .ed-notice { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.event-detail.organiser-event-detail .ed-notice--ok { background: #edf6ee; color: #245c35; border-color: #cde1d1; }
+.event-detail.organiser-event-detail .ed-notice--warn { background: #fff8df; color: #805b10; border-color: #efdfa8; }
+.event-detail.organiser-event-detail .ed-header .status-draft { background: var(--event-draft-bg); color: var(--event-draft-text); }
+.event-detail.organiser-event-detail .ed-header .status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.event-detail.organiser-event-detail .ed-header .status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.event-detail.organiser-event-detail .ed-header .status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.event-detail.organiser-event-detail .ed-header .status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.event-detail.organiser-event-detail .ed-header .status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+.event-detail.organiser-event-detail .ed-header .status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+@media (max-width:640px) {
+  .event-detail.organiser-event-detail .ed-header { grid-template-columns: minmax(0,1fr); }
+  .event-detail.organiser-event-detail .ed-header .event-status { grid-column: 1; grid-row: 1; }
+  .event-detail.organiser-event-detail .ed-title-row { grid-column: 1; grid-row: 2; }
+  .event-detail.organiser-event-detail .ed-grid,
+  .event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
+  .event-detail.organiser-event-detail .organiser-management-section { padding: 20px; }
+  .event-detail.organiser-event-detail .ed-fields--tiles { grid-template-columns: minmax(0,1fr); gap: 16px; }
+}
+
+/* Registration is one section: accepted values, independent deadline proposals, and availability actions. */
+.registration-settings .registration-section-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 20px; margin-bottom:16px; }
+.registration-settings .registration-section-heading .ed-card-title { margin:0; }
+.registration-settings .registration-section-heading button,
+.registration-settings .registration-form-actions button,
+.registration-settings .booking-review-actions button { min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
+.registration-settings > p { font-size:13px; line-height:1.6; }
+.registration-settings .registration-accepted-deadlines { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; margin:20px 0; padding:16px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.registration-accepted-deadlines dt { margin-bottom:6px; color:var(--muted); font-size:12px; }
+.registration-accepted-deadlines dd { margin:0; font-size:14px; overflow-wrap:anywhere; }
+.registration-settings .registration-deadline-form { gap:14px 24px; }
+.registration-deadline-form .field { display:grid; gap:6px; min-width:0; font-size:13px; }
+.registration-deadline-form input { min-width:0; width:100%; font-size:13px; }
+.registration-deadline-form > p,
+.registration-deadline-form .registration-form-actions { grid-column:1 / -1; margin:0; font-size:12px; }
+.registration-settings .booking-review-actions { justify-content:flex-start; margin:20px 0 8px; padding-top:20px; border-top:1px solid var(--border); }
+.event-detail.organiser-event-detail .activity-section > .ed-card-head > .ed-badge { background:var(--event-confirmed-bg); color:var(--event-confirmed-text); }
+.event-detail.organiser-event-detail .ed-card-head { gap:12px; flex-wrap:wrap; }
+.event-detail.organiser-event-detail .ed-card-head .ed-card-title { margin:0; }
+@media(max-width:640px) {
+  .registration-settings .registration-accepted-deadlines { grid-template-columns:minmax(0,1fr); }
+}

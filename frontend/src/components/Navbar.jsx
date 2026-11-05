@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getDashboardRoute, roleLabels } from '../auth/dashboardRoutes';
 import NotificationBell from './NotificationBell';
 import useStickyHeader from '../hooks/useStickyHeader';
-// Renders role navigation, account identity, and session controls.
+/** Keeps role workspaces explicit; organisers create requests in a dedicated form tab beside their event dashboard. */
 export default function Navbar() {
   const { user, logout, switchRole } = useAuth();
   const header = useStickyHeader(user?.role);
@@ -17,7 +17,7 @@ export default function Navbar() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const external = ['event_organiser', 'attendee'].includes(user?.role);
-  const workspaceLabel = {event_organiser:'My Events',event_coordinator:'Dashboard',attendee:'My Registrations'}[user?.role] || 'Dashboard';
+  const workspaceLabel = {event_organiser:'Dashboard',event_coordinator:'Dashboard',attendee:'My Registrations'}[user?.role] || 'Dashboard';
   // Changes role through the server and navigates to the resulting workspace.
   async function changeRole(event) {
     setBusy(true); setError('');
@@ -32,6 +32,8 @@ export default function Navbar() {
     <div className="nav-links">{user ? <>
       <NavLink to={getDashboardRoute(user.role)} aria-current={equipmentSelected ? false : 'page'}
         className={({ isActive }) => isActive && !equipmentSelected ? 'active' : undefined}>{workspaceLabel}</NavLink>
+      {/* Request event opens only creation; event history and details remain separate from the form tab. */}
+      {user.role === 'event_organiser' && <NavLink to="/organizer/events/new" end>Request event</NavLink>}
       {/* Technical Support owns the controls; this slot keeps them beside Dashboard in the shared header. */}
       {user.role === 'technical_support' && <div id="technical-support-equipment-navigation" className="equipment-header-navigation" />}
       {/* Venue discovery has its own workspace; it does not belong inside Assigned Events. */}

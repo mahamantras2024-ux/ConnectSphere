@@ -16,9 +16,11 @@ for (const [status, label] of [['draft','Draft'],['submitted','Submitted'],['und
     expect(screen.getByText(label, { selector: '.status-badge' })).toBeVisible();
   });
 }
-it('SCRUM-93 AC1/AC6 - a colleague can view status but cannot submit or delete another organiser draft', () => {
+it('SCRUM-93 AC1/AC6 - a colleague can read the status badge without private details or draft actions', () => {
   render(<MemoryRouter><OrganiserRequestList events={[{ id: 2, name: 'Colleague draft', status: 'draft', can_manage: false }]} token="session" onChange={vi.fn()} /></MemoryRouter>);
-  expect(screen.getByRole('link', { name: 'View status' })).toHaveAttribute('href', '/organizer/events/2/status');
+  // The summary retains the recorded status while the redundant View status control is removed.
+  expect(screen.getByText('Draft', { selector: '.status-badge' })).toBeVisible();
+  expect(screen.queryByRole('link', { name: 'View status' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Submit draft' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Delete draft' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'View details' })).not.toBeInTheDocument();

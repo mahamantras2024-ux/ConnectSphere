@@ -61,10 +61,12 @@ it('Equipment visibility AC3 - requests without technical needs and closed/draft
   ];
 
   openDashboard();
+  // Select the active request, while also inspecting hidden cards so a stage filter cannot conceal an assignment regression.
+  fireEvent.click(await screen.findByRole('tab', { name: /^Submitted/ }));
   await screen.findByRole('heading', { name: 'Equipment-only workshop' });
 
-  expect(screen.queryByRole('heading', { name: 'Equipment request review' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Assign staff' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Equipment request review', hidden: true })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Assign staff', hidden: true })).toBeNull();
 });
 
 // AC1: a lookup failure must be visible even when the on-site flag is false.
