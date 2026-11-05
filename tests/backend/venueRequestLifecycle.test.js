@@ -12,7 +12,9 @@ const now = Date.parse('2030-10-09T12:00:00+08:00');
 const day = '2030-10-10';
 const at = time => `${day}T${time}+08:00`;
 const requestBody = { eventId: 3, startDatetime: at('10:00:00'), endDatetime: at('11:00:00') };
-const venue = { id: 7, is_active: true, setup_minutes: 30, turnaround_minutes: 15 };
+// These alternatives genuinely support the requirements used by the successful booking regression below.
+const venue = { id: 7, is_active: true, setup_minutes: 30, turnaround_minutes: 15,
+  capacity: 100, supported_layouts: ['Theatre'], accessibility_features: ['Step-free'], facilities: ['Projector'] };
 const hold = {
   id: 20, venue_id: 7, event_id: 3, requested_by: 1, kind: 'booking', label: 'Workshop',
   status: 'pending', start_datetime: at('10:00:00'), end_datetime: at('11:00:00'),

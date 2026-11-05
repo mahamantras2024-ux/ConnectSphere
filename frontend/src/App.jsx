@@ -24,10 +24,11 @@ import TechSupportDashboard from './pages/tech-support/TechSupportDashboard';
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import PlanningCalendar from './pages/coordinator/PlanningCalendar';
 import FindVenues from './pages/venues/FindVenues';
+import { VenueSchedulePage } from './pages/venues/VenueSchedule';
 import VenueDashboard from './pages/venue/VenueDashboard';
 import MyRegistrations from './pages/registrations/MyRegistrations';
-import StaffWorkspace from './pages/StaffWorkspace';
 import SafetyOfficerDashboard from './pages/safety/SafetyOfficerDashboard';
+import SafetyCheckPage from './pages/safety/SafetyCheckPage';
 import CoordinatorLeadDashboard from './pages/coordinator/CoordinatorLeadDashboard';
 
 // Event records use full pages so browser history and deep links work consistently; venue profiles retain their own drawers.
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/registrations" element={<ProtectedRoute roles={['attendee']}><MyRegistrations /></ProtectedRoute>} />
           <Route path="/coordinator-lead/dashboard" element={<ProtectedRoute roles={['event_coordinator_lead']}><CoordinatorLeadDashboard /></ProtectedRoute>} />
           <Route path="/safety/dashboard" element={<ProtectedRoute roles={['safety_officer']}><SafetyOfficerDashboard /></ProtectedRoute>} />
+          <Route path="/safety/events/:id/check" element={<ProtectedRoute roles={['safety_officer']}><SafetyCheckPage /></ProtectedRoute>} />
 
           <Route
             path="/dashboard"
@@ -96,6 +98,7 @@ export default function App() {
           />
           {/* Keep discovery bookmarkable and enforce coordinator access even for direct URLs. */}
           <Route path="/coordinator/venues" element={<ProtectedRoute roles={['event_coordinator']}><FindVenues /></ProtectedRoute>} />
+          <Route path="/coordinator/venues/:id/schedule" element={<ProtectedRoute roles={['event_coordinator']}><VenueSchedulePage /></ProtectedRoute>} />
           <Route path="/coordinator/planning-calendar" element={<ProtectedRoute roles={['event_coordinator']}><PlanningCalendar /></ProtectedRoute>} />
 
           <Route

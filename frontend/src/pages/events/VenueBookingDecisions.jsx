@@ -6,6 +6,12 @@ import SessionVenueActions from './SessionVenueActions';
 
 const STATUS_LABELS = { pending: 'Pending', tentative: 'Tentative hold', expired: 'Expired', approved: 'Approved', confirmed:'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
 
+// Booking periods show Singapore dates and minute precision; omit seconds without rounding or changing stored timestamps.
+const BOOKING_PERIOD_FORMAT = {
+  timeZone: 'Asia/Singapore', day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: 'numeric', minute: '2-digit', hour12: true,
+};
+
 /** Shows the assigned coordinator the selected event's venue request history and persisted staff decisions. */
 export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
   const { token } = useAuth();
@@ -64,20 +70,24 @@ export default function VenueBookingDecisions({ eventId, refreshKey = 0 }) {
                       {booking.requirements?.sessionName && <p className="eyebrow">Session: {booking.requirements.sessionName}</p>}
                       <VenueHoldState booking={booking} />
                       <p><strong>Status:</strong> <span>{status}</span></p>
+                      {/* Surface the staff explanation beside the decision, before operational booking details. */}
+                      {booking.decision_notes?.trim() && (
+                        <section aria-label="Venue Staff reason" className="venue-staff-reason">
+                          <h4>Venue Staff reason</h4>
+                          <p>{booking.decision_notes}</p>
+                        </section>
+                      )}
                       {booking.status==='tentative' && <p>Expires {new Date(booking.hold_expires_at).toLocaleString('en-SG',{timeZone:'Asia/Singapore'})} (SGT)</p>}
                       {expired ? <p>Submit a new venue request for fresh availability checks and staff approval.</p>
                         : booking.status==='tentative' && <button type="button" disabled={saving!==null} onClick={()=>confirm(booking)}>Confirm venue arrangement</button>}
-                      {booking.start_datetime && <p><strong>Period:</strong> {new Date(booking.start_datetime).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} – {new Date(booking.end_datetime).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })}</p>}
-                      {booking.requirements && <dl>
+                      {booking.start_datetime && <p><strong>Period:</strong> {new Date(booking.start_datetime).toLocaleString('en-SG', BOOKING_PERIOD_FORMAT)} – {new Date(booking.end_datetime).toLocaleString('en-SG', BOOKING_PERIOD_FORMAT)}</p>}
+                      {booking.requirements && <dl className="venue-booking-requirements">
                         <dt>Capacity</dt><dd>{booking.requirements.capacity ?? 'Not specified'}</dd>
                         <dt>Room layout</dt><dd>{booking.requirements.layout || 'Not specified'}</dd>
                         <dt>Accessibility</dt><dd>{booking.requirements.accessibility.join(', ') || 'None specified'}</dd>
                         <dt>Required facilities</dt><dd>{booking.requirements.requiredFacilities.join(', ') || 'None specified'}</dd>
                       </dl>}
                       <p>{booking.cancel_other_pending ? 'Other pending requests will be cancelled if this arrangement changes or is cancelled.' : 'Other requests are kept if this arrangement changes or is cancelled.'}</p>
-                      {booking.decision_notes?.trim() && (
-                        <p><strong>Venue Staff reason:</strong> {booking.decision_notes}</p>
-                      )}
                       {booking.requirements?.sessionName && !expired && ['pending','tentative','approved','confirmed'].includes(booking.status) &&
                         <SessionVenueActions booking={booking} token={token} onSaved={saved=>setBookings(current=>current.map(row=>row.id===saved.id?{...row,...saved}:row))}/>}
                     </li>

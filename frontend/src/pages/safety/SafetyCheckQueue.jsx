@@ -1,18 +1,12 @@
 // File: Lets the Safety Officer review events whose arrangements are confirmed and record an Operational Safety Check.
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { SAFETY_EVENT_ANCHOR } from '../../notifications/notificationTarget';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import SafetyEventFacts, { LATEST_LABELS, STAGE_LABELS } from './SafetyEventFacts';
-
-const OUTCOMES = [['approved', 'Approve'], ['rejected', 'Reject'], ['changes_requested', 'Request changes']];
-
-/** Technical Support only reviews events that asked for something technical, so only those can reopen that stage. */
-function needsTechnical(event) {
-  return Boolean(event.equipment_items?.length || event.technical_support_required || event.video_conferencing_required || event.equipment_notes?.trim());
-}
+import SafetyCheckForm from './SafetyCheckForm';
 
 /** The event id a "ready for safety check" notification pointed at, from the dashboard URL hash, or null. */
 function targetedEventId(hash) {
@@ -31,14 +25,15 @@ function reviewRequirement(event) {
 }
 
 /**
- * Safety Officer queue (Week 7 change 6, Operational Feasibility Check). Each event shows the facts the check
- * considers (SafetyEventFacts, AC1) and a form to approve, reject or request changes (AC2). Notes are required unless
- * approving, and a change request must name the planning stages it reopens (AC3). The server enforces the same rules,
+ * Safety Officer queue (Week 7 change 6, Operational Feasibility Check). The dashboard shows compact summaries;
+ * eventId selects one authorized ready event for the full SafetyEventFacts (AC1) and review form (AC2).
+ * Notes are required unless approving, and a change request must name the planning stages it reopens (AC3).
+ * The server enforces the same rules,
  * and lists an event only once its arrangements are confirmed and no requested change is still open (AC4).
  * Opening a "ready for safety check" notification focuses the named event and states its current review requirement
  * (Safety Officer review notification AC3).
  */
-export default function SafetyCheckQueue() {
+export default function SafetyCheckQueue({ eventId = null }) {
   const { token } = useAuth();
   const { hash } = useLocation();
   const notificationOpened = useNotificationOpened();
@@ -85,7 +80,9 @@ export default function SafetyCheckQueue() {
     setSaving(event.id); setError(''); setStatus('');
     try {
       // Stages are sent in a fixed order so the stored list does not depend on click order.
-      const body = requestingChanges ? { outcome, notes, changeAreas: Object.keys(STAGE_LABELS).filter((area) => stages.includes(area)) } : { outcome, notes };
+      // Approval must not submit an explanation hidden after switching away from Reject or Request changes.
+      const submittedNotes = outcome === 'approved' ? '' : notes;
+      const body = requestingChanges ? { outcome, notes: submittedNotes, changeAreas: Object.keys(STAGE_LABELS).filter((area) => stages.includes(area)) } : { outcome, notes: submittedNotes };
       const data = await api.post(`/events/${event.id}/safety-checks`, body, token);
       setStatus(data.message);
       setForms((current) => ({ ...current, [event.id]: {} }));
@@ -99,11 +96,13 @@ export default function SafetyCheckQueue() {
 
   // A notification named an event that is no longer ready (already checked, or an arrangement changed): say so (AC3).
   const targetMissing = targetId != null && events && !events.some((event) => event.id === targetId);
+  // The full page can expose only records returned by the same authoritative readiness gate as the dashboard.
+  const shownEvents = events && (eventId === null ? events : events.filter(event => String(event.id) === String(eventId)));
 
   return (
     <section className="card safety-queue" aria-labelledby="safety-queue-title">
       <div className="section-heading"><h2 id="safety-queue-title">Operational safety checks</h2>
-        {events && <span className="badge event-count-badge">{events.length} ready</span>}</div>
+        {events && <span className="badge event-count-badge">{shownEvents.length} ready</span>}</div>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {targetMissing && (
@@ -111,53 +110,32 @@ export default function SafetyCheckQueue() {
           The event from your review notification is no longer awaiting a safety check. It may already have been checked, or its arrangements changed.
         </p>
       )}
-      {loadError ? <p role="alert" className="error-message">{loadError}</p>
+      {loadError ? <><p role="alert" className="error-message">{loadError}</p><button className="button-secondary" onClick={() => setReloadKey(key => key + 1)}>Retry safety checks</button></>
         : !events ? <p role="status" className="loading-state">Loading safety checks...</p>
-          : events.length === 0 ? <p className="text-slate-600">No events are waiting for a safety check. Events appear here once their venue and technical arrangements are confirmed.</p>
-            : <ul className="safety-list">{events.map((event) => {
+          : shownEvents.length === 0 ? <p className="text-slate-600">{eventId === null ? 'No events are waiting for a safety check. Events appear here once their venue and technical arrangements are confirmed.' : 'This event is no longer awaiting a safety check. It may already have been checked, or its arrangements changed.'}</p>
+            : <ul className={eventId === null ? 'safety-list record-grid' : 'safety-list'}>{shownEvents.map((event) => {
               const form = forms[event.id] || {};
               const targeted = event.id === targetId;
               return (
                 <li key={event.id} id={SAFETY_EVENT_ANCHOR(event.id)} ref={targeted ? targetRef : null}
-                  className={targeted ? 'change-request-card highlighted-safety-event' : 'change-request-card'}>
-                  <div><strong>{event.name}</strong>
+                  className={targeted ? 'highlighted-safety-event' : undefined}><article className={eventId === null ? 'record-card' : 'change-request-card'}>
+                  <div className="record-top"><span className="record-number">EVENT / {event.id}</span>
                     <span className={`status-badge ${event.latest_safety_check ? `status-${event.latest_safety_check.outcome}` : 'status-under_review'}`}>
                       {event.latest_safety_check ? `Last check: ${LATEST_LABELS[event.latest_safety_check.outcome]}` : 'Not yet checked'}</span></div>
+                  <h3><strong>{event.name}</strong></h3>
                   {targeted && (
                     <p className="safety-review-requirement" role="note" aria-label={`Current review requirement for ${event.name}`}>
                       <strong>Current review requirement:</strong> {reviewRequirement(event)}
                     </p>
                   )}
-                  <SafetyEventFacts event={event} />
-                  <form className="grid gap-2" onSubmit={(submitEvent) => record(submitEvent, event)}>
-                    <fieldset className="flex flex-wrap gap-4" disabled={saving === event.id}>
-                      <legend className="mb-1 font-medium">Outcome for {event.name}</legend>
-                      {OUTCOMES.map(([value, label]) => (
-                        <label key={value} className="flex items-center gap-2">
-                          <input className="!w-4" type="radio" name={`safety-outcome-${event.id}`} value={value} checked={form.outcome === value}
-                            onChange={() => setForm(event.id, 'outcome', value)} />{label}
-                        </label>
-                      ))}
-                    </fieldset>
-                    {(form.outcome === 'changes_requested' || form.outcome === 'rejected') && (
-                      <fieldset className="flex flex-wrap gap-4" disabled={saving === event.id}>
-                        <legend className="mb-1 font-medium">Planning stages to reopen for {event.name}</legend>
-                        {Object.entries(STAGE_LABELS).map(([area, label]) => (
-                          <label key={area} className="flex items-center gap-2">
-                            <input className="!w-4" type="checkbox" checked={(form.stages || []).includes(area)}
-                              disabled={area === 'technical' && !needsTechnical(event)}
-                              onChange={(changeEvent) => toggleStage(event.id, area, changeEvent.target.checked)} />{label}
-                          </label>
-                        ))}
-                      </fieldset>
-                    )}
-                    <label className="grid gap-1" htmlFor={`safety-notes-${event.id}`}>Notes (required unless approving)
-                      <textarea id={`safety-notes-${event.id}`} rows={3} maxLength={4000} value={form.notes || ''} disabled={saving === event.id}
-                        onChange={(changeEvent) => setForm(event.id, 'notes', changeEvent.target.value)} />
-                    </label>
-                    <button type="submit" className="justify-self-start" disabled={saving !== null}>{saving === event.id ? 'Recording…' : 'Record safety check'}</button>
-                  </form>
-                </li>
+                  {eventId === null ? <>
+                    <p>{event.proposed_date || 'Date not specified'}{event.proposed_start_time && ` · ${event.proposed_start_time.slice(0, 5)}–${event.proposed_end_time?.slice(0, 5) || '?'}`}</p>
+                    <p>{event.expected_attendance ?? 'Not specified'} expected attendees</p>
+                    <p>{event.venues.map(venue => venue.name).join(', ') || 'Venue not recorded'}</p>
+                    <Link className="button-link button-secondary record-action" aria-label={`Conduct safety check for ${event.name}`} to={`/safety/events/${event.id}/check`}>Conduct safety check <span aria-hidden="true">↗</span></Link>
+                  </> : <><SafetyEventFacts event={event} /><SafetyCheckForm event={event} form={form} saving={saving}
+                    onFieldChange={setForm} onStageToggle={toggleStage} onSubmit={record} /></>}
+                </article></li>
               );
             })}</ul>}
     </section>

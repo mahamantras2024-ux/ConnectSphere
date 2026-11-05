@@ -6,6 +6,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../../frontend/src/api/client';
 import App from '../../frontend/src/App';
 import { AuthProvider } from '../../frontend/src/context/AuthContext';
+import VenueSuitabilityResults, { VenueRequirementSummary } from '../../frontend/src/pages/venues/VenueSuitabilityResults';
+import { readFileSync } from 'node:fs';
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 const event = { id: 101, name: 'Annual Gala', expected_attendance: 100, room_layout_preference: 'Banquet', accessibility_requirements: ['Ramp'] };
 const hall = { id: 1, name: 'Hall A', location: 'Level 1', capacity: 120, availability_status: 'Available', suitable: true,
@@ -37,13 +39,198 @@ beforeEach(() => {
     if (path === '/events') return { events: [event] };
     if (path === '/events/101') return { event };
     if (path === '/events/101/venue-suitability') return typeof comparison === 'function' ? comparison() : comparison;
+    if (path.endsWith('/eligible-events')) return { events: [event] };
     if (path === '/venues') return catalogue;
     if (path.startsWith('/venues/search?')) return searchResults;
     return { bookings: [], notifications: [], unreadCount: 0, items: [] };
   });
   api.post.mockResolvedValue({ request: { id: 50 } });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+/** Supplies the public card renderer while retaining the real grouping and requirement-summary components. */
+function comparisonCard(venue, assessment) {
+  return <article><h3>{venue.name}</h3>{assessment && <VenueRequirementSummary assessment={assessment} />}</article>;
+}
+
+// AC4/AC5: idle polling must preserve both choices, rather than forcing every refresh open or closed.
+it.each([true, false])('VS AC4 AC5 - preserves Other venues expanded=%s across the 20-second idle refresh', async expanded => {
+  // Arrange: retain real app routing, the polling hook and API calls; replace only time and network boundaries.
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  await fullCatalogue();
+  let summary = await screen.findByText('Other venues (1) — requirements not met');
+  fireEvent.click(summary);
+  const matched = screen.getByText('Meets recorded requirements');
+  const mismatched = screen.getByText('Requirements not met');
+  // Each card has its own disclosure; exercise explicit open and closed choices before polling.
+  for (const heading of [matched, mismatched]) {
+    expect(heading.closest('details')).not.toBeNull();
+    expect(heading.closest('details').open).toBe(false);
+    fireEvent.click(heading);
+    if (!expanded) fireEvent.click(heading);
+  }
+  // The closed case represents an explicit user collapse, not merely the initial default.
+  if (!expanded) fireEvent.click(summary);
+  const countComparisons = () => api.get.mock.calls.filter(([path]) => path === '/events/101/venue-suitability').length;
+  const before = countComparisons();
+  let finish;
+  const updatedRoom = { ...room, capacity: 70, checks: [{ met: false, message: 'Expected attendance 100 exceeds capacity 70.' }] };
+  catalogue = [hall, updatedRoom];
+  comparison = () => new Promise(resolve => { finish = resolve; });
+
+  // Act / Assert: just below the polling threshold there is no new comparison.
+  await act(async () => vi.advanceTimersByTime(19999));
+  expect(countComparisons()).toBe(before);
+  // Exactly at the threshold, keep the visible groups while the comparison is pending.
+  await act(async () => vi.advanceTimersByTime(1));
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  summary = screen.getByText('Other venues (1) — requirements not met');
+  expect(summary.closest('details').open).toBe(expanded);
+  expect(screen.getByText('Meets recorded requirements').closest('details').open).toBe(expanded);
+  expect(screen.getByText('Requirements not met').closest('details').open).toBe(expanded);
+  expect(screen.getByText('Refreshing venue suitability…')).toBeVisible();
+  if (expanded) expect(screen.getByRole('heading', { name: 'Room B' })).toBeVisible();
+  else expect(screen.getByRole('heading', { name: 'Room B', hidden: true })).not.toBeVisible();
+
+  // Act: complete the fresh comparison, then step just above the same polling boundary.
+  await act(async () => finish({ requirements: { expectedAttendance: 100, layout: 'Banquet', accessibility: ['Ramp'] }, venues: [hall, updatedRoom] }));
+  await act(async () => vi.advanceTimersByTime(1));
+  // Assert: fresh reasons arrive without changing the coordinator's disclosure choice.
+  expect(screen.getByText('Other venues (1) — requirements not met').closest('details').open).toBe(expanded);
+  expect(screen.getByText('Meets recorded requirements').closest('details').open).toBe(expanded);
+  expect(screen.getByText('Requirements not met').closest('details').open).toBe(expanded);
+  expect(screen.getByText('Expected attendance 100 exceeds capacity 70.')).toBeInTheDocument();
+  if (expanded) expect(screen.getByText('Expected attendance 100 exceeds capacity 70.')).toBeVisible();
+  else expect(screen.getByText('Expected attendance 100 exceeds capacity 70.')).not.toBeVisible();
+  expect(screen.queryByText('Refreshing venue suitability…')).toBeNull();
+  expect(countComparisons()).toBe(before + 1);
+});
+
+// AC1/AC5: a failed read must stop claiming matches, while retry restores the user's disclosure choice.
+it('VS AC1 AC5 - restores the expanded Other venues section after a failed refresh and retry', async () => {
+  await fullCatalogue();
+  fireEvent.click(await screen.findByText('Other venues (1) — requirements not met'));
+  // Act: simulate a background comparison failure through the real focus-refresh path.
+  comparison = () => { throw new Error('Background comparison unavailable'); };
+  fireEvent(window, new Event('focus'));
+  await screen.findByText('Background comparison unavailable');
+  // Assert: browsing remains possible, but old suitability claims are not presented as current.
+  expect(screen.getByRole('heading', { name: 'Room B' })).toBeVisible();
+  expect(screen.queryByText('Requirements not met')).toBeNull();
+  expect(screen.queryByText('Meets recorded requirements')).toBeNull();
+  // Act / Assert: a successful retry restores the previously expanded group.
+  comparison = { requirements: { expectedAttendance: 100, layout: 'Banquet', accessibility: ['Ramp'] }, venues: [hall, room] };
+  fireEvent.click(screen.getByRole('button', { name: 'Retry comparison' }));
+  expect((await screen.findByText('Other venues (1) — requirements not met')).closest('details').open).toBe(true);
+  expect(screen.getByRole('heading', { name: 'Room B' })).toBeVisible();
+});
+
+// AC1: retained snapshots belong to one event and authenticated session, never to the next context.
+it.each(['event', 'session'])('VS AC1 - resets disclosure and excludes stale assessments after changing %s', async scope => {
+  const props = { eventId: 101, token: 'session-token', venues: [hall, room], renderVenue: comparisonCard, refreshKey: 0 };
+  const view = render(<VenueSuitabilityResults {...props} />);
+  fireEvent.click(await screen.findByText('Other venues (1) — requirements not met'));
+  let finish;
+  api.get.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  // Act: keep the component mounted to expose stale-cache bugs that remounting would conceal.
+  view.rerender(<VenueSuitabilityResults {...props} eventId={scope === 'event' ? 102 : 101} token={scope === 'session' ? 'new-session' : 'session-token'} />);
+  // Assert: while the new context loads, no old comparison is visible.
+  expect(screen.queryByText('Requirements not met')).toBeNull();
+  expect(screen.queryByText('Other venues (1) — requirements not met')).toBeNull();
+  expect(screen.getByText('Loading venue suitability…')).toBeVisible();
+  // Act / Assert: the new comparison has its own closed disclosure and current requirement facts.
+  await act(async () => finish({ requirements: { expectedAttendance: 50, layout: 'Theatre', accessibility: [] },
+    venues: [{ ...hall, checks: [{ met: true, message: 'Holds 50 expected guests (capacity 120).' }] },
+      { ...room, checks: [{ met: false, message: 'Theatre layout is not listed.' }] }] }));
+  expect((await screen.findByText('Other venues (1) — requirements not met')).closest('details').open).toBe(false);
+  expect(screen.getByRole('list', { name: "Organiser's venue requirements" })).toHaveTextContent('50');
+  expect(screen.queryByText('Expected attendance 100 exceeds capacity 60.')).toBeNull();
+});
+
+// AC3/AC5: show the requirement explanation without catalogue jargon, with distinct warning/pass/unchecked markers.
+it('VS AC3 AC5 / UI - toggles both requirement lists with bold icons and no venue-list annotations', () => {
+  const style = document.createElement('style');
+  style.textContent = readFileSync('src/index.css', 'utf8'); document.head.append(style);
+  const mismatch = { ...room, checks: [
+    { met: false, message: 'Expected attendance 100 exceeds capacity 60.' },
+    { met: false, message: 'Room layout "Hall" is not listed (venue lists: none).' },
+    { met: false, message: 'Accessibility need "Ramp" is not listed (venue lists: Lift).' },
+    { met: true, message: 'Banquet layout is supported.' },
+    { met: null, message: 'A requirement was not checked.' },
+  ] };
+  try {
+    // Act: render the real summaries with mixed comparison outcomes.
+    render(<><VenueRequirementSummary assessment={mismatch} /><VenueRequirementSummary assessment={hall} /></>);
+    // Assert / Act: both verdict headings start compact, then reveal their own list without an extra subheading.
+    const matched = screen.getByText('Meets recorded requirements');
+    const mismatched = screen.getByText('Requirements not met');
+    for (const heading of [matched, mismatched]) {
+      expect(heading.closest('details')).not.toBeNull();
+      expect(heading.closest('details').open).toBe(false);
+      expect(within(heading.closest('details')).getByRole('list', { hidden: true })).not.toBeVisible();
+      fireEvent.click(heading);
+      expect(within(heading.closest('details')).getByRole('list')).toBeVisible();
+    }
+    // Assert: both empty and populated catalogue annotations disappear, but the requirement explanation remains.
+    expect(screen.getByText('Room layout "Hall" is not listed.')).toBeVisible();
+    expect(screen.getByText('Accessibility need "Ramp" is not listed.')).toBeVisible();
+    expect(screen.queryByText(/venue lists:/i)).toBeNull();
+    const icons = screen.getAllByRole('img', { name: 'Requirement not met' });
+    expect(icons).toHaveLength(3);
+    for (const icon of icons) {
+      expect(icon.querySelector('circle')).not.toBeNull();
+      expect(icon).toHaveTextContent('!');
+    }
+    expect(screen.queryByText('✗')).toBeNull();
+    expect(screen.getByText('–')).toBeVisible();
+    expect(screen.queryByText('Requirements checked')).toBeNull();
+    const passes = screen.getAllByRole('img', { name: 'Requirement met' });
+    expect(passes).toHaveLength(3);
+    for (const icon of passes) {
+      expect(icon).toBeVisible();
+      expect(icon.querySelector('path')).toHaveAttribute('stroke-width', '3');
+      expect(getComputedStyle(icon.parentElement).color).toBe('rgb(66, 79, 25)');
+    }
+    expect(screen.getByText('Holds 100 expected guests (capacity 120).')).toBeVisible();
+    expect(screen.getByText('Banquet layout is supported.')).toBeVisible();
+    expect(screen.getByText('Ramp is listed.')).toBeVisible();
+    expect(within(mismatched.closest('details')).queryByText('Banquet layout is supported.')).toBeNull();
+    // Act / Assert: closing one card never closes the other, and both can be collapsed again.
+    fireEvent.click(matched);
+    expect(screen.getByText('Holds 100 expected guests (capacity 120).')).not.toBeVisible();
+    expect(screen.getByText('Room layout "Hall" is not listed.')).toBeVisible();
+    fireEvent.click(mismatched);
+    expect(screen.getByText('Room layout "Hall" is not listed.')).not.toBeVisible();
+  } finally { style.remove(); }
+});
+
+// Approved UI AC: met and unmet panels share a single readable scale and box geometry; only their colours differ.
+it('VS AC3 AC5 / UI - gives both requirement panels matching typography and accented borders', () => {
+  // Arrange: use actual production CSS so either an undersized success panel or missing accent fails the oracle.
+  const style = document.createElement('style');
+  style.textContent = readFileSync('src/index.css', 'utf8'); document.head.append(style);
+  try {
+    render(<><VenueRequirementSummary assessment={hall} /><VenueRequirementSummary assessment={room} /></>);
+    // Act / Assert: the same explicit geometry is required for each outcome, not just equality between two wrong values.
+    for (const [label, colour] of [['Meets recorded requirements', 'rgb(66, 79, 25)'], ['Requirements not met', 'rgb(148, 43, 32)']]) {
+      const heading = screen.getByText(label);
+      const panel = heading.closest('details');
+      expect(panel).not.toBeNull();
+      const box = getComputedStyle(panel);
+      const title = getComputedStyle(heading);
+      expect(title.fontSize).toBe('16px');
+      expect(title.fontWeight).toBe('700');
+      expect(title.lineHeight).toBe('1.5');
+      expect(box.padding).toBe('1rem');
+      expect(box.borderRadius).toBe('10px');
+      expect(box.borderTopWidth).toBe('1px');
+      expect(box.borderLeftWidth).toBe('4px');
+      expect(box.borderLeftColor).toBe(colour);
+      fireEvent.click(heading);
+      expect(getComputedStyle(within(panel).getByRole('list')).fontSize).toBe('16px');
+    }
+  } finally { style.remove(); }
+});
 
 it('VS AC1 AC4 AC5 - Find Venues shows one requirements summary, suitable cards first and mismatches behind an expandable section', async () => {
   await fullCatalogue();
@@ -55,9 +242,10 @@ it('VS AC1 AC4 AC5 - Find Venues shows one requirements summary, suitable cards 
   expect(screen.getByRole('heading', { name: 'Room B' })).not.toBeVisible();
   fireEvent.click(screen.getByText('Other venues (1) — requirements not met'));
   expect(screen.getByRole('heading', { name: 'Room B' })).toBeVisible();
+  fireEvent.click(screen.getByText('Requirements not met'));
   expect(screen.getByText('Expected attendance 100 exceeds capacity 60.')).toBeVisible();
   expect(screen.getAllByRole('article')).toHaveLength(2);
-  fireEvent.click(within(screen.getByRole('heading', { name: 'Hall A' }).closest('article')).getByText('Requirements checked'));
+  fireEvent.click(screen.getByText('Meets recorded requirements'));
   expect(screen.getByText('Banquet layout is supported.')).toBeVisible();
   expect(screen.getByText(/Suitability does not confirm schedule availability/)).toBeVisible();
 });
@@ -101,7 +289,7 @@ it('VS AC1 - missing event requirements are labelled as missing rather than inve
   await fullCatalogue();
   const facts = await screen.findByRole('list', { name: "Organiser's venue requirements" });
   expect(facts).toHaveTextContent('Not recorded'); expect(facts).toHaveTextContent('No preference'); expect(facts).toHaveTextContent('None');
-  fireEvent.click(within(screen.getByRole('heading', { name: 'Hall A' }).closest('article')).getByText('Requirements checked'));
+  fireEvent.click(within(screen.getByRole('heading', { name: 'Hall A' }).closest('article')).getByText('Meets recorded requirements'));
   expect(within(screen.getByRole('heading', { name: 'Hall A' }).closest('article')).getByText('Expected attendance is not recorded, so capacity was not checked.')).toBeVisible();
 });
 

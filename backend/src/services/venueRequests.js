@@ -6,6 +6,7 @@ const { requirements } = require('./venueRequestRequirements');
 const { reject, validId, timestamp, withVenue, recordedPeriods } = require('./venueBookingStore');
 const { approveTentativeHold } = require('./venueHolds');
 const { assertSessionSuitability } = require('./sessionVenueRequests');
+const { eventRequirements, assertVenueRequirements } = require('./venueEligibility');
 
 /** Creates an authorized hold and assigned Venue Staff notices atomically; sends best-effort email after commit. */
 async function createVenueRequest(venueId, body, userId) {
@@ -16,9 +17,14 @@ async function createVenueRequest(venueId, body, userId) {
   }
   let stored = [];
   const request = await withVenue(Number(venueId), async (client, venue) => {
-    const event = (await client.query('SELECT id, coordinator_id, name FROM events WHERE id=$1 FOR SHARE', [Number(body.eventId)])).rows[0];
+    const event = (await client.query('SELECT * FROM events WHERE id=$1 FOR SHARE', [Number(body.eventId)])).rows[0];
     if (!event || event.coordinator_id !== userId) throw reject(403, 'This event is not assigned to you.');
     assertSessionSuitability(details.requirements, venue);
+    // Named sessions have independent attendance; ordinary requests must fit both saved and submitted requirements.
+    if (!details.requirements.sessionName) {
+      assertVenueRequirements(eventRequirements(event), venue);
+      assertVenueRequirements(details.requirements, venue);
+    }
     const periods = await recordedPeriods(client, venue.id);
     // Sample after the lock and reads, so waiting for another transaction cannot preserve an already-expired hold.
     const now = Date.now();

@@ -1,5 +1,5 @@
 // File: Shows an event's review outcome and lets the assigned Event Coordinator approve or reject it.
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import SafetyRereviewPanel from './SafetyRereviewPanel';
@@ -10,7 +10,6 @@ const REQUIREMENT_LABELS = {
   clarificationsResolved: 'Clarifications', venueConfirmed: 'Venue arrangements',
   technicalConfirmed: 'Technical arrangements', safetyPassed: 'Operational safety check',
 };
-const SAFETY_LABELS = { approved: 'Passed', rejected: 'Failed', changes_requested: 'Changes requested' };
 const ACTION_LABELS = { under_review: 'Start review', planning: 'Start planning', confirmed: 'Confirm event', completed: 'Mark completed' };
 
 /** Displays a stored timestamp in Singapore time, matching how event times are entered. */
@@ -24,10 +23,12 @@ function formatTime(value) {
  * - While the Safety Officer's requested changes are open, both see them and the coordinator can mark each complete.
  * - The assigned coordinator also sees each readiness requirement and can approve only when the server allows it;
  *   rejection opens an optional reason (AC1-AC3, AC7). The server re-checks every rule, so the buttons are guidance.
- * @param {{ event: object, onDecided: (status: string) => void }} props `onDecided` updates the page's status label.
+ * @param {{ event: object, onDecided: (status: string) => void, eventActions?: React.ReactNode }} props
+ * `onDecided` updates the status label; `eventActions` places independently authorised controls beside lifecycle actions.
  */
-export default function EventDecisionSection({ event, onDecided }) {
+export default function EventDecisionSection({ event, onDecided, eventActions }) {
   const { token, user } = useAuth();
+  const actionMessageId = useId();
   const coordinator = user.role === 'event_coordinator';
   // Assignment is also checked by the API under a row lock; hide actions if a stale view belongs to another coordinator.
   const assignedCoordinator = coordinator && String(event.coordinator_id) === String(user.id);
@@ -82,6 +83,9 @@ export default function EventDecisionSection({ event, onDecided }) {
   }
 
   const outcome = review?.outcome;
+  // Share the same permitted actions between the compact toolbar and its separate explanations.
+  const transitions = assignedCoordinator && review?.transitions
+    ? review.transitions.filter(action => !action.blocked || action.blocked.code !== 'INVALID_TRANSITION') : [];
   return (
     <section
       className="ed-card"
@@ -104,16 +108,21 @@ export default function EventDecisionSection({ event, onDecided }) {
       {status && <p role="status">{status}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
       {assignedCoordinator && review?.transitions && (
-        <div className="grid gap-2" aria-label="Event status actions">
+        <div aria-label="Event status actions">
           <p>Current status: <strong>{review.status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}</strong>. Initial approval is separate from final confirmation.</p>
-          {review.transitions.filter((action) => !action.blocked || action.blocked.code !== 'INVALID_TRANSITION').map((action) => (
-            <div key={action.status}>
-              <button type="button" disabled={saving || Boolean(action.blocked)} onClick={() => changeStatus(action.status)}>{ACTION_LABELS[action.status]}</button>
-              {action.blocked && <p>{action.blocked.message}</p>}
-            </div>
-          ))}
         </div>
       )}
+      {/* Existing cancellation permissions stay inside the supplied action; lifecycle actions remain server-gated. */}
+      <div className="decision-status-actions">
+        {transitions.map(action => <button key={action.status} type="button" disabled={saving || Boolean(action.blocked)}
+          aria-describedby={action.blocked ? `${actionMessageId}-${action.status}` : undefined}
+          onClick={() => changeStatus(action.status)}>{ACTION_LABELS[action.status]}</button>)}
+        {eventActions}
+      </div>
+      {/* Long blockers describe their buttons without contributing width to the button row. */}
+      <div className="decision-action-blockers">
+        {transitions.filter(action => action.blocked).map(action => <p key={action.status} id={`${actionMessageId}-${action.status}`}>{action.blocked.message}</p>)}
+      </div>
       {/* Operational Feasibility Check AC3/AC4: stages the Safety Officer reopened, shown while any is still open. */}
       {review?.safetyChanges && <SafetyChangesPanel eventId={event.id} changes={review.safetyChanges} coordinator={coordinator} token={token}
         onChanged={() => setReloadKey((key) => key + 1)} />}
@@ -140,10 +149,6 @@ export default function EventDecisionSection({ event, onDecided }) {
               </li>
             ))}
           </ul>
-          {review.safetyCheck && (
-            <p className="text-sm text-slate-600">Safety Officer ({review.safetyCheck.safety_officer_name}): {SAFETY_LABELS[review.safetyCheck.outcome]}
-              {review.safetyCheck.notes ? ` — ${review.safetyCheck.notes}` : ''}</p>
-          )}
           {!review.allowed.approved && <p className="text-sm text-slate-600">Approval unavailable: {review.blocked.approved.message}</p>}
           {!review.allowed.rejected && <p className="text-sm text-slate-600">Rejection unavailable: {review.blocked.rejected.message}</p>}
           {rejecting ? (

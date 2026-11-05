@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-/** SCRUM-85 AC7/AC8: state comes from the current booking, never the notification's historical snapshot. */
+/** SCRUM-85 AC7/AC8: displays the current booking's capitalized hold state and updates at its saved expiry. */
 export default function VenueHoldState({booking}){
  const [now,setNow]=useState(Date.now());
  const expiry=Date.parse(booking.hold_expires_at);
@@ -12,5 +12,7 @@ export default function VenueHoldState({booking}){
   return()=>clearTimeout(timer);
  },[booking.status,expiry]);
  const state=!['pending','tentative'].includes(booking.status)?booking.status:!Number.isFinite(expiry)?'No active hold':expiry<=now?'Expired':'Held';
- return <p>Hold state: {state}{state==='Held'&&` until ${new Date(expiry).toLocaleString('en-SG',{timeZone:'Asia/Singapore'})}`}</p>;
+ // Database decisions are lowercase; all visible states use the same initial-capital presentation.
+ const stateLabel=state.charAt(0).toUpperCase()+state.slice(1);
+ return <p><strong>Hold state:</strong> {stateLabel}{state==='Held'&&` until ${new Date(expiry).toLocaleString('en-SG',{timeZone:'Asia/Singapore'})}`}</p>;
 }

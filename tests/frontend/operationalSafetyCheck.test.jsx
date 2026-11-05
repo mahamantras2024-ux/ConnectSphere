@@ -32,12 +32,16 @@ function open(path) {
   localStorage.setItem('cs_token', 'session-token');
   render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><App /></AuthProvider></MemoryRouter>);
 }
-// Opens the Safety Officer dashboard and returns the queued event's card.
+// Follows the real dashboard card to its protected check page before inspecting full facts or submitting an outcome.
 async function openQueue(events) {
   user = officer; queue = { events };
   open('/safety/dashboard');
+  const queuePanel = await screen.findByRole('region', { name: 'Operational safety checks' });
+  const card = (await within(queuePanel).findByText(events[0].name, { selector: 'strong' })).closest('li');
+  fireEvent.click(within(card).getByRole('link', { name: `Conduct safety check for ${events[0].name}` }));
   const panel = await screen.findByRole('region', { name: 'Operational safety checks' });
-  return { panel, item: (await within(panel).findByText(events[0].name, { selector: 'strong' })).closest('li') };
+  await within(panel).findByRole('group', { name: `Outcome for ${events[0].name}` });
+  return { panel, item: within(panel).getByText(events[0].name, { selector: 'strong' }).closest('li') };
 }
 const facts = (item) => Object.fromEntries([...item.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]));
 const stageBox = (item, label) => within(item).getByRole('checkbox', { name: label });
@@ -154,7 +158,7 @@ it('OFC AC2/AC3 - the Safety Officer requests changes to chosen stages and sees 
   queue = { events: [] };
   await act(async () => finish({ message: 'Safety check recorded. The Event Coordinator has been notified. The event has returned to planning for the requested changes.' }));
   expect(within(panel).getByRole('status').textContent).toBe('Safety check recorded. The Event Coordinator has been notified. The event has returned to planning for the requested changes.');
-  expect(await within(panel).findByText(/No events are waiting for a safety check/)).toBeTruthy();
+  expect(await within(panel).findByText(/This event is no longer awaiting a safety check/)).toBeTruthy();
 });
 
 // Test case: Technical arrangements cannot be chosen when the event asked for nothing technical.

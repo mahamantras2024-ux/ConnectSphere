@@ -15,12 +15,13 @@ for (const role of ['event_coordinator', 'event_organiser']) {
     const ownEndpoint = `/events/101/${coordinator ? 'coordinator-registrations' : 'registrations'}`;
     const otherEndpoint = `/events/101/${coordinator ? 'registrations' : 'coordinator-registrations'}`;
     const report = { event: { id: 101, name: 'Workshop' }, headcount: 0, waitlist_count: 1, withdrawal_count: 0,
-      venue_capacity: null, overflow_count: null, overflow: [], registered: [],
+      venue_capacity: null, remaining_spots: null, overflow_count: null, overflow: [], registered: [],
+      attendees: [{ id: 1, attendee_name: 'Waiting attendee', status: 'waitlisted' }],
       waitlist: [{ id: 1, attendee_name: 'Waiting attendee', registered_at: '2031-01-01T09:00:00Z' }] };
     localStorage.setItem('cs_token', 'session');
     api.get.mockImplementation(async path => {
       if (path === '/auth/me') return { user: { id: 12, role } };
-      if (path === '/events/101') return { event: { id: 101, name: 'Workshop', coordinator_id: 12, organiser_id: 12 } };
+      if (path === '/events/101') return { event: { id: 101, name: 'Workshop', status: 'confirmed', registration_required: true, coordinator_id: 12, organiser_id: 12 } };
       if (path === otherEndpoint) throw new Error('The other role report must not be requested');
       if (path === ownEndpoint) return coordinator ? report : {
         event: report.event, details: report,
@@ -35,17 +36,21 @@ for (const role of ['event_coordinator', 'event_organiser']) {
     });
     await screen.findByRole('heading', { name: 'Workshop' });
     // Act: PR #51 supplies the organiser drawer button; its earlier standalone page uses a link.
+    const registrationTab = coordinator && screen.getByRole('tab', { name: 'Registration details' });
     const drawerButton = screen.queryByRole('button', { name: 'Registration details' });
-    fireEvent.click(drawerButton || screen.getByRole('link', { name: 'View registration details' }));
+    fireEvent.click(registrationTab || drawerButton || screen.getByRole('link', { name: 'View registration details' }));
     // Assert: report data and endpoint identity are observable through the real app route.
-    expect(await screen.findByText(/Waiting attendee/)).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Waitlist' })).toHaveTextContent('Waiting attendee');
     expect(api.get).toHaveBeenCalledWith(ownEndpoint, 'session');
     expect(api.get).not.toHaveBeenCalledWith(otherEndpoint, 'session');
+    if (coordinator) {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('tabpanel', { name: 'Registration details' })).toBeVisible();
+    }
     if (drawerButton) {
       expect(screen.getByRole('dialog')).toHaveClass('venue-drawer');
       expect(screen.getByLabelText('Registration summary')).toHaveTextContent('0 registered · 1 on waitlist · 0 withdrawn');
-      // The existing coordinator spacing and Escape behavior remain regression checks.
-      if (coordinator) expect(getComputedStyle(screen.getByRole('link', { name: 'Back to Assigned Events' })).marginInlineEnd).toBe('12px');
+      // The organiser retains its existing drawer and Escape behavior.
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Workshop' })).toBeInTheDocument();

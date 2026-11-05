@@ -3,6 +3,7 @@ const { pool } = require('../config/db');
 
 /** The organiser's venue requirements, only for the event's assigned coordinator (null otherwise, so other events stay private). */
 async function findCoordinatedEvent(eventId, coordinatorId) {
+  // Facilities belong to booking-request requirements; events has no required_facilities column.
   const result = await pool.query(`
     SELECT id, expected_attendance, room_layout_preference, accessibility_requirements
     FROM events WHERE id = $1 AND coordinator_id = $2`, [eventId, coordinatorId]);

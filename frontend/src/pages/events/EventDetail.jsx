@@ -133,6 +133,13 @@ const STYLES = `
 .ed-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 20px; }
 
 .ed-card-head .ed-card-title { margin: 0; }
+/* Activity uses one gap owner so nested amendment cards match the other disclosures. */
+.event-detail .event-activity-panels { display:grid; gap:24px; }
+.event-activity-panels .amendment-panel { display:contents; }
+.event-detail .event-activity-panels .ed-card { margin:0; padding:24px; }
+.event-activity-panels .activity-section > summary { margin:0; min-height:36px; }
+.event-activity-panels .activity-section[open] > summary { margin-bottom:20px; }
+
 
 .ed-fields { margin: 0; display: grid; gap: 0; }
 
@@ -342,8 +349,12 @@ export default function EventDetail() {
   const [saveMessage, setSaveMessage] = useState('');
   // Bookmark the active section so returning from discovery restores request history.
   const [workspaceParams, setWorkspaceParams] = useSearchParams();
-  const workspaceTab = ['venues', 'equipment', 'activity'].includes(workspaceParams.get('tab')) ? workspaceParams.get('tab') : 'overview';
   const coordinatorWorkspace = user.role === 'event_coordinator';
+  const registrationEligible = coordinatorWorkspace && event?.registration_required === true && ['confirmed', 'completed'].includes(event.status);
+  const workspaceTabs = [['overview', 'Overview'], ['venues', 'Venue requests'], ['equipment', 'Equipment'], ['activity', 'Activity'],
+    ...(registrationEligible ? [['registration', 'Registration details']] : [])];
+  // A stale registration deep link falls back safely when confirmation or registration eligibility is lost.
+  const workspaceTab = workspaceTabs.some(([key]) => key === workspaceParams.get('tab')) ? workspaceParams.get('tab') : 'overview';
 
   /** Keeps tabs bookmarkable without filling browser history with every section switch. */
   function selectWorkspaceTab(key) {
@@ -352,7 +363,8 @@ export default function EventDetail() {
 
   /** Supports standard tab-list arrow/Home/End navigation as well as pointer interaction. */
   function navigateWorkspaceTabs(action, index) {
-    const positions = { ArrowRight: (index + 1) % 4, ArrowLeft: (index + 3) % 4, Home: 0, End: 3 };
+    const count = workspaceTabs.length;
+    const positions = { ArrowRight: (index + 1) % count, ArrowLeft: (index + count - 1) % count, Home: 0, End: count - 1 };
     const next = positions[action.key];
     if (next === undefined) return;
     action.preventDefault();
@@ -381,6 +393,8 @@ export default function EventDetail() {
   const [clarificationResponses, setClarificationResponses] = useState({});
 
   const [clarificationSaving, setClarificationSaving] = useState(false);
+  // The request history stays open initially; each Activity form has its own disclosure and independent draft.
+  const [clarificationsOpen, setClarificationsOpen] = useState(true);
 
 
 
@@ -721,11 +735,11 @@ export default function EventDetail() {
 
   const backLink = (
 
-    <Link className="button-link button-secondary detail-back ed-back" aria-label={coordinatorWorkspace ? 'Back to Assigned Events' : 'Back to Events'}
+    <Link className="button-link button-secondary detail-back ed-back" aria-label={coordinatorWorkspace ? 'Back to Dashboard' : 'Back to Events'}
 
       to={location.state?.returnTo || (user.role === 'event_organiser' ? '/organizer/events' : user.role === 'event_coordinator_lead' ? '/coordinator-lead/dashboard' : '/coordinator/dashboard')}>
 
-      ← Back to {user.role === 'event_organiser' ? 'My Events' : coordinatorWorkspace ? 'Assigned Events' : 'Events'}
+      ← Back to {user.role === 'event_organiser' ? 'My Events' : coordinatorWorkspace ? 'Dashboard' : 'Events'}
 
     </Link>
 
@@ -781,6 +795,11 @@ export default function EventDetail() {
 
 
 
+  // The same cancellation control preserves its existing callbacks and server permissions in its new location.
+  const cancellationAction = <CancelEventAction event={event} user={user} token={token}
+        onCancelled={(cancelledEvent) => { setEvent((current) => ({ ...current, ...cancelledEvent })); setStatusRefreshKey(value => value + 1); }}
+        onMessage={setSaveMessage} />;
+
   return (
 
     <div className="event-detail ed-root">
@@ -790,8 +809,9 @@ export default function EventDetail() {
       {backLink}
 
       {user.role === 'event_organiser' && <OrganiserRegistrationAction eventId={event.id} token={token} />}
-      {user.role === 'event_coordinator_lead' && <LeadRegistrations eventId={event.id} token={token}/>}
-      {coordinatorWorkspace && <CoordinatorRegistrations eventId={event.id} token={token} />}
+      {/* Lead attendee reports require a confirmed event with registration enabled. */}
+      {user.role === 'event_coordinator_lead' && event.status === 'confirmed' && event.registration_required === true && <LeadRegistrations eventId={event.id} token={token}/>}
+      {/* Coordinator attendance reporting starts at final confirmation and remains accessible after completion. */}
 
       {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
 
@@ -809,7 +829,7 @@ export default function EventDetail() {
 
           <span className="ed-chip">Event Detail</span>
 
-          <span className={`ed-badge status-${event.status} ${statusTone(event.status)}`}>{formatStatus(event.status)}</span>
+          <span className={`ed-badge event-status status-${event.status} ${statusTone(event.status)}`}>{formatStatus(event.status)}</span>
 
         </div>
 
@@ -828,7 +848,7 @@ export default function EventDetail() {
 
 
       {coordinatorWorkspace && <div role="tablist" aria-label="Event workspace" className="event-workspace-tabs">
-        {[['overview', 'Overview'], ['venues', 'Venue requests'], ['equipment', 'Equipment'], ['activity', 'Activity']].map(([key, label], index) =>
+        {workspaceTabs.map(([key, label], index) =>
           <button key={key} role="tab" id={`workspace-tab-${key}`} aria-selected={workspaceTab === key}
             tabIndex={workspaceTab === key ? 0 : -1} aria-controls={`workspace-panel-${key}`}
             onKeyDown={action => navigateWorkspaceTabs(action, index)} onClick={() => selectWorkspaceTab(key)}>{label}</button>)}
@@ -860,15 +880,13 @@ export default function EventDetail() {
       )}
 
       {user.role === 'event_organiser' && <EventRequestStatus key={statusRefreshKey} eventId={event.id} onSnapshot={updateRequestStatus} />}
-      <EventDecisionSection event={event} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
+      <EventDecisionSection event={event} eventActions={coordinatorWorkspace ? cancellationAction : undefined} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
       {!event.is_draft && event.status !== 'draft' && ['event_organiser','event_coordinator','event_coordinator_lead'].includes(user.role) &&
         <CoordinatorAssignmentHistory eventId={event.id} updatedAt={event.updated_at} token={token} />}
       {!event.is_draft && event.status !== 'draft' && ['event_organiser', 'event_coordinator', 'event_coordinator_lead'].includes(user.role) && <EventReviewHistory event={event} token={token}
         coordinator={user.role === 'event_coordinator' && String(event.coordinator_id) === String(user.id)}
         onReopened={(status) => setEvent(current => ({ ...current, status }))} />}
-      <CancelEventAction event={event} user={user} token={token}
-        onCancelled={(cancelledEvent) => { setEvent((current) => ({ ...current, ...cancelledEvent })); setStatusRefreshKey(value => value + 1); }}
-        onMessage={setSaveMessage} />
+      {!coordinatorWorkspace && cancellationAction}
 
 
 
@@ -1007,16 +1025,16 @@ export default function EventDetail() {
 
         </section>
       </>}
-      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-activity' : undefined} id="workspace-panel-activity" hidden={coordinatorWorkspace && workspaceTab !== 'activity'}>
-      <section className="ed-card" aria-labelledby="clarifications-heading">
+      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-activity' : undefined} id="workspace-panel-activity" className="event-activity-panels" hidden={coordinatorWorkspace && workspaceTab !== 'activity'}>
+      <details className="ed-card activity-section" role="region" aria-labelledby="clarifications-heading" open={clarificationsOpen}>
 
-        <div className="ed-card-head">
+        <summary className="ed-card-head" onClick={action => { action.preventDefault(); setClarificationsOpen(current => !current); }}>
 
           <h2 className="ed-card-title" id="clarifications-heading">Clarification requests</h2>
 
           <span className={`ed-badge ${event.clarification_outstanding ? 'ed-badge--warn' : 'ed-badge--ok'}`}>{event.clarification_outstanding ? 'Outstanding' : 'No outstanding clarification'}</span>
 
-        </div>
+        </summary>
 
         {(event.clarification_requests || []).length === 0
 
@@ -1100,11 +1118,10 @@ export default function EventDetail() {
           </form>
 
         )}
-        {user.role === 'event_coordinator' && (
-          <OfflineClarificationForm eventId={event.id} token={token} onRecorded={(recorded, message) => { addClarification(recorded); setSaveMessage(message); }} />
-        )}
-
-      </section>
+      </details>
+      {user.role === 'event_coordinator' && (
+        <OfflineClarificationForm eventId={event.id} token={token} onRecorded={(recorded, message) => { addClarification(recorded); setSaveMessage(message); }} />
+      )}
       {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && (
         <CoordinatorAmendments event={event} token={token} canApply={user.role === 'event_coordinator'}
           onApplied={(message) => { setSaveMessage(message); setReloadKey((key) => key + 1); }} />
@@ -1113,6 +1130,11 @@ export default function EventDetail() {
 
 
       </div>
+
+      {registrationEligible && workspaceTab === 'registration' && <section className="ed-card" role="tabpanel" id="workspace-panel-registration" aria-labelledby="workspace-tab-registration">
+        <h2 className="ed-card-title">Registration details</h2>
+        <CoordinatorRegistrations inline eventId={event.id} token={token} />
+      </section>}
 
     </div>
 

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import App from '../../frontend/src/App';
 import { api } from '../../frontend/src/api/client';
 import { useAuth } from '../../frontend/src/context/AuthContext';
+import { readFileSync } from 'node:fs';
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../../frontend/src/context/AuthContext', () => ({ useAuth: vi.fn() }));
 const event = { id: 3, name: 'Community Forum', proposed_date: '2030-10-10', proposed_start_time: '10:00:00', proposed_end_time: '11:00:00', expected_attendance: 40, room_layout_preference: 'Theatre', accessibility_requirements: ['Ramp'], required_facilities: ['Wi-Fi'] };
@@ -16,12 +17,37 @@ beforeEach(() => {
   api.get.mockImplementation(async path => {
     if (path === '/events') return { events: [event] };
     if (path === '/events/3') return { event };
+    if (path.endsWith('/eligible-events')) return { events: [event] };
+    if (path.endsWith('/eligible-venues')) return { venues: [venue] };
     if (path.startsWith('/venues')) return [venue];
     return { bookings: [], notifications: [], unreadCount: 0, requests: [], items: [] };
   });
   api.post.mockResolvedValue({ request: { id: 20 } });
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
+
+// SCRUM-61 AC1 / UI: the empty event selector is an optional context choice with an inset arrow.
+it('SCRUM-61 AC1 / UI - provides Select event with space reserved for its dropdown arrow', async () => {
+  // Arrange: use the production stylesheet rather than reproducing style declarations in the test.
+  const style = document.createElement('style');
+  style.textContent = readFileSync('src/index.css', 'utf8');
+  document.head.append(style);
+  try {
+    const original = api.get.getMockImplementation();
+    api.get.mockImplementation(path => path === '/venues' ? Promise.resolve([venue, { ...venue, id: 9, name: 'Additional Hall' }]) : original(path));
+    // Act: enter discovery independently of any event.
+    open('/coordinator/venues');
+    const selector = await screen.findByLabelText('Booking for event');
+    await waitFor(() => expect(selector).toBeEnabled());
+    // Assert: the empty option neither chooses an event nor crowds the arrow against its border.
+    expect(selector).toHaveValue('');
+    expect(screen.getByRole('option', { name: 'Select event' }).selected).toBe(true);
+    expect(getComputedStyle(selector).paddingRight).toBe('48px');
+    expect(getComputedStyle(selector).appearance).toBe('none');
+    expect(await screen.findByRole('heading', { name: 'South Hall' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Additional Hall' })).toBeVisible();
+  } finally { style.remove(); }
+});
 
 it('Workspace AC1 AC2 - event opens as a full page with separate tabs and a working return to Assigned Events', async () => {
   // Arrange / Act: open the actual card, not a direct component mount.
@@ -37,7 +63,7 @@ it('Workspace AC1 AC2 - event opens as a full page with separate tabs and a work
   expect(screen.getByRole('tab', { name: 'Equipment' })).toHaveAttribute('aria-selected', 'true');
   fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
   expect(screen.getByRole('heading', { name: 'Clarification requests' })).toBeVisible();
-  fireEvent.click(screen.getByRole('link', { name: 'Back to Assigned Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Dashboard' }));
   expect(await screen.findByRole('heading', { name: 'Event Coordinator Dashboard' })).toBeInTheDocument();
 });
 
@@ -46,8 +72,11 @@ it('SCRUM-39 AC1 AC2 AC4 AC5 AC6 / SCRUM-61 AC1 AC2 - Find a venue carries edita
   fireEvent.click(screen.getByRole('tab', { name: 'Venue requests' }));
   fireEvent.click(screen.getByRole('link', { name: 'Find a venue' }));
   expect(await screen.findByLabelText('Booking for event')).toHaveValue('3');
+  expect(screen.getByRole('option', { name: 'Select event' })).toHaveValue('');
   fireEvent.click(await screen.findByRole('button', { name: 'Filters', exact: true }));
   expect(screen.getByLabelText('Event date')).toHaveValue('2030-10-10');
+  expect(screen.getByLabelText('Start time')).toHaveValue('10:00 AM');
+  expect(screen.getByLabelText('End time')).toHaveValue('11:00 AM');
   expect(screen.getByLabelText('Expected attendance')).toHaveValue(40);
   expect(screen.getByRole('radio', { name: 'Theatre' })).toBeChecked();
   expect(screen.getByRole('checkbox', { name: 'Ramp' })).toBeChecked();
@@ -58,10 +87,18 @@ it('SCRUM-39 AC1 AC2 AC4 AC5 AC6 / SCRUM-61 AC1 AC2 - Find a venue carries edita
 });
 
 it('SCRUM-61 AC1 AC2 AC3 AC4 AC5 AC6 - browse independently, select an event, request chosen venue and continue to history or another venue', async () => {
+  // Arrange / Act: a direct route has no event context and must show the full catalogue.
   open('/coordinator/venues');
   await screen.findByRole('heading', { name: 'South Hall' });
+  expect(screen.getByLabelText('Booking for event')).toHaveValue('');
+  expect(screen.getByRole('option', { name: 'Select event' }).selected).toBe(true);
+  expect(api.get).toHaveBeenCalledWith('/venues', 'coordinator');
+  expect(api.get.mock.calls.some(([path]) => path.startsWith('/venues/search?'))).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'Request South Hall' }));
   expect(screen.getByText('Choose an assigned event to request this venue.')).toBeVisible();
+  // Choosing a venue starts a fresh eligibility read; a real coordinator cannot change the disabled selector yet.
+  await waitFor(() => expect(screen.getByLabelText('Booking for event')).toBeEnabled());
+  expect(screen.getByRole('option', { name: event.name })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Booking for event'), { target: { value: '3' } });
   const form = await screen.findByRole('heading', { name: 'Request a venue booking' });
   expect(within(form.parentElement).getByLabelText('Venue')).toHaveValue('8');
@@ -168,7 +205,7 @@ it.each(['resolve', 'reject'])('Workspace AC3 - a late assignment %s after leavi
   api.get.mockImplementationOnce(() => new Promise((resolve, reject) => { finish = outcome === 'resolve' ? resolve : reject; }));
   open('/coordinator/venues');
   expect(screen.getByText('Loading assigned events…')).toBeVisible();
-  fireEvent.click(screen.getByRole('link', { name: 'Assigned Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));
   await screen.findByRole('heading', { name: 'Event Coordinator Dashboard' });
   await act(async () => finish(outcome === 'resolve' ? { events: [event] } : new Error('Late failure')));
   expect(screen.queryByLabelText('Booking for event')).not.toBeInTheDocument();
@@ -181,7 +218,7 @@ it('Workspace AC3 - late details cannot reopen booking review after the coordina
   api.get.mockImplementation(path => path === '/events/3' ? new Promise(resolve => { finish = resolve; }) : original(path));
   open('/coordinator/venues?eventId=3&venueId=8');
   await waitFor(() => expect(api.get).toHaveBeenCalledWith('/events/3', 'coordinator'));
-  fireEvent.click(screen.getByRole('link', { name: 'Assigned Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }));
   await act(async () => finish({ event }));
   expect(await screen.findByRole('heading', { name: 'Event Coordinator Dashboard' })).toBeVisible();
   expect(screen.queryByRole('heading', { name: 'Request a venue booking' })).not.toBeInTheDocument();

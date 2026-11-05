@@ -13,6 +13,8 @@ export default function CoordinatorAmendments({ event, token, canApply, onApplie
   const [requests, setRequests] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  // Defer the large editor until its first use, then retain it while collapsed so drafts remain intact.
+  const [formReady, setFormReady] = useState(false);
 
   // Reads the history; the event page remounts this section after an amendment is applied, so it is read again.
   useEffect(() => {
@@ -25,11 +27,14 @@ export default function CoordinatorAmendments({ event, token, canApply, onApplie
 
   return (
     <div className="amendment-panel">
-      {canApply && (formOpen
-        ? <AmendmentRequestForm event={event} token={token} mode="coordinator" clarifications={event.clarification_requests || []}
+      {canApply && <details className="ed-card activity-section" open={formOpen}>
+        {/* Collapsing preserves the agreed amendment draft; Cancel and success close the same disclosure. */}
+        <summary onClick={action => { action.preventDefault(); setFormReady(true); setFormOpen(current => !current); }}><h2 className="ed-card-title">Apply agreed amendment</h2></summary>
+        {formReady && <div hidden={!formOpen}><AmendmentRequestForm event={event} token={token} mode="coordinator" clarifications={event.clarification_requests || []}
           onCancel={() => setFormOpen(false)} onSubmitted={(message) => { setFormOpen(false); onApplied(message); }} />
-        : <button type="button" className="button-primary" onClick={() => setFormOpen(true)}>Apply agreed amendment</button>)}
-      <AmendmentRequestList requests={requests} error={loadError} title="Amendment history" emptyText="No amendments have been requested or applied." />
+        </div>}
+      </details>}
+      <AmendmentRequestList collapsible requests={requests} error={loadError} title="Amendment history" emptyText="No amendments have been requested or applied." />
     </div>
   );
 }

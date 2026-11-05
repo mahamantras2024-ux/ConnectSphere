@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import AttendeeSection from './AttendeeSection';
 
 /** Lists only published, registration-enabled events and links attendees to their current details. */
 export default function PublishedEventList() {
@@ -21,8 +22,7 @@ export default function PublishedEventList() {
   }, [token]);
 
   return (
-    <section className="page" aria-labelledby="published-events-heading">
-      <div className="section-heading"><h2 id="published-events-heading">Published events</h2></div>
+    <div className="page"><AttendeeSection title="Published events" count={events.length}>
       {loading ? <p role="status" className="loading-state">Loading published events…</p>
         : error ? <p role="alert" className="error-message">{error}</p>
           : events.length === 0 ? <p className="empty-state">No published events are open for registration.</p>
@@ -35,6 +35,6 @@ export default function PublishedEventList() {
                 <Link className="button-link button-secondary record-action" to={`/attendee/events/${event.id}`}>View event details</Link>
               </article>
             ))}</div>}
-    </section>
+    </AttendeeSection></div>
   );
 }

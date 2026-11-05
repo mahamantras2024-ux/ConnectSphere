@@ -17,7 +17,7 @@ export default function Navbar() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const external = ['event_organiser', 'attendee'].includes(user?.role);
-  const workspaceLabel = {event_organiser:'My Events',event_coordinator:'Assigned Events',attendee:'My Registrations'}[user?.role] || 'Dashboard';
+  const workspaceLabel = {event_organiser:'My Events',event_coordinator:'Dashboard',attendee:'My Registrations'}[user?.role] || 'Dashboard';
   // Changes role through the server and navigates to the resulting workspace.
   async function changeRole(event) {
     setBusy(true); setError('');

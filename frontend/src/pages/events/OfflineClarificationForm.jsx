@@ -11,6 +11,7 @@ import { CLARIFICATION_LABELS } from './clarificationLabels';
 export default function OfflineClarificationForm({ eventId, token, onRecorded }) {
   // Opened on request, so the Activity tab is not crowded and its two topic lists never appear together by default.
   const [open, setOpen] = useState(false);
+  const [formReady, setFormReady] = useState(false);
   const [topics, setTopics] = useState([]);
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
@@ -41,11 +42,11 @@ export default function OfflineClarificationForm({ eventId, token, onRecorded })
     }
   }
 
-  if (!open) {
-    return <button type="button" className="button-secondary ed-justify-start" onClick={() => setOpen(true)}>Record an offline clarification</button>;
-  }
   return (
-    <form className="ed-clar-form" aria-labelledby="offline-clarification-title" onSubmit={record}>
+    <details className="ed-card activity-section" open={open}>
+      {/* Keep the controlled draft mounted when collapsed; successful recording resets it explicitly above. */}
+      <summary onClick={event => { event.preventDefault(); setFormReady(true); setOpen(current => !current); }}><h2 className="ed-card-title">Record an offline clarification</h2></summary>
+    {formReady && <form hidden={!open} className="ed-clar-form" aria-labelledby="offline-clarification-title" onSubmit={record}>
       <h3 id="offline-clarification-title">Record an offline clarification</h3>
       <p className="ed-muted">For a clarification discussed outside ConnectSphere, record the question, the organiser&apos;s answer or the agreed outcome, and any comments.</p>
       <fieldset className="ed-check-grid"><legend>What was the clarification about?</legend>
@@ -76,6 +77,7 @@ export default function OfflineClarificationForm({ eventId, token, onRecorded })
         <button className="button-primary" type="submit" disabled={saving}>{saving ? 'Recording…' : 'Record offline clarification'}</button>
         <button className="button-secondary" type="button" disabled={saving} onClick={() => { setOpen(false); setError(''); }}>Cancel</button>
       </div>
-    </form>
+    </form>}
+    </details>
   );
 }

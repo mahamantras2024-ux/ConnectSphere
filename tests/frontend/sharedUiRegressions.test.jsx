@@ -296,6 +296,7 @@ beforeEach(()=>{
     if(path === '/events/on-site-support') return {events:[]};
     if (path === '/tech-support/reminder-preference') return { preference: { dailyPendingReminders: false, reminderFrequencyDays: 1 } };
     if(path === '/events/assignments') return {events:[],coordinators:[]};
+    if(path === '/safety/checks') return {events:[]};
     if(path === '/events/equipment-requests') return {requests:[]};
     if(path === '/events/equipment-inventory') return {inventory:[]};
     if(path === '/events/equipment-reservations') return {requests:[],reservations:[]};
@@ -320,11 +321,13 @@ it.each([
     expect(screen.getByText('No pending equipment requests.')).toBeTruthy();
     expect(screen.queryByText('chris@example.test')).toBeNull();
   } else if (role === 'safety_officer') {
-    expect(screen.getByText('chris@example.test')).toBeTruthy();
-    expect(screen.getByRole('heading',{name:'Account details'})).toBeTruthy();
+    // Safety UI AC1: account identity stays out of the operational workspace.
+    expect(screen.queryByText('chris@example.test')).toBeNull();
+    expect(screen.queryByRole('heading',{name:'Account details'})).toBeNull();
+    expect(screen.getByRole('heading',{name:'Operational safety checks'})).toBeTruthy();
   } else {
     // AC1: the lead now has a genuine queue workspace rather than a profile-only placeholder.
-    expect(await screen.findByRole('heading',{name:'Unassigned requests'})).toBeTruthy();
+    expect(await screen.findByRole('heading',{name:/Unassigned requests \(0\)/})).toBeTruthy();
   }
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   // Parent notification system: every signed-in page reads the user's own notifications once (shared by bell and panel).
@@ -353,12 +356,13 @@ it('Internal AC1 AC5 - single-role Technical Support session has no switcher and
   expect(screen.queryByLabelText('Active role')).toBeNull();
 });
 
-// Test case: Safety staff keep the existing profile fallback when the role list and identity details are absent.
-it('Internal AC3 - safety workspace handles missing profile fields and roles list',async()=>{
+// Test case: incomplete optional profile metadata cannot prevent the safety queue from loading.
+it('Internal AC3 / Safety UI AC1 - safety queue loads without profile fields or roles list',async()=>{
   user={id:8,role:'safety_officer'};open('/safety/dashboard');
-  await screen.findByRole('heading',{name:'Account details'});
-  expect(screen.getAllByText('Not recorded')).toHaveLength(2);
-  expect(screen.getByLabelText('Provisioned workspaces').textContent).toBe('Safety Officer');
+  await screen.findByRole('heading',{name:'Safety Officer Dashboard'});
+  expect(await screen.findByText(/No events are waiting for a safety check/)).toBeTruthy();
+  expect(screen.queryByRole('heading',{name:'Account details'})).toBeNull();
+  expect(api.get).toHaveBeenCalledWith('/safety/checks','staff-session');
 });
 
 });
@@ -369,7 +373,7 @@ afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks();});
 // Test case: Checks organiser/coordinator/attendee each have one active named tab and clicking it returns to the correct dashboard.
 it.each([
   ['event_organiser','/organizer/dashboard','My Events','Event Organiser Dashboard'],
-  ['event_coordinator','/coordinator/dashboard','Assigned Events','Event Coordinator Dashboard'],
+  ['event_coordinator','/coordinator/dashboard','Dashboard','Event Coordinator Dashboard'],
   ['attendee','/attendee/dashboard','My Registrations','Attendee Dashboard'],
 ])('Planning calendar AC3 / UI navigation AC1 / login AC3 - %s has one active workspace tab that returns from other pages',async(role,path,label,title)=>{
   // Arrange a real session and an empty, owner-scoped response from the API boundary.
@@ -378,7 +382,8 @@ it.each([
   render(<MemoryRouter initialEntries={['/missing-page']}><AuthProvider><App/></AuthProvider></MemoryRouter>);
   const nav=within(await screen.findByRole('navigation',{name:'Main navigation'}));
   const link=await nav.findByRole('link',{name:label});
-  expect(nav.queryByRole('link',{name:'Dashboard'})).toBeNull();
+  // The coordinator's workspace is now Dashboard; other roles keep their existing single workspace label.
+  expect(nav.queryAllByRole('link',{name:'Dashboard'})).toHaveLength(role === 'event_coordinator' ? 1 : 0);
   expect(link.getAttribute('href')).toBe(path);
   // Act: use the single workspace control, rather than relying on a redirect.
   fireEvent.click(link);
@@ -426,7 +431,7 @@ it.each([
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByRole('heading', { name: heading })).toBeNull();
   expect(document.body.style.overflow).not.toBe('hidden');
-  fireEvent.click(screen.getByRole('link', { name: role === 'event_coordinator' ? 'Back to Assigned Events' : 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: role === 'event_coordinator' ? 'Back to Dashboard' : 'Back to Events' }));
   expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
 });
 

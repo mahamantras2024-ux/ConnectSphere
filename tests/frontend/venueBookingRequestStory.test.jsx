@@ -41,8 +41,8 @@ it('SCRUM-61 AC2 AC6 - editable requirements and an unchecked preference are sen
   fireEvent.change(screen.getByLabelText('Room layout'), { target: { value: ' Classroom ' } });
   fireEvent.change(screen.getByLabelText('Accessibility requirements'), { target: { value: 'Ramp, Ramp, , Hearing loop' } });
   fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-10-10' } });
-  fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00' } });
-  fireEvent.change(screen.getByLabelText('End time'), { target: { value: '11:00' } });
+  fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '10:00 AM' } });
+  fireEvent.change(screen.getByLabelText('End time'), { target: { value: '11:00 AM' } });
   fireEvent.click(screen.getByRole('button', { name: 'Request venue' }));
   // Assert: exact values catch uncontrolled fields, stale state and accidental opt-in.
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/venues/7/requests', {
