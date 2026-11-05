@@ -4,7 +4,6 @@ import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import PageIntro from '../../components/PageIntro';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import useLiveResource from '../../hooks/useLiveResource';
 import CoordinatorEventCards from './CoordinatorEventCards';
 import './CoordinatorLeadDashboard.css';
@@ -83,8 +82,8 @@ export default function CoordinatorLeadDashboard() {
   }
   const unassigned = data?.events.filter(event => event.coordinator_id === null);
   const assigned = data?.events.filter(event => event.coordinator_id !== null);
-  return <div className="page"><PageIntro title="Coordinator Lead Dashboard" eyebrow="Internal workspace" description="Review incoming requests and oversee coordinator assignments." /><NotificationsPanel />
-    <button className="button-secondary" disabled={busy} onClick={() => { setError(''); refresh(); }}>Refresh assignments</button>
+  return <div className="page"><PageIntro title="Coordinator Lead Dashboard" eyebrow="Internal workspace" description="Review incoming requests and oversee coordinator assignments." />
+    <button type="button" className="button-secondary dashboard-refresh-button" disabled={busy} onClick={() => { setError(''); refresh(); }} aria-label="Refresh assignments" title="Refresh assignments" aria-busy={busy}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg></button>
     {(error || loadError) && <p role="alert" className="error-message">{error || loadError}</p>}{message && <p role="status">{message}</p>}
     {!data ? !(error || loadError) && <p role="status">Loading event requests…</p> : <>
       {data.coordinators.length === 0 && <p role="status">No Event Coordinators are provisioned. Contact your administrator.</p>}

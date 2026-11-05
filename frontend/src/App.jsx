@@ -36,8 +36,8 @@ export default function App() {
   const location = useLocation();
   const main = useRef(null);
   useEffect(() => {
-    // Full-page records and booking review must not inherit a long catalogue's scroll position.
-    main.current.scrollIntoView?.({ block: 'start' });
+    // Begin routes at the document top so a wrapping sticky header never covers the new page title.
+    main.current.ownerDocument.documentElement.scrollTo?.({ top: 0, left: 0 });
   }, [location.pathname, location.search]);
   return (
     <NotificationsProvider>

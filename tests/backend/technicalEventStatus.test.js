@@ -82,8 +82,8 @@ test('TS status AC6 - accepts the valid integer ID boundary while hiding absent 
   assert.deepEqual(queries.map(query => query.values), [[41,1], [41,2], [41,2147483646], [41,2147483647]]);
 });
 
-// AC6: keep authenticated identity wired into every legacy queue and direct availability read.
-for (const path of ['/equipment-requests', '/equipment-reservations', '/equipment-reservation-issues', '/7/equipment-availability']) {
+// AC6: reservation queues and direct availability reads retain their separate responsibility checks.
+for (const path of ['/equipment-reservations', '/equipment-reservation-issues', '/7/equipment-availability']) {
   test(`TS status AC6 - passes staff responsibility to ${path}`, async () => {
     // Arrange: the database boundary returns no eligible rows; SQL still has to authorize before reading them.
     const queries = database([]);

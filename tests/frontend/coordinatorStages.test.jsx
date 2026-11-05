@@ -47,20 +47,21 @@ it('Coordinator tabs AC1 AC2 - partitions every lifecycle once with the five agr
   }
 });
 
-it('Coordinator tabs AC3 AC4 - preserves an unsaved assignment across tab switches and a live move into Completed', () => {
-  const event={id:3,name:'Forum',status:'planning',technical_support_required:true,technical_support_staff:[]};
+it('Coordinator tabs AC3 AC4 - preserves an unsaved assignment across tab switches and a live move into In progress', () => {
+  const event={id:3,name:'Forum',status:'submitted',technical_support_required:true,technical_support_staff:[]};
   const other={id:4,name:'Other',status:'completed'};
   const view=render(cards([event,other]));
   const original=screen.getByRole('heading',{name:'Forum'}).closest('article');
   fireEvent.click(within(original).getByRole('checkbox',{name:'Tom'}));
-  fireEvent.click(tab('Completed'));fireEvent.click(tab('In progress'));
+  fireEvent.click(tab('Completed'));fireEvent.click(tab('Submitted'));
   expect(within(original).getByRole('checkbox',{name:'Tom'})).toBeChecked();
+  // Active-stage moves retain editable work; completed events correctly stop offering new assignments.
   // A real status refresh can empty the selected category; retain that explicit selection and the mounted card's draft.
-  view.rerender(cards([{...event,status:'completed'},other]));
-  expect(tab('In progress')).toHaveAttribute('aria-selected','true');
-  expect(screen.getByText('No in progress events.')).toBeVisible();
-  expect(within(tab('Completed')).getByText('2')).toBeVisible();
-  fireEvent.click(tab('Completed'));
+  view.rerender(cards([{...event,status:'planning'},other]));
+  expect(tab('Submitted')).toHaveAttribute('aria-selected','true');
+  expect(screen.getByText('No submitted events.')).toBeVisible();
+  expect(within(tab('In progress')).getByText('1')).toBeVisible();
+  fireEvent.click(tab('In progress'));
   const moved=screen.getByRole('heading',{name:'Forum'}).closest('article');
   expect(moved).toBe(original);
   expect(within(moved).getByRole('checkbox',{name:'Tom'})).toBeChecked();

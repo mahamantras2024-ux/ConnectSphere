@@ -531,7 +531,7 @@ it('AC3 - offers navigation back to request review when no items await reservati
   render(<EquipmentReservationSection requests={[]} reservations={[]} token="staff-token"
     onReserved={vi.fn()} onGoToReviews={onGoToReviews} />);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Go to equipment request review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Go to requests' }));
   expect(onGoToReviews).toHaveBeenCalledOnce();
   expect(screen.getByText('No reviewed equipment requests yet')).toBeTruthy();
 });

@@ -86,12 +86,12 @@ export default function OrganiserRequestList({ events, onChange, token, tabbed =
     {tabbed && <div className="organiser-stage-tabs" role="tablist" aria-label="Event stages">
       {groups.map(({ id, label, items }) => <button key={id} id={`${tabPrefix}-${id}-tab`} type="button" role="tab" data-stage={id}
         aria-selected={id === activeStage} aria-controls={`${tabPrefix}-${id}-panel`} tabIndex={id === activeStage ? 0 : -1}
-        onClick={() => selectStage(id)} onKeyDown={navigateTabs}>{label} <span className="badge">{items.length}</span></button>)}
+        onClick={() => selectStage(id)} onKeyDown={navigateTabs}>{label} <span className="badge event-count-badge">{items.length}</span></button>)}
     </div>}
     {groups.map(({ id, label, title, items }) => <section className="request-section" key={id} id={`${tabPrefix}-${id}-panel`}
       role={tabbed ? 'tabpanel' : undefined} aria-label={tabbed ? label : title}
       aria-labelledby={tabbed ? `${tabPrefix}-${id}-tab` : undefined} hidden={tabbed && id !== activeStage}>
-      {!tabbed && <div className="section-heading"><h2>{title}</h2><span className="badge">{items.length} requests</span></div>}
+      {!tabbed && <div className="section-heading"><h2>{title}</h2><span className="badge event-count-badge">{items.length} requests</span></div>}
       {items.length === 0 ? <p>No {id === 'draft' ? 'draft' : label.toLowerCase()} {tabbed ? 'events' : 'requests'}.</p> : <ul className="event-request-rows">
         {items.map(event => <li className="event-request-row" key={event.id}>
           <div className="event-request-summary">
