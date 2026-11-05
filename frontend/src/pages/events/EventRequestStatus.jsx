@@ -5,8 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import useLiveResource from '../../hooks/useLiveResource';
 import { requestStatusLabel } from './requestStatusLabel';
 
-/** Polls only status/action/decision facts, retaining a confirmed snapshot during transient failures. */
-export default function EventRequestStatus({ eventId, onSnapshot }) {
+/** Polls status facts without resetting unsaved edits; owner details can hide the redundant status card via backgroundOnly. */
+export default function EventRequestStatus({ eventId, onSnapshot, backgroundOnly = false }) {
   const { id } = useParams();
   const { token } = useAuth();
   const requestId = eventId || id;
@@ -16,6 +16,7 @@ export default function EventRequestStatus({ eventId, onSnapshot }) {
     // Owner detail updates only lifecycle facts; its separate unsaved edit form is never reset by a poll.
     if (event && onSnapshot) onSnapshot(event);
   }, [event, onSnapshot]);
+  if (backgroundOnly) return null;
   return <section className="ed-card" aria-label="Request status">
     <h2>Request status</h2>
     {loading && !event && <p>Loading request status...</p>}

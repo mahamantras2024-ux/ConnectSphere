@@ -796,7 +796,7 @@ export default function EventDetail() {
 
 
 
-  // Reuse the same editors and facts: organisers see them first, while staff retain their existing workspace order.
+  // Reuse the same event header and field editors across organiser and staff layouts.
   const eventHeader = (
       <header className="ed-header">
 
@@ -938,107 +938,22 @@ export default function EventDetail() {
         onCancelled={(cancelledEvent) => { setEvent((current) => ({ ...current, ...cancelledEvent })); setStatusRefreshKey(value => value + 1); }}
         onMessage={setSaveMessage} />;
 
-  return (
-
-    <div className={`event-detail ed-root${organiserWorkspace ? ' organiser-event-detail' : ''}`}>
-
-      <style>{STYLES}</style>
-
-      {backLink}
-
-      {organiserWorkspace && eventHeader}
-      {organiserWorkspace && <div className="organiser-detail-toolbar"><OrganiserRegistrationAction eventId={event.id} token={token} /></div>}
-      {/* Lead attendee reports require a confirmed event with registration enabled. */}
-      {user.role === 'event_coordinator_lead' && event.status === 'confirmed' && event.registration_required === true && <LeadRegistrations eventId={event.id} token={token}/>}
-      {/* Coordinator attendance reporting starts at final confirmation and remains accessible after completion. */}
-
-      {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
-
-      {saveMessage && <p className="ed-notice ed-notice--ok" role="status">{saveMessage}</p>}
-
-      {event.clarification_outstanding && <p className="ed-notice ed-notice--warn" role="status">Clarification outstanding — planning is waiting for the Event Organiser.</p>}
-
-      {organiserWorkspace && editingAllowed() && <p className="organiser-draft-note">This is a draft. Use the pencil icon to edit any event field before you submit it.</p>}
-
-      {!organiserWorkspace && eventHeader}
-
-
-
-      {coordinatorWorkspace && <div role="tablist" aria-label="Event workspace" className="event-workspace-tabs">
-        {workspaceTabs.map(([key, label], index) =>
-          <button key={key} role="tab" id={`workspace-tab-${key}`} aria-selected={workspaceTab === key}
-            tabIndex={workspaceTab === key ? 0 : -1} aria-controls={`workspace-panel-${key}`}
-            onKeyDown={action => navigateWorkspaceTabs(action, index)} onClick={() => selectWorkspaceTab(key)}>{label}</button>)}
-      </div>}
-      {/* Keep drafts mounted across sections so tab changes cannot discard unfinished work. */}
-      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-overview' : undefined} id="workspace-panel-overview" hidden={coordinatorWorkspace && workspaceTab !== 'overview'}>
-      {confirmUpdate && <ActionConfirmation action="update this event request" busy={saving} error={updateError} success={updateSuccess} onConfirm={saveNonCritical} onClose={() => { setConfirmUpdate(false); if (updateSuccess) { setSaveMessage(updateSuccess); setUpdateSuccess(''); } }} />}
-
-      {organiserWorkspace && eventFacts}
-      <div className="ed-card ed-attach">
+  // Compose one instance of each stateful section in the organiser's requested reading order;
+  // staff retain their existing Overview/Activity workspaces and all permission gates.
+  const reviewDecision = (<EventDecisionSection event={event} eventActions={coordinatorWorkspace || organiserWorkspace ? cancellationAction : undefined} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />);
+  const coordinationHistory = (!event.is_draft && event.status !== 'draft' && ['event_organiser','event_coordinator','event_coordinator_lead'].includes(user.role) &&
+        <CoordinatorAssignmentHistory title={organiserWorkspace ? 'Coordination history' : undefined} eventId={event.id} updatedAt={event.updated_at} token={token} />);
+  const reviewHistory = (!event.is_draft && event.status !== 'draft' && ['event_organiser', 'event_coordinator', 'event_coordinator_lead'].includes(user.role) && <EventReviewHistory event={event} token={token}
+        coordinator={user.role === 'event_coordinator' && String(event.coordinator_id) === String(user.id)}
+        onReopened={(status) => setEvent(current => ({ ...current, status }))} />);
+  const supportingDocuments = (<div className="ed-card ed-attach">
 
         <EventAttachments value={{ ...(event.attachments || {}), ...fileChanges }} onBusy={delta => setReadingFiles(current => current + delta)} onChange={editingAllowed() ? (field, file) => { setFileChanges(current => ({ ...current, [field]: file })); setActiveEditField('attachments'); } : undefined} />
 
         {activeEditField === 'attachments' && <button className="button-primary ed-attach-save" disabled={readingFiles > 0 || saving} onClick={() => { setUpdateError(''); setConfirmUpdate(true); }}>Save attachments</button>}
 
-      </div>
-
-      {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && (
-
-        <section className="ed-card ed-contact" aria-label="Organiser contact">
-
-          <h2 className="ed-card-title">Organiser contact</h2>
-
-          <p className="ed-muted">{event.organiser_name}</p>
-
-          {event.organiser_email ? <a href={`mailto:${event.organiser_email}`}>{event.organiser_email}</a> : <p className="ed-muted">Email not recorded</p>}
-
-        </section>
-
-      )}
-
-      {user.role === 'event_organiser' && <EventRequestStatus key={statusRefreshKey} eventId={event.id} onSnapshot={updateRequestStatus} />}
-      <EventDecisionSection event={event} eventActions={coordinatorWorkspace ? cancellationAction : undefined} onDecided={(status) => setEvent((current) => ({ ...current, status }))} />
-      {!event.is_draft && event.status !== 'draft' && ['event_organiser','event_coordinator','event_coordinator_lead'].includes(user.role) &&
-        <CoordinatorAssignmentHistory eventId={event.id} updatedAt={event.updated_at} token={token} />}
-      {!event.is_draft && event.status !== 'draft' && ['event_organiser', 'event_coordinator', 'event_coordinator_lead'].includes(user.role) && <EventReviewHistory event={event} token={token}
-        coordinator={user.role === 'event_coordinator' && String(event.coordinator_id) === String(user.id)}
-        onReopened={(status) => setEvent(current => ({ ...current, status }))} />}
-      {!coordinatorWorkspace && cancellationAction}
-
-
-
-      {!organiserWorkspace && eventFacts}
-
-      </div>
-      {organiserWorkspace && !editingAllowed() && <section className="organiser-management-section" aria-label="Changes to this event">
-        <AmendmentRequestPanel event={event} token={token} />
-      </section>}
-      {user.role==='event_organiser' && <RegistrationSettings event={event} token={token} onSaved={saved=>setEvent(current=>({...current,...saved}))}/>}
-      {coordinatorWorkspace && <>
-        {/* Coordinator deadline changes are reviewed through the existing change-request workflow below. */}
-        <section role="tabpanel" id="workspace-panel-venues" aria-labelledby="workspace-tab-venues" hidden={workspaceTab !== 'venues'}>
-          <div className="workspace-action-card"><div><h2>Venue arrangements</h2><p>Review your requests here. Search and request spaces in Find venues.</p></div>
-            <Link className="button-link" to={`/coordinator/venues?eventId=${event.id}`}>Find a venue</Link></div>
-          <VenueDisruptions eventId={event.id} token={token} refreshKey={notificationOpened} onResolved={() => setVenueRecoveryVersion(version => version + 1)} />
-          <VenueBookingDecisions eventId={event.id} refreshKey={venueRecoveryVersion} />
-        </section>
-        <section role="tabpanel" id="workspace-panel-equipment" aria-labelledby="workspace-tab-equipment" hidden={workspaceTab !== 'equipment'}>
-          <EquipmentStatusSection eventId={event.id} token={token} />
-        {/* Coordinator equipment is read-only; edit callbacks belong only to the organiser's overview. */}
-        <EquipmentRequirementsSection event={event} canEdit={false}>
-
-          {renderEditableField('equipmentNotes', 'Other equipment notes', event.equipment_notes)}
-
-        </EquipmentRequirementsSection>
-
-
-
-
-        </section>
-      </>}
-      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-activity' : undefined} id="workspace-panel-activity" className="event-activity-panels" hidden={coordinatorWorkspace && workspaceTab !== 'activity'}>
-      <details className="ed-card activity-section" role="region" aria-labelledby="clarifications-heading" open={clarificationsOpen}>
+      </div>);
+  const clarificationRequests = (<details className="ed-card activity-section" role="region" aria-labelledby="clarifications-heading" open={clarificationsOpen}>
 
         <summary className="ed-card-head" onClick={action => { action.preventDefault(); setClarificationsOpen(current => !current); }}>
 
@@ -1130,7 +1045,107 @@ export default function EventDetail() {
           </form>
 
         )}
-      </details>
+      </details>);
+
+  return (
+
+    <div className={`event-detail ed-root${organiserWorkspace ? ' organiser-event-detail' : ''}`}>
+
+      <style>{STYLES}</style>
+
+      {backLink}
+
+      {organiserWorkspace && eventHeader}
+      {/* Lead attendee reports require a confirmed event with registration enabled. */}
+      {user.role === 'event_coordinator_lead' && event.status === 'confirmed' && event.registration_required === true && <LeadRegistrations eventId={event.id} token={token}/>}
+      {/* Coordinator attendance reporting starts at final confirmation and remains accessible after completion. */}
+
+      {location.state?.message && <p className="ed-notice ed-notice--ok" role="status">{location.state.message}</p>}
+
+      {saveMessage && <p className="ed-notice ed-notice--ok" role="status">{saveMessage}</p>}
+
+      {event.clarification_outstanding && <p className="ed-notice ed-notice--warn" role="status">Clarification outstanding — planning is waiting for the Event Organiser.</p>}
+
+      {organiserWorkspace && editingAllowed() && <p className="organiser-draft-note">This is a draft. Use the pencil icon to edit any event field before you submit it.</p>}
+
+      {!organiserWorkspace && eventHeader}
+
+
+
+      {coordinatorWorkspace && <div role="tablist" aria-label="Event workspace" className="event-workspace-tabs">
+        {workspaceTabs.map(([key, label], index) =>
+          <button key={key} role="tab" id={`workspace-tab-${key}`} aria-selected={workspaceTab === key}
+            tabIndex={workspaceTab === key ? 0 : -1} aria-controls={`workspace-panel-${key}`}
+            onKeyDown={action => navigateWorkspaceTabs(action, index)} onClick={() => selectWorkspaceTab(key)}>{label}</button>)}
+      </div>}
+      {/* Keep drafts mounted across sections so tab changes cannot discard unfinished work. */}
+      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-overview' : undefined} id="workspace-panel-overview" hidden={coordinatorWorkspace && workspaceTab !== 'overview'}>
+      {confirmUpdate && <ActionConfirmation action="update this event request" busy={saving} error={updateError} success={updateSuccess} onConfirm={saveNonCritical} onClose={() => { setConfirmUpdate(false); if (updateSuccess) { setSaveMessage(updateSuccess); setUpdateSuccess(''); } }} />}
+
+      {organiserWorkspace && <>
+        {reviewDecision}
+        {reviewHistory}
+        {clarificationRequests}
+        {eventFacts}
+      </>}
+      {supportingDocuments}
+
+      {['event_coordinator', 'event_coordinator_lead'].includes(user.role) && (
+
+        <section className="ed-card ed-contact" aria-label="Organiser contact">
+
+          <h2 className="ed-card-title">Organiser contact</h2>
+
+          <p className="ed-muted">{event.organiser_name}</p>
+
+          {event.organiser_email ? <a href={`mailto:${event.organiser_email}`}>{event.organiser_email}</a> : <p className="ed-muted">Email not recorded</p>}
+
+        </section>
+
+      )}
+
+      {user.role === 'event_organiser' && <EventRequestStatus backgroundOnly key={statusRefreshKey} eventId={event.id} onSnapshot={updateRequestStatus} />}
+      {!organiserWorkspace && reviewDecision}
+      {!organiserWorkspace && coordinationHistory}
+      {!organiserWorkspace && reviewHistory}
+      {!coordinatorWorkspace && !organiserWorkspace && cancellationAction}
+
+
+
+      {!organiserWorkspace && eventFacts}
+
+      </div>
+      {organiserWorkspace && !editingAllowed() && <section className="organiser-management-section" aria-label="Changes to this event">
+        <AmendmentRequestPanel event={event} token={token} />
+      </section>}
+      {organiserWorkspace && <RegistrationSettings event={event} token={token} onSaved={saved=>setEvent(current=>({...current,...saved}))}>
+        <OrganiserRegistrationAction eventId={event.id} token={token} />
+      </RegistrationSettings>}
+      {organiserWorkspace && coordinationHistory}
+      {coordinatorWorkspace && <>
+        {/* Coordinator deadline changes are reviewed through the existing change-request workflow below. */}
+        <section role="tabpanel" id="workspace-panel-venues" aria-labelledby="workspace-tab-venues" hidden={workspaceTab !== 'venues'}>
+          <div className="workspace-action-card"><div><h2>Venue arrangements</h2><p>Review your requests here. Search and request spaces in Find venues.</p></div>
+            <Link className="button-link" to={`/coordinator/venues?eventId=${event.id}`}>Find a venue</Link></div>
+          <VenueDisruptions eventId={event.id} token={token} refreshKey={notificationOpened} onResolved={() => setVenueRecoveryVersion(version => version + 1)} />
+          <VenueBookingDecisions eventId={event.id} refreshKey={venueRecoveryVersion} />
+        </section>
+        <section role="tabpanel" id="workspace-panel-equipment" aria-labelledby="workspace-tab-equipment" hidden={workspaceTab !== 'equipment'}>
+          <EquipmentStatusSection eventId={event.id} token={token} />
+        {/* Coordinator equipment is read-only; edit callbacks belong only to the organiser's overview. */}
+        <EquipmentRequirementsSection event={event} canEdit={false}>
+
+          {renderEditableField('equipmentNotes', 'Other equipment notes', event.equipment_notes)}
+
+        </EquipmentRequirementsSection>
+
+
+
+
+        </section>
+      </>}
+      <div role={coordinatorWorkspace ? 'tabpanel' : undefined} aria-labelledby={coordinatorWorkspace ? 'workspace-tab-activity' : undefined} id="workspace-panel-activity" className="event-activity-panels" hidden={coordinatorWorkspace && workspaceTab !== 'activity'}>
+      {!organiserWorkspace && clarificationRequests}
       {user.role === 'event_coordinator' && (
         <OfflineClarificationForm eventId={event.id} token={token} onRecorded={(recorded, message) => { addClarification(recorded); setSaveMessage(message); }} />
       )}

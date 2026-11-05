@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 
 /** A read-only table for the event's currently authorised viewers; history access is checked again by the API. */
-export default function CoordinatorAssignmentHistory({ eventId, updatedAt, token }) {
+export default function CoordinatorAssignmentHistory({ eventId, updatedAt, token, title = 'Coordinator handover history' }) {
   const [history, setHistory] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -14,8 +14,8 @@ export default function CoordinatorAssignmentHistory({ eventId, updatedAt, token
     }).catch(failure => { if (active) setError(failure.message); });
     return () => { active = false; };
   }, [eventId, updatedAt, token]);
-  return <section className="ed-card coordinator-history" aria-label="Coordinator handover history">
-    <h2 className="ed-card-title">Coordinator handover history</h2>
+  return <section className="ed-card coordinator-history" aria-label={title}>
+    <h2 className="ed-card-title">{title}</h2>
     {error ? <p role="alert">{error}</p> : history === null ? <p role="status">Loading coordinator history…</p>
       : history.length === 0 ? <p>No coordinator changes recorded yet.</p>
         : <div className="coordinator-history-scroll" role="region" aria-label="Scroll coordinator history" tabIndex={0}>

@@ -821,6 +821,7 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .amendment-panel-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px 20px; }
 .amendment-panel-header .ed-card-title { margin:0; }
 .amendment-panel-header > button { min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
+.amendment-panel > .amendment-request-action { justify-self:start; min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
 .amendment-form { display: grid; gap: 16px; }
 .amendment-group { display: grid; gap: 12px; margin: 0; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }
 .amendment-group legend { padding: 0 6px; font-weight: 700; }
@@ -966,7 +967,7 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .organiser-stage-tabs .badge { padding: 3px 7px; background: var(--event-submitted-bg); color: var(--event-submitted-text); font-size: 11px; }
 .request-section[hidden] { display: none; }
 
-/* Organiser details lead with the event itself; staff workspaces retain their own layout and controls. */
+/* Organiser details follow the requested review-first order; staff retain their own layout and controls. */
 .event-detail.ed-root.organiser-event-detail { --ed-surface: #fff; max-width: 1000px; padding: 0 0 32px; font-size: 14px; }
 .event-detail.organiser-event-detail .ed-back { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ed-muted); font-size: 13px; box-shadow: none; }
 .event-detail.organiser-event-detail .ed-back:hover { color: var(--ed-ink); text-decoration: underline; }
@@ -1018,4 +1019,27 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
   .event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
   .event-detail.organiser-event-detail .organiser-management-section { padding: 20px; }
   .event-detail.organiser-event-detail .ed-fields--tiles { grid-template-columns: minmax(0,1fr); gap: 16px; }
+}
+
+/* Registration is one section: accepted values, independent deadline proposals, and availability actions. */
+.registration-settings .registration-section-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 20px; margin-bottom:16px; }
+.registration-settings .registration-section-heading .ed-card-title { margin:0; }
+.registration-settings .registration-section-heading button,
+.registration-settings .registration-form-actions button,
+.registration-settings .booking-review-actions button { min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
+.registration-settings > p { font-size:13px; line-height:1.6; }
+.registration-settings .registration-accepted-deadlines { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; margin:20px 0; padding:16px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.registration-accepted-deadlines dt { margin-bottom:6px; color:var(--muted); font-size:12px; }
+.registration-accepted-deadlines dd { margin:0; font-size:14px; overflow-wrap:anywhere; }
+.registration-settings .registration-deadline-form { gap:14px 24px; }
+.registration-deadline-form .field { display:grid; gap:6px; min-width:0; font-size:13px; }
+.registration-deadline-form input { min-width:0; width:100%; font-size:13px; }
+.registration-deadline-form > p,
+.registration-deadline-form .registration-form-actions { grid-column:1 / -1; margin:0; font-size:12px; }
+.registration-settings .booking-review-actions { justify-content:flex-start; margin:20px 0 8px; padding-top:20px; border-top:1px solid var(--border); }
+.event-detail.organiser-event-detail .activity-section > .ed-card-head > .ed-badge { background:var(--event-confirmed-bg); color:var(--event-confirmed-text); }
+.event-detail.organiser-event-detail .ed-card-head { gap:12px; flex-wrap:wrap; }
+.event-detail.organiser-event-detail .ed-card-head .ed-card-title { margin:0; }
+@media(max-width:640px) {
+  .registration-settings .registration-accepted-deadlines { grid-template-columns:minmax(0,1fr); }
 }
