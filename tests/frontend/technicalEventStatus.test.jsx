@@ -5,6 +5,8 @@ import { api } from '../../frontend/src/api/client';
 import { MemoryRouter } from 'react-router-dom';
 import { useAuth } from '../../frontend/src/context/AuthContext';
 import TechSupportDashboard from '../../frontend/src/pages/tech-support/TechSupportDashboard';
+import NotificationBell from '../../frontend/src/components/NotificationBell';
+import { NotificationsProvider } from '../../frontend/src/context/NotificationsContext';
 import OnSiteSupportSection from '../../frontend/src/pages/tech-support/OnSiteSupportSection';
 
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn() } }));
@@ -95,11 +97,13 @@ it('TS status AC3/AC5 - opening a status notification refreshes the dashboard pr
       created_at: '2026-10-26T09:00:00Z', read_at: '2026-10-26T09:01:00Z' }], unreadCount: 0 };
     return { requests: [] };
   });
-  render(<MemoryRouter initialEntries={['/tech-support/dashboard']}><TechSupportDashboard /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/tech-support/dashboard']}><NotificationsProvider><NotificationBell /><TechSupportDashboard /></NotificationsProvider></MemoryRouter>);
   expect(await screen.findByText('Planning')).toBeTruthy();
   // Act/Assert: navigating a notification onto the same route reads the new confirmed status.
   status = 'approved';
-  fireEvent.click(screen.getByRole('button', { name: 'Technical support: Confirmed - Support workshop' }));
+  // The navbar bell now provides notification navigation; the dashboard has no duplicate feed.
+  fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Technical support: Confirmed - Support workshop' }));
   expect(await screen.findByText('Confirmed')).toBeTruthy();
   expect(screen.getByText('HDMI and two microphones')).toBeTruthy();
 });

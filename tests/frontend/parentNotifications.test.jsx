@@ -116,11 +116,19 @@ describe('previews and targets', () => {
 // ---------- In the app ----------
 
 // AC1: every signed-in role, including the Safety Officer and Coordinator Lead, has the bell with its unread count.
-it.each(Object.keys(roles))('NT AC1 - a %s sees the notification bell with the unread count', async (role) => {
+it.each(Object.keys(roles))('Dashboard notifications AC1 AC2 - a %s has dashboard content and the bell without a notification section', async (role) => {
   user = roles[role];
   open('/');
   expect((await bell()).getAttribute('aria-label')).toBe('Notifications, 1 unread');
   expect(screen.getByText('1', { selector: '.notification-count' })).toBeTruthy();
+  // The bell stays available, but the duplicate dashboard feed and its heading must be absent.
+  expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
+  expect(screen.queryByText('Venue booking approved: Gala')).toBeNull();
+  const titles = { event_organiser: 'Event Organiser Dashboard', event_coordinator: 'Event Coordinator Dashboard',
+    event_coordinator_lead: 'Coordinator Lead Dashboard', attendee: 'Attendee Dashboard', venue_staff: 'Venue Staff Dashboard',
+    technical_support: 'Technical Support Dashboard', safety_officer: 'Safety Officer Dashboard' };
+  expect(screen.getByRole('heading', { name: titles[role], level: 1 })).toBeTruthy();
 });
 // Test case: Signed-out pages have no bell and make no notification request.
 it('NT AC1 - signed-out pages show no bell and request no notifications', async () => {
@@ -129,16 +137,6 @@ it('NT AC1 - signed-out pages show no bell and request no notifications', async 
   expect(screen.queryByRole('button', { name: /^Notifications/ })).toBeNull();
   expect(notificationCalls()).toBe(0);
 });
-// Test case: The Safety Officer and Coordinator Lead dashboards now list notifications too.
-it.each([['safety_officer', 'Ready for safety check: Gala'], ['event_coordinator_lead', 'New request to assign: Gala']])(
-  'NT AC1 - the %s dashboard lists its notifications', async (role, title) => {
-    user = roles[role];
-    inbox = { notifications: [note({ title, type: role === 'safety_officer' ? 'safety_check_ready' : 'event_awaiting_assignment' })], unreadCount: 1 };
-    open('/');
-    const panel = await screen.findByRole('region', { name: 'Notifications' });
-    expect(await within(panel).findByText(title)).toBeTruthy();
-  });
-
 // AC1: a notification created after the page opened appears within ten seconds without a reload.
 it('NT AC1 - a new notification appears within ten seconds, from one shared request', async () => {
   vi.useRealTimers();
@@ -154,9 +152,10 @@ it('NT AC1 - a new notification appears within ten seconds, from one shared requ
   expect(screen.getByRole('button', { name: /^Notifications/ }).getAttribute('aria-label')).toBe('Notifications');
   await act(async () => { vi.advanceTimersByTime(1); });
   await waitFor(() => expect(screen.getByRole('button', { name: /^Notifications/ }).getAttribute('aria-label')).toBe('Notifications, 1 unread'));
-  // Bell and dashboard panel share one request per refresh.
+  // The navbar owns one notification request per refresh.
   expect(notificationCalls() - callsBefore).toBe(1);
-  expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Venue booking approved: Gala')).toBeTruthy();
+  fireEvent.click(await bell());
+  expect(await within(screen.getByRole('region', { name: 'Recent notifications' })).findByText('Venue booking approved: Gala')).toBeTruthy();
 });
 
 // AC2/AC3: the dropdown preview is concise and timed.
@@ -170,17 +169,7 @@ it('NT AC2/AC3 - the bell shows each notification as a title, a one-line summary
   expect([summary.length <= PREVIEW_LIMIT, summary.endsWith('…'), summary.includes('Reason')]).toEqual([true, true, false]);
   expect(within(item).getByText('5 min ago')).toBeTruthy();
   expect(within(item).getByText('2 Jan 2030, 11:55 am').getAttribute('datetime')).toBe('2030-01-02T03:55:00.000Z');
-  // The full message stays in the dashboard panel, behind "Details".
-  const panel = screen.getByRole('region', { name: 'Notifications' });
-  expect(within(panel).getByText('Details')).toBeTruthy();
-  expect(within(panel).getByText(/Reason: Hall A closed for repairs\./)).toBeTruthy();
-});
-// Test case: A message the preview already shows in full has no Details control.
-it('NT AC2 - a short single-line message has no separate details', async () => {
-  open('/organizer/dashboard');
-  const panel = await screen.findByRole('region', { name: 'Notifications' });
-  await within(panel).findByText('Venue booking approved: Gala');
-  expect(within(panel).queryByText('Details')).toBeNull();
+  expect(within(dropdown).queryByText('Details')).toBeNull();
 });
 
 // AC4: pressing a notification marks it read and opens the page where the update happened.
@@ -253,10 +242,11 @@ it.each([['another page', '/events/101'], ['the dashboard itself', '/coordinator
   });
 
 // Test case: An already-read notification opens its page without another mark-read request.
-it('NT AC4 - a read notification in the dashboard panel opens its page without marking it again', async () => {
+it('NT AC4 - a read notification in the bell opens its page without marking it again', async () => {
   inbox = { notifications: [note({ read_at: '2030-01-02T03:56:00.000Z' })], unreadCount: 0 };
   open('/organizer/dashboard');
-  const panel = await screen.findByRole('region', { name: 'Notifications' });
+  fireEvent.click(await bell());
+  const panel = screen.getByRole('region', { name: 'Recent notifications' });
   fireEvent.click(await within(panel).findByRole('button', { name: 'Venue booking approved: Gala' }));
   await waitFor(() => expect(page()).toBe('/organizer/events/101'));
   expect(api.post).not.toHaveBeenCalled();
@@ -462,14 +452,15 @@ it('Outgoing notice AC3 - a reassigned coordinator opens their dashboard instead
   }
 });
 
-// Assignment AC5: the saved assignment uses the shared coordinator dashboard inbox and its real event route.
-it('Assignment notification AC5 - coordinator dashboard notice opens the assigned event',async()=>{
+// Assignment AC5: the saved assignment uses the coordinator bell and its real event route.
+it('Assignment notification AC5 - coordinator bell notice opens the assigned event',async()=>{
   user=roles.event_coordinator;
   inbox={unreadCount:1,notifications:[note({type:'event_coordinator_assigned',title:'Event assigned: Gala',message:'You have been assigned as Event Coordinator for Gala.'})]};
   open('/coordinator/dashboard');
-  const panel=await screen.findByRole('region',{name:'Notifications'});
+  fireEvent.click(await bell());
+  const panel=screen.getByRole('region',{name:'Recent notifications'});
   const notice=await within(panel).findByRole('button',{name:'Event assigned: Gala (new)'});
-  expect(within(panel).getByText('1 unread')).toBeTruthy();
+  expect((await bell()).getAttribute('aria-label')).toBe('Notifications, 1 unread');
   fireEvent.click(notice);
   await waitFor(()=>expect(page()).toBe('/events/101'));
   expect(api.post).toHaveBeenCalledWith('/notifications/9/read',{},'session');

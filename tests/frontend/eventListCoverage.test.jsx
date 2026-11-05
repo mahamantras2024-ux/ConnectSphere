@@ -58,6 +58,7 @@ it('Coordinator view 1 / Technical Support AC2 - loads events and saves a dashbo
   renderEventList({ dashboard: true });
 
   expect(await screen.findByRole('heading', { name: 'Event Coordinator Dashboard' })).toBeTruthy();
+  fireEvent.click(await screen.findByRole('tab', { name: /^In progress/ }));
   const eventHeading = await screen.findByRole('heading', { name: 'Community Workshop' });
   const card = eventHeading.closest('article');
   expect(card).not.toBeNull();
@@ -77,6 +78,7 @@ it('Coordinator view 1 / Technical Support AC2 - loads events and saves a dashbo
   expect(await within(card).findByRole('button', { name: 'Assignment saved' })).toBeTruthy();
   expect(within(card).getByLabelText('Taylor Support').checked).toBe(true);
   expect(within(card).getByLabelText('Morgan Support').checked).toBe(true);
+  fireEvent.click(screen.getByRole('tab', { name: /^Submitted/ }));
   expect(screen.getByRole('heading', { name: 'Other event' })).toBeTruthy();
 });
 

@@ -29,8 +29,13 @@ it('Registration settings AC1 - saving cutoffs updates the real organiser event 
 // AC1: row placement reflects persisted draft and assignment state, not invented client state.
 it('Workflow AC1 - dashboard separates draft submitted and assigned rows',async()=>{
  api.get.mockImplementation(async path=>path==='/auth/me'?{user:{id:2,role:'event_organiser'}}:{events:[event,{...event,id:2,name:'Submitted event',status:'submitted',is_draft:false},{...event,id:3,name:'Assigned event',status:'submitted',is_draft:false,coordinator_id:4}]});
- open();await screen.findByRole('heading',{name:'Drafts'});
- for(const [section,name]of [['Drafts','Workshop'],['Submitted','Submitted event'],['In progress','Assigned event']])expect(within(screen.getByRole('region',{name:section})).getByRole('heading',{name})).toBeTruthy();
+ open();await screen.findByRole('tab',{name:/^Draft/});
+ // The same classification is now exposed one accessible tab panel at a time.
+ for(const [section,name]of [['Draft','Workshop'],['Submitted','Submitted event'],['In progress','Assigned event']]){
+  fireEvent.click(screen.getByRole('tab',{name:new RegExp('^'+section)}));
+  expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name})).toBeTruthy();
+ }
+ fireEvent.click(screen.getByRole('tab',{name:/^Draft/}));
  expect(screen.getAllByRole('button',{name:'Delete draft'})).toHaveLength(1);
 });
 // AC3/AC4: cancelling sends nothing; confirming deletes once and displays persisted success.
@@ -45,7 +50,7 @@ it('Workflow AC3 AC4 - draft deletion confirms before and after success',async()
 it('Workflow AC3 AC4 - submits existing draft into submitted section',async()=>{
  api.post.mockResolvedValue({event:{...event,status:'submitted',is_draft:false},message:'Event request submitted.'});open();fireEvent.click(await screen.findByRole('button',{name:'Submit draft'}));
  expect(api.post).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Confirm'}));await screen.findByText('Event request submitted.');
- expect(api.post).toHaveBeenCalledWith('/events/1/submit',{},'test');expect(within(screen.getByRole('region',{name:'Submitted'})).getByRole('heading',{name:'Workshop'})).toBeTruthy();
+ expect(api.post).toHaveBeenCalledWith('/events/1/submit',{},'test');expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name:'Workshop'})).toBeTruthy();
 });
 // AC2/AC4: blank drafts bypass submission requirements and still require review before any write.
 it('Workflow AC2 AC4 - saves an incomplete draft only after confirmation',async()=>{
@@ -80,7 +85,7 @@ it.each(['delete','submit'])('Workflow AC4 - failed draft %s preserves row and a
  (action==='delete'?api.delete:api.post).mockRejectedValue(new Error('Offline'));open();
  fireEvent.click(await screen.findByRole('button',{name:action==='delete'?'Delete draft':'Submit draft'}));
  fireEvent.click(screen.getByRole('button',{name:'Confirm'}));expect((await screen.findByRole('alert')).textContent).toBe('Offline');
- expect(within(screen.getByRole('region',{name:'Drafts'})).getByRole('heading',{name:'Workshop'})).toBeTruthy();
+ expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name:'Workshop'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Close dialog'}));expect(screen.queryByRole('dialog')).toBeNull();
 });
 // AC4: creation confirmation can be dismissed before saving, including keyboard dismissal.
@@ -136,8 +141,12 @@ it('Workflow AC1 AC3 - submission preserves other drafts and completed history',
  api.get.mockImplementation(async path=>path==='/auth/me'?{user:{id:2,role:'event_organiser'}}:{events:[event,{...event,id:2,name:'Other draft'},{...event,id:3,name:'Completed event',is_draft:false,status:'completed',coordinator_id:4}]});
  api.post.mockResolvedValue({event:{...event,is_draft:false,status:'submitted'},message:'Submitted.'});open();await screen.findByRole('heading',{name:'Workshop'});
  fireEvent.click(within(screen.getByRole('heading',{name:'Workshop'}).closest('li')).getByRole('button',{name:'Submit draft'}));fireEvent.click(screen.getByRole('button',{name:'Confirm'}));await screen.findByText('Submitted.');
- expect(within(screen.getByRole('region',{name:'Drafts'})).getByRole('heading',{name:'Other draft'})).toBeTruthy();
- expect(within(screen.getByRole('region',{name:'Submitted'})).getByRole('heading',{name:'Completed event'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+ expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name:'Other draft'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('tab',{name:/^Completed/}));
+ expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name:'Completed event'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('tab',{name:/^Submitted/}));
+ expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name:'Workshop'})).toBeTruthy();
 });
 // AC5: a coordinator can read attachment details included in a pending critical change without rendering raw objects.
 it('Workflow AC5 - coordinator inbox renders proposed attachment names',async()=>{
@@ -166,10 +175,43 @@ it.each([true,false])('Organiser outcomes AC1 - submission result success=%s is 
  fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
  if(success){
   expect(await screen.findByText('Event request submitted.')).toBeTruthy();
-  expect(within(screen.getByRole('region',{name:'Submitted'})).getByRole('heading',{name:'Workshop'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+  expect(screen.getByRole('tab',{name:/^Submitted/}).getAttribute('aria-selected')).toBe('true');
+  expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name:'Workshop'})).toBeTruthy();
  }else{
   expect(await screen.findByRole('alert')).toHaveProperty('textContent','Submission failed: add the event attendance.');
-  expect(within(screen.getByRole('region',{name:'Drafts'})).getByRole('heading',{name:'Workshop'})).toBeTruthy();
+  expect(within(screen.getByRole('tabpanel')).getByRole('heading',{name:'Workshop'})).toBeTruthy();
   expect(screen.queryByText('Event request submitted.')).toBeNull();
  }
+});
+
+// Attachment controls AC1/AC2: emulate only the browser's native chosen-path value, which jsdom cannot populate from files.
+// Routing, FileReader and the form's attachment state stay real; browser checks also verify the real FileList is cleared.
+it('Attachment controls AC1 AC2 - delete clears the selected filename and permits reselecting the same file without affecting another attachment', async () => {
+ open('/organizer/events/new');
+ const input = await screen.findByLabelText('Event name attachment');
+ const file = new File(['%PDF-name'], 'event-name.pdf', {type:'application/pdf'});
+ let selectedPath = 'C:\\fakepath\\event-name.pdf';
+ Object.defineProperty(input, 'value', {configurable:true, get:()=>selectedPath, set:next=>{selectedPath=next;}});
+ fireEvent.change(input, {target:{files:[file]}});
+ await screen.findByRole('link', {name:'event-name.pdf'});
+ fireEvent.change(screen.getByLabelText('Purpose attachment'), {target:{files:[new File(['%PDF-purpose'], 'purpose.pdf', {type:'application/pdf'})]}});
+ await screen.findByRole('link', {name:'purpose.pdf'});
+ // Assert that deletion is an accessible icon and clears both representations of the selected attachment.
+ const remove = screen.getByRole('button', {name:'Remove Event name attachment'});
+ fireEvent.click(remove);
+ expect(input.value).toBe('');
+ expect(remove.querySelector('svg')).not.toBeNull();
+ expect(remove.textContent).toBe('');
+ expect(screen.queryByRole('link', {name:'event-name.pdf'})).toBeNull();
+ expect(screen.getByRole('link', {name:'purpose.pdf'})).toBeTruthy();
+ fireEvent.change(input, {target:{files:[file]}});
+ expect(await screen.findByRole('link', {name:'event-name.pdf'})).toBeTruthy();
+ // The payload must contain removal rather than the stale filename when the draft is saved.
+ fireEvent.click(screen.getByRole('button', {name:'Remove Event name attachment'}));
+ api.post.mockResolvedValue({event, message:'Draft saved.'});
+ fireEvent.click(screen.getByRole('button', {name:'Save as draft'}));
+ fireEvent.click(await screen.findByRole('button', {name:'Confirm'}));
+ await screen.findByText('Draft saved.');
+ expect(api.post.mock.calls[0][1].attachments).toMatchObject({name:null,purpose:{name:'purpose.pdf'}});
 });

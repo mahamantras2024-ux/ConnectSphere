@@ -256,12 +256,12 @@ it('coordinator records with missing submitted information identify it as unavai
   await screen.findByRole('heading',{name:'Incomplete assigned event'});for(const label of ['Purpose','Date','Programme','Layout Requirements','Accessibility Needs','Other equipment notes','Registration Required'])expect(screen.getByText(label,{selector:'dt'}).parentElement.textContent).toMatch(/Not specified/);
 });
 
-// Test case: Uses My Events, opens details and returns to the list, checking submitted fields and that a submitted request
+// Test case: Uses Dashboard, opens details and returns to the list, checking submitted fields and that a submitted request
 // offers an amendment request instead of edit controls (Request All Post-Submission Amendments AC1).
-it('Organiser AC1 / UI navigation AC1 / AM AC1 - the single My Events tab opens the workspace and submitted details', async () => {
+it('Organiser AC1 / UI navigation AC1 / AM AC1 - the Dashboard tab opens the workspace and submitted details', async () => {
 
   open('/organizer/dashboard');
-  const tab = await screen.findByRole('link', { name: 'My Events' });
+  const tab = await screen.findByRole('link', { name: 'Dashboard' });
   fireEvent.click(tab);
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
   fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
@@ -270,11 +270,15 @@ it('Organiser AC1 / UI navigation AC1 / AM AC1 - the single My Events tab opens 
     event.room_layout_preference, 'Wheelchair access, Hearing loop', event.equipment_notes, 'Yes', '35', event.special_arrangements, 'Alice', 'Chris']) {
     expect(screen.getAllByText(value).length).toBeGreaterThan(0);
   }
+  // Neat details AC1: identity and retained facts precede the amendment controls rather than being buried beneath them.
+  const amendmentGuidance = screen.getByText(/has been submitted, so its details can't be edited directly/);
+  expect(screen.getByRole('heading', { name: event.name }).compareDocumentPosition(amendmentGuidance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Event Overview' }).compareDocumentPosition(amendmentGuidance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(api.get).toHaveBeenCalledWith('/events/101', 'organiser-token');
   expect(screen.queryByRole('button', { name: 'Edit Programme' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Edit Event name' })).toBeNull();
   expect(screen.getByText(/has been submitted, so its details can't be edited directly/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Dashboard' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
 
@@ -721,7 +725,8 @@ it('SCRUM-93 AC3/AC5 - live status and new clarification preserve an unsaved org
   snapshot = { ...snapshot, status: 'planning', clarification_outstanding: true,
     clarification_requests: [{ id: 701, status: 'pending', information_needed: ['purpose'], message: 'Please explain the programme.' }] };
   fireEvent(window, new Event('focus'));
-  await within(screen.getByRole('region', { name: 'Request status', hidden: true })).findByText('Planning', { selector: 'strong' });
+  await waitFor(() => expect(document.querySelector('.ed-header .event-status').textContent).toBe('Planning'));
+  expect(screen.queryByRole('region', { name: 'Request status' })).toBeNull();
   // Assert: polling updates status/action data while preserving the separately owned form state.
   expect(input.value).toBe('Unsaved programme proposal');
   expect(screen.getByText('Please explain the programme.')).toBeTruthy();
@@ -749,7 +754,8 @@ it('SCRUM-93 AC3/AC5 - a pre-response poll cannot restore an answered clarificat
     return { clarificationRequest: answered, clarificationOutstanding: false, message: 'Response saved.' };
   });
   open('/organizer/events/101');
-  await within(await screen.findByRole('region', { name: 'Request status' })).findByText('Submitted', { selector: 'strong' });
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/events/101/request-status', 'organiser-token'));
+  await act(async () => {});
   fireEvent(window, new Event('focus'));
   fireEvent.change(screen.getByLabelText('Response or amendment to clarification 701'), { target: { value: answered.organiser_response } });
   fireEvent.click(screen.getByRole('button', { name: 'Send response' }));
@@ -761,17 +767,56 @@ it('SCRUM-93 AC3/AC5 - a pre-response poll cannot restore an answered clarificat
 });
 
 it('SCRUM-93 AC1/AC6 - organisation colleague opens the status route without fetching private details', async () => {
-  // Arrange: real authentication, App routes and links; only HTTP returns the organisation-scoped colleague row.
+  // Arrange: the read-only status route remains available directly after its redundant card button is removed.
   const colleague = { ...event, organiser_id: 99, can_manage: false, status: 'under_review' };
   api.get.mockImplementation(async path => path === '/auth/me' ? { user }
     : path === '/events' ? { events: [colleague] }
     : path === '/events/101/request-status' ? { event: colleague }
     : { notifications: [], unreadCount: 0 });
-  open('/organizer/events');
-  fireEvent.click(await screen.findByRole('link', { name: 'View status' }));
+  open('/organizer/events/101/status');
   // Assert: a missing App route or navigation to private EventDetail would fail this oracle.
   expect(await within(await screen.findByRole('region', { name: 'Request status' })).findByText('Under Review', { selector: 'strong' })).toBeTruthy();
   expect(api.get).toHaveBeenCalledWith('/events/101/request-status', 'organiser-token');
   expect(api.get).not.toHaveBeenCalledWith('/events/101', 'organiser-token');
   expect(screen.queryByRole('button', { name: 'Edit Purpose' })).toBeNull();
+});
+
+// Neat details AC1/AC2: the requested review-first order preserves identity and draft-only editing.
+it.each([true, false])('Neat organiser details AC1 AC2 - uses the review-first layout while preserving draft editing=%s', async draft => {
+  // Arrange: real role routing and field renderers receive the same record in each lifecycle mode.
+  const record = draft ? draftEvent : event;
+  const base = api.get.getMockImplementation();
+  api.get.mockImplementation((path, ...args) => ['/events/101', '/events/101/request-status'].includes(path)
+    ? Promise.resolve({ event: record }) : base(path, ...args));
+  open('/organizer/events/101');
+  // Act / Assert: identity stays first, review precedes the facts, and the redundant status section is absent.
+  const title = await screen.findByRole('heading', { name: event.name });
+  const overview = screen.getByRole('heading', { name: 'Event Overview' });
+  expect(title.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Request status' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Review decision' }).compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  if (draft) expect(screen.getByRole('button', { name: 'Edit Purpose' })).toBeTruthy();
+  else {
+    expect(screen.queryByRole('button', { name: 'Edit Purpose' })).toBeNull();
+    expect(overview.compareDocumentPosition(screen.getByText(/has been submitted, so its details can't be edited directly/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+});
+
+// Organiser layout AC1–AC3: inspect real document order, rather than CSS ordering that leaves keyboard/screen-reader order wrong.
+it('Organiser layout AC1 AC2 AC3 - follows the requested section order and groups registration reporting with its settings', async () => {
+  const base = api.get.getMockImplementation();
+  api.get.mockImplementation((path, ...args) => ['/events/101', '/events/101/request-status'].includes(path)
+    ? Promise.resolve({event:{...event,coordinator_id:3}}) : base(path,...args));
+  open('/organizer/events/101');
+  await screen.findByRole('heading', {name:event.name});
+  const order = ['Review decision','Review history','Clarification requests','Event Overview','Supporting documents','Changes to this event','Registration details','Coordination history'];
+  const sectionHeadings = screen.getAllByRole('heading').filter(heading=>order.includes(heading.textContent));
+  expect(sectionHeadings.map(heading=>heading.textContent)).toEqual(order);
+  expect(screen.queryByRole('region', {name:'Request status'})).toBeNull();
+  const registration = screen.getByRole('region', {name:'Registration details'});
+  expect(within(registration).getByRole('button', {name:'Registration details'})).toBeTruthy();
+  expect(within(registration).getByLabelText('Registration deadline (Singapore time)')).toBeTruthy();
+  // The requested attendee action still opens the real private drawer from its relocated trigger.
+  fireEvent.click(within(registration).getByRole('button', {name:'Registration details'}));
+  expect(await screen.findByRole('dialog', {name:'Registration details'})).toBeTruthy();
 });

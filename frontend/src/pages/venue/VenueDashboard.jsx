@@ -5,10 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import VenueList from '../venues/VenueList';
 import AddVenueModal from '../venues/AddVenueModal';
 import PageIntro from '../../components/PageIntro';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import VenueBookingInbox from './VenueBookingInbox';
 import VenueEventStatusPanel from './VenueEventStatusPanel';
-import VenueReminderPreferences from './VenueReminderPreferences';
 
 /** Keeps staff sections bookmarkable and mounts only the selected workspace; creation refreshes the venue catalogue. */
 export default function VenueDashboard() {
@@ -28,9 +26,7 @@ export default function VenueDashboard() {
         description={`Welcome, ${user.full_name}. Keep every space ready for its next event.`}
         action={section === 'venues' ? <button onClick={() => setAdding(true)}>Add venue <span aria-hidden="true">+</span></button> : undefined} />
       {section === 'dashboard' && <>
-        <NotificationsPanel />
         <VenueEventStatusPanel />
-        <VenueReminderPreferences />
       </>}
       {section === 'requests' && <VenueBookingInbox />}
       {section === 'venues' && <VenueList key={version} />}

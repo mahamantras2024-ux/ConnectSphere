@@ -34,15 +34,19 @@ export default function AmendmentRequestPanel({ event, token }) {
 
   return (
     <div className="amendment-panel">
+      <div className="amendment-panel-header">
+        <h2 className="ed-card-title">Changes to this event</h2>
+      </div>
       <p className="mb-4 text-sm text-slate-600">
-        This request has been submitted, so its details can&apos;t be edited directly. To change anything, request an amendment — your Event Coordinator will review it. The details below stay in effect until then.
+        This request has been submitted, so its details can&apos;t be edited directly. To change anything, request an amendment — your Event Coordinator will review it. Existing event details stay in effect until then.
       </p>
+      {!blocked && !formOpen && <button type="button" className="button-primary amendment-request-action" onClick={() => { setMessage(''); setFormOpen(true); }}>Request an amendment</button>}
       {message && <p className="ed-notice ed-notice--ok" role="status">{message}</p>}
       {blocked ? <p className="ed-notice ed-notice--warn">{blocked}</p>
         : formOpen ? (
           <AmendmentRequestForm event={event} token={token} onCancel={() => setFormOpen(false)}
             onSubmitted={(text) => { setFormOpen(false); setMessage(text); setReload((count) => count + 1); }} />
-        ) : <button type="button" className="button-primary" onClick={() => { setMessage(''); setFormOpen(true); }}>Request an amendment</button>}
+        ) : null}
       <AmendmentRequestList requests={requests} error={loadError} />
     </div>
   );

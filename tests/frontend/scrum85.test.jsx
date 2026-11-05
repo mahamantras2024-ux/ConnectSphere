@@ -11,14 +11,15 @@ import VenueHoldState from '../../frontend/src/pages/events/VenueHoldState';
 import {api} from '../../frontend/src/api/client';
 vi.mock('../../frontend/src/api/client',()=>({api:{get:vi.fn(),put:vi.fn()}}));
 afterEach(()=>{cleanup();vi.resetAllMocks();vi.useRealTimers();});
-it('SCRUM-85 AC9 - opting in persists the selected Venue Staff cadence for all pending review types',async()=>{
- api.get.mockResolvedValue({preference:{enabled:false,frequencyDays:1}});api.put.mockResolvedValue({preference:{enabled:true,frequencyDays:3}});
+it('SCRUM-85 AC9 - frequency stays disabled until opting in persists the current cadence for all pending review types',async()=>{
+ api.get.mockResolvedValue({preference:{enabled:false,frequencyDays:1}});api.put.mockResolvedValue({preference:{enabled:true,frequencyDays:1}});
  render(<CoordinatorReminderPreferences token="session"/>);
  fireEvent.change(await screen.findByLabelText('Review reminder frequency'),{target:{value:'3'}});
  expect(api.put).not.toHaveBeenCalled();
+ expect(screen.getByLabelText('Review reminder frequency')).toBeDisabled();
  fireEvent.click(screen.getByRole('checkbox',{name:'Receive periodic reminders for all pending reviews'}));
  await screen.findByText('Reminder preference saved.');
- expect(api.put).toHaveBeenCalledWith('/notifications/coordinator-preferences',{enabled:true,frequencyDays:3},'session');
+ expect(api.put).toHaveBeenCalledWith('/notifications/coordinator-preferences',{enabled:true,frequencyDays:1},'session');
  expect(screen.getByRole('option',{name:'Weekly'})).toHaveValue('7');
 });
 it('SCRUM-85 AC9 - enabled users can change cadence and disable future reminders',async()=>{

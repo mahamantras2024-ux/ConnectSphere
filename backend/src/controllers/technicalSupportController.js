@@ -30,10 +30,10 @@ function validateAdditionalItems(items) {
 }
 
 /**
- * Returns upcoming equipment requests that still need Technical Support review.
+ * Returns the shared pending equipment queue for Technical Support, independently of on-site assignment.
  */
 const listEquipmentRequests = asyncHandler(async (req, res) => {
-  const requests = await eventModel.listPendingEquipmentRequests(req.user.id);
+  const requests = await eventModel.listPendingEquipmentRequests();
   return res.status(200).json({ requests });
 });
 

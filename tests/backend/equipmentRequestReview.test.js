@@ -66,6 +66,8 @@ test('AC1 - lists upcoming pending requests with event, venue, quantity, and tec
 
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.requests, [eventRequest]);
+  // AC1: the shared equipment queue must not require an on-site assignment or earlier activity.
+  assert.doesNotMatch(listSql, /event_technical_support_assignments|responsibility_review|responsibility_reservation/);
   assert.match(listSql, /proposed_date\s*>=\s*CURRENT_DATE/i);
   assert.match(listSql, /proposed_end_time\s*>\s*LOCALTIME/i);
   assert.match(listSql, /is_draft\s*=\s*false/i);
@@ -126,6 +128,8 @@ for (const scenario of [
     assert.equal(result.body.review.outcome, scenario.outcome);
     assert.equal(result.body.review.reviewed_at, '2030-01-01T10:00:00.000Z');
     assert.match(write.sql, /INSERT INTO event_equipment_reviews/i);
+    // Equipment visibility AC2: role access authorizes review without an earlier on-site relationship.
+    assert.doesNotMatch(write.sql, /event_technical_support_assignments|responsibility_review|responsibility_reservation/);
     assert.match(write.sql, /proposed_end_time\s*>\s*LOCALTIME/i);
     assert.match(write.sql, /reviewed_by/i);
     assert.match(write.sql, /reviewed_at/i);

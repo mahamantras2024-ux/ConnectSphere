@@ -5,8 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import useLiveResource from '../../hooks/useLiveResource';
 import { requestStatusLabel } from './requestStatusLabel';
 
-/** Polls only status/action/decision facts, retaining a confirmed snapshot during transient failures. */
-export default function EventRequestStatus({ eventId, onSnapshot }) {
+/** Polls status facts without resetting unsaved edits; owner details can hide the redundant status card via backgroundOnly. */
+export default function EventRequestStatus({ eventId, onSnapshot, backgroundOnly = false }) {
   const { id } = useParams();
   const { token } = useAuth();
   const requestId = eventId || id;
@@ -16,13 +16,14 @@ export default function EventRequestStatus({ eventId, onSnapshot }) {
     // Owner detail updates only lifecycle facts; its separate unsaved edit form is never reset by a poll.
     if (event && onSnapshot) onSnapshot(event);
   }, [event, onSnapshot]);
+  if (backgroundOnly) return null;
   return <section className="ed-card" aria-label="Request status">
     <h2>Request status</h2>
     {loading && !event && <p>Loading request status...</p>}
     {error && <p>{error} Status updates are temporarily unavailable.</p>}
     {event && <>
       {!eventId && <h3>{event.name}</h3>}
-      <p>Current status: <strong>{requestStatusLabel(event.status)}</strong></p>
+      <p>Current status: <strong className={`status-badge status-${event.status}`}>{requestStatusLabel(event.status)}</strong></p>
       {event.clarification_outstanding && <p>Action required: clarification outstanding.
         {event.can_manage ? ' Please respond to the Coordinator’s clarification request.' : ' The submitting organiser must respond.'}
       </p>}

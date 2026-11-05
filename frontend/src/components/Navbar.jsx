@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getDashboardRoute, roleLabels } from '../auth/dashboardRoutes';
 import NotificationBell from './NotificationBell';
-// Renders role navigation, account identity, and session controls.
+import useStickyHeader from '../hooks/useStickyHeader';
+/** Keeps role workspaces explicit; organisers create requests in a dedicated form tab beside their event dashboard. */
 export default function Navbar() {
   const { user, logout, switchRole } = useAuth();
+  const header = useStickyHeader(user?.role);
   const navigate = useNavigate();
   const location = useLocation();
   // Equipment sections share the dashboard route, but only one header control should appear active.
@@ -19,7 +21,7 @@ export default function Navbar() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const external = ['event_organiser', 'attendee'].includes(user?.role);
-  const workspaceLabel = {event_organiser:'My Events',event_coordinator:'Dashboard',attendee:'My Registrations'}[user?.role] || 'Dashboard';
+  const workspaceLabel = {event_organiser:'Dashboard',event_coordinator:'Dashboard',attendee:'My Registrations'}[user?.role] || 'Dashboard';
   // Changes role through the server and navigates to the resulting workspace.
   async function changeRole(event) {
     setBusy(true); setError('');
@@ -29,7 +31,7 @@ export default function Navbar() {
   }
   // Ends the current session and returns to the appropriate login page.
   function handleLogout() { logout(); navigate(external ? '/external/login' : '/login'); }
-  return <><a className="skip-link" href="#main-content">Skip to content</a><nav className="navbar" aria-label="Main navigation">
+  return <><a className="skip-link" href="#main-content">Skip to content</a><nav ref={header} className={`navbar${user ? ' navbar-sticky' : ''}`} aria-label="Main navigation">
     <Link className="brand" to={user ? getDashboardRoute(user.role) : '/external/login'}><span className="brand-mark" aria-hidden="true">C<span>·</span></span><span>ConnectSphere<small>Events, thoughtfully connected.</small></span></Link>
     <div className="nav-links">{user ? <>
       <NavLink to={getDashboardRoute(user.role)} aria-current={sectionSelected ? false : 'page'}
@@ -40,6 +42,8 @@ export default function Navbar() {
         <NavLink to="/venue/dashboard?section=requests" aria-current={venueSection === 'requests' ? 'page' : false}
           className={({ isActive }) => isActive && venueSection === 'requests' ? 'active' : undefined}>Requests</NavLink>
       </>}
+      {/* Request event opens only creation; event history and details remain separate from the form tab. */}
+      {user.role === 'event_organiser' && <NavLink to="/organizer/events/new" end>Request event</NavLink>}
       {/* Technical Support owns the controls; this slot keeps them beside Dashboard in the shared header. */}
       {user.role === 'technical_support' && <div id="technical-support-equipment-navigation" className="equipment-header-navigation" />}
       {/* Venue discovery has its own workspace; it does not belong inside Assigned Events. */}

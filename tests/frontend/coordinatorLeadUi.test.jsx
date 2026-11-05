@@ -22,26 +22,27 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); style?.remove(); });
 /** Preserve the real protected route, cards and forms; only session and HTTP are external. */
-async function open() { render(<MemoryRouter initialEntries={['/coordinator-lead/dashboard']}><App /></MemoryRouter>); await screen.findByRole('heading', { name: 'Planning Forum' }); }
+async function open() { render(<MemoryRouter initialEntries={['/coordinator-lead/dashboard']}><App /></MemoryRouter>); fireEvent.click(await screen.findByRole('tab', { name: /^In progress/ })); await screen.findByRole('heading', { name: 'Planning Forum' }); }
 /** The visible counted caption is the user's disclosure control, including for nested stages. */
 function toggle(name) { return screen.getByRole('button', { name: new RegExp(`^${name} \\(`) }); }
 /** Follow the public aria-controls relationship rather than matching implementation-specific nesting. */
 function panel(name) { return document.getElementById(toggle(name).getAttribute('aria-controls')); }
 
-it('Lead UI AC1 AC2 AC4 - larger parent sections contain smaller indented status sections with counts and compact details links', async () => {
-  // Arrange: all six active lifecycle stages plus a second Planning record give explicit zero/one/two group oracles.
-  events.push(...[['under_review', 'Under review event'], ['approved', 'Approved event'], ['confirmed', 'Confirmed event'],
-    ['rejected', 'Rejected event'], ['submitted', 'Submitted event']].map(([status, name], index) => ({ ...base, id: index + 20, status, name })));
+/** Find the lead's user-facing lifecycle tab, independently of its changing count. */
+function tab(label) { return screen.getByRole('tab', {name:new RegExp('^'+label+'\\b')}); }
+
+it('Lead tabs AC1 AC2 - uses the same five lifecycle tabs while keeping unassigned requests separate', async () => {
+  events.push(...['submitted','under_review','approved','confirmed','completed','rejected','cancelled','draft'].map((status,index)=>({...base,id:20+index,name:`Event ${status}`,status})));
   await open();
-  const assigned = toggle('Assigned active events'), planning = toggle('Planning');
-  // Assert: hierarchy is semantic and visibly smaller, not merely a different label on an equally prominent control.
-  expect(assigned.closest('h2')).not.toBeNull(); expect(planning.closest('h3')).not.toBeNull();
-  expect(parseFloat(getComputedStyle(planning).fontSize)).toBeLessThan(parseFloat(getComputedStyle(assigned).fontSize));
-  expect(parseFloat(getComputedStyle(planning.closest('.lead-assigned-stages')).paddingLeft)).toBeGreaterThan(0);
-  expect(assigned).toHaveTextContent('(7)'); expect(toggle('Unassigned requests')).toHaveTextContent('(1)'); expect(planning).toHaveTextContent('(2)');
-  for (const name of ['Unassigned requests', 'Assigned active events', 'Submitted', 'Under review', 'Approved', 'Planning', 'Confirmed', 'Rejected']) {
-    expect(toggle(name)).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getAllByRole('tab').map(item=>item.textContent)).toEqual(['Draft 1','Submitted 2','In progress 5','Completed 1','Rejected 1']);
+  expect(toggle('Assigned active events')).toHaveTextContent('(10)');
+  expect(toggle('Unassigned requests')).toHaveTextContent('(1)');
+  for(const [label,count]of [['Draft',1],['Submitted',2],['In progress',5],['Completed',1],['Rejected',1]]){
+    fireEvent.click(tab(label));
+    expect(within(screen.getByRole('tabpanel')).getAllByRole('article')).toHaveLength(count);
+    expect(screen.getByRole('heading',{name:'Waiting for assignment'})).toBeVisible();
   }
+  fireEvent.click(tab('In progress'));
   const card = screen.getByRole('heading', { name: 'Planning Forum' }).closest('article');
   const details = within(card).getByRole('link', { name: 'View details' });
   // Shared details actions use the same decorative SVG without changing their accessible name or destination.
@@ -52,34 +53,34 @@ it('Lead UI AC1 AC2 AC4 - larger parent sections contain smaller indented status
   expect(api.get.mock.calls.some(([path]) => path.endsWith('/lead-registrations'))).toBe(false);
 });
 
-it('Lead UI AC1 AC2 - parent and nested status sections toggle independently and preserve choices on reopening', async () => {
-  // Arrange / Act: native keyboard activation emits a zero-detail click; jsdom does not synthesize that key default.
-  await open(); const assigned = toggle('Assigned active events'); assigned.focus(); fireEvent.click(assigned, { detail: 0 });
-  expect(assigned).toHaveFocus(); expect(panel('Assigned active events')).not.toBeVisible(); expect(panel('Unassigned requests')).toBeVisible();
-  fireEvent.click(assigned); fireEvent.click(toggle('Planning'));
-  expect(getComputedStyle(document.getElementById('lead-event-7')).display).toBe('none');
-  expect(screen.queryByRole('heading', { name: 'Planning Forum' })).not.toBeInTheDocument();
-  fireEvent.click(assigned); fireEvent.click(assigned);
-  // Assert: opening a parent must not reset a nested choice or affect the other parent's count and content.
-  expect(toggle('Planning')).toHaveAttribute('aria-expanded', 'false'); expect(panel('Unassigned requests')).toBeVisible();
-  fireEvent.click(toggle('Planning')); expect(screen.getByRole('heading', { name: 'Planning Forum' })).toBeVisible();
-  fireEvent.click(toggle('Unassigned requests')); expect(panel('Unassigned requests')).not.toBeVisible(); expect(panel('Assigned active events')).toBeVisible();
+it('Lead tabs AC2 AC3 - parent disclosures retain the selected stage and coordinator draft', async () => {
+  await open();
+  fireEvent.change(screen.getByLabelText('Coordinator for Planning Forum'),{target:{value:'4'}});
+  fireEvent.click(tab('Completed'));
+  expect(screen.getByText('No completed events.')).toBeVisible();
+  fireEvent.click(toggle('Assigned active events'));fireEvent.click(toggle('Assigned active events'));
+  expect(tab('Completed')).toHaveAttribute('aria-selected','true');
+  expect(panel('Unassigned requests')).toBeVisible();
+  fireEvent.click(tab('In progress'));
+  expect(screen.getByLabelText('Coordinator for Planning Forum')).toHaveValue('4');
+  fireEvent.click(toggle('Unassigned requests'));
+  expect(panel('Unassigned requests')).not.toBeVisible();expect(panel('Assigned active events')).toBeVisible();
 });
 
-it('Lead UI AC2 - a live Planning to Confirmed move retains draft coordinator selections and disclosure choices', async () => {
-  // Arrange: draft choices exist on two records before a server-side lifecycle update.
-  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }); await open();
-  fireEvent.change(screen.getByLabelText('Coordinator for Planning Forum'), { target: { value: '4' } });
-  fireEvent.change(screen.getByLabelText('Coordinator for Second planning event'), { target: { value: '4' } });
-  fireEvent.click(toggle('Planning')); fireEvent.click(toggle('Unassigned requests'));
-  events = events.map(event => event.id === 7 ? { ...event, status: 'confirmed' } : event);
-  // Act: refresh uses the shared live resource, with no remount or manually invoked component callback.
-  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-  // Assert: stage counts move while the untouched record remains in its closed stage and both drafts survive.
-  expect(toggle('Confirmed')).toHaveTextContent('(1)'); expect(toggle('Planning')).toHaveTextContent('(1)');
-  expect(toggle('Planning')).toHaveAttribute('aria-expanded', 'false'); expect(toggle('Unassigned requests')).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.getByRole('heading', { name: 'Planning Forum' })).toBeVisible();
-  expect(screen.getByLabelText('Coordinator for Planning Forum')).toHaveValue('4'); expect(screen.getByLabelText('Coordinator for Second planning event')).toHaveValue('4');
+it('Lead tabs AC2 AC4 - a live move into Completed retains both coordinator selections', async () => {
+  vi.useFakeTimers({toFake:['setInterval','clearInterval']});await open();
+  fireEvent.change(screen.getByLabelText('Coordinator for Planning Forum'),{target:{value:'4'}});
+  fireEvent.change(screen.getByLabelText('Coordinator for Second planning event'),{target:{value:'4'}});
+  const original=screen.getByRole('heading',{name:'Planning Forum'}).closest('article');
+  fireEvent.click(toggle('Unassigned requests'));
+  events=events.map(event=>event.id===7?{...event,status:'completed'}:event);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
+  expect(tab('Completed')).toHaveTextContent('1');expect(tab('In progress')).toHaveTextContent('1');
+  expect(toggle('Unassigned requests')).toHaveAttribute('aria-expanded','false');
+  expect(screen.getByLabelText('Coordinator for Second planning event')).toHaveValue('4');
+  fireEvent.click(tab('Completed'));
+  expect(screen.getByRole('heading',{name:'Planning Forum'}).closest('article')).toBe(original);
+  expect(screen.getByLabelText('Coordinator for Planning Forum')).toHaveValue('4');
 });
 
 it('Lead UI AC1 AC2 - manual refresh failure and retry preserve selection drafts and parent choices', async () => {
@@ -125,11 +126,11 @@ it('Lead UI AC2 - a write finishing after access loss never restores removed pri
   expect(screen.getByText('Assignment committed.')).toBeVisible(); expect(screen.queryAllByRole('article')).toHaveLength(0);
 });
 
-it('Lead UI AC2 - a missing status remains visible in an explicit Other section', async () => {
+it('Lead tabs AC2 - missing status remains reachable under Submitted', async () => {
   // Arrange: HTTP contract degradation, not a valid new database lifecycle state or a new permission rule.
   events.push({ ...base, id: 90, name: 'Missing status record' }); await open();
   // Assert: incomplete metadata cannot silently discard an otherwise returned request.
-  expect(toggle('Other')).toHaveTextContent('(1)'); expect(screen.getByRole('heading', { name: 'Missing status record' })).toBeVisible();
+  fireEvent.click(tab('Submitted')); expect(tab('Submitted')).toHaveTextContent('1'); expect(screen.getByRole('heading', { name: 'Missing status record' })).toBeVisible();
 });
 
 /** jsdom has no pointer pseudo-state engine; equivalent attributes exercise the unchanged stylesheet cascade and specificity. */
@@ -146,7 +147,7 @@ function applyViewportRules(width) {
   style.textContent += additions;
 }
 
-it.each(['Assigned active events', 'Planning'])('Lead presentation AC1 - %s has flat full-width hover and visible keyboard focus', async label => {
+it.each(['Assigned active events', 'Unassigned requests'])('Lead presentation AC1 - %s has flat full-width hover and visible keyboard focus', async label => {
   // Arrange / Act: use both parent and nested controls with the real global orange-button rules present.
   await open(); const button = toggle(label); setCssState(button, 'hover'); fireEvent.mouseOver(button);
   // Assert: a generic orange pill or shadow returning through specificity would fail these computed-style checks.
@@ -195,8 +196,37 @@ it('Lead presentation AC2 - variable summaries share aligned card rows with comp
 it.each([639, 640, 641])('Lead presentation AC2 - card grid and nested spacing respect the narrow-screen boundary at %s px', async width => {
   // Arrange / Act: just below, at and above the existing 640px design-system breakpoint.
   await open(); applyViewportRules(width);
-  const grid = toggle('Planning').closest('.lead-assigned-stages');
+  const wrapper = panel('Assigned active events').querySelector('.lead-assigned-stages');
+  const grid = wrapper.querySelector('.lead-event-grid');
   // Assert: narrow screens get one column and less indentation; desktop keeps the responsive multi-column grid.
   expect(getComputedStyle(grid).gridTemplateColumns).toBe(width <= 640 ? 'minmax(0, 1fr)' : 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))');
-  expect(getComputedStyle(grid).paddingLeft).toBe(width <= 640 ? '8px' : '16px');
+  expect(getComputedStyle(wrapper).paddingLeft).toBe(width <= 640 ? '8px' : '16px');
+});
+
+// Lead tabs AC3/AC5: preserve real router return state, not just a visual selected-tab marker.
+it('Lead tabs AC3 AC5 - keyboard navigation and View details restore the bookmarked stage', async()=>{
+  const original=api.get.getMockImplementation();
+  api.get.mockImplementation(path=>path==='/events/7'?Promise.resolve({event:events[0]}):original(path));
+  await open();
+  fireEvent.keyDown(tab('In progress'),{key:'End'});expect(tab('Rejected')).toHaveFocus();
+  fireEvent.keyDown(tab('Rejected'),{key:'ArrowRight'});expect(tab('Draft')).toHaveFocus();
+  fireEvent.click(tab('In progress'));
+  fireEvent.click(within(screen.getByRole('heading',{name:'Planning Forum'}).closest('article')).getByRole('link',{name:'View details'}));
+  const back=await screen.findByRole('link',{name:'Back to Events'});
+  expect(back).toHaveAttribute('href','/coordinator-lead/dashboard?stage=progress');
+  fireEvent.click(back);
+  expect(await screen.findByRole('tab',{name:/^In progress/})).toHaveAttribute('aria-selected','true');
+});
+
+it('Lead tabs AC4 - a reassignment completes once after switching tabs',async()=>{
+  let finish;api.put.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  await open();fireEvent.change(screen.getByLabelText('Coordinator for Planning Forum'),{target:{value:'4'}});
+  fireEvent.click(within(screen.getByRole('heading',{name:'Planning Forum'}).closest('article')).getByRole('button',{name:'Reassign coordinator'}));
+  fireEvent.click(tab('Completed'));fireEvent.click(tab('In progress'));
+  expect(screen.getByLabelText('Coordinator for Planning Forum')).toHaveValue('4');
+  expect(screen.getByLabelText('Coordinator for Planning Forum')).toBeDisabled();
+  await act(async()=>{finish({event:{coordinator_id:4},message:'Reassigned.'});});
+  expect(screen.getByText('Reassigned.')).toBeVisible();
+  expect(api.put).toHaveBeenCalledTimes(1);
+  expect(api.put).toHaveBeenCalledWith('/events/7/assignment',{coordinatorId:4,expectedCoordinatorId:3},'lead');
 });

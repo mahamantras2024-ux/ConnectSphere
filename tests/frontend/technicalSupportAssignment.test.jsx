@@ -408,6 +408,8 @@ it('AC2 - updates the assigned event and preserves unrelated dashboard events', 
 
   render(<MemoryRouter><EventList dashboard /></MemoryRouter>);
 
+  // The approved assignment is under In progress; the unrelated legacy status remains under Submitted.
+  fireEvent.click(await screen.findByRole('tab', { name: /^In progress/ }));
   const morgan = await screen.findByLabelText(/Morgan Support/);
   // Act: unlock the saved event's team through the real dashboard controls before editing.
   fireEvent.click(screen.getByRole('button', { name: 'Change assignment' }));
@@ -418,6 +420,7 @@ it('AC2 - updates the assigned event and preserves unrelated dashboard events', 
     { staffIds: [41, 42] }, 'coordinator-token'));
   expect(screen.getByRole('button', { name: 'Assignment saved' }).disabled).toBe(true);
   expect(screen.getByText('Taylor Support')).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: /^Submitted/ }));
   expect(screen.getByRole('heading', { name: 'Other Coordinator Event' })).toBeTruthy();
 });
 

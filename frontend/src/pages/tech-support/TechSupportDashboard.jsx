@@ -4,13 +4,11 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import useNotificationOpened from '../../notifications/useNotificationOpened';
 import { api } from '../../api/client';
-import NotificationsPanel from '../../components/NotificationsPanel';
 import PageIntro from '../../components/PageIntro';
 import { useAuth } from '../../context/AuthContext';
 import EquipmentInventorySection from './EquipmentInventorySection';
 import EquipmentReservationSection from './EquipmentReservationSection';
 import OnSiteSupportSection from './OnSiteSupportSection';
-import ReminderPreference from './ReminderPreference';
 import { requestedItems } from './requestedItems';
 
 // Styles for the equipment request review cards only; tabs and other sections keep their existing styling.
@@ -25,14 +23,15 @@ const dashboardStyles = `
 }
 .support-empty p { margin: 0.25rem 0; }
 
-/* Request card: few blocks, one text size, generous spacing */
+/* Consistent type and spacing make the request facts and review form read as one compact card. */
 .support-request {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 1rem;
   height: 100%;
   box-sizing: border-box;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 .support-request > h2 {
   margin: 0;
@@ -41,24 +40,25 @@ const dashboardStyles = `
 }
 .support-request h3 {
   margin: 0 0 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #5b6470;
+  font-size: .875rem;
+  font-weight: 650;
+  color: var(--ink);
 }
 
-/* Key facts: label on the left, value on the right, one line each */
-.support-facts { margin: 0; display: grid; gap: 0.35rem; }
+/* Keep fact labels aligned and let long venue addresses wrap beneath the venue name. */
+.support-facts { margin: 0; display: grid; gap: .5rem; }
 .support-facts > div {
   display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-columns: 3.25rem minmax(0, 1fr);
   gap: 0.75rem;
 }
-.support-facts dt { color: #5b6470; }
+.support-facts dt { color: var(--muted); font-size: .8125rem; }
 .support-facts dd { margin: 0; font-size: inherit; font-weight: 500; overflow-wrap: anywhere; }
+.support-facts dd > .support-muted { display: block; margin-top: .15rem; font-size: .8125rem; font-weight: 400; }
 
 /* Equipment */
 .support-request-section {
-  padding-top: 1.1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border, #e3e6eb);
   display: grid;
   gap: 0.75rem;
@@ -73,15 +73,15 @@ const dashboardStyles = `
 }
 .support-items li + li { border-top: 1px solid var(--border, #eceef2); }
 .support-qty { font-variant-numeric: tabular-nums; font-weight: 600; }
-.support-text { margin: 0; line-height: 1.5; }
+.support-request .support-text { margin: 0; color: var(--ink); font-size: inherit; line-height: 1.5; }
 
-.support-flags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+/* Pair each support label with its value on a separate row, with a shared value column. */
+.support-flags { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .5rem .75rem; }
+.support-flags > span:not(.support-flag) { color: var(--ink); font-size: .85rem; font-weight: 500; }
 .support-flag {
-  padding: 0.15rem 0.6rem;
-  border-radius: 999px;
-  background: #e6efff;
-  color: #17408a;
-  font-size: 0.8rem;
+  justify-self: start;
+  color: var(--muted);
+  font-size: .8125rem;
 }
 
 /* Review form pinned to the bottom so cards in a row line up */
@@ -89,14 +89,14 @@ const dashboardStyles = `
   display: grid;
   gap: 0.85rem;
   margin-top: auto;
-  padding-top: 1.1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border, #e3e6eb);
 }
 .support-review-form h3 { margin: 0; }
-.support-review-form label { display: grid; gap: 0.3rem; font-weight: 500; }
+.support-review-form label { display: grid; gap: .4rem; font-size: .8125rem; font-weight: 500; }
 .support-review-form select,
-.support-review-form textarea { width: 100%; font: inherit; box-sizing: border-box; }
-.support-review-form textarea { resize: vertical; }
+.support-review-form textarea { width: 100%; padding: .65rem .75rem; border-radius: 8px; font-size: .875rem; font-family: inherit; box-sizing: border-box; }
+.support-review-form textarea { min-height: 96px; line-height: 1.5; resize: vertical; }
 .support-form-actions { display: flex; justify-content: center; }
 
 /* Pop-up notification */
@@ -141,10 +141,6 @@ const dashboardStyles = `
 }
 @media (prefers-reduced-motion: reduce) {
   .support-toast { animation: none; }
-}
-
-@media (max-width: 600px) {
-  .support-form-actions button { width: 100%; }
 }
 
 .support-affected-items { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; }
@@ -253,8 +249,8 @@ function EquipmentRequestCard({ request, onReview }) {
           <dd>
             {request.venue_name || 'Not assigned'}
             {request.venue_location
-              ? <span className="support-muted"> · {request.venue_location}</span>
-              : <><span className="support-muted"> · </span><span>Not provided</span></>}
+              ? <span className="support-muted">{request.venue_location}</span>
+              : <span className="support-muted">Not provided</span>}
           </dd>
         </div>
       </dl>
@@ -569,9 +565,8 @@ export default function TechSupportDashboard() {
       )}
       {activeTab === 'dashboard' && (
         <div className="support-overview">
-          <NotificationsPanel />
+
           <OnSiteSupportSection key={notificationOpened} token={token} onRelease={releaseReservation} />
-          <ReminderPreference />
         </div>
       )}
       {toast && (
@@ -605,8 +600,8 @@ export default function TechSupportDashboard() {
                 <p className="onsite-support-description">Review equipment requirements and record what can be fulfilled.</p>
               </div>
               <div className="equipment-review-actions">
-                <span className="badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
-                <button type="button" className="button-secondary" onClick={loadDashboardData} disabled={loading}>Refresh dashboard</button>
+                <span className="badge event-count-badge">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>
+                <button type="button" className="button-secondary dashboard-refresh-button" onClick={loadDashboardData} disabled={loading} aria-label="Refresh dashboard" title="Refresh dashboard" aria-busy={loading}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg></button>
               </div>
             </div>
             {requestError && <p className="support-error" role="alert">{requestError}</p>}

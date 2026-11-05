@@ -6,7 +6,7 @@ const jwt = require('../../backend/node_modules/jsonwebtoken');
 const { pool } = require('../../backend/src/config/db');
 const { applyLiveSchema } = require('./support/liveSchema');
 
-test('TS status AC6 - unrelated staff cannot read status, request, reservation or affected queues and details',
+test('TS status AC6 - shared equipment requests retain separate responsibility checks for status and reservations',
   { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
     // Arrange: all fixtures are otherwise eligible; only staff 3 has an assignment at first.
     const schema = `ts_queue_access_${crypto.randomBytes(8).toString('hex')}`;
@@ -55,17 +55,16 @@ test('TS status AC6 - unrelated staff cannot read status, request, reservation o
         });
         return { status: response.status, body: await response.json() };
       }
-      // Act/Assert: an unrelated authenticated support user gets no event facts through any read path.
+      // Act/Assert: pending equipment requests are role-wide, while lifecycle and reservation facts remain scoped.
       assert.deepEqual((await request(4, '/on-site-support')).body.events, []);
       assert.equal((await request(4, `/on-site-support/${events[0]}`)).status, 404);
-      assert.deepEqual((await request(4, '/equipment-requests')).body.requests, []);
+      assert.deepEqual((await request(4, '/equipment-requests')).body.requests.map(row => row.id), [events[0]]);
       assert.deepEqual((await request(4, '/equipment-reservations')).body, { requests: [], reservations: [], affectedReservations: [] });
       assert.deepEqual((await request(4, '/equipment-reservation-issues')).body.affectedReservations, []);
       for (const method of ['GET', 'POST']) {
         assert.equal((await request(4, `/${events[1]}/equipment-availability`, method, method === 'POST' ? {} : undefined)).status, 404);
       }
-      // Writes must not let an unrelated user manufacture a review/reservation relationship and gain read access.
-      assert.equal((await request(4, `/${events[0]}/equipment-reviews`, 'POST', { outcome: 'fully_fulfillable', requestVersion: 1 })).status, 409);
+      // Shared review access must not bypass the independent reservation responsibility checks.
       assert.equal((await request(4, `/${events[1]}/equipment-reservations`, 'POST', { selections: [{ inventoryId, quantity: 1 }] })).status, 409);
       assert.deepEqual((await request(4, '/on-site-support')).body.events, []);
 

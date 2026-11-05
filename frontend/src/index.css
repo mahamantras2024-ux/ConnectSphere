@@ -57,6 +57,9 @@ p { line-height: 1.65; }
 .equipment-review-section .onsite-support-heading h2 { font-size: 20px; letter-spacing: -.5px; }
 .equipment-review-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .equipment-review-actions button { padding: 9px 14px; }
+/* Use one compact refresh affordance across dashboard sections while preserving each button's accessible label. */
+.button-secondary.dashboard-refresh-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; min-width: 30px; flex-shrink: 0; padding: 5px; border-radius: 10px; }
+.dashboard-refresh-button svg { display: block; flex-shrink: 0; }
 .equipment-review-section .record-grid { padding-top: 2px; }
 .onsite-event-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 24px; }
 .onsite-event-card { min-width: 0; padding: 24px; border: 1px solid var(--border); border-top: 4px solid var(--orange); border-radius: 12px; background: #FFFFFA; box-shadow: 0 4px 18px #30391c08; }
@@ -116,58 +119,13 @@ p { line-height: 1.65; }
 .equipment-status-history-status.is-available { background: #e2f1db; color: #365c31; }
 .equipment-status-history-note { margin: 7px 0 0; color: var(--ink); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .equipment-status-history-meta { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; }
-/* Let the dashboard background continue through the calendar instead of adding another contrasting card. */
-.equipment-calendar-section { max-width: 1050px; margin: 28px auto 0; padding: 24px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
-.equipment-calendar-section .section-heading { justify-content: center; margin: 0 0 16px; text-align: center; }
-.equipment-calendar-section .section-heading h2 { margin: 0; color: var(--ink); font-size: 22px; }
-.equipment-calendar-selected-name { margin: 0 0 18px; color: var(--muted); font-size: 14px; font-weight: 500; text-align: center; }
-/* Asset IDs act as the calendar selector in the existing inventory, keeping a second toolbar out of the calendar. */
+/* Asset IDs select the equipment calendar without adding a second inventory picker. */
 .equipment-calendar-link { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 8px; border: 1px solid #dfe5e0; border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .equipment-calendar-link:hover { background: #edf1ee; border-color: var(--teal); box-shadow: none; }
-/* Keep the month and icon buttons together as a centred toolbar at every viewport width. */
-.equipment-calendar-navigation { display: grid; grid-template-columns: 44px minmax(140px, 200px) 44px; justify-content: center; align-items: center; gap: 14px; margin-bottom: 20px; }
-.equipment-calendar-navigation > span { color: var(--ink); text-align: center; font-size: 21px; font-weight: 650; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
-.equipment-calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid #dce3de; border-radius: 8px; background: transparent; color: var(--ink); }
-.equipment-calendar-navigation button:hover:not(:disabled) { background: #eaf0ec; border-color: #b5c5b9; }
-.equipment-calendar-navigation button:disabled { cursor: default; opacity: .4; box-shadow: none; }
-.equipment-calendar-assets { display: grid; gap: 18px; }
-.equipment-calendar-asset { min-width: 0; overflow-x: auto; }
-/* A shared grid and restrained status badges keep dates readable; narrow screens scroll inside the calendar. */
-.equipment-availability-calendar { width: 100%; min-width: 700px; table-layout: fixed; border-collapse: collapse; }
-.equipment-availability-calendar th { padding: 12px 4px; background: #edf1ee; color: #536158; text-align: center; font-size: 13px; font-weight: 600; }
-.equipment-availability-calendar th:first-child, .equipment-availability-calendar th:last-child { color: #a15c34; }
-.equipment-availability-calendar td { height: 88px; padding: 12px 6px; border: 1px solid #dfe5e0; background: transparent; text-align: center; vertical-align: top; }
-.equipment-availability-calendar td.is-unavailable { background: transparent; border-color: #dfe5e0; }
-.equipment-availability-calendar td.is-outside-range { background: transparent; border-color: transparent; }
-.equipment-availability-calendar td.is-filtered-date { border-color: #e78043; box-shadow: inset 0 0 0 2px #e78043; }
-.equipment-calendar-day-number { display: block; margin-bottom: 6px; color: var(--ink); font-size: 18px; font-weight: 650; }
-.equipment-calendar-windows { display: grid; gap: 5px; margin: 0; padding: 0 !important; list-style: none; }
-.equipment-calendar-window { display: grid; justify-items: center; gap: 5px; min-width: 0; padding: 6px 4px; border-radius: 4px; background: transparent; color: var(--ink); font-size: 10px; }
-.equipment-calendar-window.is-unavailable { background: transparent; }
-.equipment-calendar-window + .equipment-calendar-window { border-top: 1px solid #e9ece4; }
-.equipment-calendar-time { color: inherit; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.equipment-calendar-status { display: inline-flex; align-items: center; justify-content: center; gap: 5px; max-width: 100%; padding: 0; background: transparent; color: #36542f; font-size: 12px; font-weight: 600; line-height: 1.35; white-space: normal; }
-.equipment-calendar-status::before { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #68a84c; content: ""; }
-.equipment-calendar-status.is-available { color: #365c31; }
-.equipment-calendar-status.is-available::before { background: #68a84c; }
-.equipment-calendar-status.is-unavailable { background: transparent; color: #8b3931; }
-.equipment-calendar-status.is-unavailable::before { background: #c85a50; }
-.equipment-calendar-window small { color: var(--muted); font-size: 12px; line-height: 1.35; }
-.equipment-calendar-blocked-reason { display: block; margin-top: 4px; color: #8b3931; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
-.equipment-calendar-event { max-width: 100%; overflow-wrap: anywhere; font-weight: 600; }
 .equipment-status-history time { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-@media (max-width: 640px) {
-  .equipment-calendar-section { padding: 20px 0 0; }
-  .equipment-calendar-navigation { grid-template-columns: 44px minmax(120px, 180px) 44px; gap: 8px; }
-  .equipment-calendar-navigation > span { font-size: 19px; }
-  .equipment-availability-calendar td { height: 88px; padding: 10px 6px; }
-  .equipment-calendar-status { gap: 4px; font-size: 12px; }
-  .equipment-calendar-status::before { width: 6px; height: 6px; }
-}
 .badge, .status-badge { display: inline-flex; align-items: center; border-radius: 20px; padding: 6px 10px; background: #edf2e8; color: #43694c; font-size: 11px; font-weight: 600; text-transform: capitalize; }
 .status-draft { background: #f0f1ed; color: #6a776c; }
-.status-submitted, .status-under_review { background: #f9efdb; color: #89601c; }
-.status-rejected, .status-cancelled { background: #faeae7; color: #98453b; }
+.status-cancelled { background: #faeae7; color: #98453b; }
 .record-grid, .venue-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 22px; }
 .record-card, .card { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 25px; }
 .record-card { min-width: 0; display: flex; flex-direction: column; }
@@ -309,21 +267,20 @@ h2, h3 { font-weight: 700; }
 .record-card:has(.status-completed) { border-top-color:#538537; }
 .record-card:has(.status-rejected) { border-top-color:#b83b2e; }
 .record-card:has(.status-draft), .record-card:has(.status-cancelled), .record-card:has(.status-undefined) { border-top-color:#8b8f7e; }
-:is(.record-card .status-badge, .event-detail .event-status).status-submitted { background:#e5f1fb; color:#285e8a; }
-:is(.record-card .status-badge, .event-detail .event-status).status-under_review { background:#fff0df; color:#91420d; }
-:is(.record-card .status-badge, .event-detail .event-status).status-planning,
+:is(.record-card .status-badge, .event-detail .event-status).status-submitted { background:var(--event-submitted-bg); color:var(--event-submitted-text); }
+:is(.record-card .status-badge, .event-detail .event-status).status-under_review { background:var(--event-under-review-bg); color:var(--event-under-review-text); }
+:is(.record-card .status-badge, .event-detail .event-status).status-planning { background:var(--event-planning-bg); color:var(--event-planning-text); }
 :is(.record-card .status-badge, .event-detail .event-status).status-approved { background:#eee8f7; color:#654691; }
-:is(.record-card .status-badge, .event-detail .event-status).status-confirmed { background:#e1f3ee; color:#216d63; }
-:is(.record-card .status-badge, .event-detail .event-status).status-completed { background:#e7f1df; color:#3e6528; }
-:is(.record-card .status-badge, .event-detail .event-status).status-rejected { background:#fbe8e3; color:#942b20; }
+:is(.record-card .status-badge, .event-detail .event-status).status-confirmed { background:var(--event-confirmed-bg); color:var(--event-confirmed-text); }
+:is(.record-card .status-badge, .event-detail .event-status).status-completed { background:var(--event-completed-bg); color:var(--event-completed-text); }
+:is(.record-card .status-badge, .event-detail .event-status).status-rejected { background:var(--event-rejected-bg); color:var(--event-rejected-text); }
 :is(.record-card .status-badge, .event-detail .event-status).status-draft,
 :is(.record-card .status-badge, .event-detail .event-status).status-cancelled { background:#efefe8; color:#616351; }
 .record-card h3, .record-card h2 { font-size: 24px; letter-spacing: -.6px; }
 .record-number { color: #656A52; }
 .badge, .status-badge { background: #E8EDC3; color: #424F19; }
 .status-draft { background: #EFEFE3; color: #616351; }
-.status-submitted, .status-under_review { background: var(--cream); color: #685019; }
-.status-rejected, .status-cancelled { background: #F9DDD5; color: var(--beet); }
+.status-cancelled { background: #F9DDD5; color: var(--beet); }
 .text-button, .text-button:hover { background: transparent; color: var(--teal); box-shadow: none; }
 .empty-state { background: #FFFFF6; border-color: #D5D9B9; border-radius: 12px; }
 .empty-symbol { background: var(--lemon); color: var(--teal); border-radius: 50%; }
@@ -435,8 +392,6 @@ h2, h3 { font-weight: 700; }
 
 /* Shared workspace polish keeps the team's event layouts within the warm brand palette. */
 body { background: radial-gradient(ellipse at top left, #fffad9a0, transparent 60%), #fbfbef; }
-/* The transparent Technical Support calendar shares a neutral page surface instead of picking up the yellow wash. */
-body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .navbar { gap: 28px; box-shadow: 0 2px 18px #30391c05; }
 .nav-links { column-gap: 22px; row-gap: 12px; }
 .nav-links > a { padding: 10px 12px; border-radius: 8px; }
@@ -453,7 +408,6 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .equipment-header-navigation .support-dashboard-tab:hover,
 .equipment-header-navigation .support-dashboard-tab.is-active { background: #eff1dc; color: var(--ink); box-shadow: none; }
 .support-overview { display: grid; gap: 24px; }
-.support-overview > .notifications-panel,
 .support-overview > .onsite-support-section { margin: 0; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: #fffffa; }
 .support-overview .onsite-support-heading { margin-bottom: 18px; }
 .support-overview .empty-state { padding: 24px; }
@@ -540,13 +494,24 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 
 /* Row-based request groups keep the established palette and wrap actions on narrow screens. */
 .event-request-rows { list-style:none; padding:0; display:grid; gap:12px; }
-.event-request-row { display:flex; justify-content:space-between; align-items:center; gap:20px; border:1px solid var(--border); border-radius:12px; padding:22px; background:#FFFFFA; }
+/* Reserve the top-right cell for lifecycle status so long names and action buttons cannot overlap it. */
+.event-request-row { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"summary status" "actions actions"; align-items:start; gap:14px 20px; border:1px solid var(--border); border-radius:12px; padding:22px; background:#FFFFFA; }
+.event-request-summary { grid-area:summary; }
+.event-request-status { grid-area:status; justify-self:end; align-self:start; }
 .event-request-row h3 { margin:0 0 8px; }
-.request-row-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.request-row-actions { grid-area:actions; display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
 .confirmation-content { padding:24px; }
 .event-attachments { grid-column:1 / -1; padding:20px 0; }
-.attachment-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0; }
-@media(max-width:640px) { .event-request-row { flex-direction:column; align-items:stretch; } }
+/* A full-width picker has its own row; long filenames and delete icons cannot change its length. */
+.attachment-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; align-items:center; margin:16px 0; min-width:0; }
+.attachment-row:empty { display:none; }
+.attachment-row > label { grid-column:1 / -1; display:grid; gap:6px; width:100%; min-width:0; font-size:13px; }
+.attachment-row input[type="file"] { width:100%; min-width:0; max-width:none; height:42px; padding:0; overflow:hidden; font-size:13px; line-height:40px; }
+.attachment-row input[type="file"]::file-selector-button { height:40px; margin:0 12px 0 0; padding:0 14px; border:0; border-right:1px solid var(--border); background:#f4f5ef; color:var(--ink); font:inherit; font-weight:600; cursor:pointer; }
+.attachment-row > a { min-width:0; font-size:13px; }
+.attachment-row .attachment-delete { width:34px; height:34px; padding:0; border-radius:8px; color:#a13737; background:#fff; border-color:#ead3d3; }
+.attachment-row .attachment-delete:hover { background:#fff0f0; }
+@media(max-width:640px) { .event-request-row { grid-template-columns:minmax(0,1fr); grid-template-areas:"status" "summary" "actions"; } .request-row-actions { justify-content:flex-start; } }
 /* Long event answers and filenames must wrap instead of pushing actions beyond the viewport. */
 .event-request-row > div { min-width: 0; }
 .event-request-row h3, .event-request-row p, .attachment-row a { overflow-wrap: anywhere; }
@@ -567,7 +532,8 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .equipment-empty { margin: 0; font-size: 13px; color: var(--muted); }
 .equipment-remove { padding: 8px 0; border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .equipment-remove:hover { background: none; color: var(--ink); }
-.equipment-add { justify-self: start; }
+.equipment-items .equipment-add { justify-self:start; min-height:38px; gap:8px; padding:8px 12px; border-radius:8px; background:#fff; font-size:13px; }
+.equipment-items .equipment-add:hover { background:#f4f5ef; }
 .event-request-form > .equipment-fields { grid-column: 1 / -1; }
 /* Inside the event detail card the section already has its heading: drop the divider and keep the legend for screen readers only. */
 .equipment-editor .equipment-fields { padding-top: 0; border-top: 0; }
@@ -582,13 +548,11 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .change-table thead th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b6b5a; }
 /* Raised specificity: the generic `.change-request-card > div` row layout would otherwise squeeze the warning onto one line. */
 .change-request-card > .arrangement-warning { display: grid; gap: 6px; padding: 12px; border: 1px solid #f0c36d; border-radius: 8px; background: #fff8e6; color: #6a4a00; }
-/* In-app notifications shown on each role dashboard. */
-.notifications-panel { display: grid; gap: 12px; margin-bottom: 28px; }
+/* Notification previews in the shared navbar bell. */
 .notification-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .notification-item { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; background: white; }
 .notification-unread { border-color: #c9d79a; background: #fbfdf3; }
 .notification-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.notification-item .button-secondary { justify-self: start; }
 .notification-open { display: grid; justify-content: stretch; justify-items: stretch; gap: 4px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .notification-open:hover strong, .notification-open:focus-visible strong { text-decoration: underline; }
 /* The preview is a plain row, not a pill: undo the global button hover background. */
@@ -596,8 +560,6 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .notification-open:focus-visible { outline: 3px solid #46511e; outline-offset: 3px; border-radius: 6px; }
 .notification-summary { color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notification-time { font-size: 0.8rem; color: #64748b; }
-.notification-details summary { cursor: pointer; font-size: 0.85rem; color: #475569; }
-.notification-details p { margin: 6px 0 0; }
 /* Parent notification system: the bell in the navbar and its dropdown of recent previews. */
 .notification-bell { position: relative; }
 .notification-bell-button { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: 999px; background: transparent; color: inherit; border: 1px solid transparent; }
@@ -619,6 +581,13 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .highlighted-safety-event { border-color: #9cc48a; border-left: 6px solid #4f8a35; background: #f4faf0; }
 .safety-review-requirement { margin: 0; padding: 8px 12px; border-radius: 8px; background: #eef6e6; color: #38521f; }
 @media (max-width: 640px) { .decision-checklist li { grid-template-columns: 1fr; } }
+
+/* Venue card badges share the Technical Support sizing and sit at the right edge above each event title. */
+.venue-event-status .status-badge, .booking-inbox .status-badge { align-self: flex-end; }
+.venue-booking-badge[data-booking-status="pending"] { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.venue-booking-badge[data-booking-status="approved"] { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.venue-booking-badge[data-booking-status="rejected"] { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+.venue-booking-badge[data-booking-status="recheck"] { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
 
 /* SCRUM-43 keeps the queue distinct from the catalogue and gives the review drawer comfortable, readable spacing. */
 .booking-inbox { margin-block: 2rem; padding: 1.5rem; border: 1px solid var(--color-border, #d8dbc8); border-radius: 1rem; background: #fff; }
@@ -917,6 +886,11 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 /* Post-submission amendments: the organiser's amendment request form and their list of requests. */
 .amendment-panel { display: grid; gap: 14px; margin-bottom: 18px; }
 .amendment-panel > .button-primary { justify-self: start; }
+/* Keep the amendment action beside its heading, with the explanation and history underneath. */
+.amendment-panel-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px 20px; }
+.amendment-panel-header .ed-card-title { margin:0; }
+.amendment-panel-header > button { min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
+.amendment-panel > .amendment-request-action { justify-self:start; min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
 .amendment-form { display: grid; gap: 16px; }
 .amendment-group { display: grid; gap: 12px; margin: 0; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }
 .amendment-group legend { padding: 0 6px; font-weight: 700; }
@@ -931,9 +905,6 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .amendment-changes dd { margin: 0; white-space: pre-wrap; }
 .change-explanation { margin: 8px 0; white-space: pre-wrap; }
 
-/* Staff preparation stages use the established warning and neutral tones; cancellation keeps its shared red badge. */
-.onsite-event-card .status-planning { background: var(--cream); color: #685019; }
-.onsite-event-card .status-completed { background: #EFEFE3; color: #616351; }
 
 /* Handover history stays readable and scrolls within the event card on narrow screens. */
 .coordinator-history { min-width: 0; }
@@ -1021,6 +992,164 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .venue-timeline-segment:hover .venue-timeline-tooltip, .venue-timeline-segment:focus .venue-timeline-tooltip { display:block; }
 
 .venue-timeline-block:hover .venue-timeline-tooltip, .venue-timeline-block:focus .venue-timeline-tooltip { display:block; }
+/* Reminder preferences are secondary settings, reached consistently through each role's notification bell. */
+.notification-dropdown-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.notification-dropdown-header h2 { margin: 0; font-size: 16px; }
+.notification-bell .notification-settings-button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 7px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--ink); }
+/* Keep the standard outline centred at its designed size instead of flex-shrinking it. */
+.notification-settings-button svg { display: block; flex-shrink: 0; }
+.notification-settings { padding: 24px 30px 30px; }
+.notification-settings .venue-reminder-preferences h2 { font-size: 18px; }
+.notification-settings .venue-reminder-preferences > p { color: var(--muted); font-size: 14px; }
+.notification-settings .venue-reminder-toggle { align-items: flex-start; line-height: 1.6; }
+.notification-settings .venue-reminder-checkbox { margin-top: 2px; }
+.notification-settings .venue-reminder-frequency { display: grid; gap: 6px; max-width: none; }
+.notification-settings .venue-reminder-frequency select { width: 100%; }
+.notification-settings .venue-reminder-frequency label { text-transform: capitalize; }
+.notification-settings select:disabled { background: #f1f2e9; color: var(--muted); cursor: not-allowed; opacity: .75; }
+.notification-settings .coordinator-reminder-frequency { display: grid; gap: 6px; }
+@media (max-width: 640px) { .notification-settings { padding: 20px; } }
+
+/* Signed-in navigation stays in flow; measured clearance also protects notification targets and skip links. */
+/* The small gutter absorbs native fractional scroll rounding and applies only while the header is sticky. */
+html:has(.navbar-sticky) { scroll-padding-top: calc(var(--app-header-height, 0px) + 8px); }
+.navbar-sticky { position: sticky; top: 0; z-index: 40; }
+/* A wrapped mobile header leaves less space for the dropdown; dialogs retain their higher overlay layer. */
+.navbar-sticky .notification-dropdown { max-height: min(70dvh, calc(100dvh - var(--app-header-height, 0px) - 16px)); }
+
+/* Stretch the compact refresh action to the badge height while keeping it last at the right edge. */
+.onsite-support-actions { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: flex-end; gap: 12px; margin-left: auto; flex-shrink: 0; max-width: 100%; }
+
+/* Event and event-request totals share a blue treatment; lifecycle status colours retain their meaning. */
+.badge.event-count-badge { background: #e7effa; color: #244a73; border: 1px solid #d4e2f3; }
+.onsite-support-actions .onsite-support-refresh { width: 30px; height: auto; flex: 0 0 30px; padding: 5px; border-radius: 10px; }
+.onsite-support-refresh svg { display: block; flex-shrink: 0; }
+
+/* One lifecycle palette for event cards, detail headers and schedule entries across every workspace. */
+:root {
+  --event-draft-bg: #DDF4F3;
+  --event-draft-text: #116466;
+  --event-submitted-bg: #E7EFFA;
+  --event-submitted-text: #244A73;
+  --event-under-review-bg: #F0E7FA;
+  --event-under-review-text: #65428A;
+  --event-rejected-bg: #FBE5E5;
+  --event-rejected-text: #8B2E2E;
+  --event-planning-bg: #FFF3CD;
+  --event-planning-text: #805B10;
+  --event-confirmed-bg: #E4F2E7;
+  --event-confirmed-text: #245C35;
+  --event-completed-bg: #EEEEEE;
+  --event-completed-text: #555555;
+}
+.status-badge.status-planning, .ed-badge.status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.status-badge.status-confirmed, .ed-badge.status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.status-badge.status-completed, .ed-badge.status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+
+.status-badge.status-submitted, .ed-badge.status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.status-badge.status-under_review, .ed-badge.status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.status-badge.status-rejected, .ed-badge.status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+/* Attention indicators are separate from the event's review stage and retain their existing amber treatment. */
+.status-badge.status-attention { background: var(--cream); color: #685019; }
+.event-request-row .status-badge.status-draft { background: var(--event-draft-bg); color: var(--event-draft-text); }
+.event-request-row .status-badge.status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.event-request-row .status-badge.status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.event-request-row .status-badge.status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.event-request-row .status-badge.status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.event-request-row .status-badge.status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+.event-request-row .status-badge.status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+
+/* Dashboard stages are one keyboard-navigable filter; inactive panels never leave duplicate event rows visible. */
+.organiser-stage-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.organiser-stage-tabs [role="tab"] { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 9px 13px; border: 1px solid var(--stage-bg); border-radius: 8px; background: var(--stage-bg); color: var(--stage-ink); font-size: 13px; font-weight: 600; box-shadow: none; }
+/* Reuse the event-status palette; the accent underline also identifies selection without relying on colour alone. */
+.organiser-stage-tabs [data-stage="draft"] { --stage-bg: var(--event-draft-bg); --stage-ink: var(--event-draft-text); --stage-accent: var(--event-draft-text); }
+.organiser-stage-tabs [data-stage="submitted"] { --stage-bg: var(--event-submitted-bg); --stage-ink: var(--event-submitted-text); --stage-accent: var(--event-submitted-text); }
+.organiser-stage-tabs [data-stage="progress"] { --stage-bg: var(--event-planning-bg); --stage-ink: var(--event-planning-text); --stage-accent: var(--event-planning-text); }
+.organiser-stage-tabs [data-stage="completed"] { --stage-bg: var(--event-completed-bg); --stage-ink: var(--event-completed-text); --stage-accent: var(--event-completed-text); }
+.organiser-stage-tabs [data-stage="rejected"] { --stage-bg: var(--event-rejected-bg); --stage-ink: var(--event-rejected-text); --stage-accent: var(--event-rejected-text); }
+.organiser-stage-tabs [role="tab"][aria-selected="true"] { border-color: var(--stage-accent); box-shadow: inset 0 -3px 0 var(--stage-accent); font-weight: 700; }
+.organiser-stage-tabs [role="tab"]:hover { background: var(--stage-bg); filter: brightness(.97); }
+.organiser-stage-tabs [role="tab"]:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.organiser-stage-tabs .badge { padding: 3px 7px; background: var(--event-submitted-bg); color: var(--event-submitted-text); font-size: 11px; }
+.request-section[hidden] { display: none; }
+
+/* Organiser details follow the requested review-first order; staff retain their own layout and controls. */
+.event-detail.ed-root.organiser-event-detail { --ed-surface: #fff; max-width: 1000px; padding: 0 0 32px; font-size: 14px; }
+.event-detail.organiser-event-detail .ed-back { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ed-muted); font-size: 13px; box-shadow: none; }
+.event-detail.organiser-event-detail .ed-back:hover { color: var(--ed-ink); text-decoration: underline; }
+.event-detail.organiser-event-detail .ed-header { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 14px; margin: 0 0 20px; }
+.event-detail.organiser-event-detail .ed-eyebrow { display: contents; }
+.event-detail.organiser-event-detail .ed-chip { display: none; }
+.event-detail.organiser-event-detail .ed-header .event-status { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; padding: 5px 10px; font-size: 12px; border-color: transparent; }
+.event-detail.organiser-event-detail .ed-title-row { grid-column: 1; grid-row: 1; min-width: 0; align-items: flex-start; }
+.event-detail.organiser-event-detail .ed-title { min-width: 0; font-size: clamp(24px,3vw,32px); line-height: 1.3; overflow-wrap: anywhere; }
+.event-detail.organiser-event-detail .ed-name-editor { grid-column: 1 / -1; }
+.event-detail.organiser-event-detail .organiser-detail-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.event-detail.organiser-event-detail .organiser-detail-toolbar > button { min-height: 38px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.event-detail.organiser-event-detail .organiser-draft-note { margin: 0 0 20px; font-size: 13px; line-height: 1.6; color: var(--ed-muted); }
+.event-detail.organiser-event-detail .ed-grid { gap: 0; margin-bottom: 20px; padding: 24px; background: #fff; border: 1px solid var(--ed-line); border-radius: 12px; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card { min-width: 0; margin: 0; padding: 20px 0; border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; background: transparent !important; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card:first-child { padding-top: 0; border-top: 0; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card:last-child { padding-bottom: 0; }
+.event-detail.organiser-event-detail .ed-card-title { margin-bottom: 16px; font-size: 16px; line-height: 1.4; }
+.event-detail.organiser-event-detail .ed-fields--tiles { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 24px; }
+.event-detail.organiser-event-detail .ed-fields--tiles .ed-field { min-width: 0; padding: 0; border: 0; }
+.event-detail.organiser-event-detail .ed-field dt { margin-bottom: 5px; color: var(--ed-muted); font-size: 12px; font-weight: 400; }
+.event-detail.organiser-event-detail .ed-field dd { font-size: 14px; line-height: 1.6; }
+.event-detail.organiser-event-detail .event-overview-facts .ed-fields--tiles { grid-template-columns: minmax(0,1fr); }
+.event-detail.organiser-event-detail .event-requirements-facts .ed-field:first-child { grid-column: 1 / -1; }
+.event-detail.organiser-event-detail .ed-editor { width: 100%; max-width: none; }
+.event-detail.organiser-event-detail .ed-icon-btn { width: 30px; height: 30px; background: #fff; border-color: #f5d1bd; color: #e85e20; }
+.event-detail.organiser-event-detail .ed-icon-btn:hover { background: #fff2e9; }
+.event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
+.event-detail.organiser-event-detail .organiser-management-section { margin-bottom: 20px; padding: 20px 24px; border: 1px solid var(--ed-line); border-radius: 12px; background: #fff; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel { margin-bottom:0; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel-header .ed-card-title { margin:0; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > p { margin:0; font-size:13px; line-height:1.6; color:var(--ed-muted); }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > .ed-card { margin: 16px 0 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; }
+.event-detail.organiser-event-detail .ed-notice { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.event-detail.organiser-event-detail .ed-notice--ok { background: #edf6ee; color: #245c35; border-color: #cde1d1; }
+.event-detail.organiser-event-detail .ed-notice--warn { background: #fff8df; color: #805b10; border-color: #efdfa8; }
+.event-detail.organiser-event-detail .ed-header .status-draft { background: var(--event-draft-bg); color: var(--event-draft-text); }
+.event-detail.organiser-event-detail .ed-header .status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.event-detail.organiser-event-detail .ed-header .status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.event-detail.organiser-event-detail .ed-header .status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.event-detail.organiser-event-detail .ed-header .status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.event-detail.organiser-event-detail .ed-header .status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+.event-detail.organiser-event-detail .ed-header .status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+@media (max-width:640px) {
+  .event-detail.organiser-event-detail .ed-header { grid-template-columns: minmax(0,1fr); }
+  .event-detail.organiser-event-detail .ed-header .event-status { grid-column: 1; grid-row: 1; }
+  .event-detail.organiser-event-detail .ed-title-row { grid-column: 1; grid-row: 2; }
+  .event-detail.organiser-event-detail .ed-grid,
+  .event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
+  .event-detail.organiser-event-detail .organiser-management-section { padding: 20px; }
+  .event-detail.organiser-event-detail .ed-fields--tiles { grid-template-columns: minmax(0,1fr); gap: 16px; }
+}
+
+/* Registration is one section: accepted values, independent deadline proposals, and availability actions. */
+.registration-settings .registration-section-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 20px; margin-bottom:16px; }
+.registration-settings .registration-section-heading .ed-card-title { margin:0; }
+.registration-settings .registration-section-heading button,
+.registration-settings .registration-form-actions button,
+.registration-settings .booking-review-actions button { min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
+.registration-settings > p { font-size:13px; line-height:1.6; }
+.registration-settings .registration-accepted-deadlines { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; margin:20px 0; padding:16px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.registration-accepted-deadlines dt { margin-bottom:6px; color:var(--muted); font-size:12px; }
+.registration-accepted-deadlines dd { margin:0; font-size:14px; overflow-wrap:anywhere; }
+.registration-settings .registration-deadline-form { gap:14px 24px; }
+.registration-deadline-form .field { display:grid; gap:6px; min-width:0; font-size:13px; }
+.registration-deadline-form input { min-width:0; width:100%; font-size:13px; }
+.registration-deadline-form > p,
+.registration-deadline-form .registration-form-actions { grid-column:1 / -1; margin:0; font-size:12px; }
+.registration-settings .booking-review-actions { justify-content:flex-start; margin:20px 0 8px; padding-top:20px; border-top:1px solid var(--border); }
+.event-detail.organiser-event-detail .activity-section > .ed-card-head > .ed-badge { background:var(--event-confirmed-bg); color:var(--event-confirmed-text); }
+.event-detail.organiser-event-detail .ed-card-head { gap:12px; flex-wrap:wrap; }
+.event-detail.organiser-event-detail .ed-card-head .ed-card-title { margin:0; }
+@media(max-width:640px) {
+  .registration-settings .registration-accepted-deadlines { grid-template-columns:minmax(0,1fr); }
+}
 
 /* Detail navigation shares one presentation across role dashboards while each caller keeps its route or drawer handler. */
 .page .view-details-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; min-height: 40px; padding: 9px 14px; border: 1px solid #dce2cf; border-radius: 8px; background: #f6f8ef; color: var(--ink); font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; box-shadow: none; }

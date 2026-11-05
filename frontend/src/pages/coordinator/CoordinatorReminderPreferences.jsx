@@ -13,17 +13,19 @@ export default function CoordinatorReminderPreferences({token}){
  },[token]);
  /** Only confirmed server writes change opt-in; failures retain the previous persisted choice. */
  async function save(next){
+  // Keep only one preference write in flight until its result is known.
+  if(saving)return;
   setSaving(true);setError('');setMessage('');
   try{const data=await api.put(ENDPOINT,next,token);setPreference(data.preference);setMessage('Reminder preference saved.');}
   catch(failure){setError(failure.message);}finally{setSaving(false);}
  }
- /** A disabled user's cadence stays a draft until they explicitly opt in. */
- function changeFrequency(event){const next={...preference,frequencyDays:Number(event.target.value)};if(preference.enabled)save(next);else setPreference(next);}
- return <section className="ed-card" aria-label="Coordinator review reminders"><h2>Pending review reminders</h2>
+ /** Cadence changes apply only after reminders are enabled; failures retain the persisted choice. */
+ function changeFrequency(event){if(!preference.enabled)return;save({...preference,frequencyDays:Number(event.target.value)});}
+ return <section className="venue-reminder-preferences" aria-label="Coordinator review reminders"><h2>Pending review reminders</h2>
  <p>Include pending venue, equipment, safety and organiser change-request reviews for events currently assigned to you.</p>
  {loading?<p role="status">Loading reminder preference…</p>:<>
- <label><input type="checkbox" checked={preference.enabled} disabled={saving} onChange={event=>save({...preference,enabled:event.target.checked})}/>Receive periodic reminders for all pending reviews</label>
- <label>Review reminder frequency<select value={preference.frequencyDays} disabled={saving} onChange={changeFrequency}>
+ <label className="venue-reminder-toggle"><input className="venue-reminder-checkbox" type="checkbox" checked={preference.enabled} disabled={saving} onChange={event=>save({...preference,enabled:event.target.checked})}/><span>Receive periodic reminders for all pending reviews</span></label>
+ <label className="coordinator-reminder-frequency">Review reminder frequency<select value={preference.frequencyDays} disabled={saving || !preference.enabled} onChange={changeFrequency}>
  <option value="1">Daily</option><option value="3">Every 3 days</option><option value="7">Weekly</option></select></label></>}
  {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}
  </section>;

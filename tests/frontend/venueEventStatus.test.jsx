@@ -28,7 +28,7 @@ afterEach(() => { cleanup(); localStorage.clear(); });
 
 function renderWithSession(component) { return render(<AuthProvider>{component}</AuthProvider>); }
 
-it('AC1 AC2 AC3 AC4 - displays the four booking decision statuses, preparation details, and cancellation instruction', async () => {
+it('AC1 AC2 AC3 AC4 - shows one booking status per card with preparation details and cancellation instruction', async () => {
   // Arrange / Act: the authenticated Venue Staff member opens the status panel.
   renderWithSession(<VenueEventStatusPanel />);
 
@@ -36,9 +36,10 @@ it('AC1 AC2 AC3 AC4 - displays the four booking decision statuses, preparation d
   expect(await screen.findByText('Pending')).toBeVisible();
   expect(screen.getAllByText('Approved')).toHaveLength(2);
   expect(screen.getByText('Rejected')).toBeVisible();
-  expect(screen.getByText('Cancelled')).toBeVisible();
-  expect(screen.getAllByText('Event status:')).toHaveLength(4);
-  expect(screen.getByText('Confirmed')).toBeVisible();
+  // Each card retains its booking decision, without adding a second lifecycle badge.
+  for (const card of screen.getAllByRole('article')) expect(card.querySelectorAll('.status-badge')).toHaveLength(1);
+  expect(screen.queryByText('Event status:')).not.toBeInTheDocument();
+  expect(screen.queryByText('Confirmed')).not.toBeInTheDocument();
   expect(screen.getByText('Theatre')).toBeVisible();
   expect(screen.getByText(/will no longer proceed/i)).toBeVisible();
 });
@@ -55,14 +56,14 @@ it('AC1 AC3 AC4 - distinguishes a cancelled event from an approved venue booking
   // Act.
   renderWithSession(<VenueEventStatusPanel />);
 
-  // Assert: cancellation is shown as the event status, while the updated attendance/layout remain visible.
+  // Assert: the cancellation instruction remains clear without adding another status badge.
   expect((await screen.findAllByText('Approved'))).toHaveLength(2);
-  expect(screen.getByText('Cancelled')).toBeVisible();
+  expect(screen.getByText(/will no longer proceed/i)).toBeVisible();
   expect(screen.getByText('75')).toBeVisible();
   expect(screen.getByText('Classroom')).toBeVisible();
 });
 
-it('AC2 - displays the completed lifecycle stage separately from the booking decision', async () => {
+it('AC2 - keeps only the booking decision when the event is completed', async () => {
   // Arrange: a completed event retains its approved venue decision for the staff record.
   api.get.mockImplementation(async path => path === '/auth/me' ? { user: { id: 7, role: 'venue_staff' } }
     : path === '/venues/relevant-events' ? { events: [{ ...events[1], eventStatus: 'completed' }] }
@@ -71,9 +72,10 @@ it('AC2 - displays the completed lifecycle stage separately from the booking dec
   // Act.
   renderWithSession(<VenueEventStatusPanel />);
 
-  // Assert: the lifecycle stage is not inferred from or overwritten by the booking decision.
-  expect(await screen.findByText('Completed')).toBeVisible();
-  expect(screen.getByText('Approved')).toBeVisible();
+  // Assert: completion never replaces the stored booking decision or creates a duplicate status.
+  expect(await screen.findByText('Approved')).toBeVisible();
+  expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+  expect(screen.getByRole('article').querySelectorAll('.status-badge')).toHaveLength(1);
 });
 
 it('AC5 - renders only the server-authorized relevant events and never renders internal information', async () => {

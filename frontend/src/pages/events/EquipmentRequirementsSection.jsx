@@ -66,7 +66,7 @@ export default function EquipmentRequirementsSection({ event, canEdit, token, on
               onClick={() => { onMessage(''); setDraft(equipmentFromEvent(event)); }}><PencilIcon /></button>
           )}
         </div>
-        <span className={`ed-badge ${confirmed ? 'ed-badge--ok' : 'ed-badge--warn'}`}>
+        <span className={`ed-badge ${confirmed ? 'ed-badge--ok status-confirmed' : 'ed-badge--warn'}`}>
           {confirmed ? 'Arrangements confirmed' : 'Awaiting technical arrangement'}
         </span>
       </div>
