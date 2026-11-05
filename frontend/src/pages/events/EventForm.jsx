@@ -60,7 +60,7 @@ export default function EventForm() {
 
   return (
     <div className="card">
-      <Link className="button-link button-secondary detail-back" to="/organizer/dashboard">← Back to My Events</Link><PageIntro title="New event request" eyebrow="Start something memorable" description="Share your plans, save a draft, or submit a request to the Coordinator Lead." />
+      <Link className="button-link button-secondary detail-back" to="/organizer/dashboard">← Back to Dashboard</Link><PageIntro title="New event request" eyebrow="Start something memorable" description="Share your plans, save a draft, or submit a request to the Coordinator Lead." />
       <form className="event-form event-request-form" onSubmit={(e) => {
         // Submission uses native required-field validation; the separate draft button allows incomplete data.
         e.preventDefault(); const problem = equipmentError(equipment); setError(problem); if (!problem) setPending(false); }}>

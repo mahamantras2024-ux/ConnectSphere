@@ -45,7 +45,7 @@ it('AC1 AC2 - organiser opens a numbered registration drawer with separate count
   expect(summary.textContent).toBe('4 registered · 1 on waitlist · 1 withdrawn');
   const dialog = screen.getByRole('dialog', { name: 'Registration details' });
   expect(dialog.classList.contains('venue-drawer')).toBe(true);
-  expect(getComputedStyle(screen.getByRole('link', { name: 'Back to Events' })).marginInlineEnd).toBe('12px');
+  expect(getComputedStyle(screen.getByRole('link', { name: 'Back to Dashboard' })).marginInlineEnd).toBe('12px');
   const active = within(dialog).getByRole('region', { name: 'Registered attendees' });
   expect(within(active).getAllByRole('listitem').map(row => row.textContent)).toEqual(['Ari Ng', 'Bea Lim', 'Chen Tan', 'Devi Koh']);
   const queue = within(dialog).getByRole('region', { name: 'Waitlist' });

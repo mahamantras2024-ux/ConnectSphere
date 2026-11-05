@@ -35,7 +35,7 @@ export default function AmendmentRequestPanel({ event, token }) {
   return (
     <div className="amendment-panel">
       <p className="mb-4 text-sm text-slate-600">
-        This request has been submitted, so its details can&apos;t be edited directly. To change anything, request an amendment — your Event Coordinator will review it. The details below stay in effect until then.
+        This request has been submitted, so its details can&apos;t be edited directly. To change anything, request an amendment — your Event Coordinator will review it. Existing event details stay in effect until then.
       </p>
       {message && <p className="ed-notice ed-notice--ok" role="status">{message}</p>}
       {blocked ? <p className="ed-notice ed-notice--warn">{blocked}</p>

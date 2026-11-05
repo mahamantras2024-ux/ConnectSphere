@@ -52,7 +52,7 @@ it('Organiser requests tab AC1 AC2 - opens only the request form and preserves d
   expect(screen.getByRole('link', { name: 'Request an event' })).toHaveAttribute('href', '/organizer/events/new');
   const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
   const requestEvent = within(navigation).getByRole('link', { name: 'Request event', exact: true });
-  const dashboard = within(navigation).getByRole('link', { name: 'My Events', exact: true });
+  const dashboard = within(navigation).getByRole('link', { name: 'Dashboard', exact: true });
   expect(dashboard).toHaveAttribute('aria-current', 'page');
   expect(requestEvent).toHaveAttribute('href', '/organizer/events/new');
   expect(requestEvent).not.toHaveAttribute('aria-current', 'page');
@@ -64,7 +64,7 @@ it('Organiser requests tab AC1 AC2 - opens only the request form and preserves d
   expect(screen.getByRole('button', { name: 'Save as draft' })).toBeVisible();
   expect(screen.queryByRole('tablist', { name: 'Event stages' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Draft workshop' })).not.toBeInTheDocument();
-  expect(screen.getByRole('link', { name: '← Back to My Events' })).toHaveAttribute('href', '/organizer/dashboard');
+  expect(screen.getByRole('link', { name: '← Back to Dashboard' })).toHaveAttribute('href', '/organizer/dashboard');
   fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
   await screen.findByRole('heading', { name: 'Event Organiser Dashboard' });
   expect(dashboard).toHaveAttribute('aria-current', 'page');
@@ -83,7 +83,7 @@ it.each([['/organizer/events/new', true], ['/organizer/events', false], ['/organ
     // Assert: only the form route activates Request event; unrelated event routes cannot falsely select it.
     if (active) { expect(requestEvent).toHaveAttribute('aria-current', 'page'); expect(requestEvent).toHaveClass('active'); }
     else { expect(requestEvent).not.toHaveAttribute('aria-current', 'page'); expect(requestEvent).not.toHaveClass('active'); }
-    expect(screen.getByRole('link', { name: 'My Events', exact: true })).not.toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Dashboard', exact: true })).not.toHaveAttribute('aria-current', 'page');
     expect(screen.getByLabelText('Current route')).toHaveTextContent(path);
   });
 

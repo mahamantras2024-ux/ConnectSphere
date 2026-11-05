@@ -163,7 +163,7 @@ it('Organiser dashboard AC3 AC5 - View details returns to the same bookmarked st
   // Act / Assert: returning from the actual owner detail page restores the category rather than dropping its query.
   fireEvent.click(await screen.findByRole('link', { name: 'View details', exact: true }));
   await screen.findByRole('heading', { name: 'Completed outing' });
-  const back = screen.getByRole('link', { name: 'Back to Events' });
+  const back = screen.getByRole('link', { name: 'Back to Dashboard' });
   expect(back).toHaveAttribute('href', '/organizer/dashboard?stage=completed&keep=1');
   fireEvent.click(back);
   await screen.findByRole('tab', { name: /^Completed/ });

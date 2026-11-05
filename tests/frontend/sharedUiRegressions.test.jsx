@@ -372,7 +372,7 @@ describe('workspaceNavigation',()=>{
 afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks();});
 // Test case: Checks organiser/coordinator/attendee each have one active named tab and clicking it returns to the correct dashboard.
 it.each([
-  ['event_organiser','/organizer/dashboard','My Events','Event Organiser Dashboard'],
+  ['event_organiser','/organizer/dashboard','Dashboard','Event Organiser Dashboard'],
   ['event_coordinator','/coordinator/dashboard','Dashboard','Event Coordinator Dashboard'],
   ['attendee','/attendee/dashboard','My Registrations','Attendee Dashboard'],
 ])('Organiser requests tab AC1 / Planning calendar AC3 / UI navigation AC1 / login AC3 - %s has one active workspace tab that returns from other pages',async(role,path,label,title)=>{
@@ -382,8 +382,8 @@ it.each([
   render(<MemoryRouter initialEntries={['/missing-page']}><AuthProvider><App/></AuthProvider></MemoryRouter>);
   const nav=within(await screen.findByRole('navigation',{name:'Main navigation'}));
   const link=await nav.findByRole('link',{name:label});
-  // The coordinator's workspace is now Dashboard; other roles keep their existing single workspace label.
-  expect(nav.queryAllByRole('link',{name:'Dashboard'})).toHaveLength(role === 'event_coordinator' ? 1 : 0);
+  // Organisers and coordinators use Dashboard; attendees retain their registrations workspace.
+  expect(nav.queryAllByRole('link',{name:'Dashboard'})).toHaveLength(['event_coordinator','event_organiser'].includes(role) ? 1 : 0);
   expect(link.getAttribute('href')).toBe(path);
   // Act: use the single workspace control, rather than relying on a redirect.
   fireEvent.click(link);
@@ -436,7 +436,7 @@ it.each([
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByRole('heading', { name: heading })).toBeNull();
   expect(document.body.style.overflow).not.toBe('hidden');
-  fireEvent.click(screen.getByRole('link', { name: role === 'event_coordinator' ? 'Back to Dashboard' : 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: ['event_coordinator','event_organiser'].includes(role) ? 'Back to Dashboard' : 'Back to Events' }));
   expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
 });
 
@@ -465,7 +465,7 @@ it('UI1 / Organiser AC1 - full-page details stay open on Escape and return using
   await screen.findByRole('heading', { name: event.name });
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(screen.getByRole('heading', { name: event.name })).toBeTruthy();
-  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Dashboard' }));
   expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
 });
 // Test case: Fails detail retrieval and checks no private data appears and Close still works.
@@ -478,7 +478,7 @@ it('UI1 / Organiser AC4 - failed details retain a working Back control and revea
   open('/organizer/dashboard'); fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
   expect((await screen.findByRole('alert')).textContent).toBe('Event not found.');
   expect(screen.queryByText(event.purpose)).toBeNull();
-  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Dashboard' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
 // Test case: Opens attendee details from a personal registration and checks the drawer does not request event details.

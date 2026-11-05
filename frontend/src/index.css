@@ -915,8 +915,8 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 
 /* Restore the agreed lifecycle palette, shared by organiser event badges and their dashboard filters. */
 :root {
-  --event-draft-bg: #EFEFE3;
-  --event-draft-text: #616351;
+  --event-draft-bg: #DDF4F3;
+  --event-draft-text: #116466;
   --event-submitted-bg: #E7EFFA;
   --event-submitted-text: #244A73;
   --event-under-review-bg: #F0E7FA;
@@ -952,3 +952,55 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .organiser-stage-tabs [role="tab"]:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
 .organiser-stage-tabs .badge { padding: 3px 7px; background: var(--event-submitted-bg); color: var(--event-submitted-text); font-size: 11px; }
 .request-section[hidden] { display: none; }
+
+/* Organiser details lead with the event itself; staff workspaces retain their own layout and controls. */
+.event-detail.ed-root.organiser-event-detail { --ed-surface: #fff; max-width: 1000px; padding: 0 0 32px; font-size: 14px; }
+.event-detail.organiser-event-detail .ed-back { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ed-muted); font-size: 13px; box-shadow: none; }
+.event-detail.organiser-event-detail .ed-back:hover { color: var(--ed-ink); text-decoration: underline; }
+.event-detail.organiser-event-detail .ed-header { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 14px; margin: 0 0 20px; }
+.event-detail.organiser-event-detail .ed-eyebrow { display: contents; }
+.event-detail.organiser-event-detail .ed-chip { display: none; }
+.event-detail.organiser-event-detail .ed-header .event-status { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; padding: 5px 10px; font-size: 12px; border-color: transparent; }
+.event-detail.organiser-event-detail .ed-title-row { grid-column: 1; grid-row: 1; min-width: 0; align-items: flex-start; }
+.event-detail.organiser-event-detail .ed-title { min-width: 0; font-size: clamp(24px,3vw,32px); line-height: 1.3; overflow-wrap: anywhere; }
+.event-detail.organiser-event-detail .ed-name-editor { grid-column: 1 / -1; }
+.event-detail.organiser-event-detail .organiser-detail-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.event-detail.organiser-event-detail .organiser-detail-toolbar > button { min-height: 38px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.event-detail.organiser-event-detail .organiser-draft-note { margin: 0 0 20px; font-size: 13px; line-height: 1.6; color: var(--ed-muted); }
+.event-detail.organiser-event-detail .ed-grid { gap: 0; margin-bottom: 20px; padding: 24px; background: #fff; border: 1px solid var(--ed-line); border-radius: 12px; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card { min-width: 0; margin: 0; padding: 20px 0; border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; background: transparent !important; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card:first-child { padding-top: 0; border-top: 0; }
+.event-detail.organiser-event-detail .ed-grid > .ed-card:last-child { padding-bottom: 0; }
+.event-detail.organiser-event-detail .ed-card-title { margin-bottom: 16px; font-size: 16px; line-height: 1.4; }
+.event-detail.organiser-event-detail .ed-fields--tiles { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 24px; }
+.event-detail.organiser-event-detail .ed-fields--tiles .ed-field { min-width: 0; padding: 0; border: 0; }
+.event-detail.organiser-event-detail .ed-field dt { margin-bottom: 5px; color: var(--ed-muted); font-size: 12px; font-weight: 400; }
+.event-detail.organiser-event-detail .ed-field dd { font-size: 14px; line-height: 1.6; }
+.event-detail.organiser-event-detail .event-overview-facts .ed-fields--tiles { grid-template-columns: minmax(0,1fr); }
+.event-detail.organiser-event-detail .event-requirements-facts .ed-field:first-child { grid-column: 1 / -1; }
+.event-detail.organiser-event-detail .ed-editor { width: 100%; max-width: none; }
+.event-detail.organiser-event-detail .ed-icon-btn { width: 30px; height: 30px; background: #fff; border-color: #f5d1bd; color: #e85e20; }
+.event-detail.organiser-event-detail .ed-icon-btn:hover { background: #fff2e9; }
+.event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
+.event-detail.organiser-event-detail .organiser-management-section { margin-bottom: 20px; padding: 20px 24px; border: 1px solid var(--ed-line); border-radius: 12px; background: #fff; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > p { margin: 0 0 14px; font-size: 13px; line-height: 1.6; color: var(--ed-muted); }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > .ed-card { margin: 16px 0 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; }
+.event-detail.organiser-event-detail .ed-notice { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.event-detail.organiser-event-detail .ed-notice--ok { background: #edf6ee; color: #245c35; border-color: #cde1d1; }
+.event-detail.organiser-event-detail .ed-notice--warn { background: #fff8df; color: #805b10; border-color: #efdfa8; }
+.event-detail.organiser-event-detail .ed-header .status-draft { background: var(--event-draft-bg); color: var(--event-draft-text); }
+.event-detail.organiser-event-detail .ed-header .status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.event-detail.organiser-event-detail .ed-header .status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.event-detail.organiser-event-detail .ed-header .status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.event-detail.organiser-event-detail .ed-header .status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.event-detail.organiser-event-detail .ed-header .status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+.event-detail.organiser-event-detail .ed-header .status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+@media (max-width:640px) {
+  .event-detail.organiser-event-detail .ed-header { grid-template-columns: minmax(0,1fr); }
+  .event-detail.organiser-event-detail .ed-header .event-status { grid-column: 1; grid-row: 1; }
+  .event-detail.organiser-event-detail .ed-title-row { grid-column: 1; grid-row: 2; }
+  .event-detail.organiser-event-detail .ed-grid,
+  .event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
+  .event-detail.organiser-event-detail .organiser-management-section { padding: 20px; }
+  .event-detail.organiser-event-detail .ed-fields--tiles { grid-template-columns: minmax(0,1fr); gap: 16px; }
+}
