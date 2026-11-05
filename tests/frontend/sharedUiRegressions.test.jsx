@@ -393,8 +393,8 @@ it.each([
   // The brand plus each role's real workspaces remain distinct; the organiser now also has Requests.
   expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 4 : role === 'event_organiser' ? 3 : 2);
   if(role==='event_organiser'){
-    const requests=nav.getByRole('link',{name:'Requests',exact:true});
-    expect(requests.getAttribute('href')).toBe('/organizer/events');
+    const requests=nav.getByRole('link',{name:'Request event',exact:true});
+    expect(requests.getAttribute('href')).toBe('/organizer/events/new');
     expect(requests.getAttribute('aria-current')).toBeNull();
   }
   if(role==='event_coordinator'){

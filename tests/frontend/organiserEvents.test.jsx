@@ -761,14 +761,13 @@ it('SCRUM-93 AC3/AC5 - a pre-response poll cannot restore an answered clarificat
 });
 
 it('SCRUM-93 AC1/AC6 - organisation colleague opens the status route without fetching private details', async () => {
-  // Arrange: real authentication, App routes and links; only HTTP returns the organisation-scoped colleague row.
+  // Arrange: the read-only status route remains available directly after its redundant card button is removed.
   const colleague = { ...event, organiser_id: 99, can_manage: false, status: 'under_review' };
   api.get.mockImplementation(async path => path === '/auth/me' ? { user }
     : path === '/events' ? { events: [colleague] }
     : path === '/events/101/request-status' ? { event: colleague }
     : { notifications: [], unreadCount: 0 });
-  open('/organizer/events');
-  fireEvent.click(await screen.findByRole('link', { name: 'View status' }));
+  open('/organizer/events/101/status');
   // Assert: a missing App route or navigation to private EventDetail would fail this oracle.
   expect(await within(await screen.findByRole('region', { name: 'Request status' })).findByText('Under Review', { selector: 'strong' })).toBeTruthy();
   expect(api.get).toHaveBeenCalledWith('/events/101/request-status', 'organiser-token');

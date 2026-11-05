@@ -45,52 +45,44 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); });
 
-it('Organiser requests tab AC1 AC2 - opens the existing request list and preserves history and request actions', async () => {
-  // Arrange: the current dashboard remains the default, with a separate request-list destination.
+it('Organiser requests tab AC1 AC2 - opens only the request form and preserves dashboard creation and history', async () => {
+  // Arrange: the dashboard keeps event management and its original creation button.
   open();
   await screen.findByRole('heading', { name: 'Event Organiser Dashboard' });
-  // The dashboard keeps its existing creation action even after request-list navigation is added.
   expect(screen.getByRole('link', { name: 'Request an event' })).toHaveAttribute('href', '/organizer/events/new');
   const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
-  const requests = within(navigation).getByRole('link', { name: 'Requests', exact: true });
+  const requestEvent = within(navigation).getByRole('link', { name: 'Request event', exact: true });
   const dashboard = within(navigation).getByRole('link', { name: 'My Events', exact: true });
   expect(dashboard).toHaveAttribute('aria-current', 'page');
-  expect(requests).toHaveAttribute('href', '/organizer/events');
-  expect(requests).not.toHaveAttribute('aria-current', 'page');
-
-  // Act / Assert: the tab reuses the real list, including its existing draft, status and detail entry points.
-  fireEvent.click(requests);
-  await screen.findByRole('heading', { name: 'My Events', exact: true });
-  expect(requests).toHaveAttribute('aria-current', 'page');
+  expect(requestEvent).toHaveAttribute('href', '/organizer/events/new');
+  expect(requestEvent).not.toHaveAttribute('aria-current', 'page');
+  // Act / Assert: Request event opens the production form without the event list or dashboard filters.
+  fireEvent.click(requestEvent);
+  await screen.findByRole('heading', { name: 'New event request' });
+  expect(requestEvent).toHaveAttribute('aria-current', 'page');
   expect(dashboard).not.toHaveAttribute('aria-current', 'page');
-  for (const title of ['Drafts', 'Submitted', 'In progress']) expect(screen.getByRole('heading', { name: title, exact: true })).toBeVisible();
-  const draft = screen.getByRole('heading', { name: 'Draft workshop' }).closest('li');
-  expect(within(draft).getByRole('button', { name: 'Submit draft' })).toBeVisible();
-  expect(within(draft).getByRole('button', { name: 'Delete draft' })).toBeVisible();
-  const submitted = screen.getByRole('heading', { name: 'Submitted meeting' }).closest('li');
-  expect(within(submitted).getByRole('link', { name: 'View status' })).toHaveAttribute('href', '/organizer/events/2/status');
-  expect(within(submitted).getByRole('link', { name: 'View details' })).toHaveAttribute('href', '/organizer/events/2');
-  expect(screen.getByRole('link', { name: 'Request an event' })).toHaveAttribute('href', '/organizer/events/new');
+  expect(screen.getByRole('button', { name: 'Save as draft' })).toBeVisible();
+  expect(screen.queryByRole('tablist', { name: 'Event stages' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Draft workshop' })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: '← Back to My Events' })).toHaveAttribute('href', '/organizer/dashboard');
   fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
   await screen.findByRole('heading', { name: 'Event Organiser Dashboard' });
   expect(dashboard).toHaveAttribute('aria-current', 'page');
-  expect(requests).not.toHaveAttribute('aria-current', 'page');
+  expect(requestEvent).not.toHaveAttribute('aria-current', 'page');
   fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
-  await screen.findByRole('heading', { name: 'My Events', exact: true });
-  expect(requests).toHaveAttribute('aria-current', 'page');
-  expect(api.post).not.toHaveBeenCalled();
-  expect(api.put).not.toHaveBeenCalled();
-  expect(api.delete).not.toHaveBeenCalled();
+  await screen.findByRole('heading', { name: 'New event request' });
+  expect(requestEvent).toHaveAttribute('aria-current', 'page');
+  expect(api.post).not.toHaveBeenCalled(); expect(api.put).not.toHaveBeenCalled(); expect(api.delete).not.toHaveBeenCalled();
 });
 
-it.each(['/organizer/events', '/organizer/events/new', '/organizer/events/101', '/organizer/events/101/status'])(
-  'Organiser requests tab AC2 - direct route %s selects only Requests', async path => {
-    // Arrange / Act: mount the real header at each member of the existing request route family.
+it.each([['/organizer/events/new', true], ['/organizer/events', false], ['/organizer/events/101', false], ['/organizer/events/101/status', false]])(
+  'Organiser requests tab AC2 - direct route %s selects Request event only for creation (%s)', async (path, active) => {
+    // Arrange / Act: event history, details and status routes do not belong to the request form tab.
     open(path, true);
-    const requests = await screen.findByRole('link', { name: 'Requests', exact: true });
-    // Assert: nested editor/status pages remain in the Requests workspace without also activating My Events.
-    expect(requests).toHaveAttribute('aria-current', 'page');
-    expect(requests).toHaveClass('active');
+    const requestEvent = await screen.findByRole('link', { name: 'Request event', exact: true });
+    // Assert: only the form route activates Request event; unrelated event routes cannot falsely select it.
+    if (active) { expect(requestEvent).toHaveAttribute('aria-current', 'page'); expect(requestEvent).toHaveClass('active'); }
+    else { expect(requestEvent).not.toHaveAttribute('aria-current', 'page'); expect(requestEvent).not.toHaveClass('active'); }
     expect(screen.getByRole('link', { name: 'My Events', exact: true })).not.toHaveAttribute('aria-current', 'page');
     expect(screen.getByLabelText('Current route')).toHaveTextContent(path);
   });
@@ -101,11 +93,11 @@ it.each(['empty', 'error'])('Organiser requests tab AC3 - keeps navigation usabl
   api.get.mockImplementation((path, ...args) => path === '/events'
     ? state === 'error' ? Promise.reject(new Error('Unable to load requests.')) : Promise.resolve({ events: [] })
     : base(path, ...args));
-  open('/organizer/events');
-  // Assert: the tab and creation entry point survive both data states; neither causes a write.
-  expect(await screen.findByRole('link', { name: 'Requests', exact: true })).toHaveAttribute('aria-current', 'page');
+  open('/organizer/dashboard');
+  // Assert: event-load failures cannot remove the dedicated form tab or dashboard creation action.
+  expect(await screen.findByRole('link', { name: 'Request event', exact: true })).toHaveAttribute('href', '/organizer/events/new');
   if (state === 'error') expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load requests.');
-  else expect(await screen.findByText('No draft requests.')).toBeVisible();
+  else expect(await screen.findByText('No draft events.')).toBeVisible();
   expect(screen.getByRole('link', { name: 'Request an event' })).toBeVisible();
   expect(api.post).not.toHaveBeenCalled();
 });
@@ -116,7 +108,7 @@ it.each(['event_coordinator', 'attendee'])('Organiser requests tab AC4 - does no
   open('/unrelated', true);
   await screen.findByRole('link', { name: role === 'attendee' ? 'My Registrations' : 'Dashboard', exact: true });
   // Assert: an organiser-only route cannot become another role's Requests shortcut.
-  expect(screen.queryByRole('link', { name: 'Requests', exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Request event', exact: true })).not.toBeInTheDocument();
 });
 
 it('Organiser requests tab AC4 - does not expose Requests before signing in', async () => {
@@ -125,5 +117,5 @@ it('Organiser requests tab AC4 - does not expose Requests before signing in', as
   open('/external/login', true);
   await screen.findByRole('link', { name: 'External sign in' });
   // Assert: authentication remains the boundary for organiser workspace navigation.
-  expect(screen.queryByRole('link', { name: 'Requests', exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Request event', exact: true })).not.toBeInTheDocument();
 });

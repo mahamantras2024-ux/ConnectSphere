@@ -540,13 +540,16 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 
 /* Row-based request groups keep the established palette and wrap actions on narrow screens. */
 .event-request-rows { list-style:none; padding:0; display:grid; gap:12px; }
-.event-request-row { display:flex; justify-content:space-between; align-items:center; gap:20px; border:1px solid var(--border); border-radius:12px; padding:22px; background:#FFFFFA; }
+/* Reserve the top-right cell for lifecycle status so long names and action buttons cannot overlap it. */
+.event-request-row { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"summary status" "actions actions"; align-items:start; gap:14px 20px; border:1px solid var(--border); border-radius:12px; padding:22px; background:#FFFFFA; }
+.event-request-summary { grid-area:summary; }
+.event-request-status { grid-area:status; justify-self:end; align-self:start; }
 .event-request-row h3 { margin:0 0 8px; }
-.request-row-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.request-row-actions { grid-area:actions; display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
 .confirmation-content { padding:24px; }
 .event-attachments { grid-column:1 / -1; padding:20px 0; }
 .attachment-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0; }
-@media(max-width:640px) { .event-request-row { flex-direction:column; align-items:stretch; } }
+@media(max-width:640px) { .event-request-row { grid-template-columns:minmax(0,1fr); grid-template-areas:"status" "summary" "actions"; } .request-row-actions { justify-content:flex-start; } }
 /* Long event answers and filenames must wrap instead of pushing actions beyond the viewport. */
 .event-request-row > div { min-width: 0; }
 .event-request-row h3, .event-request-row p, .attachment-row a { overflow-wrap: anywhere; }
@@ -909,3 +912,43 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .venue-timeline-segment:hover .venue-timeline-tooltip, .venue-timeline-segment:focus .venue-timeline-tooltip { display:block; }
 
 .venue-timeline-block:hover .venue-timeline-tooltip, .venue-timeline-block:focus .venue-timeline-tooltip { display:block; }
+
+/* Restore the agreed lifecycle palette, shared by organiser event badges and their dashboard filters. */
+:root {
+  --event-draft-bg: #EFEFE3;
+  --event-draft-text: #616351;
+  --event-submitted-bg: #E7EFFA;
+  --event-submitted-text: #244A73;
+  --event-under-review-bg: #F0E7FA;
+  --event-under-review-text: #65428A;
+  --event-rejected-bg: #FBE5E5;
+  --event-rejected-text: #8B2E2E;
+  --event-planning-bg: #FFF3CD;
+  --event-planning-text: #805B10;
+  --event-confirmed-bg: #E4F2E7;
+  --event-confirmed-text: #245C35;
+  --event-completed-bg: #EEEEEE;
+  --event-completed-text: #555555;
+}
+.event-request-row .status-badge.status-draft { background: var(--event-draft-bg); color: var(--event-draft-text); }
+.event-request-row .status-badge.status-submitted { background: var(--event-submitted-bg); color: var(--event-submitted-text); }
+.event-request-row .status-badge.status-under_review { background: var(--event-under-review-bg); color: var(--event-under-review-text); }
+.event-request-row .status-badge.status-planning { background: var(--event-planning-bg); color: var(--event-planning-text); }
+.event-request-row .status-badge.status-confirmed { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); }
+.event-request-row .status-badge.status-completed { background: var(--event-completed-bg); color: var(--event-completed-text); }
+.event-request-row .status-badge.status-rejected { background: var(--event-rejected-bg); color: var(--event-rejected-text); }
+
+/* Dashboard stages are one keyboard-navigable filter; inactive panels never leave duplicate event rows visible. */
+.organiser-stage-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.organiser-stage-tabs [role="tab"] { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 9px 13px; border: 1px solid var(--stage-bg); border-radius: 8px; background: var(--stage-bg); color: var(--stage-ink); font-size: 13px; font-weight: 600; box-shadow: none; }
+/* Reuse the event-status palette; the accent underline also identifies selection without relying on colour alone. */
+.organiser-stage-tabs [data-stage="draft"] { --stage-bg: var(--event-draft-bg); --stage-ink: var(--event-draft-text); --stage-accent: var(--event-draft-text); }
+.organiser-stage-tabs [data-stage="submitted"] { --stage-bg: var(--event-submitted-bg); --stage-ink: var(--event-submitted-text); --stage-accent: var(--event-submitted-text); }
+.organiser-stage-tabs [data-stage="progress"] { --stage-bg: var(--event-planning-bg); --stage-ink: var(--event-planning-text); --stage-accent: var(--event-planning-text); }
+.organiser-stage-tabs [data-stage="completed"] { --stage-bg: var(--event-completed-bg); --stage-ink: var(--event-completed-text); --stage-accent: var(--event-completed-text); }
+.organiser-stage-tabs [data-stage="rejected"] { --stage-bg: var(--event-rejected-bg); --stage-ink: var(--event-rejected-text); --stage-accent: var(--event-rejected-text); }
+.organiser-stage-tabs [role="tab"][aria-selected="true"] { border-color: var(--stage-accent); box-shadow: inset 0 -3px 0 var(--stage-accent); font-weight: 700; }
+.organiser-stage-tabs [role="tab"]:hover { background: var(--stage-bg); filter: brightness(.97); }
+.organiser-stage-tabs [role="tab"]:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.organiser-stage-tabs .badge { padding: 3px 7px; background: var(--event-submitted-bg); color: var(--event-submitted-text); font-size: 11px; }
+.request-section[hidden] { display: none; }
