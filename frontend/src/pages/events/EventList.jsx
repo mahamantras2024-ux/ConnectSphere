@@ -35,6 +35,6 @@ export default function EventList({ dashboard = false }) {
     {!organiser && dashboard && <ChangeRequestInbox />}
     <div className="section-heading"><h2>{organiser ? dashboard ? 'Your events' : 'Your event requests' : 'Assigned events'}</h2><span className="badge">{events.length} events</span></div>
     {loading ? <p role="status" className="loading-state">Loading events...</p> : error ? <p role="alert" className="error-message">{error}</p> : events.length === 0 && !organiser ? <section className="empty-state"><span className="empty-symbol" aria-hidden="true">◇</span><h2>No assigned events yet.</h2><p>Events assigned by your Coordinator Lead will appear here.</p></section> : organiser ? <OrganiserRequestList events={events} onChange={setEvents} token={token} tabbed={dashboard}/> : <CoordinatorEventCards events={events} token={token} staff={supportStaff} supportStaffError={supportStaffError} grouped={dashboard}
-      returnTo={location.pathname} onSaved={(id, members) => setEvents(current => current.map(item => item.id === id ? { ...item, technical_support_staff: members } : item))} />}
+      returnTo={location.pathname + location.search} onSaved={(id, members) => setEvents(current => current.map(item => item.id === id ? { ...item, technical_support_staff: members } : item))} />}
   </div>;
 }

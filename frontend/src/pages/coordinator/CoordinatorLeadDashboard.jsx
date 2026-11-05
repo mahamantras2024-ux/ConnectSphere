@@ -6,8 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import PageIntro from '../../components/PageIntro';
 import NotificationsPanel from '../../components/NotificationsPanel';
 import useLiveResource from '../../hooks/useLiveResource';
+import CoordinatorEventCards from './CoordinatorEventCards';
 import './CoordinatorLeadDashboard.css';
-const stages = [['submitted','Submitted'],['under_review','Under review'],['approved','Approved'],['planning','Planning'],['confirmed','Confirmed'],['rejected','Rejected'],['other','Other']];
 
 /** Reviews active requests and changes one coordinator using the assignment seen by the lead. */
 export default function CoordinatorLeadDashboard() {
@@ -59,7 +59,7 @@ export default function CoordinatorLeadDashboard() {
           <div><dt>Proposed date</dt><dd>{event.proposed_date || 'Not specified'}</dd></div>
           <div><dt>Expected attendance</dt><dd>{event.expected_attendance ?? 'Not specified'}</dd></div>
           <div><dt>Coordinator</dt><dd>{event.coordinator_name || 'Unassigned'}</dd></div></dl>
-        <Link className="button-link button-secondary record-action" state={{ returnTo: location.pathname }} to={`/events/${event.id}`}>View details <span aria-hidden="true">↗</span></Link>
+        <Link className="button-link button-secondary record-action" state={{ returnTo: location.pathname + location.search }} to={`/events/${event.id}`}>View details <span aria-hidden="true">↗</span></Link>
         <form className="grid gap-2 mt-4" onSubmit={submitEvent => {
           submitEvent.preventDefault(); assign(event, new FormData(submitEvent.currentTarget).get('coordinator'));
         }}>
@@ -90,15 +90,9 @@ export default function CoordinatorLeadDashboard() {
       {data.coordinators.length === 0 && <p role="status">No Event Coordinators are provisioned. Contact your administrator.</p>}
       {section('unassigned', 'Unassigned requests', unassigned, unassigned.length
         ? <div className="record-grid lead-event-grid">{unassigned.map(event => renderEvent(event))}</div> : <p>No unassigned requests.</p>)}
-      {section('assigned', 'Assigned active events', assigned, assigned.length ? <div className="lead-assigned-stages record-grid lead-event-grid">
-        {stages.flatMap(([key, label]) => {
-          // Unknown response values stay inspectable instead of silently disappearing.
-          const members = assigned.filter(event => (stages.some(([status]) => status === event.status) ? event.status : 'other') === key);
-          return members.length ? [<h3 className="lead-stage-heading" key={key}><button className="lead-stage-toggle"
-            aria-expanded={isOpen(key)} aria-controls={members.map(event => `lead-event-${event.id}`).join(' ')} onClick={() => toggle(key)}>
-            <span aria-hidden="true">{isOpen(key) ? '▾' : '▸'}</span> {label} ({members.length})
-          </button></h3>, ...members.map(event => renderEvent(event, !isOpen(key)))] : [];
-        })}
+      {section('assigned', 'Assigned active events', assigned, assigned.length ? <div className="lead-assigned-stages">
+        {/* Share coordinator tab semantics without replacing the lead's cards, permissions or assignment preconditions. */}
+        <CoordinatorEventCards events={assigned} grouped renderEvent={renderEvent} gridClassName="record-grid lead-event-grid" />
       </div> : <p>No assigned active events.</p>)}
     </>}
   </div>;
