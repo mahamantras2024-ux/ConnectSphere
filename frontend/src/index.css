@@ -548,7 +548,15 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .request-row-actions { grid-area:actions; display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
 .confirmation-content { padding:24px; }
 .event-attachments { grid-column:1 / -1; padding:20px 0; }
-.attachment-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0; }
+/* A full-width picker has its own row; long filenames and delete icons cannot change its length. */
+.attachment-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; align-items:center; margin:16px 0; min-width:0; }
+.attachment-row:empty { display:none; }
+.attachment-row > label { grid-column:1 / -1; display:grid; gap:6px; width:100%; min-width:0; font-size:13px; }
+.attachment-row input[type="file"] { width:100%; min-width:0; max-width:none; height:42px; padding:0; overflow:hidden; font-size:13px; line-height:40px; }
+.attachment-row input[type="file"]::file-selector-button { height:40px; margin:0 12px 0 0; padding:0 14px; border:0; border-right:1px solid var(--border); background:#f4f5ef; color:var(--ink); font:inherit; font-weight:600; cursor:pointer; }
+.attachment-row > a { min-width:0; font-size:13px; }
+.attachment-row .attachment-delete { width:34px; height:34px; padding:0; border-radius:8px; color:#a13737; background:#fff; border-color:#ead3d3; }
+.attachment-row .attachment-delete:hover { background:#fff0f0; }
 @media(max-width:640px) { .event-request-row { grid-template-columns:minmax(0,1fr); grid-template-areas:"status" "summary" "actions"; } .request-row-actions { justify-content:flex-start; } }
 /* Long event answers and filenames must wrap instead of pushing actions beyond the viewport. */
 .event-request-row > div { min-width: 0; }
@@ -570,7 +578,8 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .equipment-empty { margin: 0; font-size: 13px; color: var(--muted); }
 .equipment-remove { padding: 8px 0; border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .equipment-remove:hover { background: none; color: var(--ink); }
-.equipment-add { justify-self: start; }
+.equipment-items .equipment-add { justify-self:start; min-height:38px; gap:8px; padding:8px 12px; border-radius:8px; background:#fff; font-size:13px; }
+.equipment-items .equipment-add:hover { background:#f4f5ef; }
 .event-request-form > .equipment-fields { grid-column: 1 / -1; }
 /* Inside the event detail card the section already has its heading: drop the divider and keep the legend for screen readers only. */
 .equipment-editor .equipment-fields { padding-top: 0; border-top: 0; }
@@ -808,6 +817,10 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 /* Post-submission amendments: the organiser's amendment request form and their list of requests. */
 .amendment-panel { display: grid; gap: 14px; margin-bottom: 18px; }
 .amendment-panel > .button-primary { justify-self: start; }
+/* Keep the amendment action beside its heading, with the explanation and history underneath. */
+.amendment-panel-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px 20px; }
+.amendment-panel-header .ed-card-title { margin:0; }
+.amendment-panel-header > button { min-height:38px; padding:8px 14px; border-radius:8px; font-size:13px; }
 .amendment-form { display: grid; gap: 16px; }
 .amendment-group { display: grid; gap: 12px; margin: 0; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; }
 .amendment-group legend { padding: 0 6px; font-weight: 700; }
@@ -983,7 +996,9 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .event-detail.organiser-event-detail .ed-icon-btn:hover { background: #fff2e9; }
 .event-detail.organiser-event-detail .ed-card:not(.ed-grid > .ed-card),
 .event-detail.organiser-event-detail .organiser-management-section { margin-bottom: 20px; padding: 20px 24px; border: 1px solid var(--ed-line); border-radius: 12px; background: #fff; }
-.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > p { margin: 0 0 14px; font-size: 13px; line-height: 1.6; color: var(--ed-muted); }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel { margin-bottom:0; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel-header .ed-card-title { margin:0; }
+.event-detail.organiser-event-detail .organiser-management-section .amendment-panel > p { margin:0; font-size:13px; line-height:1.6; color:var(--ed-muted); }
 .event-detail.organiser-event-detail .organiser-management-section .amendment-panel > .ed-card { margin: 16px 0 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; }
 .event-detail.organiser-event-detail .ed-notice { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .event-detail.organiser-event-detail .ed-notice--ok { background: #edf6ee; color: #245c35; border-color: #cde1d1; }

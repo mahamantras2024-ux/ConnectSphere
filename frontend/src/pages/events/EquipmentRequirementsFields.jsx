@@ -38,7 +38,7 @@ export default function EquipmentRequirementsFields({ value, onChange, disabled,
           </>
         )}
         <button type="button" className="button-secondary equipment-add"
-          onClick={() => setField('items', [...value.items, newEquipmentRow()])}><span aria-hidden="true">+ </span>Add equipment item</button>
+          onClick={() => setField('items', [...value.items, newEquipmentRow()])}><svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Add equipment item</button>
       </div>
 
       <label className="checkbox-label">

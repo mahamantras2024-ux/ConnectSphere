@@ -184,3 +184,34 @@ it.each([true,false])('Organiser outcomes AC1 - submission result success=%s is 
   expect(screen.queryByText('Event request submitted.')).toBeNull();
  }
 });
+
+// Attachment controls AC1/AC2: emulate only the browser's native chosen-path value, which jsdom cannot populate from files.
+// Routing, FileReader and the form's attachment state stay real; browser checks also verify the real FileList is cleared.
+it('Attachment controls AC1 AC2 - delete clears the selected filename and permits reselecting the same file without affecting another attachment', async () => {
+ open('/organizer/events/new');
+ const input = await screen.findByLabelText('Event name attachment');
+ const file = new File(['%PDF-name'], 'event-name.pdf', {type:'application/pdf'});
+ let selectedPath = 'C:\\fakepath\\event-name.pdf';
+ Object.defineProperty(input, 'value', {configurable:true, get:()=>selectedPath, set:next=>{selectedPath=next;}});
+ fireEvent.change(input, {target:{files:[file]}});
+ await screen.findByRole('link', {name:'event-name.pdf'});
+ fireEvent.change(screen.getByLabelText('Purpose attachment'), {target:{files:[new File(['%PDF-purpose'], 'purpose.pdf', {type:'application/pdf'})]}});
+ await screen.findByRole('link', {name:'purpose.pdf'});
+ // Assert that deletion is an accessible icon and clears both representations of the selected attachment.
+ const remove = screen.getByRole('button', {name:'Remove Event name attachment'});
+ fireEvent.click(remove);
+ expect(input.value).toBe('');
+ expect(remove.querySelector('svg')).not.toBeNull();
+ expect(remove.textContent).toBe('');
+ expect(screen.queryByRole('link', {name:'event-name.pdf'})).toBeNull();
+ expect(screen.getByRole('link', {name:'purpose.pdf'})).toBeTruthy();
+ fireEvent.change(input, {target:{files:[file]}});
+ expect(await screen.findByRole('link', {name:'event-name.pdf'})).toBeTruthy();
+ // The payload must contain removal rather than the stale filename when the draft is saved.
+ fireEvent.click(screen.getByRole('button', {name:'Remove Event name attachment'}));
+ api.post.mockResolvedValue({event, message:'Draft saved.'});
+ fireEvent.click(screen.getByRole('button', {name:'Save as draft'}));
+ fireEvent.click(await screen.findByRole('button', {name:'Confirm'}));
+ await screen.findByText('Draft saved.');
+ expect(api.post.mock.calls[0][1].attachments).toMatchObject({name:null,purpose:{name:'purpose.pdf'}});
+});

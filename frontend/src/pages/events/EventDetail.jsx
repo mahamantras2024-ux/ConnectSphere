@@ -1012,7 +1012,6 @@ export default function EventDetail() {
 
       </div>
       {organiserWorkspace && !editingAllowed() && <section className="organiser-management-section" aria-label="Changes to this event">
-        <h2 className="ed-card-title">Changes to this event</h2>
         <AmendmentRequestPanel event={event} token={token} />
       </section>}
       {user.role==='event_organiser' && <RegistrationSettings event={event} token={token} onSaved={saved=>setEvent(current=>({...current,...saved}))}/>}
