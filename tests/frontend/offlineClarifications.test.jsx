@@ -379,10 +379,17 @@ it.each([['Re-confirm booking', 'confirmed', 'approved', 'Re-confirmed', ''], ['
     if (notes) {
       fireEvent.click(screen.getByRole('button', { name: 'Reject booking' }));
       fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: notes } });
+      expect(screen.queryByRole('button', { name: 'Re-confirm booking' })).toBeNull();
+      expect(within(screen.getByRole('group', { name: 'Booking decision' })).getAllByRole('button')).toHaveLength(2);
+      if (decision === 'confirmed') fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
       fireEvent.click(screen.getByRole('button', { name: decision === 'rejected' ? 'Confirm rejection' : button }));
     } else {
       fireEvent.click(screen.getByRole('button', { name: button }));
-      if (decision === 'rejected') fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
+      if (decision === 'rejected') {
+        expect(screen.queryByRole('button', { name: 'Re-confirm booking' })).toBeNull();
+        expect(within(screen.getByRole('group', { name: 'Booking decision' })).getAllByRole('button')).toHaveLength(2);
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
+      }
     }
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/5/requests/9/recheck', { decision, reason: decision === 'rejected' ? notes : '' }, 'session'));
     expect(await screen.findByText(new RegExp(`^${outcome}: Gala at Hall A\\.`))).toBeTruthy();

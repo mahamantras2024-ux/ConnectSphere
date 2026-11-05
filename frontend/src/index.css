@@ -628,6 +628,10 @@ body:has(.equipment-header-navigation) { background: #f6f8f6; }
 .booking-review label { display: grid; gap: .65rem; font-weight: 600; }
 .booking-review textarea { width: 100%; box-sizing: border-box; background: #fff; color: #343a26; border: 1px solid #b8bea7; border-radius: .75rem; padding: .85rem; }
 .booking-review-actions { display: flex; flex-wrap: wrap; gap: .75rem; padding-block: .75rem; }
+/* A destructive confirmation is visually distinct from returning to the booking review. */
+.booking-review-actions button { min-height: 40px; padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+.booking-review-actions .button-danger { background: var(--orange); border-color: var(--orange); color: #111; }
+.booking-review-actions .button-danger:hover { background: #da5720; border-color: #da5720; }
 .booking-decision-success { padding: 1rem; border-radius: .75rem; background: #edf0d6; color: #41491b; }
 /* Keep optional safety documents together with clear file and removal controls. */
 .emergency-documents { margin-block: 1rem 1.5rem; }

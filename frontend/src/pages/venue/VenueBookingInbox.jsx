@@ -37,11 +37,8 @@ export default function VenueBookingInbox() {
     // Date controls represent Singapore wall time; never inherit the computer's locale offset.
     setExpiry(request.status==='tentative' ? new Date(Date.parse(request.hold_expires_at)+8*3600000).toISOString().slice(0,16) : '');
   }
-  /** The first Reject click opens optional notes; only explicit confirmation persists the rejection. */
-  function rejectBooking() {
-    if (rejecting) decide('rejected');
-    else { setRejecting(true); setFailure(''); }
-  }
+  /** Opens a separate rejection step; the initial review cannot submit a rejection accidentally. */
+  function beginRejection() { setRejecting(true); setFailure(''); }
   /**
    * Only a successful server decision removes the queue item; errors keep the staff member's notes for retry. A booking an
    * applied amendment flagged (Record Offline Clarifications AC5) is already confirmed, so it is re-confirmed or rejected
@@ -106,14 +103,17 @@ export default function VenueBookingInbox() {
         <p className="detail-note">{selected.recheck_required_at ? 'Re-confirming keeps the confirmed booking; rejecting ends it. The Coordinator is told either way.'
           : 'Approval creates a tentative hold and rechecks availability. The Coordinator receives the deadline.'}</p>
         {failure && <p role="alert" className="error-message">{failure}</p>}
-        <div className="booking-review-actions">{selected.recheck_required_at
+        {/* Each step has one clear decision: approval stays out of the rejection confirmation. */}
+        <div className="booking-review-actions" role="group" aria-label="Booking decision">{rejecting
+          ? <><button className="button-danger" disabled={saving} onClick={() => decide('rejected')}>Confirm rejection</button>
+            <button className="button-secondary" disabled={saving} onClick={() => { setRejecting(false); setReason(''); setFailure(''); }}>Back to review</button></>
+          : selected.recheck_required_at
           ? <><button className="button-primary" disabled={saving} onClick={() => decide('approved')}>Re-confirm booking</button>
-          <button className="button-secondary" disabled={saving} onClick={rejectBooking}>{rejecting ? 'Confirm rejection' : 'Reject booking'}</button></>
+            <button className="button-secondary" disabled={saving} onClick={beginRejection}>Reject booking</button></>
           : selected.status==='tentative'
           ? <button className="button-primary" disabled={saving} onClick={()=>decide('expiry')}>Save expiry</button>
           : <><button className="button-primary" disabled={saving} onClick={() => decide('approved')}>Approve request</button>
-          <button className="button-secondary" disabled={saving} onClick={rejectBooking}>{rejecting ? 'Confirm rejection' : 'Reject request'}</button></>}
-          {rejecting && <button className="button-secondary" disabled={saving} onClick={() => { setRejecting(false); setReason(''); setFailure(''); }}>Cancel rejection</button>}
+            <button className="button-secondary" disabled={saving} onClick={beginRejection}>Reject request</button></>}
         </div>
       </div></Modal>}
   </section>;

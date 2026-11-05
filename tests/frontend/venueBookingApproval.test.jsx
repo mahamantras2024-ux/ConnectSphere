@@ -42,6 +42,10 @@ it.each(['Maintenance; try Hall B at 2pm.', ''])('SCRUM-43 AC3 AC4 - rejection a
   fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
   expect(api.put).not.toHaveBeenCalled();
   expect(screen.getByLabelText('Reason or alternative arrangement (optional)')).not.toBeRequired();
+  // Rejection is its own step: approval must not compete with its two explicit actions.
+  expect(screen.queryByRole('button', { name: 'Approve request' })).not.toBeInTheDocument();
+  expect(within(screen.getByRole('group', { name: 'Booking decision' })).getAllByRole('button')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: 'Back to review' })).toBeVisible();
   fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: reason } });
   api.put.mockResolvedValue({ request: { ...booking, status: 'rejected', decision_by: 9, updated_at: '2031-10-01T00:00:00Z' } });
   fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
@@ -54,7 +58,8 @@ it('SCRUM-43 AC1 AC2 AC3 - failed save preserves the review and notes for retry 
   fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
   fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Try tomorrow' } });
   fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
-  expect(screen.getByRole('button', { name: 'Approve request' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Approve request' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Back to review' })).toBeDisabled();
   const confirmation = screen.getByRole('button', { name: 'Confirm rejection' });
   expect(confirmation).toBeDisabled();
   fireEvent.click(confirmation);
@@ -192,13 +197,17 @@ it('SCRUM-43 AC1 AC2 - access loss closes an open review and a delayed decision 
 });
 
 // Rejection UI AC1/AC2: a note entered for a rejection must never become an approval note.
-it('Rejection UI AC1 AC2 - approval ignores entered rejection notes', async () => {
-  // Arrange: start a rejection and enter text before choosing the non-destructive approval action.
+it('Rejection UI AC1 AC2 - returning to review restores approval without rejection notes', async () => {
+  // Arrange: rejection has its own confirmation step; returning must retain the deadline but discard rejection notes.
   open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
   fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Rejection only' } });
   fireEvent.change(screen.getByLabelText('Hold expiry (Singapore time)'), { target: { value: '2099-01-01T08:00' } });
-  // Act / Assert: approval keeps its existing deadline contract and cannot submit the rejection draft.
+  // Act / Assert: approval is available only after returning, and cannot submit the discarded rejection draft.
+  expect(screen.queryByRole('button', { name: 'Approve request' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
+  expect(screen.queryByRole('button', { name: 'Confirm rejection' })).not.toBeInTheDocument();
+  expect(api.put).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
   await screen.findByText(/Tentative hold approved:/);
   expect(api.put).toHaveBeenCalledWith('/venues/7/requests/20/decision', { decision: 'approved', reason: '', holdExpiresAt: '2099-01-01T00:00:00.000Z' }, 'staff-session');
@@ -210,8 +219,10 @@ it('Rejection UI AC1 AC3 - cancelling and switching requests clear optional reje
   open(); fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
   fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: 'Old note' } });
-  // Act / Assert: cancellation removes the field and reopening starts empty without saving anything.
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel rejection' }));
+  // Act / Assert: going back restores the initial pair of choices without saving a decision.
+  fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
+  expect(screen.getByRole('button', { name: 'Approve request' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Reject request' })).toBeVisible();
   expect(screen.queryByLabelText('Reason or alternative arrangement (optional)')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Reject request' }));
   expect(screen.getByLabelText('Reason or alternative arrangement (optional)')).toHaveValue('');
