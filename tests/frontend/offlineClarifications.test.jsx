@@ -360,21 +360,38 @@ const flaggedBooking = { id: 9, venue_id: 5, event_id: 101, event_name: 'Gala', 
   recheck_required_at: '2030-01-03T02:00:00.000Z', recheck_reason: '150 expected guests exceed the venue capacity of 100.' };
 
 // Test case: A flagged booking is marked in the inbox with its reason, and re-confirming or rejecting uses its re-check.
-it.each([['Re-confirm booking', 'confirmed', 'approved', 'Re-confirmed'], ['Reject booking', 'rejected', 'rejected', 'Rejected']])(
-  'OC AC5 - Venue Staff use "%s" on a booking flagged after an amendment', async (button, decision, status, outcome) => {
+it.each([['Re-confirm booking', 'confirmed', 'approved', 'Re-confirmed', ''], ['Reject booking', 'rejected', 'rejected', 'Rejected', ''],
+  ['Re-confirm booking', 'confirmed', 'approved', 'Re-confirmed', 'Rejection draft only'], ['Reject booking', 'rejected', 'rejected', 'Rejected', 'Try Hall B']])(
+  'OC AC5 / Rejection UI AC2 - %s records %s as %s (%s) with optional draft %j', async (button, decision, status, outcome, notes) => {
     user = venueStaff;
     const base = api.get.getMockImplementation();
     api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [flaggedBooking] } : base(path)));
     api.put.mockResolvedValue({ request: { ...flaggedBooking, status, decision_by: 41, updated_at: '2030-01-03T03:00:00.000Z' } });
-    open('/venue/dashboard');
+    open('/venue/dashboard?section=requests');
     const inbox = await screen.findByRole('region', { name: 'Pending venue booking requests' });
     expect(await within(inbox).findByText('Re-check required')).toBeTruthy();
     fireEvent.click(within(inbox).getByRole('button', { name: 'Review Gala at Hall A' }));
     expect(screen.getByText('150 expected guests exceed the venue capacity of 100.')).toBeTruthy();
     // A booking without a requirements snapshot adds no comparison line.
     expect(screen.queryByText('Originally requested:')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: button }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/5/requests/9/recheck', { decision, reason: '' }, 'session'));
+    expect(screen.queryByLabelText('Reason or alternative arrangement (optional)')).toBeNull();
+    // An optional draft may be entered before either confirming rejection or returning to re-confirmation.
+    if (notes) {
+      fireEvent.click(screen.getByRole('button', { name: 'Reject booking' }));
+      fireEvent.change(screen.getByLabelText('Reason or alternative arrangement (optional)'), { target: { value: notes } });
+      expect(screen.queryByRole('button', { name: 'Re-confirm booking' })).toBeNull();
+      expect(within(screen.getByRole('group', { name: 'Booking decision' })).getAllByRole('button')).toHaveLength(2);
+      if (decision === 'confirmed') fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
+      fireEvent.click(screen.getByRole('button', { name: decision === 'rejected' ? 'Confirm rejection' : button }));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: button }));
+      if (decision === 'rejected') {
+        expect(screen.queryByRole('button', { name: 'Re-confirm booking' })).toBeNull();
+        expect(within(screen.getByRole('group', { name: 'Booking decision' })).getAllByRole('button')).toHaveLength(2);
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
+      }
+    }
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('/venues/5/requests/9/recheck', { decision, reason: decision === 'rejected' ? notes : '' }, 'session'));
     expect(await screen.findByText(new RegExp(`^${outcome}: Gala at Hall A\\.`))).toBeTruthy();
   });
 // Test case (reviewer AC5): a flagged booking lists the amended requirements, with what was first requested for comparison.
@@ -385,7 +402,7 @@ it('OC AC5 - a flagged booking shows the amended requirements and what was origi
   const base = api.get.getMockImplementation();
   api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [amended, { ...amended, id: 10, event_name: 'Fair',
     original_requirements: { accessibility: ['Lift'] } }] } : base(path)));
-  open('/venue/dashboard');
+  open('/venue/dashboard?section=requests');
   fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   const facts = (term) => screen.getByText(term).nextSibling.textContent;
   expect([facts('Expected attendance'), facts('Room layout'), facts('Accessibility')]).toEqual(['150', 'Banquet', 'Ramp']);
@@ -403,7 +420,7 @@ it('OC AC5 - an unflagged pending request still uses the normal approval with a 
   api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [pending] } : base(path)));
   api.put.mockResolvedValue({ request: { ...pending, status: 'tentative', hold_expires_at: '2099-01-02T04:00:00.000Z', decision_by: 41,
     updated_at: '2030-01-03T03:00:00.000Z' } });
-  open('/venue/dashboard');
+  open('/venue/dashboard?section=requests');
   fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   expect(screen.queryByText(/Re-check required/)).toBeNull();
   // Main's tentative-hold workflow: approval needs an expiry and goes through the normal decision, not the re-check.
@@ -418,7 +435,7 @@ it('OC AC5 - a flagged booking is re-checked without a hold expiry', async () =>
   user = venueStaff;
   const base = api.get.getMockImplementation();
   api.get.mockImplementation(async (path) => (path === '/venues/requests/pending' ? { requests: [flaggedBooking] } : base(path)));
-  open('/venue/dashboard');
+  open('/venue/dashboard?section=requests');
   fireEvent.click(await screen.findByRole('button', { name: 'Review Gala at Hall A' }));
   expect(screen.queryByLabelText('Hold expiry (Singapore time)')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Approve request' })).toBeNull();

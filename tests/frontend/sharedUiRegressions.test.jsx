@@ -104,9 +104,9 @@ it('a role-switch response arriving after logout cannot restore the session', as
   expect(screen.getByText('Signed out')).toBeTruthy(); expect(localStorage.getItem('cs_token')).toBeNull();
 });
 // Test case: Opens venue dialogs and presses Escape, checking closure and restored opener focus.
-it('venue dialogs close on Escape and restore focus to their opening control', async () => {
+it('Venue tabs AC4 - venue dialogs close on Escape and restore focus to their opening control', async () => {
   // Checks keyboard accessibility for the create-record workflow.
-  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard');
+  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard?section=venues');
   const button = await screen.findByRole('button', { name: 'Add venue' }); button.focus(); fireEvent.click(button);
   expect(screen.getByRole('dialog', { name: 'Add New Venue' })).toBeTruthy();
   fireEvent.keyDown(document, { key: 'Escape' });
@@ -115,9 +115,9 @@ it('venue dialogs close on Escape and restore focus to their opening control', a
       expect(screen.queryByRole('dialog')).toBeNull()); expect(document.activeElement).toBe(button);
 });
 // Test case: Submits invalid capacity/buffers and checks visible validation errors without API writes.
-it('venue creation rejects invalid capacity and time buffers without API writes', async () => {
+it('Venue tabs AC4 - venue creation rejects invalid capacity and time buffers without API writes', async () => {
   // Validates boundaries beyond the required-field happy path.
-  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard');
+  user = { ...user, role: 'venue_staff' }; open('/venue/dashboard?section=venues');
   fireEvent.click(await screen.findByRole('button', { name: 'Add venue' }));
   fireEvent.change(screen.getByLabelText('Capacity *'), { target: { value: '-1' } });
   fireEvent.change(screen.getByLabelText('Setup time (minutes) *'), { target: { value: '-30' } });
@@ -332,7 +332,7 @@ it.each([
   expect(screen.queryByText(/scheduled for a later sprint|workspace is ready/i)).toBeNull();
   // Parent notification system: every signed-in page reads the user's own notifications once (shared by bell and panel).
   const expectedCalls = role === 'event_coordinator_lead' ? ['/auth/me','/notifications','/events/assignments']
-    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/tech-support/reminder-preference','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations','/events/equipment-reservation-issues']
+    : role === 'technical_support' ? ['/auth/me','/notifications','/events/on-site-support','/events/equipment-requests','/events/equipment-inventory','/events/equipment-reservations','/events/equipment-reservation-issues']
     : role === 'safety_officer' ? ['/auth/me','/notifications','/safety/checks']
     : ['/auth/me'];
   expect(api.get.mock.calls.map(call=>call[0])).toEqual(expectedCalls);
@@ -372,26 +372,31 @@ describe('workspaceNavigation',()=>{
 afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks();});
 // Test case: Checks organiser/coordinator/attendee each have one active named tab and clicking it returns to the correct dashboard.
 it.each([
-  ['event_organiser','/organizer/dashboard','My Events','Event Organiser Dashboard'],
+  ['event_organiser','/organizer/dashboard','Dashboard','Event Organiser Dashboard'],
   ['event_coordinator','/coordinator/dashboard','Dashboard','Event Coordinator Dashboard'],
   ['attendee','/attendee/dashboard','My Registrations','Attendee Dashboard'],
-])('Planning calendar AC3 / UI navigation AC1 / login AC3 - %s has one active workspace tab that returns from other pages',async(role,path,label,title)=>{
+])('Organiser requests tab AC1 / Planning calendar AC3 / UI navigation AC1 / login AC3 - %s has one active workspace tab that returns from other pages',async(role,path,label,title)=>{
   // Arrange a real session and an empty, owner-scoped response from the API boundary.
   localStorage.setItem('cs_token','session');
   api.get.mockImplementation(async endpoint=>endpoint==='/auth/me'?{user:{id:8,full_name:'Test User',role}}:endpoint==='/registrations/mine'?{registrations:[]}:{events:[]});
   render(<MemoryRouter initialEntries={['/missing-page']}><AuthProvider><App/></AuthProvider></MemoryRouter>);
   const nav=within(await screen.findByRole('navigation',{name:'Main navigation'}));
   const link=await nav.findByRole('link',{name:label});
-  // The coordinator's workspace is now Dashboard; other roles keep their existing single workspace label.
-  expect(nav.queryAllByRole('link',{name:'Dashboard'})).toHaveLength(role === 'event_coordinator' ? 1 : 0);
+  // Organisers and coordinators use Dashboard; attendees retain their registrations workspace.
+  expect(nav.queryAllByRole('link',{name:'Dashboard'})).toHaveLength(['event_coordinator','event_organiser'].includes(role) ? 1 : 0);
   expect(link.getAttribute('href')).toBe(path);
   // Act: use the single workspace control, rather than relying on a redirect.
   fireEvent.click(link);
   // Assert: the real role screen opens and the tab identifies the current workspace.
   expect(await screen.findByRole('heading',{name:title})).toBeTruthy();
   expect(link.getAttribute('aria-current')).toBe('page');
-  // Discovery and planning are distinct Coordinator workspaces; neither may duplicate the active Assigned Events tab.
-  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 4 : 2);
+  // The brand plus each role's real workspaces remain distinct; the organiser now also has Requests.
+  expect(nav.getAllByRole('link')).toHaveLength(role === 'event_coordinator' ? 4 : role === 'event_organiser' ? 3 : 2);
+  if(role==='event_organiser'){
+    const requests=nav.getByRole('link',{name:'Request event',exact:true});
+    expect(requests.getAttribute('href')).toBe('/organizer/events/new');
+    expect(requests.getAttribute('aria-current')).toBeNull();
+  }
   if(role==='event_coordinator'){
     const planning=nav.getByRole('link',{name:'Planning calendar'});
     expect(planning.getAttribute('href')).toBe('/coordinator/planning-calendar');
@@ -431,7 +436,7 @@ it.each([
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByRole('heading', { name: heading })).toBeNull();
   expect(document.body.style.overflow).not.toBe('hidden');
-  fireEvent.click(screen.getByRole('link', { name: role === 'event_coordinator' ? 'Back to Dashboard' : 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: ['event_coordinator','event_organiser'].includes(role) ? 'Back to Dashboard' : 'Back to Events' }));
   expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
 });
 
@@ -460,7 +465,7 @@ it('UI1 / Organiser AC1 - full-page details stay open on Escape and return using
   await screen.findByRole('heading', { name: event.name });
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(screen.getByRole('heading', { name: event.name })).toBeTruthy();
-  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Dashboard' }));
   expect(await screen.findByRole('heading', { name: 'My Events' })).toBeTruthy();
 });
 // Test case: Fails detail retrieval and checks no private data appears and Close still works.
@@ -473,7 +478,7 @@ it('UI1 / Organiser AC4 - failed details retain a working Back control and revea
   open('/organizer/dashboard'); fireEvent.click(await screen.findByRole('link', { name: 'View details' }));
   expect((await screen.findByRole('alert')).textContent).toBe('Event not found.');
   expect(screen.queryByText(event.purpose)).toBeNull();
-  fireEvent.click(screen.getByRole('link', { name: 'Back to Events' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Back to Dashboard' }));
   expect(await screen.findByRole('heading', { name: 'Event Organiser Dashboard' })).toBeTruthy();
 });
 // Test case: Opens attendee details from a personal registration and checks the drawer does not request event details.

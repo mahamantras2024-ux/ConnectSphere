@@ -93,8 +93,9 @@ it('TS AC4.3 - changing the cadence while disabled does not persist', async () =
   await waitFor(() => expect(toggle()).not.toBeChecked());
   // Act: change cadence while opted out.
   fireEvent.change(frequency(), { target: { value: '3' } });
-  // Assert: the selection updates locally but no save is sent while disabled.
-  expect(frequency()).toHaveValue('3');
+  // Assert: opted-out settings cannot change cadence or write to the server.
+  expect(frequency()).toBeDisabled();
+  expect(frequency()).toHaveValue('1');
   expect(api.put).not.toHaveBeenCalled();
 });
 

@@ -43,6 +43,8 @@ export function notificationTarget(notification, role) {
   if (notification.type === 'event_request_status_changed' && role === 'event_organiser' && notification.event_id != null) return `/organizer/events/${notification.event_id}/status`;
   if (notification.type === 'event_awaiting_assignment') return '/coordinator-lead/dashboard';
   if (notification.type === 'change_request_submitted' && role === 'event_coordinator') return '/coordinator/dashboard';
+  // New venue requests belong in the review section, rather than the event-status overview.
+  if (notification.type === 'venue_booking_requested' && role === 'venue_staff') return '/venue/dashboard?section=requests';
   // Assignment work is tech-support-only and dashboard-owned, so route by type before any role/event-page branch.
   if (TECH_SUPPORT_ASSIGNMENT_TYPES.has(notification.type)) return '/tech-support/dashboard';
   // An equipment-status notification opens the tech-support dashboard only for a Technical Support recipient; any other

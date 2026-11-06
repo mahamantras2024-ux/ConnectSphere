@@ -122,9 +122,9 @@ const STYLES = `
 .er-error { margin: 0; padding: 10px 12px; border-radius: 6px; color: var(--er-bad-ink); background: var(--er-bad-bg); border: 1px solid var(--er-bad); font-size: .9rem; }
 
 /* Empty state */
-.er-empty { border: 1px dashed var(--er-line); border-radius: var(--er-radius); padding: 32px 20px; text-align: center; background: var(--er-wash); }
+.er-empty { border: 1px dashed var(--er-line); border-radius: var(--er-radius); padding: 32px 20px; text-align: center; background: #fff; color: var(--ink); }
 .er-empty h3 { margin: 0 0 4px; }
-.er-empty p { margin: 0 0 16px; color: var(--er-muted); }
+.er-empty p { margin: 0 0 16px; color: var(--muted); }
 
 /* Reservations table */
 .er-table-wrap { overflow-x: auto; border: 1px solid var(--er-line); border-radius: var(--er-radius); background: var(--er-surface); }
@@ -606,7 +606,7 @@ export default function EquipmentReservationSection({
           <div className="er-empty">
             <h3>No reviewed equipment requests yet</h3>
             <p>Requests appear here once they have been reviewed.</p>
-            <button type="button" className="er-btn" onClick={onGoToReviews}>Go to equipment request review</button>
+            <button type="button" className="er-btn" onClick={onGoToReviews}>Go to requests</button>
           </div>
         ) : (
           <div className="er-grid">

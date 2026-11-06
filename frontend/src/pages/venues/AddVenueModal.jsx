@@ -111,8 +111,7 @@ export default function AddVenueModal({ onClose, onAdd, venue }) {
     <div className="form-section"><EmergencyDocuments value={emergencyDocuments} onChange={changeDocument} onBusy={setDocumentReading}/><h3>Additional safety notes <span className="muted">Optional</span></h3><div className="form-grid">
       {[['emergencyAccess', 'Emergency access', 'Optional clarification to accompany the uploaded emergency documents'], ['knownRestrictions', 'Known restrictions', 'For example: no open flames, floor load limits, noise curfew']].map(([key, label, placeholder]) =>
         <div className="field" key={key}><label htmlFor={`venue-${key}`}>{label}</label><textarea id={`venue-${key}`} rows={3} maxLength={2000} placeholder={placeholder} value={data[key]}
-          onChange={event => change(key, event.target.value)} aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `error-${key}` : key === 'emergencyAccess' ? 'venue-emergency-access-help' : undefined} />
-          {key === 'emergencyAccess' && <span id="venue-emergency-access-help" className="field-help">Prefer the uploaded documents for full instructions. Use these optional notes for clarifications about emergency exits and their locations, emergency vehicle access points, evacuation routes, and any restrictions or obstructions affecting emergency access. You can use a separate line for each detail. Optional; maximum 2,000 characters.</span>}
+          onChange={event => change(key, event.target.value)} aria-invalid={!!errors[key]} aria-describedby={errors[key] ? `error-${key}` : undefined} />
           {errors[key] && <span className="error-text" id={`error-${key}`}>{errors[key]}</span>}</div>)}
     </div></div>
     <div className="form-section"><h3>Additional details <span className="muted">Optional</span></h3><div className="form-grid">

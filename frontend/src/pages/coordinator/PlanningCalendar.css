@@ -16,3 +16,12 @@
 .planning-event:hover { background:#dfeacd; }.planning-event:focus-visible { outline:2px solid #536d37; outline-offset:2px; }
 .planning-event[data-status="cancelled"] { opacity:.65; text-decoration:line-through; }
 @media(max-width:600px) { .planning-calendar-shell { padding:1rem; }.planning-calendar-toolbar { align-items:flex-start; } }
+
+/* Event stage colours match the badges; booking and cancellation semantics remain separate. */
+.planning-event[data-status="planning"] { background: var(--event-planning-bg); color: var(--event-planning-text); border-left-color: var(--event-planning-text); }
+.planning-event[data-status="confirmed"] { background: var(--event-confirmed-bg); color: var(--event-confirmed-text); border-left-color: var(--event-confirmed-text); }
+.planning-event[data-status="completed"] { background: var(--event-completed-bg); color: var(--event-completed-text); border-left-color: var(--event-completed-text); }
+
+.planning-event[data-status="submitted"] { background: var(--event-submitted-bg); color: var(--event-submitted-text); border-left-color: var(--event-submitted-text); }
+.planning-event[data-status="under_review"] { background: var(--event-under-review-bg); color: var(--event-under-review-text); border-left-color: var(--event-under-review-text); }
+.planning-event[data-status="rejected"] { background: var(--event-rejected-bg); color: var(--event-rejected-text); border-left-color: var(--event-rejected-text); }

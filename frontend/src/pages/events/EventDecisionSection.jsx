@@ -144,7 +144,7 @@ export default function EventDecisionSection({ event, onDecided, eventActions })
             {review.readiness.map((item) => (
               <li key={item.name} className={item.met ? 'decision-met' : 'decision-unmet'}>
                 <strong>{REQUIREMENT_LABELS[item.name]}</strong>
-                <span className={`status-badge ${item.met ? 'status-confirmed' : 'status-under_review'}`}>{item.met ? 'Complete' : 'Outstanding'}</span>
+                <span className={`status-badge ${item.met ? 'status-confirmed' : 'status-attention'}`}>{item.met ? 'Complete' : 'Outstanding'}</span>
                 <span>{item.message}</span>
               </li>
             ))}

@@ -1,5 +1,5 @@
 // File: Tests the Event Coordinator Review & Process Change Requests story through real routing, the coordinator inbox and dashboard notifications.
-// Test scope: Real App routes, AuthProvider, dashboards, ChangeRequestInbox and NotificationsPanel; only the API client is replaced.
+// Test scope: Real App routes, AuthProvider, dashboards, ChangeRequestInbox and NotificationBell; only the API client is replaced.
 // AC1 view requested changes; AC2 coordinator notified on submission; AC3 apply/reject and notify relevant personnel.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -10,6 +10,8 @@ import { AuthProvider } from '../../frontend/src/context/AuthContext';
 
 vi.mock('../../frontend/src/api/client', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 
+// jsdom has no scrollIntoView; notification navigation legitimately scrolls the amendment inbox.
+const scrollDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
 let user;
 let changeRequests;
 let notificationsResponse;
@@ -34,10 +36,16 @@ function open(path) {
 const card = async (eventName) => (await screen.findByText(eventName, { selector: 'strong' })).closest('li');
 // Returns the cells of a comparison row as [current, requested].
 const rowValues = (container, label) => within(within(container).getByRole('rowheader', { name: label }).closest('tr')).getAllByRole('cell').map((cell) => cell.textContent);
-const notificationsPanel = () => screen.getByRole('region', { name: 'Notifications' });
+const notificationDropdown = () => screen.getByRole('region', { name: 'Recent notifications' });
+/** Notifications are opened through the navbar, leaving the coordinator's amendment inbox intact. */
+async function openNotifications() {
+  fireEvent.click(await screen.findByRole('button', { name: /^Notifications/ }));
+  return screen.getByRole('region', { name: 'Recent notifications' });
+}
 const inbox = () => screen.getByRole('region', { name: 'Amendment requests' });
 
 beforeEach(() => {
+  Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   localStorage.clear();
   user = { id: 30, email: 'chris@example.com', full_name: 'Chris', role: 'event_coordinator' };
   changeRequests = [attendanceRequest, renameRequest];
@@ -51,7 +59,11 @@ beforeEach(() => {
     throw new Error(`Unexpected request: ${path}`);
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  if (scrollDescriptor) Object.defineProperty(Element.prototype, 'scrollIntoView', scrollDescriptor);
+  else delete Element.prototype.scrollIntoView;
+});
 
 // ---------- AC1 ----------
 
@@ -156,43 +168,37 @@ it.each([[409, 'This change request has already been decided.', 2, false], [404,
 
 // ---------- AC2: notifications ----------
 
-// Test case: The coordinator's dashboard lists notifications with an unread count; marking one read updates the count.
-it('CR AC2 - the coordinator is notified of new change requests and can mark them read', async () => {
-  // Arrange: two notifications, one unread; the message contains markup that must stay text.
+// CR AC2: the bell retains unread counts, trusted text previews and mark-read navigation.
+it('CR AC2 - the coordinator opens a new change request notification through the bell', async () => {
   notificationsResponse = { unreadCount: 1, notifications: [
-    { id: 3, title: 'New change request: Community Workshop', message: 'Expected attendance: 80 → <b>150</b>', created_at: '2026-10-07T02:30:00.000Z', read_at: null },
-    { id: 2, title: 'New change request: Book Club', message: 'Event name: Book Club → Readers Club', created_at: '2026-10-06T02:30:00.000Z', read_at: '2026-10-06T03:00:00.000Z' },
+    { id: 3, event_id: 101, type: 'change_request_submitted', title: 'New change request: Community Workshop',
+      message: 'Expected attendance: 80 → <b>150</b>', created_at: '2026-10-07T02:30:00.000Z', read_at: null },
   ] };
   api.post.mockResolvedValue({ notification: { id: 3, read_at: '2026-10-07T03:00:00.000Z' } });
   open('/coordinator/dashboard');
-  const unread = (await within(await screen.findByRole('region', { name: 'Notifications' })).findByText('New change request: Community Workshop')).closest('li');
-  // Assert: count, unread marker, Singapore time and literal text.
-  expect(within(notificationsPanel()).getByText('1 unread')).toBeTruthy();
-  expect(within(unread).getByText('New')).toBeTruthy();
+  const dropdown = await openNotifications();
+  const unread = (await within(dropdown).findByText('New change request: Community Workshop')).closest('li');
   expect(within(unread).getByText('Expected attendance: 80 → <b>150</b>')).toBeTruthy();
   expect(unread.querySelector('b')).toBeNull();
   expect(within(unread).getByText('7 Oct 2026, 10:30 am')).toBeTruthy();
-  const read = within(notificationsPanel()).getByText('New change request: Book Club').closest('li');
-  // Each preview opens its page; only unread ones also offer Mark as read.
-  expect(within(read).queryByRole('button', { name: /^Mark / })).toBeNull();
-  // Act
-  fireEvent.click(within(unread).getByRole('button', { name: 'Mark New change request: Community Workshop as read' }));
-  // Assert: the button locks while sending, then the count drops once and the marker disappears.
-  expect(within(unread).getByRole('button', { name: 'Mark New change request: Community Workshop as read' }).disabled).toBe(true);
+
+  fireEvent.click(within(unread).getByRole('button', { name: 'New change request: Community Workshop (new)' }));
+
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })).toBeTruthy());
   expect(api.post).toHaveBeenCalledWith('/notifications/3/read', {}, 'session-token');
-  expect(await within(notificationsPanel()).findByText('0 unread')).toBeTruthy();
-  expect(within(unread).queryByText('New')).toBeNull();
-  expect(within(unread).queryByRole('button', { name: /^Mark / })).toBeNull();
+  expect(await card('Community Workshop')).toBeTruthy();
 });
 
-// Test case: Marking read fails; the error is shown and the count stays the same.
-it('CR AC2 - a failed mark-as-read is reported and the unread count is kept', async () => {
-  notificationsResponse = { unreadCount: 1, notifications: [{ id: 3, title: 'New change request: Community Workshop', message: 'x', created_at: '2026-10-07T02:30:00.000Z', read_at: null }] };
+// CR AC2: a failed mark-read cannot drop the unread count or block navigation to the request.
+it('CR AC2 - a failed mark-read keeps the bell unread count', async () => {
+  notificationsResponse = { unreadCount: 1, notifications: [{ id: 3, type: 'change_request_submitted', title: 'New change request: Community Workshop', message: 'x', created_at: '2026-10-07T02:30:00.000Z', read_at: null }] };
   api.post.mockRejectedValue(new Error('Notification not found.'));
   open('/coordinator/dashboard');
-  fireEvent.click(await screen.findByRole('button', { name: 'Mark New change request: Community Workshop as read' }));
-  expect((await within(notificationsPanel()).findByRole('alert')).textContent).toBe('Notification not found.');
-  expect(within(notificationsPanel()).getByText('1 unread')).toBeTruthy();
+  const dropdown = await openNotifications();
+  fireEvent.click(await within(dropdown).findByRole('button', { name: 'New change request: Community Workshop (new)' }));
+  await act(async () => {});
+  expect(screen.getByRole('button', { name: 'Notifications, 1 unread' })).toBeTruthy();
+  expect(await card('Community Workshop')).toBeTruthy();
 });
 
 // Test case: No notifications, a response missing the list (older API), and a load failure are distinguishable, and none raises an alert.
@@ -204,9 +210,9 @@ it.each([[{ notifications: [], unreadCount: 0 }, 'No notifications yet.'], [{}, 
       return { changeRequests: [], events: [] };
     });
     open('/coordinator/dashboard');
-    expect(await within(await screen.findByRole('region', { name: 'Notifications' })).findByText(text)).toBeTruthy();
-    expect(within(notificationsPanel()).getByText('0 unread')).toBeTruthy();
-    expect(within(notificationsPanel()).queryByRole('alert')).toBeNull();
+    expect(await within(await openNotifications()).findByText(text)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Notifications' })).toBeTruthy();
+    expect(within(notificationDropdown()).queryByRole('alert')).toBeNull();
   });
 
 // Organisers (outcomes), Venue Staff and Technical Support (changed details) see their own notifications on their dashboards.
@@ -214,11 +220,11 @@ it.each([
   ['event_organiser', '/organizer/dashboard', 'Change request approved: Community Workshop'],
   ['venue_staff', '/venue/dashboard', 'Event details changed: Community Workshop'],
   ['technical_support', '/tech-support/dashboard', 'Event details changed: Community Workshop'],
-])('CR AC3 - %s sees notifications about processed change requests on their dashboard', async (role, path, title) => {
+])('CR AC3 - %s sees notifications about processed change requests through the bell', async (role, path, title) => {
   user = { ...user, role, roles: [role] };
   notificationsResponse = { unreadCount: 1, notifications: [{ id: 7, title, message: 'Expected attendance: 80 → 150', created_at: '2026-10-07T02:30:00.000Z', read_at: null }] };
   open(path);
-  expect(await within(await screen.findByRole('region', { name: 'Notifications' })).findByText(title)).toBeTruthy();
+  expect(await within(await openNotifications()).findByText(title)).toBeTruthy();
   // Only coordinators get the review inbox.
   expect(screen.queryByRole('region', { name: 'Amendment requests' })).toBeNull();
 });
@@ -236,7 +242,8 @@ it('CR AC1/AC2 - while loading, the inbox and notifications say they are loading
   open('/coordinator/dashboard');
   // Assert while pending: loading text, no empty-state claims and no counts.
   expect(await within(await screen.findByRole('region', { name: 'Amendment requests' })).findByText('Loading change requests...')).toBeTruthy();
-  expect(within(notificationsPanel()).getByText('Loading notifications...')).toBeTruthy();
+  await openNotifications();
+  expect(within(notificationDropdown()).getByText('Loading notifications...')).toBeTruthy();
   expect(screen.queryByText('No pending change requests.')).toBeNull();
   expect(screen.queryByText('No notifications yet.')).toBeNull();
   expect(screen.queryByText(/\d+ pending/)).toBeNull();
@@ -246,7 +253,7 @@ it('CR AC1/AC2 - while loading, the inbox and notifications say they are loading
   // Assert: real content replaces the loading text.
   expect(within(inbox()).getByText('1 pending')).toBeTruthy();
   expect(within(inbox()).queryByText('Loading change requests...')).toBeNull();
-  expect(within(notificationsPanel()).getByText('No notifications yet.')).toBeTruthy();
+  expect(within(notificationDropdown()).getByText('No notifications yet.')).toBeTruthy();
 });
 
 // Test case: The organiser's change removes every attachment; the coordinator sees the current file and "None" requested,

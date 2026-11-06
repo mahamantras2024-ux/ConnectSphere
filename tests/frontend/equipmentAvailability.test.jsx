@@ -37,7 +37,9 @@ it('Calendar AC4 - opens an equipment calendar directly from inventory without a
   fireEvent.click(calendarButton);
   expect(screen.getByRole('table', { name: 'MIC-001 monthly availability' })).toBeTruthy();
   expect(screen.queryByRole('combobox', { name: 'Calendar equipment' })).toBeNull();
-  expect(screen.getByRole('heading', { name: 'MIC-001 — Wireless Microphone' })).toBeTruthy();
+  // The heading must identify the selected item as equipment; the redundant legend is intentionally absent.
+  expect(screen.getByRole('heading', { name: 'Equipment MIC-001 — Wireless Microphone' })).toBeTruthy();
+  expect(screen.queryByRole('list', { name: 'Legend' })).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Availability calendar' }));
   // Reopening the same equipment must still move keyboard users to the calendar.
   const calendarHeading = screen.getByRole('heading', { name: 'Availability calendar' });

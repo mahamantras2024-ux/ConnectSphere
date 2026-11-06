@@ -19,7 +19,7 @@ export default function EmergencyDocuments({value={},onChange,onBusy}) {
     finally {input.value='';setReading(false);onBusy(false);}
   }
   return <section className="emergency-documents" aria-label="Emergency documents">
-    <h3>Emergency documents</h3><p className="field-help">Upload the venue’s emergency procedure and evacuation floor plan. Each file is optional and can be up to 2 MB. Save the venue to publish changes.</p>
+    <h3>Emergency documents</h3><p className="field-help">{onChange ? 'Upload the venue’s emergency procedure and evacuation floor plan. Each file is optional and can be up to 2 MB. Save the venue to publish changes.' : 'Download the venue’s emergency procedure and evacuation floor plan when available.'}</p>
     <div className="form-grid">{documents.map(([key,label,accept])=><div className="emergency-document" key={key}>
       <h4>{label}</h4>
       {onChange && <label className="upload-field">{value[key]?'Replace':'Upload'} {label.toLowerCase()}<input type="file" aria-label={`${value[key]?'Replace':'Upload'} ${label.toLowerCase()}`} accept={accept} disabled={reading} onChange={event=>select(key,event.target.files?.[0],event.target)}/><span>{key==='procedure'?'PDF':'PDF, PNG or JPEG'} · up to 2 MB</span></label>}

@@ -1,10 +1,20 @@
-// File: Presents assigned-venue event stages and the preparation information Venue Staff may act upon.
+// File: Presents one booking decision per venue card, with current preparation details and cancellation instructions.
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
 const statusLabels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
-const eventStatusLabels = { planning: 'Planning', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled' };
+
+/** Keeps the newest authorized booking for each event; the API orders by update time, then booking ID descending. */
+function latestBookingPerEvent(bookings) {
+  const seenEventIds = new Set();
+  return bookings.filter(booking => {
+    // Preserve the server's first row, including when an older booking was updated more recently than a higher ID.
+    if (seenEventIds.has(booking.eventId)) return false;
+    seenEventIds.add(booking.eventId);
+    return true;
+  });
+}
 
 /** Shows only server-authorized event details and reloads after a staff booking decision. */
 export default function VenueEventStatusPanel() {
@@ -24,7 +34,7 @@ export default function VenueEventStatusPanel() {
     let active = true;
     // The server applies venue assignment scope; the UI never receives unrelated events to filter locally.
     api.get('/venues/relevant-events', token)
-      .then(data => { if (active) setEvents(data.events || []); })
+      .then(data => { if (active) setEvents(latestBookingPerEvent(data.events || [])); })
       .catch(requestError => { if (active) setError(requestError.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -36,9 +46,8 @@ export default function VenueEventStatusPanel() {
       : error ? <p role="alert" className="error-message">{error}</p>
         : events.length === 0 ? <p>No events are currently linked to your assigned venues.</p>
           : <div className="record-grid">{events.map(event => <article className="record-card" key={event.bookingId}>
-            <span className="status-badge">{statusLabels[event.status] || 'Pending'}</span>
+            <span className="status-badge venue-booking-badge" data-booking-status={statusLabels[event.status] ? event.status : 'pending'}>{statusLabels[event.status] || 'Pending'}</span>
             <h3>{event.name}</h3><p>{event.venueName}</p>
-            <p>Event status: <strong>{eventStatusLabels[event.eventStatus] || 'Planning'}</strong></p>
             {event.eventStatus === 'cancelled'
               ? <p className="detail-note">This event will no longer proceed. Handle the associated venue reservation according to the cancellation rules.</p>
               : <dl className="detail-facts"><div><dt>Expected attendance</dt><dd>{event.expectedAttendance ?? 'Not specified'}</dd></div>

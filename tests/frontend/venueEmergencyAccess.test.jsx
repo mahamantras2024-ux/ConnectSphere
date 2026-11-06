@@ -34,7 +34,10 @@ it('SCRUM-98 AC1 AC2 - creates a venue with all emergency access details and dis
   const view = render(<AddVenueModal onAdd={onAdd} onClose={vi.fn()} />);
   fillVenue();
   const field = screen.getByRole('textbox', { name: 'Emergency access' });
-  expect(field).toHaveAccessibleDescription(/emergency exits and their locations.*emergency vehicle access points.*evacuation routes.*restrictions or obstructions/i);
+  // The requested cleanup removes the lengthy guidance without removing the editable safety field.
+  expect(screen.queryByText(/Prefer the uploaded documents/)).not.toBeInTheDocument();
+  expect(field).not.toHaveAttribute('aria-describedby');
+  expect(field).toHaveAttribute('maxLength', '2000');
   fireEvent.change(field, { target: { value: `  ${details}  ` } });
   fireEvent.click(screen.getByRole('button', { name: 'Save & Publish Venue' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/venues', expect.objectContaining({ emergencyAccess: details }), 'venue-staff'));
