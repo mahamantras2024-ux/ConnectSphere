@@ -219,6 +219,8 @@ h2, h3 { font-weight: 700; }
 .auth-page { grid-template-columns: 1.35fr 1fr; max-width: 1240px; min-height: 690px; margin: 0 auto; border: 0; border-radius: 16px; box-shadow: 0 12px 45px #424F190B; }
 .auth-story { display: flex; flex-direction: column; justify-content: flex-end; padding: 48px; background: var(--orange); isolation: isolate; }
 .auth-story::before { content: ''; position: absolute; inset: 0; z-index: -2; background: url('/login-event.jpg') center 34% / cover; }
+/* The staff recovery footer identifies the staff login so other access pages retain their imagery. */
+.auth-page:has(.staff-login-footer) .auth-story::before { background-image: url('/staff-login-event.jpg'); }
 .auth-story::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, transparent 20%, #30391C10 40%, #30391CF5 100%); }
 .auth-story .eyebrow { align-self: flex-start; color: var(--ink); background: var(--lemon); padding: 7px 10px; border-radius: 4px; margin-bottom: 14px; }
 .auth-story h2 { font-family: inherit; font-size: clamp(39px, 4.4vw, 60px); font-weight: 800; line-height: 1.03; letter-spacing: -2px; color: #FFFFF3; margin: 0 0 20px; }
