@@ -27,7 +27,13 @@ npm run dev --prefix backend
 npm run dev --prefix frontend
 ```
 
-Open [the frontend](http://localhost:5173). Check [API health](http://localhost:4000/health), then sign in with a demo account to confirm the application can reach the database. If you change the backend address, set `VITE_API_URL` in `frontend/.env` to its API base URL, including `/api`.
+Check [API health](http://localhost:4000/health). If you change the backend address, set `VITE_API_URL` in `frontend/.env` to its API base URL, including `/api`.
+
+### Demo access
+
+After starting both servers, open [http://localhost:5173](http://localhost:5173) on the machine running the app. This address is local to that machine.
+
+Use the demo credentials shared privately by the project team. To try the event request workflow, sign in as an event organiser and submit an event request, then sign in as an event coordinator assigned to that request to review it.
 
 ### Database maintenance
 
