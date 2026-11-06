@@ -1,3 +1,5 @@
+// FIRST F4: resolve private database settings before any import captures the connection configuration.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 // Safety stock AC1–AC3: actual authenticated safety/review/reservation APIs and PostgreSQL stock calculations.
 const {test,mock}=require('node:test');
 const assert=require('node:assert/strict');
@@ -110,6 +112,8 @@ test('Safety stock AC1–AC3 - technical rework releases stock atomically and pe
       assert.equal(reservedAgain.status,201);assert.equal(reservedAgain.body.reservation.request_version,3);
       assert.equal(await freeStock(),activeCount-1);
       assert.equal((await as(2,'POST',`/events/${ids[0]}/safety-changes/resolve`,{area:'technical'})).status,200);
+      // FIRST F5 / SCRUM-111: technical repair does not bypass the coordinator's explicit rejected-review resubmission.
+      if(outcome==='rejected')assert.equal((await as(2,'POST',`/events/${ids[0]}/safety-resubmissions`)).status,201);
       assert.ok((await as(3,'GET','/safety/checks')).body.events.some(event=>event.id===ids[0]));
       assert.equal((await as(3,'POST',`/events/${ids[0]}/safety-checks`,{outcome:'approved'})).status,201);
       assert.equal((await client.query('SELECT status FROM event_equipment_reservations WHERE id=$1',[reservedAgain.body.reservation.id])).rows[0].status,'reserved');

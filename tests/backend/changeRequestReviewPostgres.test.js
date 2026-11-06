@@ -1,7 +1,7 @@
 // File: Tests the Event Coordinator Review & Process Change Requests story end to end against real PostgreSQL in a disposable schema.
 // Test scope: Real routes, SQL, constraints and transactions; only Gmail delivery is replaced. Shared application records remain untouched.
 // AC1 view requested changes; AC2 coordinator notified on submission; AC3 apply/reject and notify relevant personnel immediately.
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

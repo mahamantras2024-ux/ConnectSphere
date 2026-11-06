@@ -1,7 +1,7 @@
 // File: Parent notification system against real PostgreSQL in a disposable schema built from the real migrations.
 // Test scope: Real routes, SQL, transactions and constraints; only the pool is pointed at the disposable schema and email is
 // captured. Opt-in (RUN_DB_TESTS=1).
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -48,6 +48,14 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
         return { status: response.status, body: await response.json() };
       }
       const notesOf = async (person, type) => (await client.query('SELECT title FROM notifications WHERE user_id = $1 AND type = $2 ORDER BY id', [id[person], type])).rows.map((row) => row.title);
+      /** FIRST F8 / SCRUM-107: staff approval is tentative until the assigned coordinator confirms it. */
+      async function approveAndConfirm(bookingId) {
+        const expiry=new Date(Date.now()+86400000).toISOString();
+        const approved=await as('vera','PUT',`/venues/1/requests/${bookingId}/decision`,{decision:'approved',holdExpiresAt:expiry});
+        assert.equal(approved.status,200);assert.equal(approved.body.request.status,'tentative');
+        const confirmed=await as('chris','PUT',`/venues/1/requests/${bookingId}/confirm`,{});
+        assert.equal(confirmed.status,200);assert.equal(confirmed.body.request.status,'approved');
+      }
 
       // ---------- Act / Assert: a submitted request reaches the Coordinator Lead (in-app list and email) ----------
       const created = await as('olivia', 'POST', '/events', { name: 'Gala', proposedDate: '2030-10-15', proposedStartTime: '10:00', proposedEndTime: '12:00',
@@ -84,7 +92,7 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       // An overlapping retry cannot persist a second hold or send another notice.
       assert.equal((await as('chris','POST','/venues/1/requests',{eventId,startDatetime:'2030-10-15T10:00:00+08:00',endDatetime:'2030-10-15T12:00:00+08:00'})).status,409);
       assert.equal((await notesOf('vera','venue_booking_requested')).length,1);
-      assert.equal((await as('vera', 'PUT', `/venues/1/requests/${booking.body.request.id}/decision`, { decision: 'approved' })).status, 200);
+      await approveAndConfirm(booking.body.request.id);
       assert.deepEqual(await notesOf('sam', 'safety_check_ready'), []);
 
       // AC6: role notifications do not grant unrelated staff access to the equipment request.
@@ -98,18 +106,20 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       // Other people never see these role notifications.
       assert.deepEqual((await as('chris', 'GET', '/notifications')).body.notifications.filter((note) => ['safety_check_ready', 'event_awaiting_assignment'].includes(note.type)), []);
 
-      // A late approval of a booking whose hold had expired leaves the already-ready Gala ready: no repeat notification.
+      // FIRST F8: an expired tentative hold cannot be revived; Gala stays ready on its existing confirmed venue.
       const late = await as('chris', 'POST', '/venues/1/requests', { eventId, startDatetime: '2030-10-15T14:00:00+08:00', endDatetime: '2030-10-15T16:00:00+08:00' });
       assert.equal(late.status, 201);
-      await client.query("UPDATE venue_bookings SET hold_expires_at = now() - interval '1 minute' WHERE id = $1", [late.body.request.id]);
-      assert.equal((await as('vera', 'PUT', `/venues/1/requests/${late.body.request.id}/decision`, { decision: 'approved' })).status, 200);
+      assert.equal((await as('vera','PUT',`/venues/1/requests/${late.body.request.id}/decision`,{decision:'approved',holdExpiresAt:new Date(Date.now()+86400000).toISOString()})).status,200);
+      // Simulate a persisted expiry without depending on a real wall-clock sleep.
+      await client.query("UPDATE venue_bookings SET status='expired',hold_expires_at=now()-interval '1 minute' WHERE id=$1",[late.body.request.id]);
+      assert.equal((await as('vera','PUT',`/venues/1/requests/${late.body.request.id}/decision`,{decision:'approved',holdExpiresAt:new Date(Date.now()+86400000).toISOString()})).status,409);
       assert.deepEqual(await notesOf('sam', 'safety_check_ready'), ['Ready for safety check: Gala']);
 
       // A booking still being held takes Gala out of the safety queue (VENUE_PENDING); approving it brings Gala back,
       // so the Safety Officers are told it is ready again.
       const held = await as('chris', 'POST', '/venues/1/requests', { eventId, startDatetime: '2030-10-15T17:00:00+08:00', endDatetime: '2030-10-15T18:00:00+08:00' });
       assert.equal(held.status, 201);
-      assert.equal((await as('vera', 'PUT', `/venues/1/requests/${held.body.request.id}/decision`, { decision: 'approved' })).status, 200);
+      await approveAndConfirm(held.body.request.id);
       assert.deepEqual(await notesOf('sam', 'safety_check_ready'), ['Ready for safety check: Gala', 'Ready for safety check: Gala']);
 
       // An event with nothing technical becomes ready the moment its venue is approved.
@@ -118,7 +128,7 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       assert.equal((await as('lee', 'PUT', `/events/${talk.body.event.id}/assignment`, { coordinatorId: id.chris, expectedCoordinatorId: null })).status, 200);
       const talkBooking = await as('chris', 'POST', '/venues/1/requests', { eventId: talk.body.event.id, startDatetime: '2030-10-16T10:00:00+08:00', endDatetime: '2030-10-16T12:00:00+08:00' });
       assert.equal(talkBooking.status, 201);
-      assert.equal((await as('vera', 'PUT', `/venues/1/requests/${talkBooking.body.request.id}/decision`, { decision: 'approved' })).status, 200);
+      await approveAndConfirm(talkBooking.body.request.id);
       assert.deepEqual(await notesOf('sid', 'safety_check_ready'), ['Ready for safety check: Gala', 'Ready for safety check: Gala', 'Ready for safety check: Talk']);
       assert.ok(emails.some(([to, subject]) => to === 'sid@example.test' && subject === 'Ready for safety check: Talk'));
 
@@ -128,7 +138,7 @@ test('NT AC1 - Coordinator Lead and Safety Officer notifications follow the real
       assert.equal((await as('lee', 'PUT', `/events/${expo.body.event.id}/assignment`, { coordinatorId: id.chris, expectedCoordinatorId: null })).status, 200);
       const expoMorning = await as('chris', 'POST', '/venues/1/requests', { eventId: expo.body.event.id, startDatetime: '2030-10-17T10:00:00+08:00', endDatetime: '2030-10-17T12:00:00+08:00' });
       const expoEvening = await as('chris', 'POST', '/venues/1/requests', { eventId: expo.body.event.id, startDatetime: '2030-10-17T18:00:00+08:00', endDatetime: '2030-10-17T19:00:00+08:00' });
-      assert.equal((await as('vera', 'PUT', `/venues/1/requests/${expoMorning.body.request.id}/decision`, { decision: 'approved' })).status, 200);
+      await approveAndConfirm(expoMorning.body.request.id);
       assert.equal((await notesOf('sam', 'safety_check_ready')).includes('Ready for safety check: Expo'), false);
       assert.equal((await as('vera', 'PUT', `/venues/1/requests/${expoEvening.body.request.id}/decision`, { decision: 'rejected', reason: 'Hall closed' })).status, 200);
       assert.deepEqual((await notesOf('sam', 'safety_check_ready')).filter((title) => title.endsWith('Expo')), ['Ready for safety check: Expo']);

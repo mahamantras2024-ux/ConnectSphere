@@ -1,5 +1,5 @@
 // SCRUM-85: real HTTP routes, migrations, constraints and transactions in a disposable PostgreSQL schema.
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

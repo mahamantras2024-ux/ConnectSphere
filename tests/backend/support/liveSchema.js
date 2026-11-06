@@ -19,7 +19,10 @@ const runnerMigrations = [...runnerSource.slice(runnerSource.indexOf('async func
 const liveSchemaFiles = ['migrations/001-external-events.sql', 'sprintOneSchema.sql', 'venueManagementSchema.sql', 'venueScheduleSchema.sql',
   'venueAvailabilitySchema.sql', ...runnerMigrations, 'migrations/20261018064942_venue_booking_requests.sql',
   // Registration settings ship through a separate runner, but current event reads require these columns.
-  'migrations/021-registration-settings.sql'];
+  'migrations/021-registration-settings.sql',
+  // FIRST F7: these feature upgrades have separate production runners and must follow the older base guards.
+  'migrations/019-venue-tentative-holds.sql', 'migrations/020-session-venue-requests.sql',
+  'migrations/019-tech-support-reminder-preferences.sql'];
 
 /**
  * Applies the full current schema on a client whose search_path is already the disposable schema.

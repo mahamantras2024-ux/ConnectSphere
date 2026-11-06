@@ -260,15 +260,20 @@ test('SCRUM-107 AC4 - scheduler checks missed deadlines at startup and does not 
   release();await new Promise(resolve=>setImmediate(resolve));clearInterval(timer);
 });
 
-test('SCRUM-107 AC4 - scheduler retries after a database outage without exposing private error details',async()=>{
+test('FIRST F2 / SCRUM-107 AC4 - scheduler retries after a database outage without exposing private error details',async()=>{
   // Arrange: an unavailable database must not permanently stop the next expiry check.
   mock.timers.reset();mock.timers.enable({apis:['setInterval','Date'],now});
   let connections=0;const logged=mock.method(console,'error',()=>{});
+  // Seed unrelated runtime output explicitly so this regression is deterministic across Node warning versions/orders.
+  console.error('MockTimers API is an experimental feature');
   const db={connect:async()=>{connections++;throw new Error('private connection details');}};
   // Act / Assert: every completed failed attempt can be retried; logs contain only the generic operational message.
   const timer=startHoldExpiryScheduler(db);await new Promise(resolve=>setImmediate(resolve));
   mock.timers.tick(1000);await new Promise(resolve=>setImmediate(resolve));clearInterval(timer);
-  assert.equal(connections,2);assert.equal(logged.mock.callCount(),2);
+  assert.equal(connections,2);
+  // FIRST F2: Node may emit its own one-time timer warning; count only messages owned by this scheduler.
+  const retries=logged.mock.calls.filter(call=>call.arguments[0]==='Venue hold expiry check failed; it will be retried.');
+  assert.equal(retries.length,2);
   assert.doesNotMatch(logged.mock.calls.map(call=>call.arguments.join(' ')).join(' '),/private connection/);
 });
 

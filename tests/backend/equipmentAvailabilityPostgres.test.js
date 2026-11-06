@@ -1,5 +1,5 @@
 // Tests equipment preview and calendar SQL against real rows in an isolated PostgreSQL schema.
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

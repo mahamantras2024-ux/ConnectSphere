@@ -135,7 +135,8 @@ it('AC6 - omits empty equipment and technical details while retaining specified 
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  // FIRST F1: clear call history AND unused Once responses so shuffled tests cannot inherit a queued failure.
+  vi.resetAllMocks();
   localStorage.clear();
 });
 
@@ -599,7 +600,8 @@ it.each(['fully_fulfillable', 'partially_fulfillable'])('AC2 - rejects an invali
 it.each(['check', 'reserve'])('AC1 AC2 - shows a meaningful fallback for a failed %s request', async stage => {
   api.get.mockResolvedValue({ availability: { items: availableItems } });
   if (stage === 'check') api.get.mockRejectedValueOnce({});
-  api.post.mockRejectedValueOnce({});
+  // A failed availability read never reaches reservation; do not leave an unconsumed reservation response queued.
+  if (stage === 'reserve') api.post.mockRejectedValueOnce({});
   render(<EquipmentReservationSection requests={[request]} reservations={[]} token="staff-token" onReserved={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Check availability' }));
   if (stage === 'reserve') {

@@ -1,7 +1,7 @@
 // File: Tests the Event Coordinator Approves/Rejects Event story end to end against real PostgreSQL in a disposable schema.
 // Test scope: Real routes, SQL, constraints and transactions; only Gmail delivery is replaced. Shared application records remain untouched.
-// AC1-AC7 plus the Week 7 Operational Safety Check prerequisite, using the agreed rule (SCRUM-92 separates initial approval from confirmation; clarifications block initial decisions).
-require('../../backend/node_modules/dotenv').config();
+// SCRUM-108 permits rejection with unanswered clarification; SCRUM-92 gates final confirmation on arrangements/safety.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -17,7 +17,7 @@ const sqlFile = (file) => fs.readFileSync(path.join(__dirname, '../../backend/sr
 
 // Test case: Walks one event through safety review and decision and a second through rejection, checking every gate,
 // the stored outcome, notifications and the database's own constraints on real PostgreSQL.
-test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the event and the organiser is notified in PostgreSQL',
+test('SCRUM-108 AC1 / SCRUM-92 AC6 / AR AC1-AC6 - clarification gates approval, rejection remains available and safety gates confirmation in PostgreSQL',
   { skip: process.env.RUN_DB_TESTS !== '1' }, async () => {
     const schema = `cs_event_decision_${crypto.randomBytes(8).toString('hex')}`;
     const client = await pool.connect();
@@ -63,7 +63,8 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
         const response = await fetch(base + url, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
         return { status: response.status, body: await response.json() };
       }
-      const notes = async (person) => (await client.query('SELECT type, title, message FROM notifications WHERE user_id=$1 ORDER BY id', [id[person]])).rows;
+      // Keep independent decision scenarios separate while checking actual recipient/event ownership.
+      const notes = async (person,eventId=1) => (await client.query('SELECT type, title, message FROM notifications WHERE user_id=$1 AND event_id=$2 ORDER BY id', [id[person],eventId])).rows;
 
       // ---------- Week 7 change 6: the safety check follows confirmed venue and technical arrangements ----------
       assert.deepEqual((await as('sam', 'GET', '/safety/checks')).body.events, []);
@@ -111,12 +112,17 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.equal((await as('chris', 'POST', '/events/1/status', { status: 'confirmed' })).body.code, 'INVALID_TRANSITION');
       assert.equal(review.readiness.find((item) => item.name === 'safetyPassed').met, false);
 
-      // ---------- AC7: an outstanding clarification blocks both decisions until the organiser answers ----------
+      // FIRST Q1 / SCRUM-108: clarification gates approval, but insufficient information may justify rejection.
       const asked = await as('chris', 'POST', '/events/1/clarifications', { informationNeeded: ['expected_attendance'], message: 'Confirm the head count.' });
       assert.equal(asked.status, 201);
-      for (const decision of ['approved', 'rejected']) {
-        assert.equal((await as('chris', 'POST', '/events/1/decision', { decision })).body.code, 'CLARIFICATION_OUTSTANDING');
-      }
+      assert.equal((await as('chris','POST','/events/1/decision',{decision:'approved'})).body.code,'CLARIFICATION_OUTSTANDING');
+      const incomplete=await as('olivia','POST','/events',{isDraft:false,name:'Incomplete request',proposedDate:'2030-10-18',proposedStartTime:'10:00',proposedEndTime:'11:00',expectedAttendance:20});
+      assert.equal(incomplete.status,201);const incompleteId=incomplete.body.event.id;
+      await client.query('UPDATE events SET coordinator_id=$1 WHERE id=$2',[id.chris,incompleteId]);
+      assert.equal((await as('chris','POST',`/events/${incompleteId}/clarifications`,{informationNeeded:['purpose'],message:'Explain the purpose.'})).status,201);
+      assert.equal((await as('chris','POST',`/events/${incompleteId}/decision`,{decision:'rejected',reason:'Insufficient information'})).status,200);
+      assert.equal((await client.query('SELECT status FROM events WHERE id=$1',[incompleteId])).rows[0].status,'rejected');
+      assert.ok((await notes('olivia',incompleteId)).some(note=>note.type==='event_rejected'));
       assert.equal((await as('olivia', 'POST', `/events/1/clarifications/${asked.body.clarificationRequest.id}/respond`, { response: '80 people.' })).status, 200);
 
       // ---------- AC1/AC4/AC5/AC6: after a passed check the coordinator approves; the outcome is stored and announced ----------
@@ -153,7 +159,7 @@ test('AR AC1-AC7 - safety checks gate approval, decisions are retained on the ev
       assert.deepEqual((await client.query('SELECT status, decision_reason FROM events WHERE id = 2')).rows[0],
         { status: 'rejected', decision_reason: 'No suitable venue is available.' });
       // Lifecycle notices may also be present; identify the rejection by its business type rather than list position.
-      const rejectedNote = (await notes('olivia')).find(note => note.type === 'event_rejected');
+      const rejectedNote = (await notes('olivia',2)).find(note => note.type === 'event_rejected');
       assert.deepEqual([rejectedNote.type, rejectedNote.message],
         ['event_rejected', 'Your event request Talk was not approved by the Event Coordinator.\nReason: No suitable venue is available.']);
 

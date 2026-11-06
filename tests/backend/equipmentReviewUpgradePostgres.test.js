@@ -2,7 +2,7 @@
 // survive the upgrade, and the coordinator must not be told an older partial review's items are available.
 // Test scope: Real PostgreSQL in a disposable schema built from the migrations as they ran before 013; real routes for
 // the coordinator's status view. Opt-in (RUN_DB_TESTS=1).
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

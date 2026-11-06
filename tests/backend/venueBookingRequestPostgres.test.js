@@ -1,5 +1,5 @@
 // SCRUM-61 AC6: executes the actual migration and trigger against a session-local table, never application records.
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

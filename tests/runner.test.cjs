@@ -16,6 +16,18 @@ function commands(options) {
   return calls;
 }
 
+test('FIRST F4 F7 - full integration selection includes every separately gated feature and enables all seven database flags',()=>{
+  // Arrange/Act: capture actual launch arguments; don't replace the selection logic being verified.
+  const [live]=commands(['integration']);
+  // Assert: these previously omitted families and the migration regression must never silently escape CI.
+  for(const file of ['attendeeRegistrationPostgres.test.js','registrationSettingsPostgres.test.js','planningCalendarPostgres.test.js',
+    'leadRegistrationPostgres.test.js','notificationMigrationOrderPostgres.test.js','venueSearch.test.js']) {
+    assert.ok(live.args.some(argument=>argument.endsWith(file)),file);
+  }
+  for(const flag of ['RUN_DB_TESTS','RUN_LEAD_DB','RUN_VENUE_BOOKING_DB','RUN_VENUE_AVAILABILITY_DB',
+    'RUN_LEAD_REGISTRATION_DB','RUN_PLANNING_CALENDAR_DB','RUN_REGISTRATION_SETTINGS_DB'])assert.equal(live.settings.env[flag],'1',flag);
+});
+
 test('Connected workflow matrix AC1-AC5 - integration selects exactly the five agreed suites and enables every database gate', () => {
   // Arrange/Act: capture the real runner command without network, database writes or child test execution.
   const calls = commands(['integration', 'workflows']);
@@ -106,6 +118,20 @@ test('PostgreSQL acceptance harness - loads configured database settings before 
  const environmentLoad=acceptance.indexOf("dotenv').config({ path:");
  const poolImport=acceptance.indexOf("require('../../backend/src/config/db')");
  assert.ok(environmentLoad>=0&&poolImport>environmentLoad);
+});
+
+test('FIRST F4 - standalone live suites resolve backend configuration before importing their database pool',()=>{
+ // Arrange: these six suites previously depended entirely on CI-injected variables.
+ const files=['amendmentNotificationBoundariesPostgres','organiserOutcomesPostgres','safetyEquipmentReleasePostgres',
+  'safetyNotificationRecoveryPostgres','technicalEventStatusPostgres','technicalQueueAccessPostgres'];
+ for(const name of files){
+  const source=fs.readFileSync(path.join(__dirname,'backend',`${name}.test.js`),'utf8');
+  // Act/Assert: configuration must be path-based and executed before the pool snapshots process.env.
+  const configuration=source.indexOf("dotenv').config({ path:");
+  const poolImport=source.indexOf("require('../../backend/src/config/db')");
+  assert.ok(configuration>=0&&configuration<poolImport,name);
+  assert.ok(source.slice(configuration,poolImport).includes("'../../backend/.env'"),name);
+ }
 });
 
 // Both branches add live suites; dropping either side would silently skip its database regressions.

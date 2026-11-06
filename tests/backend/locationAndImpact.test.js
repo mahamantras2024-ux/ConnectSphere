@@ -7,6 +7,7 @@ const jwt=require('../../backend/node_modules/jsonwebtoken');
 process.env.JWT_SECRET='location-impact-test-secret';
 const {pool}=require('../../backend/src/config/db');
 const {geocode,nearestMrt}=require('../../backend/src/services/venueLocation');
+const {providerPacing}=require('../../backend/src/services/venueLocation');
 const impact=require('../../backend/src/services/venueImpact');
 const app=require('../../backend/src/index');
 afterEach(()=>mock.restoreAll());after(()=>pool.end());
@@ -34,7 +35,9 @@ test('provider cache remains bounded and old entries are evicted',async()=>{
  const count=fetcher.mock.callCount();await geocode('api',{q:'bounded-cache-0'});assert.equal(fetcher.mock.callCount(),count+1);
 });
 // Test case: Calls location endpoints and checks input validation, reverse fallback, provider failures and request throttling.
-test('map endpoints validate queries, tolerate reverse outages and rate-limit excessive requests',async()=>{
+test('FIRST F3 / Map endpoint AC1 - map endpoints validate queries, tolerate reverse outages and rate-limit excessive requests',async()=>{
+ // FIRST F3: the pacing contract is checked separately below; retain the real clock for the HTTP rate limiter.
+ providerPacing.intervalMs=0;
  const realFetch=global.fetch;const user={id:8,email:'staff@example.test',role:'venue_staff',auth_version:0};
  mock.method(pool,'query',async()=>({rows:[user]}));mock.method(global,'fetch',async url=>{if(String(url).includes('/reverse?') && String(url).includes('lat=1.296'))throw new Error('Provider offline');return providerResponse();});
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}/api/venues/locations`;
@@ -49,7 +52,7 @@ test('map endpoints validate queries, tolerate reverse outages and rate-limit ex
   const addressed=await request('/resolve?lat=1.3&lng=103.85');assert.equal(addressed.status,200);assert.match(addressed.body.location,/Stamford Road/);
   global.fetch.mock.restore();mock.method(global,'fetch',async()=>{throw new Error('Provider offline');});assert.equal((await request('/search?q=OfflineAddress')).status,503);
   for(let i=0;i<30;i++)await request('/search?q=x');assert.equal((await request('/search?q=x')).status,429);
- }finally{await new Promise(resolve=>server.close(resolve));}
+ }finally{providerPacing.intervalMs=1100;await new Promise(resolve=>server.close(resolve));}
 });
 // Test case: Uses proxy bookings to check impact reasons for changed venue fields, unaffected bookings and exact-change confirmation tokens.
 test('[SCRUM-35 AC2] - impact warnings distinguish unaffected bookings and each relevant venue change',()=>{
@@ -67,3 +70,20 @@ test('[SCRUM-35 AC2] - impact warnings distinguish unaffected bookings and each 
  assert.equal(impact.affectedBookings({...before,facilities:undefined},{...next,facilities:undefined},[booking]).length,0);
  const hash=impact.fingerprint(before,next,[booking],8),token=impact.issueConfirmation(hash);assert.equal(impact.validConfirmation(token,hash),true);assert.equal(impact.validConfirmation(token,'different'),false);assert.equal(impact.validConfirmation(jwt.sign({purpose:'other',hash},process.env.JWT_SECRET),hash),false);assert.equal(impact.validConfirmation('invalid',hash),false);
 });
+
+// FIRST F3: pacing is a provider contract, measured independently from endpoint validation and rate limiting.
+for (const [elapsed, expectedDelay] of [[1099, 1], [1100, 0], [1101, 0]]) {
+ test(`FIRST F3 / Map provider AC1 - requests ${elapsed}ms apart wait ${expectedDelay}ms before the provider`,async()=>{
+  // Arrange: establish a provider request on a controlled clock; timers only represent the external waiting boundary.
+  assert.equal(providerPacing.intervalMs,1100);
+  let clock=Date.parse('2090-01-01T00:00:00Z');const delays=[];
+  mock.method(Date,'now',()=>clock);
+  mock.method(global,'setTimeout',(callback,delay)=>{delays.push(delay);queueMicrotask(callback);return {};});
+  const fetcher=mock.method(global,'fetch',async()=>({ok:true,json:async()=>({features:[]})}));
+  await geocode('api',{q:`first-pacing-${elapsed}`});delays.length=0;
+  // Act: unique uncached query so a cache hit cannot make this pacing test pass vacuously.
+  clock+=elapsed;await geocode('api',{q:`second-pacing-${elapsed}`});
+  // Assert: equality must not wait; below the threshold waits only the missing millisecond.
+  assert.deepEqual(delays,expectedDelay?[expectedDelay]:[]);assert.equal(fetcher.mock.callCount(),2);
+ });
+}

@@ -1,7 +1,7 @@
 // File: "Request All Post-Submission Amendments Through the Coordinator" end to end against real PostgreSQL in a disposable
 // schema built from the production migrations (read from the runner, so the schema never falls behind).
 // Test scope: Real routes, SQL, constraints and transactions; only Gmail delivery is replaced. Opt-in (RUN_DB_TESTS=1).
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
