@@ -36,8 +36,6 @@ test('provider cache remains bounded and old entries are evicted',async()=>{
 });
 // Test case: Calls location endpoints and checks input validation, reverse fallback, provider failures and request throttling.
 test('FIRST F3 / Map endpoint AC1 - map endpoints validate queries, tolerate reverse outages and rate-limit excessive requests',async()=>{
- // FIRST F3: the pacing contract is checked separately below; retain the real clock for the HTTP rate limiter.
- providerPacing.intervalMs=0;
  const realFetch=global.fetch;const user={id:8,email:'staff@example.test',role:'venue_staff',auth_version:0};
  mock.method(pool,'query',async()=>({rows:[user]}));mock.method(global,'fetch',async url=>{if(String(url).includes('/reverse?') && String(url).includes('lat=1.296'))throw new Error('Provider offline');return providerResponse();});
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}/api/venues/locations`;
@@ -45,6 +43,9 @@ test('FIRST F3 / Map endpoint AC1 - map endpoints validate queries, tolerate rev
  // Uses the real local HTTP transport while only the external provider is replaced.
  async function request(path){const res=await realFetch(base+path,{headers});return {status:res.status,body:await res.json()};}
  try {
+  // Change shared pacing only after HTTP setup succeeds, so a denied bind cannot contaminate later boundary tests.
+  // Provider pacing is checked separately below; retain the real clock for the HTTP rate limiter here.
+  providerPacing.intervalMs=0;
   assert.equal((await request('/search?q=Ha')).status,400);assert.equal((await request('/search')).status,400);
   const found=await request('/search?q=EndpointHall');assert.equal(found.status,200);assert.equal(found.body.length,2);
   assert.equal((await request('/resolve?lat=0&lng=0')).status,400);assert.equal((await request('/resolve')).status,400);
