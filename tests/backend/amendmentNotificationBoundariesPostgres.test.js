@@ -1,3 +1,5 @@
+// FIRST F4: resolve private database settings before any import captures the connection configuration.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 // Organiser outcome AC1-AC6: real HTTP, SQL, notification ownership and current event facts in a disposable schema.
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');

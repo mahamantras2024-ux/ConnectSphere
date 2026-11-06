@@ -33,6 +33,17 @@ const laterSupportedNotificationTypes = [
 // Every type the application sends, including the parent notification system's Coordinator Lead and Safety Officer types.
 const allNotificationTypes = [...laterSupportedNotificationTypes, 'event_awaiting_assignment', 'safety_check_ready'];
 
+test('FIRST R1 / Notification compatibility AC1 - standalone reminder migration allows every newer type before its first use', () => {
+  // Arrange: empty notification history cannot rescue a type missing from this migration's built-in list.
+  const sql = fs.readFileSync(path.join(__dirname, '../../backend/src/db/migrations/019-tech-support-reminder-preferences.sql'), 'utf8');
+  const list = sql.match(/UNION SELECT unnest\(ARRAY\[([\s\S]*?)\]::text\[\]\)/);
+  assert.ok(list);
+  const types = [...list[1].matchAll(/'([^']+)'/g)].map(([, type]) => type);
+  // Act/Assert: these six later stories must still work when the standalone upgrade runs last.
+  for (const type of ['event_coordinator_assigned', 'event_request_status_changed', 'venue_booking_requested',
+    'clarification_replied', 'event_confirmed', 'event_clarification_requested']) assert.ok(types.includes(type), type);
+});
+
 // Migration compatibility - Existing stored and current application notification types must survive reruns.
 test('Withdraw AC2 / Migration compatibility - preserves stored and supported notification types', () => {
   // Arrange

@@ -1,3 +1,5 @@
+// FIRST F4: resolve private database settings before any import captures the connection configuration.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 // AC6 regression: real authentication, routes and SQL must agree on responsibility across every dashboard read.
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');

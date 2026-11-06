@@ -343,7 +343,7 @@ jobs:
       - run: npm ci --prefix frontend
       - run: npx playwright install --with-deps chromium
       # Both commands explicitly enable disposable SQL fixtures; skips are not integration evidence.
-      - run: npm run test:workflows:integration
+      - run: npm run test:integration
       - run: npm run test:workflows:e2e
       - uses: actions/upload-artifact@v4
         if: always()

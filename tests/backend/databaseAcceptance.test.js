@@ -117,7 +117,7 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
     assert.equal(created.status, 201); const eventId = created.body.event.id;
     await client.query('UPDATE events SET coordinator_id=$1 WHERE id=$2', [accounts.event_coordinator.id, eventId]);
     // Test case: Reads organiser-owned and coordinator-assigned events and checks complete details and denial of unrelated records.
-    await t.test('Organiser AC1-3 / Coordinator AC1-3 - organiser and assigned coordinator see all submitted details and only their own lists', async () => {
+    await t.test('Organiser AC1-3 / Coordinator AC1-3 / SCRUM-93 AC1 AC6 - private details stay scoped while colleagues receive non-manageable status summaries', async () => {
       for (const role of ['event_organiser','event_coordinator']) {
         const result = await request(`/events/${eventId}`, null, sessions[role]); assert.equal(result.status, 200);
         for (const [key,value] of Object.entries({ purpose: details.purpose, proposed_date: details.proposedDate, expected_attendance: 50, programme_details: details.programmeDetails, room_layout_preference: 'Theatre', accessibility_requirements: ['Ramp'], equipment_notes: details.equipmentNotes, registration_required: true, registration_capacity: 50, special_arrangements: details.specialArrangements })) assert.deepEqual(result.body.event[key], value);
@@ -126,7 +126,9 @@ test('PDF Sprint 1 acceptance: registration, single-role staff, venue persistenc
       for (const account of [otherOrganiser, otherCoordinator]) {
         const login = await request('/auth/login', { email: account.email, password });
         assert.equal((await request(`/events/${eventId}`, null, login.body.token)).status, 404);
-        assert.equal((await request('/events?organiser_id=' + accounts.event_organiser.id, null, login.body.token)).body.events.length, 0);
+        // FIRST Q2 / SCRUM-93: a peer organiser sees a non-manageable summary, never private details or forged access.
+        const listed=(await request('/events?organiser_id=' + accounts.event_organiser.id, null, login.body.token)).body.events;
+        assert.deepEqual(listed.map(event=>[event.id,event.can_manage]),account.id===otherOrganiser.id?[[eventId,false]]:[]);
       }
       for (const role of ['venue_staff','technical_support','attendee']) assert.equal((await request(`/events/${eventId}`, null, sessions[role])).status, 403);
     });
@@ -316,11 +318,13 @@ test('PostgreSQL event ownership, additive migration and password reset', { skip
       assert.equal(viewed.body.event.clarification_outstanding, false);
       assert.deepEqual(viewed.body.event.clarification_requests, []);
     });
-    // Test case: Gives organisers the same organisation name and checks this does not grant cross-account event access.
-    await t.test('same organisation name does not grant access to another organiser', async () => {
+    // SCRUM-93 permits colleague status summaries while private details and changes remain owner-only.
+    await t.test('SCRUM-93 AC1 AC6 - same organisation grants status summaries but not private details or edits', async () => {
 
       assert.equal((await request(`/api/events/${eventId}`, { token: bobToken })).status, 404);
-      assert.deepEqual((await request('/api/events?organiser_id=1', { token: bobToken })).body.events, []);
+      const summaries=(await request('/api/events?organiser_id=1', { token: bobToken })).body.events;
+      assert.deepEqual(summaries.map(event=>[event.id,event.can_manage]),[[eventId,false]]);
+      assert.equal((await request(`/api/events/${eventId}/non-critical`,{method:'PUT',token:bobToken,body:{purpose:'Forged update'}})).status,404);
       assert.equal((await request(`/api/events/${eventId}`)).status, 401);
       assert.equal((await request('/api/events/999999', { token: aliceToken })).status, 404);
     });

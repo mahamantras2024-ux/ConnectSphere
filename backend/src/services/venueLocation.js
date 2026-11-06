@@ -2,6 +2,8 @@
 const stationData=require('../data/mrt-stations.json');
 const cache=new Map();
 let queue=Promise.resolve(),lastRequest=0;
+// Photon fair-use spacing stays 1100ms in production; endpoint tests can isolate provider waiting from rate limiting.
+const providerPacing={intervalMs:1100};
 // Restricts map picks to Singapore and permits unmapped legacy records only when both coordinates are absent.
 function validateCoordinates(latitude,longitude) {
  if(latitude==null && longitude==null) return;
@@ -21,7 +23,8 @@ function nearestMrt(latitude,longitude) {
  for(const station of stationData.stations) {const distanceM=distanceMetres(latitude,longitude,station); if(!nearest || distanceM<nearest.distanceM)nearest={name:`${station.name} MRT`,distanceM};}
  return nearest;
 }
-// Caches bounded Photon lookups and serializes requests to avoid overloading the public demo service.
+/** Resolves api/reverse query parameters into Singapore address records; caches results and serializes provider calls
+ * at the fair-use interval so concurrent lookups cannot overload the external service. */
 async function geocode(path,params) {
  const base=process.env.GEOCODER_URL || 'https://photon.komoot.io';
  const url=`${base}/${path}?${new URLSearchParams({...params,lang:'en',limit:path==='reverse'?1:5})}`;
@@ -29,7 +32,7 @@ async function geocode(path,params) {
  const task=queue.then(async()=> { // Runs one provider request after the shared throttle interval.
   const cached=cache.get(url);if(cached && cached.expires>Date.now())return cached.data;
   // Bounds the wait even when the system clock moves backwards.
-  const delay=Math.min(1100,Math.max(0,1100-(Date.now()-lastRequest)));if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+  const delay=Math.min(providerPacing.intervalMs,Math.max(0,providerPacing.intervalMs-(Date.now()-lastRequest)));if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
   lastRequest=Date.now();
   const response=await fetch(url,{headers:{'User-Agent':'ConnectSphere/0.1 (venue address lookup)'},signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw new Error('Address lookup is temporarily unavailable.');
@@ -46,4 +49,4 @@ async function geocode(path,params) {
  queue=task.catch(()=>{}); // Keeps later requests working after a provider failure.
  return task;
 }
-module.exports={validateCoordinates,distanceMetres,nearestMrt,geocode};
+module.exports={validateCoordinates,distanceMetres,nearestMrt,geocode,providerPacing};

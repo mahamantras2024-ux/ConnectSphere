@@ -1,6 +1,6 @@
 // File: Tests venue lifecycle, booking history and race guards against real PostgreSQL in a disposable schema.
 // Test scope: Uses real PostgreSQL in a disposable schema; shared application records remain untouched.
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const {test,mock}=require('node:test');
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
@@ -8,19 +8,19 @@ const fs=require('node:fs');
 const path=require('node:path');
 const jwt=require('../../backend/node_modules/jsonwebtoken');
 const {pool}=require('../../backend/src/config/db');
+const {applyLiveSchema}=require('./support/liveSchema');
 // Test case: Inserts an actual temporary upcoming booking directly in PostgreSQL and checks impact confirmation, blocked deactivation, historical joins and concurrent booking locks; no booking screen is exercised.
-test('real venue changes preserve history, exclude inactive venues and serialize with concurrent bookings',{skip:process.env.RUN_DB_TESTS!=='1'},async()=> {
+test('FIRST F6 / SCRUM-35 AC2 / SCRUM-36 AC1 AC2 - real venue changes preserve history, exclude inactive venues and serialize with concurrent bookings',{skip:process.env.RUN_DB_TESTS!=='1'},async()=> {
  const schema=`cs_venue_${crypto.randomBytes(8).toString('hex')}`;
  const client=await pool.connect(),other=await pool.connect();let server;
  try {
   await client.query(`CREATE SCHEMA ${schema}`);await client.query(`SET search_path TO ${schema}`);await other.query(`SET search_path TO ${schema}`);
   await client.query(`CREATE TABLE users(id SERIAL PRIMARY KEY,email TEXT,role TEXT,auth_version INTEGER DEFAULT 0,roles TEXT[] DEFAULT '{}');
-   CREATE TABLE venues(id SERIAL PRIMARY KEY,name TEXT,location TEXT,capacity INTEGER,facilities TEXT[],supported_layouts TEXT[],accessibility_features TEXT[],operating_hours TEXT,availability_status TEXT,pricing TEXT,mrt TEXT,image TEXT);
-   CREATE TABLE events(id SERIAL PRIMARY KEY,name TEXT,expected_attendance INTEGER,room_layout_preference TEXT,accessibility_requirements JSONB)`);
-  const sql=fs.readFileSync(path.join(__dirname,'../../backend/src/db/venueManagementSchema.sql'),'utf8');await client.query(sql);await client.query(sql); // Verifies the additive upgrade is repeatable.
-  await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db/migrations/010-venue-safety-facts.sql'),'utf8')); // Venue safety facts saved by updates.
-  await client.query(fs.readFileSync(path.join(__dirname,'../../backend/src/db/migrations/20261018021358_venue_emergency_information.sql'),'utf8')); // Emergency documents saved with the venue (SCRUM-98).
-  await client.query("INSERT INTO users(email,role,roles) VALUES ('staff@example.test','venue_staff','{venue_staff}');INSERT INTO events(name,expected_attendance,room_layout_preference) VALUES ('Upcoming meeting',80,'Theatre')");
+   CREATE TABLE venues(id SERIAL PRIMARY KEY,name TEXT,location TEXT,capacity INTEGER,facilities TEXT[],supported_layouts TEXT[],accessibility_features TEXT[],operating_hours TEXT,availability_status TEXT,pricing TEXT,mrt TEXT,image TEXT)`);
+  // FIRST F6: real upgrades supply every column current booking-impact queries depend on.
+  await applyLiveSchema(client);
+  const sql=fs.readFileSync(path.join(__dirname,'../../backend/src/db/venueManagementSchema.sql'),'utf8');await client.query(sql); // Retain the original repeatable-upgrade assertion path.
+  await client.query("INSERT INTO users(email,role,roles) VALUES ('staff@example.test','venue_staff','{venue_staff}');INSERT INTO events(organiser_id,name,expected_attendance,room_layout_preference) VALUES (1,'Upcoming meeting',80,'Theatre')");
   mock.method(pool,'query',(sql,values)=>client.query(sql,values)); // Restricts API reads to the disposable test schema.
   mock.method(pool,'connect',async()=>({query:(sql,values)=>client.query(sql,values),release(){}})); // Keeps route transactions on the isolated connection.
   const app=require('../../backend/src/index');server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
@@ -28,8 +28,11 @@ test('real venue changes preserve history, exclude inactive venues and serialize
   // Exercises real route persistence and booking constraints without touching shared application records.
   async function request(method,url,body) {const response=await fetch(base+'/api'+url,{method,headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:body?JSON.stringify(body):undefined});return {status:response.status,body:await response.json()};}
   const data={name:'Integration Hall',location:'Stamford Road',capacity:100,facilities:['Wi-Fi','Projector'],supportedLayouts:['Theatre'],accessibilityFeatures:['Ramp'],operatingHours:'08:00 - 22:00',setupMinutes:0,turnaroundMinutes:0,latitude:1.296,longitude:103.85,mrt:'Client invented station',availabilityStatus:'Available',pricing:'75.50'};
+  // FIRST isolation: NOTIFY channels span schemas. Ignore other suites' catalogue events by checking the real publisher.
+  const publisherPid=(await client.query('SELECT pg_backend_pid() AS id')).rows[0].id;
+  const observerPid=(await other.query('SELECT pg_backend_pid() AS id')).rows[0].id;
   let notification;
-  other.on('notification',event=>{notification=event;}); // Observes a commit notification through a separate database connection.
+  other.on('notification',event=>{if(event.processId===publisherPid)notification=event;});
   await other.query('LISTEN venue_catalogue_changed');
   const created=await request('POST','/venues',data);assert.equal(created.status,201);assert.match(created.body.venue.mrt,/Bras Basah/);assert.equal(created.body.venue.pricing,'75.50');
   await other.query('SELECT 1');assert.equal(notification.channel,'venue_catalogue_changed');assert.equal(notification.payload,String(created.body.venue.id));
@@ -49,7 +52,14 @@ test('real venue changes preserve history, exclude inactive venues and serialize
   await other.query("SET statement_timeout TO '5s'");
   let settled=false;
   const booking=other.query("INSERT INTO venue_bookings(event_id,venue_id,requested_by,start_datetime,end_datetime,status) VALUES (1,$1,1,now()+interval '1 day',now()+interval '2 days','approved')",[raceId]).then(()=>{settled=true;return null;},error=>{settled=true;return error.code;});
-  await new Promise(resolve=>setTimeout(resolve,100));assert.equal(settled,false);
+  // Observe real PostgreSQL lock contention; an arbitrary sleep could pass merely because the writer never started.
+  let writerBlocked=false;const deadline=Date.now()+3000;
+  while(Date.now()<deadline){
+   writerBlocked=(await client.query('SELECT $1::int=ANY(pg_blocking_pids($2::int)) AS blocked',[publisherPid,observerPid])).rows[0].blocked;
+   if(writerBlocked)break;
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert.ok(writerBlocked,'booking writer must actually be blocked by the venue lock');assert.equal(settled,false);
   await client.query('UPDATE venues SET is_active=false WHERE id=$1',[raceId]);await client.query('COMMIT');assert.equal(await booking,'23514');
  } finally {
   mock.restoreAll();if(server)await new Promise(resolve=>server.close(resolve));

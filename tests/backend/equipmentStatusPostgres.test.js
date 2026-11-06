@@ -1,7 +1,7 @@
 // File: Tracks Equipment Request Status against real PostgreSQL in a disposable schema built from the real migrations.
 // Test scope: Real routes, SQL, transactions and constraints; only the pool is pointed at the disposable schema and email
 // is captured. Opt-in (RUN_DB_TESTS=1).
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

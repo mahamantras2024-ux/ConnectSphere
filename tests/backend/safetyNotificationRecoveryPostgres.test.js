@@ -1,3 +1,5 @@
+// FIRST F4: resolve private database settings before any import captures the connection configuration.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 // Safety recovery AC2: force two independent PostgreSQL transactions to race on the same missing readiness notice.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');

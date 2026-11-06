@@ -3,7 +3,7 @@
 // amendment is applied with its history (AC3), the right people are told (AC4), the venue, technical and safety checks
 // are redone (AC5) and a deadline change is reviewed (AC6).
 // Test scope: Real routes, SQL, constraints and transactions; only Gmail delivery is replaced. Opt-in (RUN_DB_TESTS=1).
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

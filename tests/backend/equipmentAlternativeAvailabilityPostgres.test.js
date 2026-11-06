@@ -1,6 +1,6 @@
 // File: Reproduces replacement availability changing while a proposal waits for the stock row lock.
 // Test scope: Real PostgreSQL READ COMMITTED transactions in a disposable schema; opt-in with RUN_DB_TESTS=1.
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

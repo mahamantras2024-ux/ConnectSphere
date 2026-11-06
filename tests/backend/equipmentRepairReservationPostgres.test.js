@@ -1,7 +1,7 @@
 // File: Proves a real PostgreSQL repair transition enables reservation and preserves its resolution note.
 // Test scope: Real migrations, API routes, SQL, transactions, and constraints in a disposable schema.
 // Opt-in (RUN_DB_TESTS=1) because it requires a PostgreSQL connection.
-require('../../backend/node_modules/dotenv').config();
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 const { test, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

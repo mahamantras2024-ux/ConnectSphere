@@ -33,7 +33,10 @@ BEGIN
       'equipment_reservation_affected', 'equipment_alternative_proposed', 'equipment_alternative_decision', 'venue_event_status_changed',
       'pending_venue_request_reminder', 'event_awaiting_assignment', 'safety_check_ready',
       'tech_support_assignment_created', 'tech_support_assignment_updated', 'tech_support_assignment_cancelled',
-      'pending_tech_support_request_reminder'
+      'pending_tech_support_request_reminder',
+      -- Standalone upgrades may run after the main runner before these types have ever been stored.
+      'event_coordinator_assigned', 'event_request_status_changed', 'venue_booking_requested',
+      'clarification_replied', 'event_confirmed', 'event_clarification_requested'
     ]::text[])
   ) supported;
   ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;

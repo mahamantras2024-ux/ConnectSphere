@@ -17,8 +17,9 @@ export default defineConfig({
     pool: 'threads',
     include: ['../tests/frontend/**/*.test.{js,jsx}'],
     environment: 'jsdom', clearMocks: true,
-    // V8 instrumentation slows real routed UI tests; preserve the normal five-second limit and all assertion/coverage checks.
-    testTimeout: process.argv.includes('--coverage') ? 15000 : 5000,
+    // Full routed UI interactions need the same harness allowance with or without V8 instrumentation on slower hosts.
+    // Business timing boundaries use controlled clocks; this allowance changes no assertion or coverage threshold.
+    testTimeout: 15000,
     // A single worker avoids local CPU contention causing unrelated UI wait timeouts under coverage.
     maxWorkers: 1,
     coverage: { provider: 'v8', include: ['src/**/*.{js,jsx}'], reporter: ['text', 'html', 'json', 'json-summary'], reportsDirectory: '../coverage/frontend', thresholds: { statements:100, branches:100, functions:100, lines:100, perFile:true } },

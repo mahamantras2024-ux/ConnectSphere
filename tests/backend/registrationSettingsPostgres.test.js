@@ -28,6 +28,9 @@ describe('Registration settings PostgreSQL evidence',{skip:process.env.RUN_REGIS
         VALUES(7,3,4,'Workshop','2090-01-10','10:00','11:00',true,'draft',true,1),
         (8,10,5,'Private event','2090-01-10','10:00','11:00',true,'draft',true,1),
         (42,3,4,'Already published','2090-01-10','10:00','11:00',false,'confirmed',true,10)`);
+      // FIRST full-suite follow-up: the shared helper already installs today's default false. Represent a genuinely
+      // unknown legacy value so rerunning the real upgrade tests its backfill rather than an unrelated closed event.
+      await client.query('ALTER TABLE events ALTER COLUMN registration_open DROP NOT NULL; UPDATE events SET registration_open=NULL WHERE id=42');
       await client.query(sqlFile('migrations/021-registration-settings.sql'));
       await client.query(sqlFile('migrations/021-registration-settings.sql'));
     }finally{client.release();}

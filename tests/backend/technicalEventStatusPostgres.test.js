@@ -1,3 +1,5 @@
+// FIRST F4: resolve private database settings before any import captures the connection configuration.
+require('../../backend/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../../backend/.env') });
 // Real PostgreSQL proves scope, current facts, lifecycle notification atomicity and audited release eligibility.
 const { test, after, mock } = require('node:test');
 const assert = require('node:assert/strict');
