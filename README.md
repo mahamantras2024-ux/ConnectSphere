@@ -1,12 +1,41 @@
 # ConnectSphere
 
+Repository: [mahamantras2024-ux/ConnectSphere](https://github.com/mahamantras2024-ux/ConnectSphere)
+
 React/Vite renders role dashboards and right-side detail panels. Express validates credentials, active roles, ownership and coordinator assignments before querying Supabase-hosted PostgreSQL through `pg`. Accounts use bcrypt/JWT, rather than Supabase Auth. Gmail SMTP sends reset links. Leaflet/OpenStreetMap and Photon provide the embedded map; nearest MRT is calculated on the server.
 
 See [current functionality](docs/current-functionality.md), [database files](docs/database-files.md), [testing instructions](tests/README.md) and [Sprint 1 acceptance evidence](tests/sprint-one-acceptance.md).
 
-## Start
+## Set up and run
 
-From the root, install with `npm ci --prefix backend` and `npm ci --prefix frontend`. Retain the private configuration files. Run `npm run dev --prefix backend` and `npm run dev --prefix frontend` in separate terminals. Default addresses: http://localhost:4000 and http://localhost:5173. See [email configuration](docs/email-setup.md).
+Use Node.js 22 and npm, as in CI. Ask the project team for access to the configured Supabase PostgreSQL database and a demo account for any staff role you need to review.
+
+```sh
+git clone https://github.com/mahamantras2024-ux/ConnectSphere.git
+cd ConnectSphere
+npm ci
+npm ci --prefix backend
+npm ci --prefix frontend
+```
+
+Copy [backend/.env.example](backend/.env.example) to `backend/.env`. Set the database connection values and a private `JWT_SECRET`. Set `DB_SSL_CA_PATH` to the correct local certificate path if a CA file is required, and remove the placeholder otherwise. To exercise password reset by email, follow the [Gmail SMTP setup](docs/email-setup.md). Keep real credentials private.
+
+From the repository root, start the API and frontend in separate terminals:
+
+```sh
+npm run dev --prefix backend
+npm run dev --prefix frontend
+```
+
+Check [API health](http://localhost:4000/health). If you change the backend address, set `VITE_API_URL` in `frontend/.env` to its API base URL, including `/api`.
+
+### Demo access
+
+After starting both servers, open [http://localhost:5173](http://localhost:5173) on the machine running the app. This address is local to that machine.
+
+Use the demo credentials shared privately by the project team. To try the event request workflow, sign in as an event organiser and submit an event request, then sign in as an event coordinator assigned to that request to review it.
+
+### Database maintenance
 
 Existing shared databases do not need seeding. Deliberate upgrades for an existing compatible database are the backend commands `migrate:external-events`, `setup:sprint-one`, and `setup:venue-management`, in that order. The event migration also applies additive equipment repair history, reservation-impact and replacement-offer schema upgrades, and seeds two unavailable repair-demo assets in whichever configured development or test database it targets. Apply it before using equipment reservations or replacement suggestions on an existing database. These upgrades are not a verified empty-database bootstrap. Internal accounts use `npm run provision:account --prefix backend`.
 
@@ -14,10 +43,15 @@ To create repeatable cancelled/postponed reservation examples for Technical Supp
 
 ## Quality checks
 
-The same checks used by CI are available from the repository root:
+The [GitHub Actions workflow](.github/workflows/ci.yml) runs tests, coverage, the frontend build, and additional integration and release checks. Automated tests are in [tests/frontend](tests/frontend), [tests/backend](tests/backend), and [tests/e2e](tests/e2e). See the [test runner guide](tests/README.md) for suites that use PostgreSQL or a browser.
+
+Run these commands from the repository root:
 
 | Command | Purpose |
 | --- | --- |
+| `npm test` | Runs the default automated test suites |
+| `npm run test:coverage` | Runs the CI coverage check |
+| `npm run build --prefix frontend` | Builds the production frontend |
 | `npm run lint` | Static JavaScript/JSX linting |
 | `npm run audit` | High-severity audit of production dependencies |
 | `npm run package` | Builds `artifacts/quackloan.zip` once and writes its CycloneDX file SBOM |
