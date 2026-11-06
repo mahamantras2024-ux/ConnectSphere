@@ -30,14 +30,17 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
         organiser_id INTEGER, status TEXT DEFAULT 'submitted', is_draft BOOLEAN DEFAULT false, equipment_items JSONB DEFAULT '[]',
         technical_support_required BOOLEAN DEFAULT false, video_conferencing_required BOOLEAN DEFAULT false,
         equipment_notes TEXT, equipment_confirmed_at TIMESTAMPTZ, decision_reason TEXT, decided_at TIMESTAMPTZ,
-        decided_by INTEGER, safety_changes_open TEXT[] DEFAULT '{}', safety_recheck_required_at TIMESTAMPTZ, proposed_date DATE, proposed_end_time TIME,
+        decided_by INTEGER, safety_changes_open TEXT[] DEFAULT '{}', safety_recheck_required_at TIMESTAMPTZ,
+        safety_resubmission_required BOOLEAN DEFAULT false, proposed_date DATE, proposed_end_time TIME,
         expected_attendance INTEGER DEFAULT 100, room_layout_preference TEXT DEFAULT 'Seminar', accessibility_requirements TEXT[] DEFAULT '{Ramp}');
       CREATE TABLE event_clarification_requests(id SERIAL PRIMARY KEY,event_id INTEGER,status TEXT);
       CREATE TABLE event_safety_checks(id SERIAL PRIMARY KEY,event_id INTEGER,safety_officer_id INTEGER,
         outcome TEXT,notes TEXT,checked_at TIMESTAMPTZ,change_areas TEXT[]);
       CREATE TABLE notifications(id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id), event_id INTEGER,
         change_request_id INTEGER, type TEXT, title VARCHAR(255), message TEXT, details JSONB);
-      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00',capacity INTEGER DEFAULT 40);
+      CREATE TABLE venues(id INTEGER PRIMARY KEY, name TEXT, availability_status TEXT, operating_hours TEXT NOT NULL DEFAULT '08:00 - 22:00',
+        capacity INTEGER DEFAULT 200, supported_layouts TEXT[] DEFAULT '{Seminar,Theatre}',
+        accessibility_features TEXT[] DEFAULT '{Ramp,Step-free}', facilities TEXT[] DEFAULT '{}');
       INSERT INTO users(id,role) VALUES (1,'event_coordinator'),(2,'venue_staff');
       INSERT INTO events(id,coordinator_id,name) VALUES (3,1,'Gala'),(4,1,'Workshop');
       INSERT INTO venues(id,name,availability_status) VALUES (7,'Hall A','Available'),(8,'Hall B','Available')`);
@@ -74,7 +77,9 @@ describe('AC1–AC9 - PostgreSQL venue availability integration', { skip: proces
     await database.query('TRUNCATE venue_booking_disruptions,venue_bookings, venue_unavailability, venue_schedule_periods, notifications RESTART IDENTITY');
     writerPids.clear();
     await database.query("UPDATE events SET name=CASE id WHEN 3 THEN 'Gala' ELSE 'Workshop' END");
-    await database.query("UPDATE venues SET is_active=true, capacity=40, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
+    // Availability cases must start with a suitable venue; otherwise the newer suitability guard rejects them before
+    // the timing/locking behavior under test is reached. Keep event 100/Seminar/Ramp distinct from request snapshots.
+    await database.query("UPDATE venues SET is_active=true, capacity=200, operating_hours='08:00 - 22:00', setup_minutes=30, turnaround_minutes=15 WHERE id=7");
   });
 
   after(async () => {

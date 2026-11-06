@@ -15,6 +15,19 @@ function commands(options) {
   });
   return calls;
 }
+
+test('Connected workflow matrix AC1-AC5 - integration selects exactly the five agreed suites and enables every database gate', () => {
+  // Arrange/Act: capture the real runner command without network, database writes or child test execution.
+  const calls = commands(['integration', 'workflows']);
+  // Assert: literal filenames are the agreed minimal suite, so accidentally omitted/extra suites fail this oracle.
+  assert.equal(calls.length, 1);
+  const selected = calls[0].args.filter(argument => argument.endsWith('.test.js')).map(file => path.basename(file));
+  assert.deepEqual(Array.from(selected), ['attendeeRegistrationPostgres.test.js', 'attendeeWithdrawalPostgres.test.js',
+    'connectedWorkflowsPostgres.test.js', 'equipmentAvailabilityPostgres.test.js', 'venueAvailabilityPostgres.test.js']);
+  for (const flag of ['RUN_DB_TESTS', 'RUN_LEAD_DB', 'RUN_VENUE_BOOKING_DB', 'RUN_VENUE_AVAILABILITY_DB']) {
+    assert.equal(calls[0].settings.env[flag], '1', `${flag} must not silently skip the selected evidence`);
+  }
+});
 for (const [story,ac,other] of [['update-venue','SCRUM-35','SCRUM-36'],['delete-venue','SCRUM-36','SCRUM-35']]) {
   // Test case: Captures runner commands for each Sprint 2 story and checks its UI/API suites and story-name filters are selected independently.
   test(`Sprint 2 ${ac} runner AC1 - selects only the requested story's UI and API cases`,()=>{
@@ -100,7 +113,8 @@ test('Organiser outcomes AC1-AC6 / SCRUM-85 AC1 / SCRUM-106 AC5 - integration re
   // Arrange and Act: capture the actual integration command without starting child suites.
   const [backend]=commands(['integration']);
   // Assert: each independently added suite must remain selected after the merge.
-  for(const file of ['scrum85Postgres.test.js','scrum106Postgres.test.js',
+  for(const file of ['connectedWorkflowsPostgres.test.js','equipmentRequestVisibilityPostgres.test.js',
+    'scrum85Postgres.test.js','scrum106Postgres.test.js',
     'safetyEquipmentReleasePostgres.test.js','safetyNotificationRecoveryPostgres.test.js',
     'organiserOutcomesPostgres.test.js','amendmentNotificationBoundariesPostgres.test.js']) {
     assert.ok(backend.args.some(arg=>arg.endsWith(file)),`${file} must run in integration mode`);
