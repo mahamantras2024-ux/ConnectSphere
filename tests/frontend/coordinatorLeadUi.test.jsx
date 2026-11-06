@@ -31,19 +31,22 @@ function panel(name) { return document.getElementById(toggle(name).getAttribute(
 /** Find the lead's user-facing lifecycle tab, independently of its changing count. */
 function tab(label) { return screen.getByRole('tab', {name:new RegExp('^'+label+'\\b')}); }
 
-it('Lead tabs AC1 AC2 - uses the same five lifecycle tabs while keeping unassigned requests separate', async () => {
+/** Exercise every returned lifecycle state, including cancelled records that belong under Submitted. */
+function addLifecycleEvents() {
   events.push(...['submitted','under_review','approved','confirmed','completed','rejected','cancelled','draft'].map((status,index)=>({...base,id:20+index,name:`Event ${status}`,status})));
+}
+
+it('Lead tabs AC1 AC2 - uses the same five lifecycle tabs while keeping unassigned requests separate', async () => {
+  // Arrange / Act: retain the full routed screen, CSS and assignment controls.
+  addLifecycleEvents();
   await open();
-  expect(screen.getAllByRole('tab').map(item=>item.textContent)).toEqual(['Draft 1','Submitted 2','In progress 5','Completed 1','Rejected 1']);
+  const assigned = within(panel('Assigned active events'));
+  const stageTabs = within(assigned.getByRole('tablist', { name: 'Event stages' })).getAllByRole('tab');
+  // Assert the overall queue counts and lead-specific actions separately from each stage's filtering.
+  expect(stageTabs.map(item=>item.textContent)).toEqual(['Draft 1','Submitted 2','In progress 5','Completed 1','Rejected 1']);
   expect(toggle('Assigned active events')).toHaveTextContent('(10)');
   expect(toggle('Unassigned requests')).toHaveTextContent('(1)');
-  for(const [label,count]of [['Draft',1],['Submitted',2],['In progress',5],['Completed',1],['Rejected',1]]){
-    fireEvent.click(tab(label));
-    expect(within(screen.getByRole('tabpanel')).getAllByRole('article')).toHaveLength(count);
-    expect(screen.getByRole('heading',{name:'Waiting for assignment'})).toBeVisible();
-  }
-  fireEvent.click(tab('In progress'));
-  const card = screen.getByRole('heading', { name: 'Planning Forum' }).closest('article');
+  const card = assigned.getByRole('heading', { name: 'Planning Forum' }).closest('article');
   const details = within(card).getByRole('link', { name: 'View details' });
   // Shared details actions use the same decorative SVG without changing their accessible name or destination.
   expect(details).toHaveClass('record-action', 'view-details-action');
@@ -51,6 +54,34 @@ it('Lead tabs AC1 AC2 - uses the same five lifecycle tabs while keeping unassign
   expect(details.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Registration information' })).not.toBeInTheDocument();
   expect(api.get.mock.calls.some(([path]) => path.endsWith('/lead-registrations'))).toBe(false);
+});
+
+// Independent stage cases keep full visibility checks within the normal five-second budget.
+// Check event identities as well as counts so moving an event into the wrong stage cannot pass.
+it.each([
+  ['Draft', ['Event draft']],
+  ['Submitted', ['Event submitted', 'Event cancelled']],
+  ['In progress', ['Planning Forum', 'Second planning event', 'Event under_review', 'Event approved', 'Event confirmed']],
+  ['Completed', ['Event completed']],
+  ['Rejected', ['Event rejected']],
+])('Lead tabs AC1 AC2 - %s shows its assigned events without filtering unassigned requests', async (label, expectedNames) => {
+  // Arrange: every lifecycle is present so incorrect grouping or hidden CSS cannot go unnoticed.
+  addLifecycleEvents();
+  await open();
+  const assigned = within(panel('Assigned active events'));
+  const unassigned = within(panel('Unassigned requests'));
+  const stageTabs = within(assigned.getByRole('tablist', { name: 'Event stages' }));
+  // Act: use the accessible tab inside its own tablist instead of searching every assignment button.
+  const selectedTab = stageTabs.getByRole('tab', { name: new RegExp('^' + label + '\\b') });
+  fireEvent.click(selectedTab);
+  // Assert: default role queries exclude hidden cards using the real stylesheet.
+  expect(selectedTab).toHaveAttribute('aria-selected', 'true');
+  const stagePanel = assigned.getByRole('tabpanel', { name: new RegExp('^' + label + '\\b') });
+  const cards = within(stagePanel).getAllByRole('article');
+  expect(cards).toHaveLength(expectedNames.length);
+  expect(cards.map(card => within(card).getByRole('heading').textContent)).toEqual(expectedNames);
+  expect(unassigned.getByRole('heading', { name: 'Waiting for assignment' })).toBeVisible();
+  expect(unassigned.getAllByRole('article')).toHaveLength(1);
 });
 
 it('Lead tabs AC2 AC3 - parent disclosures retain the selected stage and coordinator draft', async () => {
